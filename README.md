@@ -1,6 +1,92 @@
 # slicc-spectrum
 
-Web components for SLICC. The first one is `<slicc-terminal>`, a terminal built on [wterm](https://github.com/vercel-labs/wterm) that talks to [`@ai-ecoverse/slicc-kernel`](https://github.com/ai-ecoverse/slicc-kernel) through a small backend interface (`src/backend.ts`): bytes in, bytes out, resize and signals.
+Web components for SLICC. The first one is `<slicc-terminal>`, a terminal built on [wterm](https://github.com/vercel-labs/wterm) (`@wterm/dom` 0.5.4, Zig/WASM VT core) that talks to [`@ai-ecoverse/slicc-kernel`](https://github.com/ai-ecoverse/slicc-kernel) through a small backend interface. It is a standards custom element with no framework and no shadow root, so it can move to a shared web-components repo unchanged.
+
+```html
+<slicc-terminal></slicc-terminal>
+<script type="module">
+  import './dist/slicc-terminal.js';
+
+  const terminal = document.querySelector('slicc-terminal');
+  terminal.backend = myBackend;
+  await terminal.ready;
+  terminal.focus();
+</script>
+```
+
+## Element
+
+| | |
+| :--- | :--- |
+| `backend` | A `TerminalBackend`. Setting it closes the current session and opens a new one. |
+| `cols`, `rows` attributes | Fixed grid size. Without either, the grid fits the element and follows its size. |
+| `ready` | Promise that resolves with the element once wterm has mounted and the session is open. Rejects if either fails. |
+| `cols`, `rows` properties | Current grid size. |
+| `resize(cols, rows)` | Sets both attributes and resizes once. |
+| `fit()` | Removes both attributes and fits the grid to the element. |
+| `send(data)` | Sends a string or bytes to the backend, as if typed. |
+| `write(data)` | Writes a string or bytes to the screen without involving the backend. |
+| `signal(name)` | Sends `SIGINT`, `SIGTSTP`, `SIGQUIT` or `SIGHUP` to the backend. |
+| `readText()` | Resolves with the text of the scrollback and the screen. |
+| `focus()` | Focuses the terminal input. |
+
+Events, all `CustomEvent`s with the payload in `detail`: `ready` `{cols, rows}`, `resize` `{cols, rows}`, `exit` `{status}`, `title` `{title}`, `bell` `{count}`, `error` `{error}`.
+
+Removing the element closes the session and destroys the screen. Adding it again mounts a fresh screen and opens a new session on the same backend.
+
+## Backend interface
+
+```ts
+interface TerminalBackend {
+  open(sink: TerminalSink, size: { cols: number; rows: number }): TerminalSession | Promise<TerminalSession>;
+}
+
+interface TerminalSink {
+  output(data: Uint8Array): void;
+  exit(status: number): void;
+}
+
+interface TerminalSession {
+  write(data: Uint8Array): void;
+  resize(cols: number, rows: number): void;
+  signal?(name: 'SIGINT' | 'SIGTSTP' | 'SIGQUIT' | 'SIGHUP'): void;
+  close(): void;
+}
+```
+
+Keystrokes reach `write` as the bytes a terminal would send: UTF-8 text, `\r` for Enter, `0x03` for Ctrl+C, escape sequences for arrows and function keys, and bracketed paste when the application has turned it on. The backend's line discipline turns `0x03`, `0x1a` and `0x1c` into signals, as a real pty does. `signal()` is optional. Without it, `terminal.signal()` writes the matching control byte instead, and `SIGHUP` is dropped. Output may arrive in chunks of any size and split anywhere, including inside UTF-8 sequences and escape sequences.
+
+## Theming
+
+The element sets wterm's `--term-*` variables from its own custom properties, so you can set them on the element or on any ancestor.
+
+| Property | Default |
+| :--- | :--- |
+| `--slicc-terminal-background` | `#1d1d1d` |
+| `--slicc-terminal-foreground` | `#d4d4d4` |
+| `--slicc-terminal-cursor` | `#aeafad` |
+| `--slicc-terminal-color-0` … `--slicc-terminal-color-15` | wterm's palette |
+| `--slicc-terminal-font-family` | `"Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace` |
+| `--slicc-terminal-font-size` | `14px` |
+| `--slicc-terminal-line-height` | `1.2` |
+| `--slicc-terminal-padding` | `8px` |
+| `--slicc-terminal-height` | `360px` (ignored when `rows` is set) |
+| `--slicc-terminal-border-radius` | `4px` |
+
+The stylesheet (wterm's plus the theme) is constructed once and adopted into the document or shadow root the element is connected to.
+
+## Distribution
+
+`npm run build` writes `dist/slicc-terminal.js` (one ESM bundle with no bare imports), its source map and `dist/wterm.wasm`. The bundle loads the WASM with `new URL('./wterm.wasm', import.meta.url)`, so `dist/` works from any path, including from OPFS through the slicc-bios service worker. wterm's base64-inlined copy of the WASM is left out of the bundle. Set `SliccTerminal.wasmUrl` before the first element connects to load it from elsewhere.
+
+## wterm notes
+
+Things found while building this against wterm 0.5.4, recorded here, not pushed upstream:
+
+- The Zig core maps 24-bit colours (`38;2;r;g;b`) to the nearest of the 256 palette colours, and the DOM renderer draws the 6×6×6 cube in steps of 51 rather than xterm's 0/95/135/175/215/255. `@wterm/ghostty` is the full-VT alternative.
+- Pasted text is sent with `\n` line breaks. xterm.js turns them into `\r`. Bash accepts both.
+- `@wterm/core` always ships the WASM inlined as base64 behind a dynamic import. A build without it, or an explicit entry point that takes a URL, would save the bundler plugin.
+- wterm reads focus and selection from `ownerDocument` (`activeElement`, `getSelection()`), so selection and copy don't work inside a shadow root that wterm itself owns. That's why the element renders in light DOM. It still works when the element is placed inside someone else's shadow root.
 
 ## Development
 
@@ -10,9 +96,9 @@ npm run lint
 npm test
 ```
 
-`npm test` runs the integration tests in headless Chromium over raw CDP. It writes V8 coverage to `coverage/` and CPU profiles, screenshots and console logs to `artifacts/`. The test page is served cross-origin isolated (COOP/COEP), as slicc-kernel requires.
+`npm test` builds `dist/` and runs the integration tests in headless Chromium over raw CDP against a fake backend (`test/integration/page/fake-backend.js`). It writes V8 coverage to `coverage/` and CPU profiles, screenshots and console logs to `artifacts/`. The test page is served cross-origin isolated (COOP/COEP), as slicc-kernel requires. `npm start` serves the test page on port 8080.
 
-Unit tests live in `test/unit/`, which is gitignored. The pre-commit hook runs them under monocart and fails the commit unless the staged lines in `src/` are fully covered (`diff-cover --fail-under 100`).
+Unit tests live in `test/unit/`, which is gitignored. The pre-commit hook runs them in Node against happy-dom under monocart and fails the commit unless the staged lines in `src/` are fully covered (`diff-cover --fail-under 100`).
 
 ## License
 
