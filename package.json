@@ -12,7 +12,10 @@
     "node": ">=24"
   },
   "exports": {
-    ".": "./dist/slicc-terminal.js"
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/slicc-terminal.js"
+    }
   },
   "files": [
     "dist"

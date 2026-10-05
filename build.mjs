@@ -1,4 +1,6 @@
-import { copyFile, mkdir, rm } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { copyFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
 const dist = new URL('./dist/', import.meta.url);
@@ -32,3 +34,12 @@ await build({
   plugins: [inline],
   logLevel: 'warning',
 });
+
+const tsc = fileURLToPath(new URL('./node_modules/.bin/tsc', import.meta.url));
+execFileSync(tsc, ['-p', 'tsconfig.build.json'], { stdio: 'inherit' });
+const types = new URL('types/', dist);
+for (const name of await readdir(types)) {
+  const file = new URL(name, types);
+  const source = await readFile(file, 'utf8');
+  await writeFile(file, source.replace(/(from '\.\/[^']+)\.ts'/g, "$1.js'"));
+}

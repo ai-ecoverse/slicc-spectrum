@@ -77,7 +77,7 @@ The stylesheet (wterm's plus the theme) is constructed once and adopted into the
 
 ## Distribution
 
-`npm run build` writes `dist/slicc-terminal.js` (one ESM bundle with no bare imports), its source map and `dist/wterm.wasm`. The bundle loads the WASM with `new URL('./wterm.wasm', import.meta.url)`, so `dist/` works from any path, including from OPFS through the slicc-bios service worker. wterm's base64-inlined copy of the WASM is left out of the bundle. Set `SliccTerminal.wasmUrl` before the first element connects to load it from elsewhere.
+`npm run build` writes `dist/slicc-terminal.js` (one ESM bundle with no bare imports), its source map and `dist/wterm.wasm`. The bundle loads the WASM with `new URL('./wterm.wasm', import.meta.url)`, so `dist/` works from any path, including from OPFS through the slicc-bios service worker. wterm's base64-inlined copy of the WASM is left out of the bundle. TypeScript declarations go to `dist/types/`, and the package's `types` export points at them. Set `SliccTerminal.wasmUrl` before the first element connects to load it from elsewhere.
 
 ## wterm notes
 
