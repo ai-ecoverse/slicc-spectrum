@@ -54,7 +54,19 @@ interface TerminalSession {
 }
 ```
 
-Keystrokes reach `write` as the bytes a terminal would send: UTF-8 text, `\r` for Enter, `0x03` for Ctrl+C, escape sequences for arrows and function keys, and bracketed paste when the application has turned it on. The backend's line discipline turns `0x03`, `0x1a` and `0x1c` into signals, as a real pty does. `signal()` is optional. Without it, `terminal.signal()` writes the matching control byte instead, and `SIGHUP` is dropped. Output may arrive in chunks of any size and split anywhere, including inside UTF-8 sequences and escape sequences.
+Keystrokes reach `write` as the bytes a terminal would send: UTF-8 text, `\r` for Enter, `0x03` for Ctrl+C, escape sequences for arrows and function keys, and bracketed paste when the application has turned it on. Pasted `\r\n` and `\n` line breaks are sent as `\r`, as xterm.js does, in both plain and bracketed paste. The backend's line discipline turns `0x03`, `0x1a` and `0x1c` into signals, as a real pty does. `signal()` is optional. Without it, `terminal.signal()` writes the matching control byte instead, and `SIGHUP` is dropped. Output may arrive in chunks of any size and split anywhere, including inside UTF-8 sequences and escape sequences. While `open()` is pending, input (keystrokes, `send()` and wterm's automatic replies) is buffered and written in order once the session opens. If that open fails or is superseded, the buffer is dropped.
+
+### slicc-kernel
+
+`kernelBackend(kernel, { argv, cwd, env })` adapts slicc-kernel's terminal API to the interface above. `argv` defaults to `['bash', '-i']`. It is typed structurally, so this package doesn't depend on slicc-kernel. If the session fails, its error message is printed and `exit` reports status 1.
+
+```js
+import { createKernel } from './node_modules/@ai-ecoverse/slicc-kernel/dist/index.js';
+import { kernelBackend } from './dist/slicc-terminal.js';
+
+const kernel = await createKernel({ root: await navigator.storage.getDirectory() });
+document.querySelector('slicc-terminal').backend = kernelBackend(kernel, { cwd: '/home' });
+```
 
 ## Theming
 
@@ -84,7 +96,7 @@ The stylesheet (wterm's plus the theme) is constructed once per document and ado
 Things found while building this against wterm 0.5.4, recorded here, not pushed upstream:
 
 - The Zig core maps 24-bit colours (`38;2;r;g;b`) to the nearest of the 256 palette colours, and the DOM renderer draws the 6×6×6 cube in steps of 51 rather than xterm's 0/95/135/175/215/255. `@wterm/ghostty` is the full-VT alternative.
-- Pasted text is sent with `\n` line breaks. xterm.js turns them into `\r`. Bash accepts both.
+- wterm sends pasted text with its `\n` line breaks unchanged, whereas xterm.js turns them into `\r`. The element does that conversion itself.
 - `@wterm/core` always ships the WASM inlined as base64 behind a dynamic import. A build without it, or an explicit entry point that takes a URL, would save the bundler plugin.
 - wterm reads focus and selection from `ownerDocument` (`activeElement`, `getSelection()`), so selection and copy don't work inside a shadow root that wterm itself owns. That's why the element renders in light DOM. It still works when the element is placed inside someone else's shadow root.
 
@@ -96,7 +108,7 @@ npm run lint
 npm test
 ```
 
-`npm test` builds `dist/` and runs the integration tests in headless Chromium over raw CDP against a fake backend (`test/integration/page/fake-backend.js`). It writes V8 coverage to `coverage/` and CPU profiles, screenshots and console logs to `artifacts/`. The test page is served cross-origin isolated (COOP/COEP), as slicc-kernel requires. `npm start` serves the test page on port 8080.
+`npm test` builds `dist/` and runs the integration tests in headless Chromium over raw CDP against a fake backend (`test/integration/page/fake-backend.js`). It writes V8 coverage to `coverage/` and CPU profiles, screenshots and console logs to `artifacts/`. The test page is served cross-origin isolated (COOP/COEP), as slicc-kernel requires. `test/integration/kernel.test.mjs` runs `bash -i` end to end on `@ai-ecoverse/slicc-kernel` (a pinned dev dependency), with `@ai-ecoverse/wasm-bash` and `@ai-ecoverse/wasm-coreutils` installed into OPFS by the page (`/kernel.html`). `npm start` serves the test page on port 8080.
 
 Unit tests live in `test/unit/`, which is gitignored. The pre-commit hook runs them in Node against happy-dom under monocart and fails the commit unless the staged lines in `src/` are fully covered (`diff-cover --fail-under 100`).
 
