@@ -141,7 +141,11 @@ export async function launch() {
   }
 
   async function checkpoint() {
-    const current = [...sessions].filter(([, target]) => target.browserContextId === run?.context);
+    const current = [...sessions].filter(
+      ([, target]) =>
+        target.browserContextId === run?.context &&
+        (target.type === 'page' || target.url.startsWith(`${server.url}dist/`))
+    );
     await Promise.all(current.map(([sessionId, target]) => dump(sessionId, target, true)));
   }
 

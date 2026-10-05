@@ -56,6 +56,18 @@ interface TerminalSession {
 
 Keystrokes reach `write` as the bytes a terminal would send: UTF-8 text, `\r` for Enter, `0x03` for Ctrl+C, escape sequences for arrows and function keys, and bracketed paste when the application has turned it on. The backend's line discipline turns `0x03`, `0x1a` and `0x1c` into signals, as a real pty does. `signal()` is optional. Without it, `terminal.signal()` writes the matching control byte instead, and `SIGHUP` is dropped. Output may arrive in chunks of any size and split anywhere, including inside UTF-8 sequences and escape sequences.
 
+### slicc-kernel
+
+`kernelBackend(kernel, { argv, cwd, env })` adapts slicc-kernel's terminal API to the interface above. `argv` defaults to `['bash', '-i']`. It is typed structurally, so this package doesn't depend on slicc-kernel. If the session fails, its error message is printed and `exit` reports status 1.
+
+```js
+import { createKernel } from './node_modules/@ai-ecoverse/slicc-kernel/dist/index.js';
+import { kernelBackend } from './dist/slicc-terminal.js';
+
+const kernel = await createKernel({ root: await navigator.storage.getDirectory() });
+document.querySelector('slicc-terminal').backend = kernelBackend(kernel, { cwd: '/home' });
+```
+
 ## Theming
 
 The element sets wterm's `--term-*` variables from its own custom properties, so you can set them on the element or on any ancestor.
