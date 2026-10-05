@@ -5,6 +5,7 @@ import { build } from 'esbuild';
 
 const dist = new URL('./dist/', import.meta.url);
 const wasm = new URL('./node_modules/@wterm/core/wasm/wterm.wasm', import.meta.url);
+const dockview = new URL('./node_modules/dockview-core/dist/dockview-core.js', import.meta.url);
 
 const inline = {
   name: 'no-inline-wasm',
@@ -19,27 +20,49 @@ const inline = {
   },
 };
 
+const dockviewCss = {
+  name: 'dockview-css',
+  setup(build) {
+    build.onResolve({ filter: /^dockview-core\/css$/ }, () => ({
+      path: 'dockview-core/css',
+      namespace: 'dockview-css',
+    }));
+    build.onLoad({ filter: /.*/, namespace: 'dockview-css' }, async () => {
+      const umd = await readFile(dockview, 'utf8');
+      const css = JSON.parse(umd.match(/s\.textContent = (".*");/)[1]);
+      return { contents: `export default ${JSON.stringify(css)};`, loader: 'js' };
+    });
+  },
+};
+
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 await copyFile(wasm, new URL('wterm.wasm', dist));
 await build({
-  entryPoints: { 'slicc-terminal': 'src/index.ts' },
+  entryPoints: {
+    'slicc-terminal': 'src/index.ts',
+    'slicc-ui': 'src/ui.ts',
+    'slicc-dummy': 'src/dummy.ts',
+  },
   outdir: 'dist',
   bundle: true,
+  splitting: true,
+  chunkNames: 'chunk-[hash]',
   format: 'esm',
   platform: 'browser',
   target: 'es2024',
   sourcemap: 'linked',
   loader: { '.css': 'text' },
-  plugins: [inline],
+  plugins: [inline, dockviewCss],
   logLevel: 'warning',
 });
 
 const tsc = fileURLToPath(new URL('./node_modules/.bin/tsc', import.meta.url));
 execFileSync(tsc, ['-p', 'tsconfig.build.json'], { stdio: 'inherit' });
 const types = new URL('types/', dist);
-for (const name of await readdir(types)) {
+for (const name of await readdir(types, { recursive: true })) {
+  if (!name.endsWith('.d.ts')) continue;
   const file = new URL(name, types);
   const source = await readFile(file, 'utf8');
-  await writeFile(file, source.replace(/(from '\.\/[^']+)\.ts'/g, "$1.js'"));
+  await writeFile(file, source.replace(/((?:from|import\() '\.\.?\/[^']+)\.ts'/g, "$1.js'"));
 }

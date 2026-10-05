@@ -7,3 +7,8 @@ declare module '@wterm/dom/css' {
   const text: string;
   export default text;
 }
+
+declare module 'dockview-core/css' {
+  const text: string;
+  export default text;
+}
