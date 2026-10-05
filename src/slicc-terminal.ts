@@ -124,15 +124,16 @@ export class SliccTerminal extends HTMLElement {
     this.replaceChildren(host);
     const cols = dimension(this.getAttribute('cols'));
     const rows = dimension(this.getAttribute('rows'));
+    const mine = () => generation === this.#generation;
     const term = new WTerm(host, {
       cols,
       rows,
       wasmUrl: SliccTerminal.wasmUrl,
-      onData: (data) => this.send(data),
-      onBinary: (data) => this.send(data),
-      onResize: (c, r) => this.#resized(c, r),
-      onTitle: (title) => this.#emit('title', { title }),
-      onBell: (count) => this.#emit('bell', { count }),
+      onData: (data) => mine() && this.send(data),
+      onBinary: (data) => mine() && this.send(data),
+      onResize: (c, r) => mine() && this.#resized(c, r),
+      onTitle: (title) => mine() && this.#emit('title', { title }),
+      onBell: (count) => mine() && this.#emit('bell', { count }),
     });
     try {
       await term.init();
