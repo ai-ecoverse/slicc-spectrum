@@ -26,7 +26,17 @@ export class SliccTerminal extends HTMLElement {
   #generation = 0;
   #attempt = 0;
   #batching = false;
+  #pasting = false;
   #ready = Promise.withResolvers<this>();
+
+  constructor() {
+    super();
+    const pasting = (active: boolean) => () => {
+      this.#pasting = active;
+    };
+    this.addEventListener('paste', pasting(true), true);
+    this.addEventListener('paste', pasting(false));
+  }
 
   get backend(): TerminalBackend | null {
     return this.#backend;
@@ -129,7 +139,7 @@ export class SliccTerminal extends HTMLElement {
       cols,
       rows,
       wasmUrl: SliccTerminal.wasmUrl,
-      onData: (data) => mine() && this.send(data),
+      onData: (data) => mine() && this.send(this.#pasting ? data.replace(/\r?\n/g, '\r') : data),
       onBinary: (data) => mine() && this.send(data),
       onResize: (c, r) => mine() && this.#resized(c, r),
       onTitle: (title) => mine() && this.#emit('title', { title }),

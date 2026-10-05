@@ -62,7 +62,7 @@ test('typed keys reach the backend as bytes, including control keys and paste', 
   await page.insert('grüß 🖖');
   await page.evaluate(() => {
     const data = new DataTransfer();
-    data.setData('text/plain', 'pasted\ntext');
+    data.setData('text/plain', 'pasted\nwindows\r\ntext');
     const target = document.querySelector('slicc-terminal textarea');
     target.dispatchEvent(
       new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
@@ -72,7 +72,7 @@ test('typed keys reach the backend as bytes, including control keys and paste', 
 
   assert.equal(
     await page.evaluate(received),
-    'ls -la\r\x1b[A\x1b[D\t\x7f\x1b\x04\x0cgrüß 🖖pasted\ntext'
+    'ls -la\r\x1b[A\x1b[D\t\x7f\x1b\x04\x0cgrüß 🖖pasted\rwindows\rtext'
   );
   await page.until(() =>
     document.querySelector('slicc-terminal .term-grid').textContent.includes('fake:~$ ls -la')
@@ -80,14 +80,17 @@ test('typed keys reach the backend as bytes, including control keys and paste', 
   await page.evaluate(() => window.backend.emit('\x1b[?2004h'));
   await page.evaluate(() => {
     const data = new DataTransfer();
-    data.setData('text/plain', 'bracketed');
+    data.setData('text/plain', 'brack\neted\r\n');
     const target = document.querySelector('slicc-terminal textarea');
     target.dispatchEvent(
       new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
     );
   });
   await page.until(() => window.backend.text().endsWith('\x1b[201~'));
-  assert.ok((await page.evaluate(received)).endsWith('\x1b[200~bracketed\x1b[201~'));
+  assert.ok((await page.evaluate(received)).endsWith('\x1b[200~brack\reted\r\x1b[201~'));
+  await page.type('x');
+  await page.press('Enter');
+  assert.ok((await page.evaluate(received)).endsWith('\x1b[201~x\r'));
   assert.deepEqual(page.errors, []);
 });
 
