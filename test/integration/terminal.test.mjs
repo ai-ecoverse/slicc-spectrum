@@ -614,3 +614,45 @@ test('a mount that fails after the element was removed does not poison the next 
   assert.match(result.text, /fake:~\$/);
   assert.deepEqual(page.errors, []);
 });
+
+test('a backend that throws synchronously and is replaced in the same turn does not fail the replacement', async (t) => {
+  const page = await blank(t);
+  const result = await page.evaluate(async () => {
+    const terminal = document.createElement('slicc-terminal');
+    terminal.setAttribute('rows', '4');
+    document.getElementById('stage').replaceChildren(terminal);
+    await terminal.ready;
+    const errors = [];
+    terminal.addEventListener('error', ({ detail }) => errors.push(detail.error.message));
+    terminal.backend = {
+      open() {
+        throw new Error('sync failure');
+      },
+    };
+    const backend = new window.FakeBackend();
+    terminal.backend = backend;
+    const ready = await terminal.ready.then(
+      () => 'resolved',
+      (error) => `rejected: ${error.message}`
+    );
+    await new Promise(requestAnimationFrame);
+    terminal.send('ok');
+    return { ready, errors, sent: backend.text() };
+  });
+  assert.deepEqual(result, { ready: 'resolved', errors: [], sent: 'ok' });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a session that exits after opening is closed', async (t) => {
+  const { page } = await mounted(t, {}, { rows: '4' });
+  const result = await page.evaluate(async () => {
+    const backend = window.backend;
+    backend.exit(0);
+    const afterExit = backend.closed;
+    window.terminal.backend = new window.FakeBackend();
+    await window.terminal.ready;
+    return { afterExit, afterSwap: backend.closed };
+  });
+  assert.deepEqual(result, { afterExit: 1, afterSwap: 1 });
+  assert.deepEqual(page.errors, []);
+});

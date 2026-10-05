@@ -35,7 +35,8 @@ export class SliccTerminal extends HTMLElement {
     this.#backend = backend;
     if (!this.#term) return;
     this.#renew();
-    void this.#open(this.#generation).catch((error) => this.#fail(error));
+    const ready = this.#ready;
+    void this.#open(this.#generation).catch((error) => this.#fail(error, ready));
   }
 
   get ready(): Promise<this> {
@@ -53,7 +54,8 @@ export class SliccTerminal extends HTMLElement {
   connectedCallback(): void {
     adopt(this.getRootNode() as Document | ShadowRoot);
     const generation = ++this.#generation;
-    void this.#mount(generation).catch((error) => this.#fail(error));
+    const ready = this.#ready;
+    void this.#mount(generation).catch((error) => this.#fail(error, ready));
   }
 
   disconnectedCallback(): void {
@@ -160,7 +162,7 @@ export class SliccTerminal extends HTMLElement {
           exit: (status) => {
             if (!live()) return;
             ended = true;
-            this.#session = null;
+            this.#close();
             this.#emit('exit', { status });
           },
         },
@@ -213,10 +215,10 @@ export class SliccTerminal extends HTMLElement {
     this.#emit('resize', { cols, rows });
   }
 
-  #fail(error: unknown): void {
-    this.#ready.reject(error);
-    this.#ready.promise.catch(() => {});
-    this.#emit('error', { error });
+  #fail(error: unknown, ready: PromiseWithResolvers<this>): void {
+    ready.reject(error);
+    ready.promise.catch(() => {});
+    if (ready === this.#ready) this.#emit('error', { error });
   }
 
   #emit(type: string, detail: unknown): void {
