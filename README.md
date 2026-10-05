@@ -114,13 +114,21 @@ Things found while building this against wterm 0.5.4, recorded here, not pushed 
 </script>
 ```
 
-`npm start` serves it at `/ui/`. `?delay=` sets the dummy's tick in milliseconds (default 30) and `?color=light|dark|system` the theme.
+`npm start` serves it at `/ui/`. `?fonts=<url>` loads Adobe Clean from another folder (see [Fonts](#fonts)).
+
+### Layouts and rails
+
+The layout follows the width of `<slicc-app>`, which it reflects as its `screen` attribute: `phone` (under 640 px) has one column, `tablet` (under 1200 px) two, `desktop` three, like SLICC v6. Each screen class starts with few panels open and saves its own layout (`slicc-ui.layout.<screen>`). Every surface has a home side, left, center or right. Closed panels wait as icons in the left and right rails (on a phone, in one bar at the bottom); one click puts a panel back on its side, next to its neighbours.
+
+### Fonts
+
+Text is Adobe Clean and code Spectrum's Source Code Pro. Source Code Pro (OFL) is in `dist/fonts/`, same origin. Adobe Clean can't ship in a public package, so `<slicc-app>` loads it from `fontBase` (`AdobeClean-{Regular,Medium,Bold,ExtraBold}.otf`), which defaults to `https://www.sliccy.ai/fonts/` on `*.sliccy.ai` and to nothing elsewhere, and falls back to the system font stack. Fonts load in CORS mode from any other origin, so that folder has to send `Access-Control-Allow-Origin` (`*` or the `*.sliccy.ai` origins), which it doesn't yet. `?delay=` sets the dummy's tick in milliseconds (default 30) and `?color=light|dark|system` the theme.
 
 ### Elements
 
 | Element | |
 | :--- | :--- |
-| `<slicc-app>` | The shell: header with the agent picker, the View menu and the theme switch, a `<slicc-dock>`, and a status bar. Saves the dock layout to `storage` (default `localStorage`) under `layoutKey`. |
+| `<slicc-app>` | The shell: header with the agent picker, the View menu and the theme switch, rails, a `<slicc-dock>`, and a status bar. Saves the dock layout per screen class to `storage` (default `localStorage`) under `layoutKey`. |
 | `<slicc-dock>` | Generic. [dockview-core](https://dockview.dev/) 8 with a theme mapped to Spectrum tokens, in its own shadow root. Panels come from `factories` (`name → (params) => HTMLElement`). `open`, `close`, `has`, `content`, `focusPanel`, `cycleGroup`, `cycleTab`, `toJSON`, `restore`, `clear`, and the full `api`. Tabs have a context menu (close, close others, float, maximize). Events: `layout-change`, `active-panel-change`, `panel-close`. |
 | `<slicc-agents>` | Cones with their scoops, status, context fill and unread count. Selecting one makes it the active agent. |
 | `<slicc-chat>` | The active agent's conversation: Markdown, thinking, tool calls (collapsible, with input and output), events such as webhooks, schedules, scoops, compaction and errors, and a composer that streams and stops. |

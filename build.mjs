@@ -38,6 +38,14 @@ const dockviewCss = {
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 await copyFile(wasm, new URL('wterm.wasm', dist));
+await mkdir(new URL('fonts/', dist), { recursive: true });
+for (const weight of [400, 600]) {
+  const name = `source-code-pro-latin-${weight}-normal.woff2`;
+  await copyFile(
+    new URL(`./node_modules/@fontsource/source-code-pro/files/${name}`, import.meta.url),
+    new URL(`fonts/${name}`, dist)
+  );
+}
 await build({
   entryPoints: {
     'slicc-terminal': 'src/index.ts',

@@ -316,3 +316,96 @@ test('the keyboard reaches every panel, agent and tab', async (t) => {
   await page.until(() => window.$('slicc-app', 'slicc-dock').api.activePanel?.id === 'chat');
   assert.deepEqual(page.errors, []);
 });
+
+test('each screen class has its own layout, and rails restore closed panels', async (t) => {
+  const page = await open(t);
+  const state = () => {
+    const app = document.querySelector('slicc-app');
+    return {
+      screen: app.screen,
+      panels: app.dock.api.panels.map((panel) => panel.id).sort(),
+      rails: [...app.shadowRoot.querySelectorAll('.rail [data-surface]')].map(
+        (button) => button.dataset.surface
+      ),
+    };
+  };
+  assert.deepEqual(await page.evaluate(state), {
+    screen: 'desktop',
+    panels: ['agents', 'chat'],
+    rails: [],
+  });
+
+  await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('agents'));
+  await page.until(() => !!window.$('slicc-app', '.rail.left [data-surface=agents]'));
+  await shot(page, 'rails-light');
+  await page.evaluate(() => window.$('slicc-app', '.rail.left [data-surface=agents]').click());
+  await page.until(() => window.$('slicc-app', 'slicc-dock').has('agents'));
+
+  await page.evaluate(() => {
+    document.querySelector('slicc-app').style.width = '390px';
+  });
+  await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+  assert.deepEqual(await page.evaluate(state), {
+    screen: 'phone',
+    panels: ['chat'],
+    rails: ['agents'],
+  });
+  await shot(page, 'phone-light');
+
+  await page.evaluate(() => {
+    document.querySelector('slicc-app').style.width = '900px';
+  });
+  await page.until(() => document.querySelector('slicc-app').screen === 'tablet');
+  assert.deepEqual(await page.evaluate(state), {
+    screen: 'tablet',
+    panels: ['agents', 'chat'],
+    rails: [],
+  });
+  await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('agents'));
+  await page.until(() => !!window.$('slicc-app', '.rail.left [data-surface=agents]'));
+
+  await page.evaluate(() => {
+    document.querySelector('slicc-app').style.width = '';
+  });
+  await page.until(() => document.querySelector('slicc-app').screen === 'desktop');
+  assert.deepEqual((await page.evaluate(state)).panels, ['agents', 'chat']);
+
+  await page.goto('/ui/?delay=5');
+  await page.until(() => window.ready === true);
+  await page.evaluate(() => {
+    document.querySelector('slicc-app').style.width = '900px';
+  });
+  await page.until(() => document.querySelector('slicc-app').screen === 'tablet');
+  await page.until(() => document.querySelector('slicc-app').dock.api.panels.length === 1);
+  assert.deepEqual(await page.evaluate(state), {
+    screen: 'tablet',
+    panels: ['chat'],
+    rails: ['agents'],
+  });
+  assert.deepEqual(page.errors, []);
+});
+
+test('code uses the bundled Source Code Pro, and the phone layout works in dark', async (t) => {
+  const page = await open(t, { color: 'dark' });
+  await page.until(() => document.fonts.check('12px "Source Code Pro"'));
+  await page.evaluate(() => document.fonts.load('12px "Source Code Pro"'));
+  await page.until(() =>
+    [...document.fonts].some(
+      (face) => face.family.includes('Source Code Pro') && face.status === 'loaded'
+    )
+  );
+  assert.ok(
+    chrome.requests.includes('/dist/fonts/source-code-pro-latin-400-normal.woff2'),
+    chrome.requests.join()
+  );
+  assert.equal(
+    await page.evaluate(() => [...document.fonts].some((face) => /adobe/i.test(face.family))),
+    false
+  );
+  await page.evaluate(() => {
+    document.querySelector('slicc-app').style.width = '390px';
+  });
+  await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+  await shot(page, 'phone-dark');
+  assert.deepEqual(page.errors, []);
+});

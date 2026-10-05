@@ -12,6 +12,8 @@ import '@spectrum-web-components/menu/sp-menu-item.js';
 import '@spectrum-web-components/picker/sp-picker.js';
 import '@spectrum-web-components/progress-circle/sp-progress-circle.js';
 import '@spectrum-web-components/textfield/sp-textfield.js';
+import '@spectrum-web-components/icons-workflow/icons/sp-icon-chat.js';
 import '@spectrum-web-components/icons-workflow/icons/sp-icon-contrast.js';
 import '@spectrum-web-components/icons-workflow/icons/sp-icon-send.js';
+import '@spectrum-web-components/icons-workflow/icons/sp-icon-user-group.js';
 import '@spectrum-web-components/icons-workflow/icons/sp-icon-view-grid.js';

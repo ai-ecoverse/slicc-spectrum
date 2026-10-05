@@ -1,9 +1,21 @@
-import { css, html, type TemplateResult } from 'lit';
+import { css, html, nothing, type TemplateResult } from 'lit';
+import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import type { SerializedDockview, SliccDock } from '../components/dock.ts';
 import type { ColorScheme, SliccModel } from '../model/types.ts';
 import { ordered } from './agents.ts';
 import { dot, ModelElement, percent, shared } from './base.ts';
-import { create, defaultLayout, openSurface, type Surface, surfaces } from './panels.ts';
+import { defaultFontBase, installFonts } from './fonts.ts';
+import {
+  closed,
+  create,
+  defaultLayout,
+  openSurface,
+  type ScreenClass,
+  type Surface,
+  screenClass,
+  surface,
+  surfaces,
+} from './panels.ts';
 
 export type Color = 'light' | 'dark';
 
@@ -13,16 +25,25 @@ export function resolveColor(scheme: ColorScheme, prefersDark: boolean): Color {
 }
 
 export class SliccApp extends ModelElement {
-  static properties = { ...ModelElement.properties, prefersDark: { state: true } };
+  static properties = {
+    ...ModelElement.properties,
+    prefersDark: { state: true },
+    screen: { reflect: true },
+  };
   declare prefersDark: boolean;
+  declare screen: ScreenClass;
   storage: Storage | null = globalThis.localStorage ?? null;
   layoutKey = 'slicc-ui.layout';
+  #fontBase: string | null = defaultFontBase(globalThis.location ?? { hostname: '' });
+  #resize: ResizeObserver | null = null;
+  #started: ScreenClass | null = null;
   #media: MediaQueryList | null = globalThis.matchMedia?.('(prefers-color-scheme: dark)') ?? null;
   #saving = false;
 
   constructor() {
     super();
     this.prefersDark = this.#media?.matches ?? false;
+    this.screen = screenClass(globalThis.innerWidth ?? 1280);
   }
 
   static styles = [
@@ -40,8 +61,49 @@ export class SliccApp extends ModelElement {
     }
     .shell {
       display: grid;
-      grid-template-rows: 40px minmax(0, 1fr) 24px;
+      grid-template-rows: 40px minmax(0, 1fr) auto 24px;
       height: 100%;
+    }
+    main {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      min-height: 0;
+    }
+    .rail {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      width: 40px;
+      padding: 6px 0;
+      box-sizing: border-box;
+      background: var(--spectrum-background-layer-1-color);
+    }
+    .rail.left {
+      grid-column: 1;
+      border-right: 1px solid var(--spectrum-gray-200);
+    }
+    .rail.right {
+      grid-column: 3;
+      border-left: 1px solid var(--spectrum-gray-200);
+    }
+    main slicc-dock {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    .rail.bottom {
+      flex-direction: row;
+      justify-content: center;
+      width: auto;
+      height: 44px;
+      padding: 0 8px;
+      border-top: 1px solid var(--spectrum-gray-200);
+    }
+    .rail:empty {
+      display: none;
+    }
+    :host([screen='phone']) footer .hints {
+      display: none;
     }
     header {
       display: flex;
@@ -131,50 +193,101 @@ export class SliccApp extends ModelElement {
   connectedCallback(): void {
     super.connectedCallback();
     this.ownerDocument.addEventListener('keydown', this.#keydown);
+    this.#fonts();
+    this.#resize = new ResizeObserver(() => this.#measure());
+    this.#resize.observe(this);
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.ownerDocument.removeEventListener('keydown', this.#keydown);
+    this.#resize?.disconnect();
+  }
+
+  get fontBase(): string | null {
+    return this.#fontBase;
+  }
+
+  set fontBase(value: string | null) {
+    this.#fontBase = value;
+    if (this.isConnected) this.#fonts();
+  }
+
+  #fonts(): void {
+    installFonts(this.ownerDocument, this.#fontBase, new URL('./fonts/', import.meta.url).href);
+  }
+
+  #measure(): void {
+    const width = this.getBoundingClientRect().width;
+    if (width > 0) this.screen = screenClass(width);
   }
 
   protected updated(): void {
-    if (!this.#saving && this.model) this.#start(this.model);
+    if (this.model && this.#started !== this.screen) this.#start(this.model);
   }
 
   #start(model: SliccModel): void {
     const dock = this.dock;
+    this.#saving = false;
     dock.factories = Object.fromEntries(
-      surfaces.map((surface) => [surface.id, () => create(surface.tag, model)])
+      surfaces.map((item) => [item.id, () => create(item.tag, model)])
     );
     const restored = dock.restore(this.#saved());
-    if (!restored) defaultLayout(dock);
+    if (!restored) defaultLayout(dock, this.screen);
+    this.#started = this.screen;
     this.#saving = true;
     this.#save();
   }
 
+  get storageKey(): string {
+    return `${this.layoutKey}.${this.screen}`;
+  }
+
   #saved(): SerializedDockview | null {
     try {
-      return JSON.parse(this.storage?.getItem(this.layoutKey) ?? 'null');
+      return JSON.parse(this.storage?.getItem(this.storageKey) ?? 'null');
     } catch {
       return null;
     }
   }
 
   #save(): void {
-    if (this.#saving) this.storage?.setItem(this.layoutKey, JSON.stringify(this.dock.toJSON()));
+    if (this.#saving) this.storage?.setItem(this.storageKey, JSON.stringify(this.dock.toJSON()));
+    this.requestUpdate();
   }
 
   resetLayout(): void {
-    defaultLayout(this.dock);
+    defaultLayout(this.dock, this.screen);
     this.#save();
   }
 
   show(id: string): void {
-    const surface = surfaces.find((candidate) => candidate.id === id);
-    if (!surface) return;
-    openSurface(this.dock, surface);
+    const item = surface(id);
+    if (!item) return;
+    openSurface(this.dock, item, this.screen);
     this.dock.focusPanel(id);
+  }
+
+  #rail(items: readonly Surface[], side: string): TemplateResult {
+    return html`<nav class=${`rail ${side}`} aria-label=${`Closed panels, ${side}`}>${items.map(
+      (item) =>
+        staticHtml`<sp-action-button quiet size="m" label=${`Open ${item.title}`} title=${item.title} data-surface=${item.id} @click=${() => this.show(item.id)}><${unsafeStatic(item.icon)} slot="icon"></${unsafeStatic(item.icon)}></sp-action-button>`
+    )}</nav>`;
+  }
+
+  #rails(): {
+    left: TemplateResult;
+    right: TemplateResult;
+    bottom: TemplateResult | typeof nothing;
+  } {
+    const dock = this.renderRoot.querySelector('slicc-dock') as SliccDock | null;
+    const shut = dock && this.#started ? closed(dock) : [];
+    const phone = this.screen === 'phone';
+    return {
+      left: this.#rail(phone ? [] : shut.filter((item) => item.side !== 'right'), 'left'),
+      right: this.#rail(phone ? [] : shut.filter((item) => item.side === 'right'), 'right'),
+      bottom: phone ? this.#rail(shut, 'bottom') : nothing,
+    };
   }
 
   toggleColor(): void {
@@ -228,13 +341,14 @@ export class SliccApp extends ModelElement {
       }
       <span>${changes} ${changes === 1 ? 'change' : 'changes'}</span>
       <span class="spacer"></span>
-      <span><kbd>F6</kbd> next group · <kbd>Alt+1–${surfaces.length}</kbd> panels · <kbd>Alt+Shift+T</kbd> theme</span>
+      <span class="hints"><kbd>F6</kbd> next group · <kbd>Alt+1–${surfaces.length}</kbd> panels · <kbd>Alt+Shift+T</kbd> theme</span>
     </footer>`;
   }
 
   render(): TemplateResult {
     const color = this.color;
     const agents = ordered(this.model?.agent.list() ?? []);
+    const rails = this.#rails();
     return html`<sp-theme system="spectrum-two" color=${color} scale="medium" style=${`color-scheme: ${color}`}>
       <div class="shell">
         <header>
@@ -262,7 +376,12 @@ export class SliccApp extends ModelElement {
             <sp-icon-contrast slot="icon"></sp-icon-contrast>
           </sp-action-button>
         </header>
-        <slicc-dock empty-text="All panels are closed. Open one from View." @layout-change=${this.#save}></slicc-dock>
+        <main>
+          ${rails.left}
+          <slicc-dock empty-text="All panels are closed. Open one from a rail or View." @layout-change=${this.#save}></slicc-dock>
+          ${rails.right}
+        </main>
+        ${rails.bottom}
         ${this.#status()}
       </div>
     </sp-theme>`;

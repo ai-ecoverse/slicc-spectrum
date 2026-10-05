@@ -6,6 +6,7 @@ const delay = Number(params.get('delay') ?? 30);
 const model = createDummyModel({ delay, storage: localStorage });
 if (params.has('color')) model.settings.update({ color: params.get('color') });
 const app = document.querySelector('slicc-app');
+if (params.has('fonts')) app.fontBase = params.get('fonts') || null;
 app.model = model;
 window.model = model;
 window.app = app;
