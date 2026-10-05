@@ -682,3 +682,65 @@ test('a caller awaiting ready across a removal and reattachment is released', as
   assert.match(result.text, /fake:~\$/);
   assert.deepEqual(page.errors, []);
 });
+
+test('input made while the backend is opening is flushed in order once it opens', async (t) => {
+  const page = await blank(t);
+  await page.evaluate(async () => {
+    const terminal = document.createElement('slicc-terminal');
+    terminal.setAttribute('rows', '4');
+    const backend = new window.DeferredBackend();
+    terminal.backend = backend;
+    document.getElementById('stage').replaceChildren(terminal);
+    while (backend.pending.length === 0) await new Promise(requestAnimationFrame);
+    window.terminal = terminal;
+    window.backend = backend;
+    terminal.focus();
+  });
+  await page.evaluate(() => window.terminal.send('ab'));
+  await page.evaluate(() =>
+    window.backend.pending[0].sink.output(new TextEncoder().encode('\x1b[c'))
+  );
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await page.type('cd');
+  await page.press('c', 'ctrl');
+  const before = await page.evaluate(() => window.backend.bytes.length);
+  await page.evaluate(async () => {
+    window.backend.settle();
+    await window.terminal.ready;
+  });
+  const text = await page.evaluate(() => window.backend.text());
+  assert.equal(before, 0);
+  const reply = text.slice(2, -3);
+  assert.deepEqual([text.slice(0, 2), text.slice(-3)], ['ab', 'cd\x03']);
+  assert.equal(reply.charCodeAt(0), 0x1b);
+  assert.match(reply.slice(1), /^\[\?[\d;]+c$/);
+  assert.deepEqual(page.errors, []);
+});
+
+test('input buffered for an open that is superseded or fails is dropped', async (t) => {
+  const page = await blank(t);
+  const result = await page.evaluate(async () => {
+    const terminal = document.createElement('slicc-terminal');
+    terminal.setAttribute('rows', '4');
+    const first = new window.DeferredBackend();
+    terminal.backend = first;
+    document.getElementById('stage').replaceChildren(terminal);
+    while (first.pending.length === 0) await new Promise(requestAnimationFrame);
+    terminal.send('for the first');
+    const second = new window.DeferredBackend();
+    terminal.backend = second;
+    terminal.send('for the second');
+    second.fail(0, 'second down');
+    await terminal.ready.catch(() => {});
+    terminal.send('nowhere');
+    const third = new window.FakeBackend();
+    terminal.backend = third;
+    await terminal.ready;
+    first.settle();
+    await new Promise(requestAnimationFrame);
+    terminal.send('live');
+    return { first: first.text(), second: second.text(), third: third.text() };
+  });
+  assert.deepEqual(result, { first: '', second: '', third: 'live' });
+  assert.deepEqual(page.errors, []);
+});

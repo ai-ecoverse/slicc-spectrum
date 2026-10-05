@@ -22,6 +22,7 @@ export class SliccTerminal extends HTMLElement {
   #backend: TerminalBackend | null = null;
   #term: WTerm | null = null;
   #session: TerminalSession | null = null;
+  #queue: Uint8Array[] | null = null;
   #generation = 0;
   #attempt = 0;
   #batching = false;
@@ -97,7 +98,9 @@ export class SliccTerminal extends HTMLElement {
   }
 
   send(data: string | Uint8Array): void {
-    this.#session?.write(typeof data === 'string' ? encoder.encode(data) : data);
+    const bytes = typeof data === 'string' ? encoder.encode(data) : data;
+    if (this.#session) this.#session.write(bytes);
+    else this.#queue?.push(bytes.slice());
   }
 
   signal(name: TerminalSignal): void {
@@ -148,6 +151,8 @@ export class SliccTerminal extends HTMLElement {
     this.#close();
     const backend = this.#backend;
     if (!backend) return this.#announce();
+    const queue: Uint8Array[] = [];
+    this.#queue = queue;
     let ended = false;
     const current = () => generation === this.#generation && attempt === this.#attempt;
     const live = () => !ended && current();
@@ -169,8 +174,9 @@ export class SliccTerminal extends HTMLElement {
         size
       );
     } catch (error) {
-      if (current()) throw error;
-      return;
+      if (!current()) return;
+      this.#queue = null;
+      throw error;
     }
     if (!current()) return session.close();
     if (ended) {
@@ -178,7 +184,9 @@ export class SliccTerminal extends HTMLElement {
       return this.#announce();
     }
     this.#session = session;
+    this.#queue = null;
     if (size.cols !== this.cols || size.rows !== this.rows) session.resize(this.cols, this.rows);
+    for (const bytes of queue) session.write(bytes);
     this.#announce();
   }
 
@@ -207,6 +215,7 @@ export class SliccTerminal extends HTMLElement {
   #close(): void {
     const session = this.#session;
     this.#session = null;
+    this.#queue = null;
     session?.close();
   }
 
