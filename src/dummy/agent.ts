@@ -5,6 +5,8 @@ import type {
   AgentPort,
   AgentStatus,
   AssistantMessage,
+  FrozenCone,
+  LickChannel,
   LickState,
   Message,
   MessagePart,
@@ -30,6 +32,8 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   #agents: Agent[];
   #messages = new Map<string, Message[]>();
   #queues = new Map<string, UserMessage[]>();
+  #frozen: FrozenCone[] = [];
+  #ice = new Map<string, Array<{ agent: Agent; messages: Message[] }>>();
   #suggestions = new Map<string, string>();
   #runs = new Map<string, Run>();
   #active: string;
@@ -42,7 +46,8 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     conversations: Record<string, readonly Message[]>,
     effects: Omit<Effects, 'agentId'>,
     clock: Clock,
-    queues: Record<string, readonly UserMessage[]> = {}
+    queues: Record<string, readonly UserMessage[]> = {},
+    frozen: ReadonlyArray<{ cone: FrozenCone; messages: readonly Message[] }> = []
   ) {
     super();
     this.#clock = clock;
@@ -53,6 +58,24 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
       this.#queues.set(agent.id, structuredClone([...(queues[agent.id] ?? [])]));
     }
     this.#active = this.#agents[0]?.id ?? '';
+    for (const { cone, messages } of frozen) {
+      this.#frozen.push({ ...cone });
+      this.#ice.set(cone.id, [
+        {
+          agent: {
+            id: cone.id,
+            name: cone.name,
+            kind: 'cone',
+            parentId: null,
+            status: 'idle',
+            model: cone.model,
+            contextFill: 0.2,
+            unread: 0,
+          },
+          messages: structuredClone([...messages]),
+        },
+      ]);
+    }
   }
 
   list(): readonly Agent[] {
@@ -351,5 +374,76 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     }
     this.#changed();
     return { ...agent };
+  }
+
+  lick(agentId: string, channel: LickChannel, title: string, text: string, body?: string): void {
+    if (!this.#agent(agentId)) return;
+    this.#post(agentId, {
+      id: this.#id('m'),
+      role: 'lick',
+      channel,
+      title,
+      text,
+      createdAt: Date.now(),
+      ...(body ? { body } : {}),
+    });
+  }
+
+  frozen(): readonly FrozenCone[] {
+    return this.#frozen.map((cone) => ({ ...cone }));
+  }
+
+  freeze(agentId: string): void {
+    const agent = this.#agent(agentId);
+    if (agent?.kind !== 'cone') return;
+    this.stop(agentId);
+    const family = this.#agents.filter(
+      (candidate) => candidate.id === agentId || candidate.parentId === agentId
+    );
+    const messages = this.#messages.get(agentId) ?? [];
+    const first = messages.find((message) => message.role === 'user');
+    this.#frozen.unshift({
+      id: agentId,
+      name: agent.name,
+      title: first?.role === 'user' ? first.text.slice(0, 80) : agent.name,
+      model: agent.model,
+      messages: messages.length,
+      frozenAt: Date.now(),
+    });
+    this.#ice.set(
+      agentId,
+      family.map((member) => ({
+        agent: { ...member, status: 'idle' as const },
+        messages: this.#messages.get(member.id) as Message[],
+      }))
+    );
+    for (const member of family) this.stop(member.id);
+    this.#agents = this.#agents.filter((candidate) => !family.includes(candidate));
+    for (const member of family) this.#messages.delete(member.id);
+    if (this.#active === agentId) this.#active = this.#agents[0]?.id ?? '';
+    this.emit('frozen', this.frozen());
+    this.emit('active', this.#active);
+    this.#changed();
+  }
+
+  thaw(id: string): Agent | null {
+    const ice = this.#ice.get(id);
+    if (!ice) return null;
+    this.#ice.delete(id);
+    this.#frozen = this.#frozen.filter((cone) => cone.id !== id);
+    for (const { agent, messages } of ice) {
+      this.#agents.push(agent);
+      this.#messages.set(agent.id, messages);
+      this.#queues.set(agent.id, []);
+    }
+    this.emit('frozen', this.frozen());
+    this.select(id);
+    return { ...ice[0].agent };
+  }
+
+  discard(id: string): void {
+    this.#ice.delete(id);
+    this.#frozen = this.#frozen.filter((cone) => cone.id !== id);
+    this.emit('frozen', this.frozen());
   }
 }

@@ -44,7 +44,7 @@ test('the shell renders the default layout from the dummy model', async (t) => {
         (b) => b.dataset.surface
       )
     ),
-    ['files', 'settings']
+    ['files', 'memory', 'freezer', 'settings']
   );
   assert.equal(
     await page.evaluate(() => window.$('slicc-app', 'sp-theme').getAttribute('system')),
@@ -367,7 +367,17 @@ test('each screen class has its own layout, and rails restore closed panels', as
   assert.deepEqual(await page.evaluate(state), {
     screen: 'desktop',
     panels: ['agents', 'changes', 'chat'],
-    rails: ['files', 'settings', 'terminal', 'browser'],
+    rails: [
+      'files',
+      'memory',
+      'freezer',
+      'settings',
+      'sprinkle:release-board',
+      'sprinkle:loose-ends',
+      'terminal',
+      'browser',
+      'monitor',
+    ],
   });
 
   await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('agents'));
@@ -383,7 +393,19 @@ test('each screen class has its own layout, and rails restore closed panels', as
   assert.deepEqual(await page.evaluate(state), {
     screen: 'phone',
     panels: ['chat'],
-    rails: ['agents', 'files', 'changes', 'terminal', 'browser', 'settings'],
+    rails: [
+      'sprinkle:release-board',
+      'sprinkle:loose-ends',
+      'agents',
+      'files',
+      'changes',
+      'terminal',
+      'browser',
+      'memory',
+      'freezer',
+      'monitor',
+      'settings',
+    ],
   });
   await shot(page, 'phone-light');
 
@@ -394,7 +416,18 @@ test('each screen class has its own layout, and rails restore closed panels', as
   assert.deepEqual(await page.evaluate(state), {
     screen: 'tablet',
     panels: ['agents', 'chat'],
-    rails: ['files', 'settings', 'changes', 'terminal', 'browser'],
+    rails: [
+      'files',
+      'memory',
+      'freezer',
+      'settings',
+      'sprinkle:release-board',
+      'sprinkle:loose-ends',
+      'changes',
+      'terminal',
+      'browser',
+      'monitor',
+    ],
   });
   await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('agents'));
   await page.until(() => !!window.$('slicc-app', '.rail.left [data-surface=agents]'));
@@ -415,7 +448,19 @@ test('each screen class has its own layout, and rails restore closed panels', as
   assert.deepEqual(await page.evaluate(state), {
     screen: 'tablet',
     panels: ['chat'],
-    rails: ['agents', 'files', 'settings', 'changes', 'terminal', 'browser'],
+    rails: [
+      'agents',
+      'files',
+      'memory',
+      'freezer',
+      'settings',
+      'sprinkle:release-board',
+      'sprinkle:loose-ends',
+      'changes',
+      'terminal',
+      'browser',
+      'monitor',
+    ],
   });
   assert.deepEqual(page.errors, []);
 });
@@ -1006,5 +1051,185 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
       window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'textarea').value ===
       window.model.agent.suggestion('cone-sliccy')
   );
+  assert.deepEqual(page.errors, []);
+});
+
+const panel = (id, ...path) => {
+  const content = window.$('slicc-app', 'slicc-dock').content(id);
+  return path.length ? content?.shadowRoot.querySelector(path.join(' ')) : content;
+};
+
+test('memory, monitor and the freezer open from the rails and work', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.$('slicc-app', '.rail.left [data-surface=memory]').click());
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock').content('memory')?.shadowRoot.querySelector('.row')
+  );
+  assert.match(
+    await page.evaluate(
+      () => window.$('slicc-app', 'slicc-dock').content('memory').shadowRoot.textContent
+    ),
+    /Lead with the result/
+  );
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock')
+      .content('memory')
+      .shadowRoot.querySelector('.row .head')
+      .click()
+  );
+  await page.until(
+    () =>
+      !!window.$('slicc-app', 'slicc-dock').content('memory').shadowRoot.querySelector('.row .body')
+  );
+  await shot(page, 'memory-light');
+
+  await page.evaluate(() => window.$('slicc-app', '.rail.right [data-surface=monitor]').click());
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock').content('monitor')?.shadowRoot.querySelectorAll('.vital')
+        .length === 4
+  );
+  await page.evaluate(() => window.model.tray.disconnect());
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('monitor')
+        .shadowRoot.querySelector('.alert[data-severity=error]')
+  );
+  await page.evaluate(() => window.model.tray.reconnect());
+  await page.until(
+    () =>
+      !window
+        .$('slicc-app', 'slicc-dock')
+        .content('monitor')
+        .shadowRoot.querySelector('.alert[data-severity=error]')
+  );
+  await shot(page, 'monitor-light');
+
+  await page.evaluate(() => window.$('slicc-app', '.rail.left [data-surface=freezer]').click());
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock').content('freezer')?.shadowRoot.querySelectorAll('.card')
+        .length === 3
+  );
+  await shot(page, 'freezer-light');
+  await page.evaluate(() =>
+    [
+      ...window
+        .$('slicc-app', 'slicc-dock')
+        .content('freezer')
+        .shadowRoot.querySelectorAll('.card[data-id=cone-kv-spike] sp-action-button'),
+    ]
+      .find((button) => button.textContent.trim() === 'Thaw')
+      .click()
+  );
+  await page.until(() => window.model.agent.active() === 'cone-kv-spike');
+  await page.until(() => window.model.agent.list().some((agent) => agent.id === 'cone-kv-spike'));
+  await page.evaluate(() =>
+    [
+      ...window
+        .$('slicc-app', 'slicc-dock')
+        .content('freezer')
+        .shadowRoot.querySelectorAll('.bar sp-action-button'),
+    ]
+      .find((button) => /Freeze kv-spike/.test(button.textContent))
+      .click()
+  );
+  await page.until(() => !window.model.agent.list().some((agent) => agent.id === 'cone-kv-spike'));
+  await page.press('2', 'alt');
+  await page.insert('/freeze');
+  await page.press('Escape');
+  await page.press('Enter');
+  await page.until(() => window.model.agent.frozen().length === 4);
+  assert.deepEqual(page.errors, []);
+});
+
+test('sprinkles run sandboxed and send licks, and the tray shows its status', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() =>
+    window.$('slicc-app', '.rail.right [data-surface="sprinkle:release-board"]').click()
+  );
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('sprinkle:release-board')
+        ?.shadowRoot.querySelector('iframe')
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('sprinkle:release-board')
+        .shadowRoot.querySelector('iframe')
+        .getAttribute('sandbox')
+    ),
+    'allow-scripts'
+  );
+  await shot(page, 'sprinkle-light');
+  await page.evaluate(() => {
+    const frame = window
+      .$('slicc-app', 'slicc-dock')
+      .content('sprinkle:release-board')
+      .shadowRoot.querySelector('iframe');
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'sprinkle-event', event: 'ship', detail: '1.9.0' },
+        source: frame.contentWindow,
+      })
+    );
+  });
+  await page.until(() =>
+    window.model.agent.messages('cone-release').some((message) => message.channel === 'sprinkle')
+  );
+
+  await page.evaluate(() => window.$('slicc-app', 'slicc-tray', '.chip').click());
+  await page.until(() => !!window.$('slicc-app', 'slicc-tray', '.panel'));
+  assert.match(
+    await page.evaluate(() => window.$('slicc-app', 'slicc-tray', '.panel').textContent),
+    /leader/
+  );
+  await shot(page, 'tray-light');
+  await page.evaluate(() =>
+    [...window.$('slicc-app', 'slicc-tray').shadowRoot.querySelectorAll('.panel sp-action-button')]
+      .find((button) => button.textContent.trim() === 'Disconnect')
+      .click()
+  );
+  await page.until(
+    () => window.$('slicc-app', 'slicc-tray', '.chip .dot').dataset.variant === 'neutral'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('new surfaces in dark', async (t) => {
+  const page = await open(t, { color: 'dark' });
+  for (const id of ['memory', 'freezer', 'monitor', 'sprinkle:release-board']) {
+    await page.evaluate((id) => window.app.show(id), id);
+  }
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock').content('monitor')?.shadowRoot.querySelectorAll('.vital')
+        .length === 4
+  );
+  await page.evaluate(() =>
+    window.$('slicc-app', 'slicc-dock').api.getPanel('memory').api.setActive()
+  );
+  await shot(page, 'memory-dark');
+  await page.evaluate(() =>
+    window.$('slicc-app', 'slicc-dock').api.getPanel('freezer').api.setActive()
+  );
+  await page.evaluate(() =>
+    window.$('slicc-app', 'slicc-dock').api.getPanel('monitor').api.setActive()
+  );
+  await shot(page, 'freezer-dark');
+  await shot(page, 'monitor-dark');
+  await page.evaluate(() =>
+    window.$('slicc-app', 'slicc-dock').api.getPanel('sprinkle:release-board').api.setActive()
+  );
+  await page.evaluate(() => window.$('slicc-app', 'slicc-tray', '.chip').click());
+  await shot(page, 'sprinkle-dark');
+  await shot(page, 'tray-dark');
   assert.deepEqual(page.errors, []);
 });

@@ -1,5 +1,5 @@
 import type { PanelParams, SliccDock } from '../components/dock.ts';
-import type { SliccModel } from '../model/types.ts';
+import type { SliccModel, Sprinkle } from '../model/types.ts';
 import type { ModelElement } from './base.ts';
 import { basename } from './files.ts';
 
@@ -76,6 +76,33 @@ export const surfaces: Surface[] = [
     icon: 'sp-icon-globe-grid',
     side: 'right',
     open: [],
+  },
+  {
+    id: 'memory',
+    title: 'Memory',
+    tag: 'slicc-memory',
+    icon: 'sp-icon-lightbulb',
+    side: 'left',
+    open: [],
+    width: 300,
+  },
+  {
+    id: 'freezer',
+    title: 'Freezer',
+    tag: 'slicc-freezer',
+    icon: 'sp-icon-history',
+    side: 'left',
+    open: [],
+    width: 260,
+  },
+  {
+    id: 'monitor',
+    title: 'Monitor',
+    tag: 'slicc-monitor',
+    icon: 'sp-icon-data',
+    side: 'right',
+    open: [],
+    width: 340,
   },
   {
     id: 'settings',
@@ -199,4 +226,30 @@ export function defaultLayout(dock: SliccDock, screen: ScreenClass): void {
 
 export function closed(dock: SliccDock): Surface[] {
   return surfaces.filter((item) => !dock.has(item.id));
+}
+
+export function sprinkleSurface(sprinkle: Sprinkle): Surface {
+  return {
+    id: `sprinkle:${sprinkle.id}`,
+    title: sprinkle.title,
+    tag: 'slicc-sprinkle',
+    icon: sprinkle.icon,
+    side: 'right',
+    open: [],
+  };
+}
+
+export function openSprinkle(dock: SliccDock, sprinkle: Sprinkle, screen: ScreenClass): string {
+  const id = `sprinkle:${sprinkle.id}`;
+  if (!dock.has(id)) {
+    dock.open({
+      id,
+      component: 'sprinkle',
+      title: sprinkle.title,
+      params: { sprinkle: sprinkle.id },
+      ...placement(dock, 'right', screen),
+    });
+  }
+  dock.focusPanel(id);
+  return id;
 }

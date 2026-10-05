@@ -60,6 +60,11 @@ export const commands: Command[] = [
   },
   { name: 'stop', detail: 'Stop the running reply', run: (model, id) => model.agent.stop(id) },
   {
+    name: 'freeze',
+    detail: 'Archive this cone and its scoops in the freezer',
+    run: (model, id) => model.agent.freeze(id),
+  },
+  {
     name: 'theme',
     detail: 'Switch between light, dark and system',
     args: () => ['light', 'dark', 'system'].map((value) => ({ value, label: value, detail: '' })),
