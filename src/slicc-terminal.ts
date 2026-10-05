@@ -33,7 +33,9 @@ export class SliccTerminal extends HTMLElement {
 
   set backend(backend: TerminalBackend | null) {
     this.#backend = backend;
-    if (this.#term) void this.#open(this.#generation).catch((error) => this.#fail(error));
+    if (!this.#term) return;
+    this.#renew();
+    void this.#open(this.#generation).catch((error) => this.#fail(error));
   }
 
   get ready(): Promise<this> {
@@ -134,8 +136,8 @@ export class SliccTerminal extends HTMLElement {
   }
 
   async #open(generation: number): Promise<void> {
-    this.#close();
     const attempt = ++this.#attempt;
+    this.#close();
     const backend = this.#backend;
     if (!backend) return this.#announce();
     let ended = false;
@@ -180,6 +182,13 @@ export class SliccTerminal extends HTMLElement {
       this.#batching = false;
     }
     this.attributeChangedCallback();
+  }
+
+  #renew(): void {
+    const previous = this.#ready;
+    this.#ready = Promise.withResolvers<this>();
+    previous.resolve(this.#ready.promise);
+    previous.promise.catch(() => {});
   }
 
   #announce(): void {

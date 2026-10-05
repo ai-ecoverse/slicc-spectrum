@@ -20,7 +20,7 @@ Web components for SLICC. The first one is `<slicc-terminal>`, a terminal built 
 | :--- | :--- |
 | `backend` | A `TerminalBackend`. Setting it closes the current session and opens a new one. |
 | `cols`, `rows` attributes | Fixed grid size. Without either, the grid fits the element and follows its size. |
-| `ready` | Promise that resolves with the element once wterm has mounted and the session is open. Rejects if either fails. |
+| `ready` | Promise that resolves with the element once wterm has mounted and the session is open. Rejects if either fails. Setting `backend` replaces it with a fresh promise for the new session, and anyone still waiting on the old one gets the new outcome. |
 | `cols`, `rows` properties | Current grid size. |
 | `resize(cols, rows)` | Sets both attributes and resizes once. |
 | `fit()` | Removes both attributes and fits the grid to the element. |
@@ -73,7 +73,7 @@ The element sets wterm's `--term-*` variables from its own custom properties, so
 | `--slicc-terminal-height` | `360px` (ignored when `rows` is set) |
 | `--slicc-terminal-border-radius` | `4px` |
 
-The stylesheet (wterm's plus the theme) is constructed once and adopted into the document or shadow root the element is connected to.
+The stylesheet (wterm's plus the theme) is constructed once per document and adopted into the document or shadow root the element is connected to. That includes iframes the element is moved into.
 
 ## Distribution
 

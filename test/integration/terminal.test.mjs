@@ -444,3 +444,116 @@ test('a superseded backend that fails does not reject ready or emit an error', a
   assert.deepEqual(result, { ready: 'resolved', errors: [], sent: 'ok' });
   assert.deepEqual(page.errors, []);
 });
+
+test('ready is renewed when a replacement backend opens', async (t) => {
+  const page = await blank(t);
+  const result = await page.evaluate(async () => {
+    const terminal = document.createElement('slicc-terminal');
+    terminal.setAttribute('rows', '4');
+    terminal.backend = {
+      open() {
+        throw new Error('first backend down');
+      },
+    };
+    document.getElementById('stage').replaceChildren(terminal);
+    const first = await terminal.ready.then(
+      () => 'resolved',
+      (error) => `rejected: ${error.message}`
+    );
+    terminal.backend = new window.FakeBackend();
+    const second = await terminal.ready.then(
+      () => 'resolved',
+      (error) => `rejected: ${error.message}`
+    );
+    const deferred = new window.DeferredBackend();
+    terminal.backend = deferred;
+    let settled = false;
+    const third = terminal.ready.then(() => {
+      settled = true;
+    });
+    await new Promise(requestAnimationFrame);
+    const early = settled;
+    deferred.settle();
+    await third;
+    return { first, second, early, late: settled, opened: deferred.opened };
+  });
+  assert.deepEqual(result, {
+    first: 'rejected: first backend down',
+    second: 'resolved',
+    early: false,
+    late: true,
+    opened: 1,
+  });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a session that calls back synchronously from close() cannot reach the terminal', async (t) => {
+  const page = await blank(t);
+  const result = await page.evaluate(async () => {
+    const terminal = document.createElement('slicc-terminal');
+    terminal.setAttribute('rows', '4');
+    const exits = [];
+    terminal.addEventListener('exit', ({ detail }) => exits.push(detail.status));
+    terminal.backend = {
+      open(sink) {
+        return {
+          write() {},
+          resize() {},
+          close() {
+            sink.output(new TextEncoder().encode('STALE ON CLOSE'));
+            sink.exit(1);
+          },
+        };
+      },
+    };
+    document.getElementById('stage').replaceChildren(terminal);
+    await terminal.ready;
+    terminal.backend = new window.FakeBackend();
+    await terminal.ready;
+    await new Promise(requestAnimationFrame);
+    return { text: await terminal.readText(), exits };
+  });
+  assert.doesNotMatch(result.text, /STALE/);
+  assert.match(result.text, /fake:~\$/);
+  assert.deepEqual(result.exits, []);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a terminal moved into an iframe adopts a stylesheet from that document', async (t) => {
+  const page = await blank(t);
+  const result = await page.evaluate(async () => {
+    const terminal = document.createElement('slicc-terminal');
+    terminal.setAttribute('rows', '4');
+    terminal.backend = new window.FakeBackend();
+    document.getElementById('stage').replaceChildren(terminal);
+    await terminal.ready;
+    const frame = document.createElement('iframe');
+    frame.srcdoc = '<!doctype html><body></body>';
+    document.body.append(frame);
+    await new Promise((resolve) => frame.addEventListener('load', resolve, { once: true }));
+    const inner = frame.contentDocument;
+    const errors = [];
+    terminal.addEventListener('error', ({ detail }) => errors.push(String(detail.error)));
+    inner.body.append(terminal);
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('not ready')), 5000)
+    );
+    await Promise.race([terminal.ready, timeout]).catch((error) => errors.push(error.message));
+    await new Promise(requestAnimationFrame);
+    const sheet = inner.adoptedStyleSheets[0];
+    return {
+      errors,
+      sheets: inner.adoptedStyleSheets.length,
+      distinct: sheet !== document.adoptedStyleSheets[0],
+      background: frame.contentWindow.getComputedStyle(terminal.querySelector('.wterm'))
+        .backgroundColor,
+      text: await terminal.readText(),
+    };
+  });
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.sheets, 1);
+  assert.equal(result.distinct, true);
+  assert.equal(result.background, 'rgb(29, 29, 29)');
+  assert.match(result.text, /fake:~\$/);
+  assert.deepEqual(page.errors, []);
+});
