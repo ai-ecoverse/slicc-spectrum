@@ -98,6 +98,7 @@ Things found while building this against wterm 0.5.4, recorded here, not pushed 
 - The Zig core maps 24-bit colours (`38;2;r;g;b`) to the nearest of the 256 palette colours, and the DOM renderer draws the 6×6×6 cube in steps of 51 rather than xterm's 0/95/135/175/215/255. `@wterm/ghostty` is the full-VT alternative.
 - wterm sends pasted text with its `\n` line breaks unchanged, whereas xterm.js turns them into `\r`. The element does that conversion itself.
 - `@wterm/core` always ships the WASM inlined as base64 behind a dynamic import. A build without it, or an explicit entry point that takes a URL, would save the bundler plugin.
+- wterm focuses its input when it finishes mounting. `<slicc-terminals>` hands focus back to where it was unless the terminal was focused on purpose.
 - wterm reads focus and selection from `ownerDocument` (`activeElement`, `getSelection()`), so selection and copy don't work inside a shadow root that wterm itself owns. That's why the element renders in light DOM. It still works when the element is placed inside someone else's shadow root.
 
 ## UI
@@ -136,13 +137,16 @@ Text is Adobe Clean and code Spectrum's Source Code Pro. Source Code Pro (OFL) i
 | `<slicc-file-view>` | One file (`path`), highlighted, with its pending change and a link to the diff. |
 | `<slicc-changes>` | Pending changes with their author. Opens the diff, accepts or reverts one change or all of them. |
 | `<slicc-diff-panel>` | The diff of one pending change (`path`), unified or split, with accept and revert. |
+| `<slicc-terminals>` | Terminal sessions in tabs, each a `<slicc-terminal>` on the session's `TerminalBackend`. Sessions stay alive while hidden; `exit` closes the tab. |
+| `<slicc-browser>` | Browser tabs with the agent driving each, an address bar, reload, and the active tab's screenshot. |
+| `<slicc-settings>` | Theme, the model and thinking level for new cones, composer and diff preferences, and accounts to connect, reconnect or disconnect. |
 | `<slicc-file-tree>` | Generic. [`@pierre/trees`](https://www.npmjs.com/package/@pierre/trees) through its `web-components` entry: `paths` (folders end in `/`), `gitStatus`, `expanded`, `reveal(path, focus)`. Fires `file-open` on click and on <kbd>Enter</kbd>. |
 | `<slicc-code-view>` | Generic. A highlighted file through [`@pierre/diffs`](https://www.npmjs.com/package/@pierre/diffs): `path`, `contents`, `color`. |
 | `<slicc-diff-view>` | Generic. A diff through `@pierre/diffs`: `path`, `oldText`, `newText` (`null` for an added or deleted file), `color`, `diff-style` (`unified` or `split`). |
 
 Files and diffs open in one editor group next to the chat. Panels ask for them with `open-file` and `open-diff` events (`{ path }`), which `<slicc-app>` handles, or call `app.open('file' | 'diff', path)`.
 
-Keys: <kbd>Alt</kbd>+<kbd>1</kbd>… opens and focuses a panel, <kbd>F6</kbd> and <kbd>Shift</kbd>+<kbd>F6</kbd> move between groups, <kbd>Ctrl</kbd>+<kbd>]</kbd> and <kbd>Ctrl</kbd>+<kbd>[</kbd> between tabs, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> switches the theme. In the agents and changes lists, arrows, <kbd>Home</kbd>, <kbd>End</kbd> and <kbd>Enter</kbd>; in the file tree, its own arrow keys and <kbd>Enter</kbd> to open. In the composer, <kbd>Enter</kbd> sends, <kbd>Shift</kbd>+<kbd>Enter</kbd> adds a line and <kbd>Esc</kbd> stops a reply.
+Keys: <kbd>Alt</kbd>+<kbd>1</kbd>… opens and focuses a panel, <kbd>F6</kbd> and <kbd>Shift</kbd>+<kbd>F6</kbd> move between groups, <kbd>Ctrl</kbd>+<kbd>]</kbd> and <kbd>Ctrl</kbd>+<kbd>[</kbd> between tabs, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> switches the theme. In terminal and browser tab strips, <kbd>←</kbd> and <kbd>→</kbd> switch tabs. In the agents and changes lists, arrows, <kbd>Home</kbd>, <kbd>End</kbd> and <kbd>Enter</kbd>; in the file tree, its own arrow keys and <kbd>Enter</kbd> to open. In the composer, <kbd>Enter</kbd> sends, <kbd>Shift</kbd>+<kbd>Enter</kbd> adds a line and <kbd>Esc</kbd> stops a reply.
 
 ### Model
 

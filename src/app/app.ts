@@ -186,7 +186,7 @@ export class SliccApp extends ThemedElement {
 
   connectedCallback(): void {
     super.connectedCallback();
-    this.ownerDocument.addEventListener('keydown', this.#keydown);
+    this.ownerDocument.addEventListener('keydown', this.#keydown, true);
     this.#fonts();
     this.#resize = new ResizeObserver(() => this.#measure());
     this.#resize.observe(this);
@@ -194,7 +194,7 @@ export class SliccApp extends ThemedElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
-    this.ownerDocument.removeEventListener('keydown', this.#keydown);
+    this.ownerDocument.removeEventListener('keydown', this.#keydown, true);
     this.#resize?.disconnect();
   }
 
@@ -376,6 +376,9 @@ export class SliccApp extends ThemedElement {
             <sp-menu-divider></sp-menu-divider>
             <sp-menu-item value="reset">Reset layout</sp-menu-item>
           </sp-action-menu>
+          <sp-action-button size="s" quiet label="Settings" title="Settings" @click=${() => this.show('settings')}>
+            <sp-icon-settings slot="icon"></sp-icon-settings>
+          </sp-action-button>
           <sp-action-button
             size="s"
             quiet

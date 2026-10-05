@@ -103,3 +103,12 @@ window.button = (id, text) =>
   ]
     .find((candidate) => candidate.textContent.trim() === text)
     .click();
+
+window.screen = () =>
+  [
+    ...(window
+      .$('slicc-app', 'slicc-dock', 'slicc-terminals')
+      ?.shadowRoot.querySelectorAll('slicc-terminal:not([hidden]) .term-row') ?? []),
+  ]
+    .map((row) => row.textContent.trimEnd())
+    .join('\n');

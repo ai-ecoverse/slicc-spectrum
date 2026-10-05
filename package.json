@@ -72,6 +72,7 @@
     "@spectrum-web-components/menu": "1.12.4",
     "@spectrum-web-components/picker": "1.12.4",
     "@spectrum-web-components/progress-circle": "1.12.4",
+    "@spectrum-web-components/switch": "1.12.4",
     "@spectrum-web-components/textfield": "1.12.4",
     "@spectrum-web-components/theme": "1.12.4",
     "@types/node": "26.6.4",
