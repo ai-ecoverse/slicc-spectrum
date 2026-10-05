@@ -656,3 +656,29 @@ test('a session that exits after opening is closed', async (t) => {
   assert.deepEqual(result, { afterExit: 1, afterSwap: 1 });
   assert.deepEqual(page.errors, []);
 });
+
+test('a caller awaiting ready across a removal and reattachment is released', async (t) => {
+  const page = await blank(t);
+  const result = await page.evaluate(async () => {
+    const terminal = document.createElement('slicc-terminal');
+    terminal.setAttribute('rows', '4');
+    terminal.backend = new window.FakeBackend();
+    const stage = document.getElementById('stage');
+    stage.replaceChildren(terminal);
+    const captured = terminal.ready;
+    terminal.remove();
+    stage.append(terminal);
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('still waiting')), 5000)
+    );
+    const outcome = await Promise.race([captured, timeout]).then(
+      (value) =>
+        value === terminal ? 'resolved with the element' : 'resolved with something else',
+      (error) => `rejected: ${error.message}`
+    );
+    return { outcome, text: await terminal.readText() };
+  });
+  assert.equal(result.outcome, 'resolved with the element');
+  assert.match(result.text, /fake:~\$/);
+  assert.deepEqual(page.errors, []);
+});

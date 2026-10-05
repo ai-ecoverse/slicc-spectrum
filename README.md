@@ -20,7 +20,7 @@ Web components for SLICC. The first one is `<slicc-terminal>`, a terminal built 
 | :--- | :--- |
 | `backend` | A `TerminalBackend`. Setting it closes the current session and opens a new one. |
 | `cols`, `rows` attributes | Fixed grid size. Without either, the grid fits the element and follows its size. |
-| `ready` | Promise that resolves with the element once wterm has mounted and the session is open. Rejects if either fails. Setting `backend` replaces it with a fresh promise for the new session, and anyone still waiting on the old one gets the new outcome. |
+| `ready` | Promise that resolves with the element once wterm has mounted and the session is open. Rejects if either fails. Setting `backend` or removing the element replaces it with a fresh promise, and anyone still waiting on the old one gets the new outcome. |
 | `cols`, `rows` properties | Current grid size. |
 | `resize(cols, rows)` | Sets both attributes and resizes once. |
 | `fit()` | Removes both attributes and fits the grid to the element. |

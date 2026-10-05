@@ -64,7 +64,7 @@ export class SliccTerminal extends HTMLElement {
     this.#term?.destroy();
     this.#term = null;
     this.replaceChildren();
-    this.#ready = Promise.withResolvers<this>();
+    this.#renew();
   }
 
   attributeChangedCallback(): void {
