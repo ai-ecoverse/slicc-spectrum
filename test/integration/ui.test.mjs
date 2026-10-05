@@ -5,9 +5,19 @@ import { launch } from './chrome.mjs';
 const chrome = await launch();
 after(() => chrome.close());
 
+async function settled(page) {
+  for (let i = 0; i < 100; i++) {
+    if (await page.evaluate(() => window.ready === true).catch(() => false)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
+}
+
 async function open(t, params = {}) {
   const page = await chrome.page(t);
-  await page.goto(`/ui/?${new URLSearchParams({ delay: '5', color: 'light', ...params })}`);
+  const url = `/ui/?${new URLSearchParams({ delay: '5', color: 'light', ...params })}`;
+  await page.goto(url);
+  if (!(await settled(page))) await page.goto(url);
   await page.until(() => window.ready === true);
   await page.until(() => window.$('slicc-app', 'slicc-dock')?.api.panels.length > 0);
   return page;
