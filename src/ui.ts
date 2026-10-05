@@ -4,6 +4,7 @@ import { SliccApp } from './app/app.ts';
 import { SliccBrowser } from './app/browser.ts';
 import { SliccChanges, SliccDiffPanel } from './app/changes.ts';
 import { SliccChat } from './app/chat.ts';
+import { SliccComposer } from './app/composer.ts';
 import { SliccFiles, SliccFileView } from './app/files.ts';
 import { SliccSettings } from './app/settings.ts';
 import { SliccTerminals } from './app/terminals.ts';
@@ -29,6 +30,7 @@ export {
   SliccChanges,
   SliccChat,
   SliccCodeView,
+  SliccComposer,
   SliccDiffPanel,
   SliccDiffView,
   SliccDock,
@@ -40,6 +42,7 @@ export {
 const elements: Record<string, CustomElementConstructor> = {
   'slicc-agents': SliccAgents,
   'slicc-chat': SliccChat,
+  'slicc-composer': SliccComposer,
   'slicc-files': SliccFiles,
   'slicc-file-view': SliccFileView,
   'slicc-changes': SliccChanges,

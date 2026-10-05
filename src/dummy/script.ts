@@ -1,4 +1,4 @@
-import type { BrowserPort, FilePort } from '../model/types.ts';
+import type { Attachment, BrowserPort, FilePort, MessagePart } from '../model/types.ts';
 
 export interface Effects {
   files: FilePort;
@@ -7,6 +7,7 @@ export interface Effects {
 }
 
 export type Step =
+  | { type: 'part'; part: MessagePart }
   | { type: 'thinking'; text: string }
   | { type: 'text'; text: string }
   | {
@@ -74,6 +75,16 @@ function edit(): Step[] {
       effect: async ({ files, agentId }) => {
         const before = await files.read(units);
         await files.write(units, before + kelvin, agentId);
+      },
+    },
+    {
+      type: 'part',
+      part: {
+        type: 'diff',
+        path: units,
+        before:
+          'export function toFahrenheit(celsius: number): number {\n  return Math.round((celsius * 9) / 5 + 32);\n}\n',
+        after: `export function toFahrenheit(celsius: number): number {\n  return Math.round((celsius * 9) / 5 + 32);\n}\n${kelvin}`,
       },
     },
     {
@@ -151,11 +162,67 @@ function chat(prompt: string): Step[] {
   ];
 }
 
-export function script(prompt: string): Step[] {
+function ask(): Step[] {
+  return [
+    { type: 'thinking', text: 'Two ways to do this. Ask before picking one.' },
+    {
+      type: 'part',
+      part: {
+        type: 'question',
+        question: {
+          id: `q-${Math.random().toString(36).slice(2, 8)}`,
+          kind: 'choice',
+          question: 'Where should the cache live once the TTL fix ships?',
+          options: ['Keep it in memory', 'Move it to KV', 'Decide after the load test'],
+          state: 'open',
+        },
+      },
+    },
+  ];
+}
+
+function look(attachments: readonly Attachment[]): Step[] {
+  const names = attachments.map((attachment) => attachment.name).join(', ');
+  const images = attachments.filter((attachment) => attachment.kind === 'image').length;
+  return [
+    {
+      type: 'tool',
+      name: 'read_file',
+      title: `Read ${attachments.length === 1 ? 'the attachment' : `${attachments.length} attachments`}`,
+      input: names,
+      output: attachments
+        .map(
+          (attachment) => `${attachment.name} (${attachment.mimeType}, ${attachment.size} bytes)`
+        )
+        .join('\n'),
+      paths: [],
+      ticks: 10,
+    },
+    {
+      type: 'text',
+      text: `Got **${names}**${images ? `, including ${images === 1 ? 'an image' : `${images} images`}` : ''}. I’ll keep ${attachments.length === 1 ? 'it' : 'them'} in mind for the next step.`,
+    },
+  ];
+}
+
+const suggestions: Array<[RegExp, string]> = [
+  [/\btests?\b/, 'Open a pull request with the fix'],
+  [/\b(fix|edit|add|change)\b/, 'Run the tests'],
+  [/\b(open|browse|page|docs)\b/, 'Summarize the page'],
+  [/\b(files?|read|show|project)\b/, 'Add a Kelvin helper to units.ts'],
+];
+
+export function script(
+  prompt: string,
+  attachments: readonly Attachment[] = []
+): { steps: Step[]; suggestion: string } {
   const text = prompt.toLowerCase();
-  if (/\btests?\b/.test(text)) return test();
-  if (/\b(fix|edit|add|change)\b/.test(text)) return edit();
-  if (/\b(open|browse|page|docs)\b/.test(text)) return browse();
-  if (/\b(files?|read|show|project)\b/.test(text)) return files();
-  return chat(prompt);
+  const suggestion = suggestions.find(([pattern]) => pattern.test(text))?.[1] ?? 'Run the tests';
+  if (attachments.length > 0) return { steps: look(attachments), suggestion };
+  if (/\b(ask|choose|decide)\b/.test(text)) return { steps: ask(), suggestion };
+  if (/\btests?\b/.test(text)) return { steps: test(), suggestion };
+  if (/\b(fix|edit|add|change)\b/.test(text)) return { steps: edit(), suggestion };
+  if (/\b(open|browse|page|docs)\b/.test(text)) return { steps: browse(), suggestion };
+  if (/\b(files?|read|show|project)\b/.test(text)) return { steps: files(), suggestion };
+  return { steps: chat(prompt), suggestion };
 }

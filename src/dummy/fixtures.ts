@@ -7,7 +7,9 @@ import type {
   ModelOption,
   Settings,
   TerminalInfo,
+  UserMessage,
 } from '../model/types.ts';
+import { showcase, showcaseAgent, showcaseQueue } from './showcase.ts';
 
 const cacheBefore = `export interface Entry<T> {
   value: T;
@@ -313,6 +315,7 @@ export const agents: Agent[] = [
     contextFill: 0.21,
     unread: 0,
   },
+  showcaseAgent,
   {
     id: 'cone-harbor',
     name: 'harbor',
@@ -378,7 +381,10 @@ export const agents: Agent[] = [
 const start = Date.UTC(2026, 9, 5, 8, 30);
 const at = (minutes: number) => start + minutes * 60_000;
 
+export const queues: Record<string, UserMessage[]> = { 'cone-kitchen': showcaseQueue() };
+
 export const conversations: Record<string, Message[]> = {
+  'cone-kitchen': showcase(),
   'cone-sliccy': [
     {
       id: 'm-s1',
@@ -414,8 +420,8 @@ export const conversations: Record<string, Message[]> = {
   'cone-harbor': [
     {
       id: 'm-h1',
-      role: 'event',
-      kind: 'webhook',
+      role: 'lick',
+      channel: 'webhook',
       title: 'GitHub · issue opened',
       text: 'example/harbor#57: Forecast stays on yesterday after midnight UTC',
       createdAt: at(2),
@@ -494,8 +500,8 @@ export const conversations: Record<string, Message[]> = {
     },
     {
       id: 'm-h4',
-      role: 'event',
-      kind: 'scoop',
+      role: 'lick',
+      channel: 'scoop-notify',
       title: 'quiet-otter',
       text: 'Started: add retries with backoff around the upstream fetch',
       createdAt: at(9),
@@ -547,8 +553,8 @@ export const conversations: Record<string, Message[]> = {
   'cone-release': [
     {
       id: 'm-r1',
-      role: 'event',
-      kind: 'cron',
+      role: 'lick',
+      channel: 'cron',
       title: 'Every Friday 09:00',
       text: 'Draft the release notes for example/harbor',
       createdAt: at(-1440),
@@ -582,8 +588,10 @@ export const conversations: Record<string, Message[]> = {
   'cone-triage': [
     {
       id: 'm-t1',
-      role: 'event',
+      role: 'system',
       kind: 'compaction',
+      trigger: 'threshold',
+      state: 'summarized',
       title: 'Context compacted',
       text: '41 earlier messages were summarized to stay under the context limit.',
       createdAt: at(-30),
@@ -602,8 +610,9 @@ export const conversations: Record<string, Message[]> = {
     },
     {
       id: 'm-t3',
-      role: 'event',
+      role: 'system',
       kind: 'error',
+      action: 'login',
       title: 'Mail connector',
       text: 'The connector returned 401. Reconnect the account in Settings.',
       createdAt: at(-19),
