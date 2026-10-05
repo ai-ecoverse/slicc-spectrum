@@ -6,4 +6,4 @@ Web components for SLICC: `<slicc-terminal>` (wterm) and the app UI on Spectrum 
 - No comments anywhere. Changed lines in `src/` need 100% unit coverage.
 - No React. Import Spectrum components one by one.
 - Fixtures are invented; nothing real goes in.
-- Don't refactor `test/integration/{chrome,cdp,server,global,artifacts}.mjs`; they move to slicc-shared-web.
+- Integration tests run on slicc-shared-web's CDP harness through `test/integration/chrome.mjs`; the UI test page is `test/integration/page/ui/`.
