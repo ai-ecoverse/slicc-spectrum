@@ -20,3 +20,10 @@ export interface TerminalSession {
 export interface TerminalBackend {
   open(sink: TerminalSink, size: TerminalSize): TerminalSession | Promise<TerminalSession>;
 }
+
+export const controlBytes: Record<TerminalSignal, number | null> = {
+  SIGINT: 0x03,
+  SIGTSTP: 0x1a,
+  SIGQUIT: 0x1c,
+  SIGHUP: null,
+};

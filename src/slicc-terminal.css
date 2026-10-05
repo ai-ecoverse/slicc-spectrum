@@ -1,0 +1,55 @@
+slicc-terminal {
+  display: block;
+  position: relative;
+  box-sizing: border-box;
+  height: var(--slicc-terminal-height, 360px);
+  overflow: hidden;
+  border-radius: var(--slicc-terminal-border-radius, 4px);
+  background: var(--slicc-terminal-background, #1d1d1d);
+}
+
+slicc-terminal[rows] {
+  height: auto;
+}
+
+slicc-terminal > .wterm {
+  --term-fg: var(--slicc-terminal-foreground, #d4d4d4);
+  --term-bg: var(--slicc-terminal-background, #1d1d1d);
+  --term-cursor: var(--slicc-terminal-cursor, #aeafad);
+  --term-color-0: var(--slicc-terminal-color-0, #1d1d1d);
+  --term-color-1: var(--slicc-terminal-color-1, #f44747);
+  --term-color-2: var(--slicc-terminal-color-2, #6a9955);
+  --term-color-3: var(--slicc-terminal-color-3, #d7ba7d);
+  --term-color-4: var(--slicc-terminal-color-4, #569cd6);
+  --term-color-5: var(--slicc-terminal-color-5, #c586c0);
+  --term-color-6: var(--slicc-terminal-color-6, #4ec9b0);
+  --term-color-7: var(--slicc-terminal-color-7, #d4d4d4);
+  --term-color-8: var(--slicc-terminal-color-8, #808080);
+  --term-color-9: var(--slicc-terminal-color-9, #f44747);
+  --term-color-10: var(--slicc-terminal-color-10, #6a9955);
+  --term-color-11: var(--slicc-terminal-color-11, #d7ba7d);
+  --term-color-12: var(--slicc-terminal-color-12, #569cd6);
+  --term-color-13: var(--slicc-terminal-color-13, #c586c0);
+  --term-color-14: var(--slicc-terminal-color-14, #4ec9b0);
+  --term-color-15: var(--slicc-terminal-color-15, #ffffff);
+  --term-font-family: var(
+    --slicc-terminal-font-family,
+    "Source Code Pro",
+    "Menlo",
+    "Consolas",
+    "DejaVu Sans Mono",
+    monospace
+  );
+  --term-font-size: var(--slicc-terminal-font-size, 14px);
+  --term-line-height: var(--slicc-terminal-line-height, 1.2);
+
+  box-sizing: border-box;
+  height: 100%;
+  padding: var(--slicc-terminal-padding, 8px);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+slicc-terminal[rows] > .wterm {
+  height: auto;
+}
