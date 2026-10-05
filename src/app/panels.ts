@@ -1,6 +1,7 @@
-import type { SliccDock } from '../components/dock.ts';
+import type { PanelParams, SliccDock } from '../components/dock.ts';
 import type { SliccModel } from '../model/types.ts';
 import type { ModelElement } from './base.ts';
+import { basename } from './files.ts';
 
 export type Direction = 'left' | 'right' | 'above' | 'below' | 'within';
 export type Side = 'left' | 'center' | 'right';
@@ -42,7 +43,32 @@ export const surfaces: Surface[] = [
     side: 'center',
     open: ['phone', 'tablet', 'desktop'],
   },
+  {
+    id: 'files',
+    title: 'Files',
+    tag: 'slicc-files',
+    icon: 'sp-icon-folder',
+    side: 'left',
+    open: [],
+    width: 260,
+  },
+  {
+    id: 'changes',
+    title: 'Changes',
+    tag: 'slicc-changes',
+    icon: 'sp-icon-compare',
+    side: 'right',
+    open: ['desktop'],
+    width: 340,
+  },
 ];
+
+export type DocumentKind = 'file' | 'diff';
+
+export const documents: Record<DocumentKind, { tag: string; title(path: string): string }> = {
+  file: { tag: 'slicc-file-view', title: basename },
+  diff: { tag: 'slicc-diff-panel', title: (path) => `${basename(path)} (diff)` },
+};
 
 export function screenClass(width: number): ScreenClass {
   if (width < 640) return 'phone';
@@ -54,9 +80,10 @@ export function surface(id: string): Surface | undefined {
   return surfaces.find((candidate) => candidate.id === id);
 }
 
-export function create(tag: string, model: SliccModel): HTMLElement {
+export function create(tag: string, model: SliccModel, params: PanelParams = {}): HTMLElement {
   const element = document.createElement(tag) as ModelElement;
   element.model = model;
+  Object.assign(element, params);
   return element;
 }
 
@@ -107,6 +134,32 @@ export function openSurface(dock: SliccDock, item: Surface, screen: ScreenClass)
     ...place,
     ...(fresh && item.width && screen !== 'phone' ? { initialWidth: item.width } : {}),
   });
+}
+
+export function openDocument(
+  dock: SliccDock,
+  kind: DocumentKind,
+  path: string,
+  screen: ScreenClass
+): string {
+  const id = `${kind}:${path}`;
+  if (!dock.has(id)) {
+    const sibling = dock.api.panels.find((panel) => /^(file|diff):/.test(panel.id));
+    const place: Placement = sibling
+      ? { position: { referencePanel: sibling.id, direction: 'within' } }
+      : dock.has('chat') && screen !== 'phone'
+        ? { position: { referencePanel: 'chat', direction: 'right' } }
+        : placement(dock, 'center', screen);
+    dock.open({
+      id,
+      component: kind,
+      title: documents[kind].title(path),
+      params: { path },
+      ...place,
+    });
+  }
+  dock.focusPanel(id);
+  return id;
 }
 
 export function defaultLayout(dock: SliccDock, screen: ScreenClass): void {

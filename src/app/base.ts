@@ -1,5 +1,5 @@
 import { css, html, LitElement, type PropertyValues, type TemplateResult } from 'lit';
-import type { AgentStatus, SliccModel } from '../model/types.ts';
+import type { AgentStatus, ColorScheme, SliccModel } from '../model/types.ts';
 
 export class ModelElement extends LitElement {
   static properties = { model: { attribute: false } };
@@ -17,6 +17,12 @@ export class ModelElement extends LitElement {
 
   protected subscribe(model: SliccModel): Array<() => void> {
     return [];
+  }
+
+  protected focusOn(selector: string): void {
+    const focus = () => this.renderRoot.querySelector<HTMLElement>(selector)?.focus();
+    if (this.hasUpdated) focus();
+    else void this.updateComplete.then(focus);
   }
 
   connectedCallback(): void {
@@ -41,6 +47,33 @@ export class ModelElement extends LitElement {
   #unbind(): void {
     for (const off of this.#off) off();
     this.#off = [];
+  }
+}
+
+export type Color = 'light' | 'dark';
+
+export function resolveColor(scheme: ColorScheme, prefersDark: boolean): Color {
+  if (scheme === 'system') return prefersDark ? 'dark' : 'light';
+  return scheme;
+}
+
+export class ThemedElement extends ModelElement {
+  #media: MediaQueryList | null = globalThis.matchMedia?.('(prefers-color-scheme: dark)') ?? null;
+  #change = () => this.requestUpdate();
+
+  get color(): Color {
+    return resolveColor(
+      this.model?.settings.get().color ?? 'system',
+      this.#media?.matches ?? false
+    );
+  }
+
+  protected subscribe(model: SliccModel): Array<() => void> {
+    this.#media?.addEventListener('change', this.#change);
+    return [
+      () => this.#media?.removeEventListener('change', this.#change),
+      model.settings.on('settings', this.#change),
+    ];
   }
 }
 

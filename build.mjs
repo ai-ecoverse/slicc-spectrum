@@ -46,7 +46,7 @@ for (const weight of [400, 600]) {
     new URL(`fonts/${name}`, dist)
   );
 }
-await build({
+const { metafile } = await build({
   entryPoints: {
     'slicc-terminal': 'src/index.ts',
     'slicc-ui': 'src/ui.ts',
@@ -63,7 +63,12 @@ await build({
   loader: { '.css': 'text' },
   plugins: [inline, dockviewCss],
   logLevel: 'warning',
+  metafile: true,
 });
+const react = Object.keys(metafile.inputs).filter((input) =>
+  /node_modules\/react(-dom)?\//.test(input)
+);
+if (react.length > 0) throw new Error(`React must not be bundled: ${react.join(', ')}`);
 
 const tsc = fileURLToPath(new URL('./node_modules/.bin/tsc', import.meta.url));
 execFileSync(tsc, ['-p', 'tsconfig.build.json'], { stdio: 'inherit' });

@@ -132,8 +132,17 @@ Text is Adobe Clean and code Spectrum's Source Code Pro. Source Code Pro (OFL) i
 | `<slicc-dock>` | Generic. [dockview-core](https://dockview.dev/) 8 with a theme mapped to Spectrum tokens, in its own shadow root. Panels come from `factories` (`name → (params) => HTMLElement`). `open`, `close`, `has`, `content`, `focusPanel`, `cycleGroup`, `cycleTab`, `toJSON`, `restore`, `clear`, and the full `api`. Tabs have a context menu (close, close others, float, maximize). Events: `layout-change`, `active-panel-change`, `panel-close`. |
 | `<slicc-agents>` | Cones with their scoops, status, context fill and unread count. Selecting one makes it the active agent. |
 | `<slicc-chat>` | The active agent's conversation: Markdown, thinking, tool calls (collapsible, with input and output), events such as webhooks, schedules, scoops, compaction and errors, and a composer that streams and stops. |
+| `<slicc-files>` | The file system as a `<slicc-file-tree>`, with pending changes as git status. Opening a file opens it in a tab. |
+| `<slicc-file-view>` | One file (`path`), highlighted, with its pending change and a link to the diff. |
+| `<slicc-changes>` | Pending changes with their author. Opens the diff, accepts or reverts one change or all of them. |
+| `<slicc-diff-panel>` | The diff of one pending change (`path`), unified or split, with accept and revert. |
+| `<slicc-file-tree>` | Generic. [`@pierre/trees`](https://www.npmjs.com/package/@pierre/trees) through its `web-components` entry: `paths` (folders end in `/`), `gitStatus`, `expanded`, `reveal(path, focus)`. Fires `file-open` on click and on <kbd>Enter</kbd>. |
+| `<slicc-code-view>` | Generic. A highlighted file through [`@pierre/diffs`](https://www.npmjs.com/package/@pierre/diffs): `path`, `contents`, `color`. |
+| `<slicc-diff-view>` | Generic. A diff through `@pierre/diffs`: `path`, `oldText`, `newText` (`null` for an added or deleted file), `color`, `diff-style` (`unified` or `split`). |
 
-Keys: <kbd>Alt</kbd>+<kbd>1</kbd>… opens and focuses a panel, <kbd>F6</kbd> and <kbd>Shift</kbd>+<kbd>F6</kbd> move between groups, <kbd>Ctrl</kbd>+<kbd>]</kbd> and <kbd>Ctrl</kbd>+<kbd>[</kbd> between tabs, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> switches the theme. In the agents list, arrows, <kbd>Home</kbd>, <kbd>End</kbd>, <kbd>Enter</kbd> and <kbd>Space</kbd>. In the composer, <kbd>Enter</kbd> sends, <kbd>Shift</kbd>+<kbd>Enter</kbd> adds a line and <kbd>Esc</kbd> stops a reply.
+Files and diffs open in one editor group next to the chat. Panels ask for them with `open-file` and `open-diff` events (`{ path }`), which `<slicc-app>` handles, or call `app.open('file' | 'diff', path)`.
+
+Keys: <kbd>Alt</kbd>+<kbd>1</kbd>… opens and focuses a panel, <kbd>F6</kbd> and <kbd>Shift</kbd>+<kbd>F6</kbd> move between groups, <kbd>Ctrl</kbd>+<kbd>]</kbd> and <kbd>Ctrl</kbd>+<kbd>[</kbd> between tabs, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> switches the theme. In the agents and changes lists, arrows, <kbd>Home</kbd>, <kbd>End</kbd> and <kbd>Enter</kbd>; in the file tree, its own arrow keys and <kbd>Enter</kbd> to open. In the composer, <kbd>Enter</kbd> sends, <kbd>Shift</kbd>+<kbd>Enter</kbd> adds a line and <kbd>Esc</kbd> stops a reply.
 
 ### Model
 
@@ -151,7 +160,7 @@ The dummy's fixtures are invented: a small forecast API called harbor, with cone
 
 ### Distribution
 
-The UI is ESM with code splitting: `slicc-ui.js`, `slicc-dummy.js` and `chunk-*.js` next to them in `dist/`, with no bare imports, so the folder can be served as plain files from OPFS. dockview's ESM build has no CSS; the build takes it from dockview's UMD bundle. Types are in `dist/types/ui.d.ts` and `dist/types/dummy.d.ts`, exported as `@ai-ecoverse/slicc-spectrum/ui` and `/dummy`.
+The UI is ESM with code splitting: `slicc-ui.js`, `slicc-dummy.js` and `chunk-*.js` next to them in `dist/`, with no bare imports, so the folder can be served as plain files from OPFS. dockview's ESM build has no CSS; the build takes it from dockview's UMD bundle. `@pierre/diffs` highlights with Shiki, whose grammars and themes are separate chunks loaded on demand, so `dist/` has about 420 files and 13 MB of JavaScript, of which `slicc-ui.js` is 3 MB. The build fails if React is bundled; `@pierre/trees` lists React as a peer dependency, so npm installs it, but the `web-components` entry runs on Preact. Types are in `dist/types/ui.d.ts` and `dist/types/dummy.d.ts`, exported as `@ai-ecoverse/slicc-spectrum/ui` and `/dummy`.
 
 ### dockview notes
 

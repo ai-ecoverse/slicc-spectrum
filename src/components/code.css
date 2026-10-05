@@ -1,0 +1,27 @@
+:host {
+  display: block;
+  height: 100%;
+  overflow: auto;
+  background: var(--spectrum-background-layer-2-color, #fff);
+  --diffs-font-family: var(
+    --spectrum-code-font-family-stack,
+    ui-monospace,
+    "SF Mono",
+    Menlo,
+    Consolas,
+    monospace
+  );
+  --diffs-font-size: var(--spectrum-font-size-75, 12px);
+  --diffs-bg-context-override: var(--spectrum-background-layer-2-color, #fff);
+  --diffs-bg-context-gutter-override: var(--spectrum-background-layer-1-color, #f8f8f8);
+  --diffs-bg-buffer-override: var(--spectrum-background-layer-1-color, #f8f8f8);
+  --diffs-bg-separator-override: var(--spectrum-background-layer-1-color, #f8f8f8);
+  --diffs-fg-number-override: var(--spectrum-gray-600, #717171);
+}
+
+.empty {
+  padding: 24px;
+  color: var(--spectrum-neutral-subdued-content-color-default, #505050);
+  font-family: var(--spectrum-sans-font-family-stack, system-ui, sans-serif);
+  font-size: var(--spectrum-font-size-75, 12px);
+}
