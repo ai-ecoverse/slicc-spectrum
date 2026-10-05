@@ -1,7 +1,8 @@
 import '/dist/slicc-terminal.js';
-import { FakeBackend } from './fake-backend.js';
+import { DeferredBackend, FakeBackend } from './fake-backend.js';
 
 window.FakeBackend = FakeBackend;
+window.DeferredBackend = DeferredBackend;
 
 window.mount = async (options = {}, attributes = {}) => {
   const stage = document.getElementById('stage');

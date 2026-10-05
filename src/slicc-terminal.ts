@@ -138,22 +138,37 @@ export class SliccTerminal extends HTMLElement {
     const attempt = ++this.#attempt;
     const backend = this.#backend;
     if (!backend) return this.#announce();
-    let session: TerminalSession | null = null;
-    session = await backend.open(
-      {
-        output: (data) => {
-          if (this.#session === session) this.#term?.write(data);
+    let ended = false;
+    const current = () => generation === this.#generation && attempt === this.#attempt;
+    const live = () => !ended && current();
+    const size = { cols: this.cols, rows: this.rows };
+    let session: TerminalSession;
+    try {
+      session = await backend.open(
+        {
+          output: (data) => {
+            if (live()) this.#term?.write(data);
+          },
+          exit: (status) => {
+            if (!live()) return;
+            ended = true;
+            this.#session = null;
+            this.#emit('exit', { status });
+          },
         },
-        exit: (status) => {
-          if (this.#session !== session) return;
-          this.#session = null;
-          this.#emit('exit', { status });
-        },
-      },
-      { cols: this.cols, rows: this.rows }
-    );
-    if (generation !== this.#generation || attempt !== this.#attempt) return session.close();
+        size
+      );
+    } catch (error) {
+      if (current()) throw error;
+      return;
+    }
+    if (!current()) return session.close();
+    if (ended) {
+      session.close();
+      return this.#announce();
+    }
     this.#session = session;
+    if (size.cols !== this.cols || size.rows !== this.rows) session.resize(this.cols, this.rows);
     this.#announce();
   }
 

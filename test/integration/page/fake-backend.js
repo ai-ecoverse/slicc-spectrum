@@ -50,3 +50,24 @@ export class FakeBackend {
     return decoder.decode(Uint8Array.from(this.bytes));
   }
 }
+
+export class DeferredBackend extends FakeBackend {
+  constructor(options) {
+    super(options);
+    this.pending = [];
+  }
+
+  open(sink, size) {
+    const call = Promise.withResolvers();
+    this.pending.push({ sink, size, ...call });
+    return call.promise.then(() => super.open(sink, size));
+  }
+
+  settle(index = 0) {
+    this.pending[index].resolve();
+  }
+
+  fail(index, message) {
+    this.pending[index].reject(new Error(message));
+  }
+}

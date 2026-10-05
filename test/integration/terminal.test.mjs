@@ -354,3 +354,93 @@ test('output split inside UTF-8 and escape sequences renders whole', async (t) =
   assert.deepEqual(rows, { text: 'grüß 🖖 done', red: 'rgb(244, 71, 71)' });
   assert.deepEqual(page.errors, []);
 });
+
+async function blank(t) {
+  const page = await chrome.page(t);
+  await page.goto('/');
+  await page.until(() => typeof window.DeferredBackend === 'function');
+  return page;
+}
+
+test('a superseded pending backend cannot write into the terminal', async (t) => {
+  const page = await blank(t);
+  const result = await page.evaluate(async () => {
+    const terminal = document.createElement('slicc-terminal');
+    terminal.setAttribute('rows', '4');
+    const first = new window.DeferredBackend();
+    terminal.backend = first;
+    document.getElementById('stage').replaceChildren(terminal);
+    while (first.pending.length === 0) await new Promise(requestAnimationFrame);
+    const second = new window.DeferredBackend();
+    terminal.backend = second;
+    first.pending[0].sink.output(new TextEncoder().encode('STALE OUTPUT'));
+    first.pending[0].sink.exit(9);
+    second.settle();
+    await terminal.ready;
+    first.settle();
+    await new Promise(requestAnimationFrame);
+    return {
+      text: await terminal.readText(),
+      firstClosed: first.closed,
+      secondOpened: second.opened,
+    };
+  });
+  assert.doesNotMatch(result.text, /STALE/);
+  assert.match(result.text, /fake:~\$/);
+  assert.deepEqual(
+    { closed: result.firstClosed, opened: result.secondOpened },
+    { closed: 1, opened: 1 }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a resize while the backend is opening reaches the session once it opens', async (t) => {
+  const page = await blank(t);
+  const sizes = await page.evaluate(async () => {
+    const terminal = document.createElement('slicc-terminal');
+    terminal.resize(50, 8);
+    const backend = new window.DeferredBackend();
+    terminal.backend = backend;
+    document.getElementById('stage').replaceChildren(terminal);
+    while (backend.pending.length === 0) await new Promise(requestAnimationFrame);
+    terminal.resize(70, 15);
+    backend.settle();
+    await terminal.ready;
+    return {
+      opened: backend.pending[0].size,
+      sizes: backend.sizes,
+      grid: [terminal.cols, terminal.rows],
+    };
+  });
+  assert.deepEqual(sizes.opened, { cols: 50, rows: 8 });
+  assert.deepEqual(sizes.grid, [70, 15]);
+  assert.deepEqual(sizes.sizes.at(-1), { cols: 70, rows: 15 });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a superseded backend that fails does not reject ready or emit an error', async (t) => {
+  const page = await blank(t);
+  const result = await page.evaluate(async () => {
+    const terminal = document.createElement('slicc-terminal');
+    terminal.setAttribute('rows', '4');
+    const errors = [];
+    terminal.addEventListener('error', ({ detail }) => errors.push(detail.error.message));
+    const first = new window.DeferredBackend();
+    terminal.backend = first;
+    document.getElementById('stage').replaceChildren(terminal);
+    while (first.pending.length === 0) await new Promise(requestAnimationFrame);
+    const second = new window.DeferredBackend();
+    terminal.backend = second;
+    first.fail(0, 'superseded failure');
+    await new Promise(requestAnimationFrame);
+    second.settle();
+    const ready = await terminal.ready.then(
+      () => 'resolved',
+      (error) => `rejected: ${error.message}`
+    );
+    terminal.send('ok');
+    return { ready, errors, sent: second.text() };
+  });
+  assert.deepEqual(result, { ready: 'resolved', errors: [], sent: 'ok' });
+  assert.deepEqual(page.errors, []);
+});
