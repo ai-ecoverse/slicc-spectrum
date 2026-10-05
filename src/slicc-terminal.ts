@@ -71,8 +71,9 @@ export class SliccTerminal extends HTMLElement {
     const cols = dimension(this.getAttribute('cols'));
     const rows = dimension(this.getAttribute('rows'));
     term.autoResize = cols === undefined && rows === undefined;
+    const next = { cols: cols ?? term.cols, rows: rows ?? term.rows };
     if (term.autoResize) term.fit();
-    else term.resize(cols ?? term.cols, rows ?? term.rows);
+    else if (next.cols !== term.cols || next.rows !== term.rows) term.resize(next.cols, next.rows);
   }
 
   resize(cols: number, rows: number): void {
@@ -128,10 +129,15 @@ export class SliccTerminal extends HTMLElement {
       onTitle: (title) => this.#emit('title', { title }),
       onBell: (count) => this.#emit('bell', { count }),
     });
-    await term.init();
+    try {
+      await term.init();
+    } catch (error) {
+      if (generation === this.#generation) throw error;
+      return;
+    }
     if (generation !== this.#generation) return term.destroy();
-    term.autoResize = cols === undefined && rows === undefined;
     this.#term = term;
+    this.attributeChangedCallback();
     await this.#open(generation);
   }
 

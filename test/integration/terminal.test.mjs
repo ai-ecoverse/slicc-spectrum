@@ -557,3 +557,60 @@ test('a terminal moved into an iframe adopts a stylesheet from that document', a
   assert.match(result.text, /fake:~\$/);
   assert.deepEqual(page.errors, []);
 });
+
+test('size attributes changed while wterm initializes are applied before the session opens', async (t) => {
+  const page = await blank(t);
+  const result = await page.evaluate(async () => {
+    const terminal = document.createElement('slicc-terminal');
+    terminal.setAttribute('cols', '40');
+    terminal.setAttribute('rows', '4');
+    const backend = new window.FakeBackend();
+    terminal.backend = backend;
+    document.getElementById('stage').replaceChildren(terminal);
+    terminal.setAttribute('cols', '60');
+    terminal.setAttribute('rows', '6');
+    await terminal.ready;
+    await new Promise(requestAnimationFrame);
+    return {
+      grid: [terminal.cols, terminal.rows],
+      opened: backend.sizes[0],
+      rows: terminal.querySelectorAll('.term-row').length,
+    };
+  });
+  assert.deepEqual(result, { grid: [60, 6], opened: { cols: 60, rows: 6 }, rows: 6 });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a mount that fails after the element was removed does not poison the next mount', async (t) => {
+  const page = await blank(t);
+  const result = await page.evaluate(async () => {
+    const Terminal = customElements.get('slicc-terminal');
+    const wasm = Terminal.wasmUrl;
+    const terminal = document.createElement('slicc-terminal');
+    terminal.setAttribute('rows', '4');
+    const errors = [];
+    terminal.addEventListener('error', ({ detail }) => errors.push(String(detail.error)));
+    Terminal.wasmUrl = new URL('/missing/wterm.wasm', location.href).href;
+    const stage = document.getElementById('stage');
+    stage.replaceChildren(terminal);
+    terminal.remove();
+    Terminal.wasmUrl = wasm;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    terminal.backend = new window.FakeBackend();
+    stage.append(terminal);
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('not ready')), 5000)
+    );
+    const ready = await Promise.race([terminal.ready, timeout]).then(
+      () => 'resolved',
+      (error) => `rejected: ${error.message}`
+    );
+    return { ready, errors, text: await terminal.readText() };
+  });
+  assert.deepEqual(
+    { ready: result.ready, errors: result.errors },
+    { ready: 'resolved', errors: [] }
+  );
+  assert.match(result.text, /fake:~\$/);
+  assert.deepEqual(page.errors, []);
+});
