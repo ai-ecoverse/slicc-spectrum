@@ -108,7 +108,7 @@ npm run lint
 npm test
 ```
 
-`npm test` builds `dist/` and runs the integration tests in headless Chromium over raw CDP against a fake backend (`test/integration/page/fake-backend.js`). It writes V8 coverage to `coverage/` and CPU profiles, screenshots and console logs to `artifacts/`. The test page is served cross-origin isolated (COOP/COEP), as slicc-kernel requires. `npm start` serves the test page on port 8080.
+`npm test` builds `dist/` and runs the integration tests in headless Chromium over raw CDP against a fake backend (`test/integration/page/fake-backend.js`). It writes V8 coverage to `coverage/` and CPU profiles, screenshots and console logs to `artifacts/`. The test page is served cross-origin isolated (COOP/COEP), as slicc-kernel requires. `test/integration/kernel.test.mjs` runs `bash -i` end to end on `@ai-ecoverse/slicc-kernel` (a pinned dev dependency), with `@ai-ecoverse/wasm-bash` and `@ai-ecoverse/wasm-coreutils` installed into OPFS by the page (`/kernel.html`). `npm start` serves the test page on port 8080.
 
 Unit tests live in `test/unit/`, which is gitignored. The pre-commit hook runs them in Node against happy-dom under monocart and fails the commit unless the staged lines in `src/` are fully covered (`diff-cover --fail-under 100`).
 
