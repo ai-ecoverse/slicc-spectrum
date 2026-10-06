@@ -5,6 +5,7 @@ import type { SliccModel } from '../model/types.ts';
 import { ordered } from './agents.ts';
 import { dot, percent, shared, ThemedElement } from './base.ts';
 import { defaultFontBase, installFonts } from './fonts.ts';
+import { grammarBase, setGrammarBase } from './grammars.ts';
 import {
   closed,
   create,
@@ -208,6 +209,14 @@ export class SliccApp extends ThemedElement {
   set fontBase(value: string | null) {
     this.#fontBase = value;
     if (this.isConnected) this.#fonts();
+  }
+
+  get grammarBase(): string | null {
+    return grammarBase();
+  }
+
+  set grammarBase(value: string | null) {
+    setGrammarBase(value);
   }
 
   #fonts(): void {

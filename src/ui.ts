@@ -20,6 +20,8 @@ import { define as defineTerminal } from './slicc-terminal.ts';
 
 export type { Color } from './app/base.ts';
 export { resolveColor } from './app/base.ts';
+export type { GrammarKind } from './app/grammars.ts';
+export { grammarBase, setGrammarBase } from './app/grammars.ts';
 export type { Placement, Surface } from './app/panels.ts';
 export { surfaces } from './app/panels.ts';
 export type { CodeColor, DiffStyle } from './components/code-view.ts';
