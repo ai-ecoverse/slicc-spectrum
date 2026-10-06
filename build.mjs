@@ -50,9 +50,33 @@ const shikiVersions = {
   ).version,
 };
 
+const grammarLoader = fileURLToPath(new URL('./src/app/grammars.ts', import.meta.url));
+const peers = JSON.parse(
+  await readFile(new URL('./package.json', import.meta.url))
+).peerDependencies;
+for (const kind of ['langs', 'themes']) {
+  if (peers[`@shikijs/${kind}`] !== shikiVersions[kind]) {
+    throw new Error(
+      `peerDependencies @shikijs/${kind} is ${peers[`@shikijs/${kind}`]}, but ${shikiVersions[kind]} is installed`
+    );
+  }
+}
+const grammarImport = /import\((["'])@shikijs\/(langs|themes)\/([\w.-]+)\1\)/g;
+
 const grammars = {
   name: 'grammars-on-demand',
   setup(build) {
+    build.onLoad({ filter: /[\\/]node_modules[\\/].+\.m?js$/ }, async (args) => {
+      const source = await readFile(args.path, 'utf8');
+      if (!/import\(["']@shikijs\//.test(source)) return undefined;
+      const contents = source.replace(grammarImport, (call, _quote, kind, name) =>
+        kind === 'langs' && bundledLanguages.has(name)
+          ? call
+          : `__sliccGrammar(${JSON.stringify(kind)}, ${JSON.stringify(name)})`
+      );
+      const header = `import { grammar as __sliccLoad } from ${JSON.stringify(grammarLoader)};\nconst __sliccGrammar = (kind, name) => __sliccLoad(kind, name, ${JSON.stringify(shikiVersions)}[kind], ${JSON.stringify(grammarBase)});\n`;
+      return { contents: header + contents, loader: 'js' };
+    });
     build.onResolve({ filter: /^@shikijs\/(langs|themes)\/[\w.-]+$/ }, (args) => {
       const [, kind, name] = args.path.match(/^@shikijs\/(langs|themes)\/([\w.-]+)$/);
       if (kind === 'langs' && bundledLanguages.has(name)) return undefined;

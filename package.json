@@ -53,6 +53,18 @@
     "lint": "slicc-lint",
     "format": "biome check --write ."
   },
+  "peerDependencies": {
+    "@shikijs/langs": "4.5.0",
+    "@shikijs/themes": "4.5.0"
+  },
+  "peerDependenciesMeta": {
+    "@shikijs/langs": {
+      "optional": true
+    },
+    "@shikijs/themes": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@ai-ecoverse/slicc-kernel": "1.7.2",
     "@ai-ecoverse/slicc-shared-web": "1.4.1",
