@@ -17,7 +17,13 @@ export function createDummyModel({ delay = 30, storage = null }: DummyOptions = 
   const files = new DummyFiles(fixtures.files, fixtures.directories, fixtures.pending, time);
   const browser = new DummyBrowser(fixtures.tabs, time);
   return {
-    agent: new DummyAgent(fixtures.agents, fixtures.conversations, { files, browser }, time),
+    agent: new DummyAgent(
+      fixtures.agents,
+      fixtures.conversations,
+      { files, browser },
+      time,
+      fixtures.queues
+    ),
     files,
     browser,
     terminals: new DummyTerminals(fixtures.terminals, files, time),

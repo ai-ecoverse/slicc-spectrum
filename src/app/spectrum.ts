@@ -22,6 +22,7 @@ import '@spectrum-web-components/icons-workflow/icons/sp-icon-contrast.js';
 import '@spectrum-web-components/icons-workflow/icons/sp-icon-globe-grid.js';
 import '@spectrum-web-components/icons-workflow/icons/sp-icon-code.js';
 import '@spectrum-web-components/icons-workflow/icons/sp-icon-folder.js';
+import '@spectrum-web-components/icons-workflow/icons/sp-icon-microphone.js';
 import '@spectrum-web-components/icons-workflow/icons/sp-icon-refresh.js';
 import '@spectrum-web-components/icons-workflow/icons/sp-icon-revert.js';
 import '@spectrum-web-components/icons-workflow/icons/sp-icon-send.js';

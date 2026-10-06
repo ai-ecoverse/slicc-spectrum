@@ -393,6 +393,7 @@ export class SliccApp extends ThemedElement {
           <slicc-dock empty-text="All panels are closed. Open one from a rail or View." @layout-change=${this.#save}
             @open-file=${(event: Event) => this.#request('file', event)}
             @open-diff=${(event: Event) => this.#request('diff', event)}
+            @show-surface=${(event: Event) => this.show((event as CustomEvent<{ id: string }>).detail.id)}
           ></slicc-dock>
           ${rails.right}
         </main>
