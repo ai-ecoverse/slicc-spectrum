@@ -1,7 +1,7 @@
 {
   "name": "@ai-ecoverse/slicc-spectrum",
   "version": "0.0.0",
-  "description": "A terminal web component for SLICC, built on wterm, that talks to slicc-kernel",
+  "description": "Web components for SLICC on Spectrum Web Components: the terminal, the app shell and its surfaces",
   "type": "module",
   "license": "Apache-2.0",
   "repository": {
@@ -25,6 +25,14 @@
     ".": {
       "types": "./dist/types/index.d.ts",
       "default": "./dist/slicc-terminal.js"
+    },
+    "./ui": {
+      "types": "./dist/types/ui.d.ts",
+      "default": "./dist/slicc-ui.js"
+    },
+    "./dummy": {
+      "types": "./dist/types/dummy.d.ts",
+      "default": "./dist/slicc-dummy.js"
     }
   },
   "files": [
@@ -51,10 +59,22 @@
     "@ai-ecoverse/wasm-bash": "5.3.0-7",
     "@ai-ecoverse/wasm-coreutils": "9.7.0-3",
     "@biomejs/biome": "2.5.15",
+    "@fontsource/source-code-pro": "5.3.0",
     "@happy-dom/global-registrator": "20.14.5",
+    "@spectrum-web-components/action-button": "1.12.4",
+    "@spectrum-web-components/action-menu": "1.12.4",
+    "@spectrum-web-components/badge": "1.12.4",
+    "@spectrum-web-components/button": "1.12.4",
+    "@spectrum-web-components/icons-workflow": "1.12.4",
+    "@spectrum-web-components/menu": "1.12.4",
+    "@spectrum-web-components/picker": "1.12.4",
+    "@spectrum-web-components/progress-circle": "1.12.4",
+    "@spectrum-web-components/textfield": "1.12.4",
+    "@spectrum-web-components/theme": "1.12.4",
     "@types/node": "26.6.4",
     "@wterm/core": "0.5.4",
     "@wterm/dom": "0.5.4",
+    "dockview-core": "8.4.0",
     "esbuild": "0.28.2",
     "happy-dom": "20.14.5",
     "lefthook": "2.1.17",

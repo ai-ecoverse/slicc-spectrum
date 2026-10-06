@@ -1,0 +1,77 @@
+import { createDummyModel } from '/dist/slicc-dummy.js';
+import '/dist/slicc-ui.js';
+
+const params = new URLSearchParams(location.search);
+const delay = Number(params.get('delay') ?? 30);
+const model = createDummyModel({ delay, storage: localStorage });
+if (params.has('color')) model.settings.update({ color: params.get('color') });
+const app = document.querySelector('slicc-app');
+if (params.has('fonts')) app.fontBase = params.get('fonts') || null;
+app.model = model;
+window.model = model;
+window.app = app;
+await app.updateComplete;
+window.ready = true;
+
+window.$ = (...path) => {
+  let node = document;
+  for (const selector of path) {
+    node = (node.shadowRoot ?? node).querySelector(selector);
+    if (!node) return null;
+  }
+  return node;
+};
+
+window.drag = async (source, target, x, y) => {
+  const wait = () => new Promise((resolve) => setTimeout(resolve, 50));
+  const data = new DataTransfer();
+  const rect = target.getBoundingClientRect();
+  const at = { clientX: rect.left + rect.width * x, clientY: rect.top + rect.height * y };
+  const fire = (node, type) =>
+    node.dispatchEvent(
+      new DragEvent(type, {
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+        dataTransfer: data,
+        ...at,
+      })
+    );
+  fire(source, 'dragstart');
+  await wait();
+  fire(target, 'dragenter');
+  fire(target, 'dragover');
+  await wait();
+  fire(target, 'dragover');
+  await wait();
+  fire(target, 'drop');
+  fire(source, 'dragend');
+  await wait();
+};
+
+window.focused = () => {
+  let node = document.activeElement;
+  const path = [];
+  while (node) {
+    path.push(node.localName + (node.dataset?.id ? `#${node.dataset.id}` : ''));
+    node = node.shadowRoot?.activeElement ?? null;
+  }
+  return path.join(' > ');
+};
+
+window.layout = () => {
+  const dock = window.$('slicc-app', 'slicc-dock');
+  return Object.fromEntries(
+    dock.api.panels.map((panel) => {
+      const { left, top, width, height } = panel.group.element.getBoundingClientRect();
+      return [
+        panel.id,
+        {
+          group: panel.group.id,
+          floating: panel.group.api.location.type === 'floating',
+          box: [left, top, width, height].map(Math.round),
+        },
+      ];
+    })
+  );
+};
