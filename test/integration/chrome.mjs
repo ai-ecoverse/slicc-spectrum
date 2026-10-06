@@ -15,6 +15,11 @@ const options = {
 export const launch = () => start(options);
 
 if (argv[1] === fileURLToPath(import.meta.url)) {
-  const { url } = await serve({ ...options, port: Number(env.PORT ?? 8080) });
+  const { url, overrides } = await serve({ ...options, port: Number(env.PORT ?? 8080) });
+  for (const weight of ['Regular', 'Medium', 'Bold', 'ExtraBold']) {
+    const name = `AdobeClean-${weight}.otf`;
+    const response = await fetch(`https://seven.sliccy.ai/fonts/${name}`).catch(() => null);
+    if (response?.ok) overrides.set(`/fonts/${name}`, Buffer.from(await response.arrayBuffer()));
+  }
   console.log(`slicc-spectrum test page on ${url}`);
 }

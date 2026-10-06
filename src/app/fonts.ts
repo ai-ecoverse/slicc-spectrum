@@ -7,9 +7,7 @@ const adobeClean = [
 
 const code = [400, 600] as const;
 
-export function defaultFontBase(location: { hostname: string }): string | null {
-  return /(^|\.)sliccy\.ai$/.test(location.hostname) ? '/fonts/' : null;
-}
+export const defaultFontBase = '/fonts/';
 
 export function fontFaces(base: string | null, codeBase: string): string {
   const faces = code.map(

@@ -34,7 +34,7 @@ export class SliccApp extends ModelElement {
   declare screen: ScreenClass;
   storage: Storage | null = globalThis.localStorage ?? null;
   layoutKey = 'slicc-ui.layout';
-  #fontBase: string | null = defaultFontBase(globalThis.location ?? { hostname: '' });
+  #fontBase: string | null = defaultFontBase;
   #resize: ResizeObserver | null = null;
   #started: ScreenClass | null = null;
   #media: MediaQueryList | null = globalThis.matchMedia?.('(prefers-color-scheme: dark)') ?? null;

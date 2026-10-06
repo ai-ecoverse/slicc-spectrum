@@ -409,9 +409,15 @@ test('code uses the bundled Source Code Pro, and the phone layout works in dark'
     chrome.requests.join()
   );
   assert.equal(
-    await page.evaluate(() => [...document.fonts].some((face) => /adobe/i.test(face.family))),
-    false
+    await page.evaluate(() =>
+      document.fonts.load('12px "Adobe Clean"').then(
+        () => 'loaded',
+        () => 'fallback'
+      )
+    ),
+    'fallback'
   );
+  assert.ok(chrome.requests.includes('/fonts/AdobeClean-Regular.otf'), chrome.requests.join());
   await page.evaluate(() => {
     document.querySelector('slicc-app').style.width = '390px';
   });

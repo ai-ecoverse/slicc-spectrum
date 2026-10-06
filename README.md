@@ -122,7 +122,7 @@ The layout follows the width of `<slicc-app>`, which it reflects as its `screen`
 
 ### Fonts
 
-Text is Adobe Clean and code Spectrum's Source Code Pro. Source Code Pro (OFL) is in `dist/fonts/`, same origin. Adobe Clean can't ship in a public package, so `<slicc-app>` loads it from `fontBase` (`AdobeClean-{Regular,Medium,Bold,ExtraBold}.otf`), which defaults to `/fonts/` on the current origin for `*.sliccy.ai` hosts, where the sliccy-ai worker passes it through to `www.sliccy.ai/fonts/`, and to nothing elsewhere, where text falls back to the system font stack. `?delay=` sets the dummy's tick in milliseconds (default 30) and `?color=light|dark|system` the theme.
+Text is Adobe Clean and code Spectrum's Source Code Pro. Source Code Pro (OFL) is in `dist/fonts/`, same origin. Adobe Clean can't ship in a public package, so `<slicc-app>` loads it from `fontBase` (`AdobeClean-{Regular,Medium,Bold,ExtraBold}.otf`), which defaults to `/fonts/` on the current origin. Every `*.sliccy.ai` host passes it through to v6, and `npm start` proxies it from `seven.sliccy.ai`. Where it 404s, text falls back to the system font stack. `?delay=` sets the dummy's tick in milliseconds (default 30) and `?color=light|dark|system` the theme.
 
 ### Elements
 
