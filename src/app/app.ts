@@ -12,10 +12,12 @@ import {
   defaultLayout,
   documents,
   openDocument,
+  openSprinkle,
   openSurface,
   type ScreenClass,
   type Surface,
   screenClass,
+  sprinkleSurface,
   surface,
   surfaces,
 } from './panels.ts';
@@ -181,6 +183,7 @@ export class SliccApp extends ThemedElement {
       model.agent.on('agents', update),
       model.agent.on('active', update),
       model.files.on('changes', update),
+      model.sprinkles.on('sprinkles', update),
     ];
   }
 
@@ -231,6 +234,7 @@ export class SliccApp extends ThemedElement {
           (params) => create(document.tag, model, params),
         ])
       ),
+      sprinkle: (params) => create('slicc-sprinkle', model, params),
     };
     const restored = dock.restore(this.#saved());
     if (!restored) defaultLayout(dock, this.screen);
@@ -262,6 +266,13 @@ export class SliccApp extends ThemedElement {
   }
 
   show(id: string): void {
+    const sprinkle = this.model?.sprinkles
+      .list()
+      .find((candidate) => `sprinkle:${candidate.id}` === id);
+    if (sprinkle) {
+      openSprinkle(this.dock, sprinkle, this.screen);
+      return;
+    }
     const item = surface(id);
     if (!item) return;
     openSurface(this.dock, item, this.screen);
@@ -281,7 +292,10 @@ export class SliccApp extends ThemedElement {
     bottom: TemplateResult | typeof nothing;
   } {
     const dock = this.renderRoot.querySelector('slicc-dock') as SliccDock | null;
-    const shut = dock && this.#started ? closed(dock) : [];
+    const sprinkles = (this.model?.sprinkles.list() ?? [])
+      .map(sprinkleSurface)
+      .filter((item) => !dock?.has(item.id));
+    const shut = dock && this.#started ? [...sprinkles, ...closed(dock)] : [];
     const phone = this.screen === 'phone';
     return {
       left: this.#rail(phone ? [] : shut.filter((item) => item.side !== 'right'), 'left'),
@@ -350,7 +364,7 @@ export class SliccApp extends ThemedElement {
       }
       <button class="link" @click=${() => this.show('changes')}>${changes} ${changes === 1 ? 'change' : 'changes'}</button>
       <span class="spacer"></span>
-      <span class="hints"><kbd>F6</kbd> next group · <kbd>Alt+1–${surfaces.length}</kbd> panels · <kbd>Alt+Shift+T</kbd> theme</span>
+      <span class="hints"><kbd>F6</kbd> next group · <kbd>Alt+1–${Math.min(9, surfaces.length)}</kbd> panels · <kbd>Alt+Shift+T</kbd> theme</span>
     </footer>`;
   }
 
@@ -369,6 +383,7 @@ export class SliccApp extends ThemedElement {
             )}
           </sp-picker>
           <span class="spacer"></span>
+          <slicc-tray .model=${this.model}></slicc-tray>
           <sp-action-menu size="s" quiet label="View" @change=${this.#view}>
             <sp-icon-view-grid slot="icon"></sp-icon-view-grid>
             <span slot="label">View</span>

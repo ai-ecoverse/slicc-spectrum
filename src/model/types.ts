@@ -211,6 +211,7 @@ export interface AgentEvents {
   active: string;
   message: { agentId: string; message: Message };
   messages: string;
+  frozen: readonly FrozenCone[];
 }
 
 export interface AgentPort extends Subscribable<AgentEvents> {
@@ -230,6 +231,19 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   clear(agentId: string): void;
   setModel(agentId: string, model: string): void;
   createScoop(parentId: string, name: string): Agent;
+  frozen(): readonly FrozenCone[];
+  freeze(agentId: string): void;
+  thaw(id: string): Agent | null;
+  discard(id: string): void;
+}
+
+export interface FrozenCone {
+  id: string;
+  name: string;
+  title: string;
+  model: string;
+  messages: number;
+  frozenAt: number;
 }
 
 export type FileKind = 'file' | 'directory';
@@ -351,10 +365,150 @@ export interface SettingsPort extends Subscribable<SettingsEvents> {
   disconnect(id: string): void;
 }
 
+export type MemoryTag = 'user' | 'feedback' | 'project';
+
+export interface Memory {
+  id: string;
+  scope: string;
+  section: string;
+  title: string;
+  body: string;
+  tag: MemoryTag | null;
+  updatedAt: number;
+}
+
+export type MemoryDraft = Omit<Memory, 'id' | 'updatedAt'> & { id?: string };
+
+export interface MemoryEvents {
+  memories: readonly Memory[];
+}
+
+export interface MemoryPort extends Subscribable<MemoryEvents> {
+  list(): readonly Memory[];
+  save(memory: MemoryDraft): Memory;
+  remove(id: string): void;
+}
+
+export type MonitorStatus = 'active' | 'idle' | 'warn' | 'error';
+
+export interface MonitorVital {
+  id: string;
+  label: string;
+  value: string;
+  unit?: string;
+  delta?: string;
+  series?: number[];
+  ratio?: number;
+}
+
+export interface MonitorRow {
+  name: string;
+  meta: string;
+  status: MonitorStatus;
+  badges?: string[];
+}
+
+export interface MonitorSection {
+  id: string;
+  label: string;
+  rows: MonitorRow[];
+}
+
+export interface MonitorAlert {
+  id: string;
+  title: string;
+  detail: string;
+  severity: 'warn' | 'error';
+}
+
+export interface MonitorSnapshot {
+  vitals: MonitorVital[];
+  alerts: MonitorAlert[];
+  sections: MonitorSection[];
+  updatedAt: number;
+}
+
+export interface MonitorEvents {
+  snapshot: MonitorSnapshot;
+}
+
+export interface MonitorPort extends Subscribable<MonitorEvents> {
+  snapshot(): MonitorSnapshot;
+  resync(): void;
+}
+
+export interface Sprinkle {
+  id: string;
+  name: string;
+  title: string;
+  icon: string;
+  agentId: string;
+  html: string;
+}
+
+export interface SprinkleEvents {
+  sprinkles: readonly Sprinkle[];
+}
+
+export interface SprinklePort extends Subscribable<SprinkleEvents> {
+  list(): readonly Sprinkle[];
+  send(id: string, payload: unknown): void;
+}
+
+export type TrayConnection =
+  | 'offline'
+  | 'connecting'
+  | 'live'
+  | 'stalled'
+  | 'reconnecting'
+  | 'error';
+export type FloatKind =
+  | 'npx'
+  | 'sliccstart'
+  | 'extension'
+  | 'standalone'
+  | 'cherry'
+  | 'electron'
+  | 'hosted';
+export type TrayRole = 'none' | 'leader' | 'follower';
+
+export interface Follower {
+  id: string;
+  name: string;
+  device: 'browser' | 'phone' | 'extension';
+  since: number;
+}
+
+export interface TrayStatus {
+  name: string;
+  kind: FloatKind;
+  connection: TrayConnection;
+  role: TrayRole;
+  followers: Follower[];
+  spent: number;
+  rate: number;
+  budget: { percent: number; window: 'daily' | 'weekly' | 'monthly'; resets: string };
+  joinUrl: string;
+}
+
+export interface TrayEvents {
+  status: TrayStatus;
+}
+
+export interface TrayPort extends Subscribable<TrayEvents> {
+  status(): TrayStatus;
+  reconnect(): void;
+  disconnect(): void;
+}
+
 export interface SliccModel {
   agent: AgentPort;
   files: FilePort;
   terminals: TerminalPort;
   browser: BrowserPort;
   settings: SettingsPort;
+  memory: MemoryPort;
+  monitor: MonitorPort;
+  sprinkles: SprinklePort;
+  tray: TrayPort;
 }

@@ -141,6 +141,11 @@ Text is Adobe Clean and code Spectrum's Source Code Pro. Source Code Pro (OFL) i
 | `<slicc-terminals>` | Terminal sessions in tabs, each a `<slicc-terminal>` on the session's `TerminalBackend`. Sessions stay alive while hidden; `exit` closes the tab. |
 | `<slicc-browser>` | Browser tabs with the agent driving each, an address bar, reload, and the active tab's screenshot. |
 | `<slicc-settings>` | Theme, the model and thinking level for new cones, composer and diff preferences, and accounts to connect, reconnect or disconnect. |
+| `<slicc-memory>` | What agents remember, globally or per cone, grouped by section: search, filter by tag, expand, edit, add and forget. |
+| `<slicc-monitor>` | The live monitor: vitals with sparklines (active agents, spend, budget, fullest context), alerts, and the topology (cones and scoops, terminals, tabs, pending changes, sprinkles, tray followers). |
+| `<slicc-freezer>` | Frozen cones, archived with their scoops: thaw to bring one back, delete, or freeze the active cone (also `/freeze`). |
+| `<slicc-sprinkle>` | An agent-made panel: its HTML runs in a sandboxed frame with the theme's colors, and `postMessage({ type: 'sprinkle-event', … })` reaches the owning cone as a `sprinkle` lick. Sprinkles sit at the top of the right rail. |
+| `<slicc-tray>` | The tray indicator in the header: connection, the float's name, followers and budget; its panel adds role, runtime, spend, the follower list, the join link, and disconnect or reconnect. |
 | `<slicc-file-tree>` | Generic. [`@pierre/trees`](https://www.npmjs.com/package/@pierre/trees) through its `web-components` entry: `paths` (folders end in `/`), `gitStatus`, `expanded`, `reveal(path, focus)`. Fires `file-open` on click and on <kbd>Enter</kbd>. |
 | `<slicc-code-view>` | Generic. A highlighted file through [`@pierre/diffs`](https://www.npmjs.com/package/@pierre/diffs): `path`, `contents`, `color`. |
 | `<slicc-diff-view>` | Generic. A diff through `@pierre/diffs`: `path`, `oldText`, `newText` (`null` for an added or deleted file), `color`, `diff-style` (`unified` or `split`). |
@@ -160,6 +165,10 @@ Keys: <kbd>Alt</kbd>+<kbd>1</kbd>… opens and focuses a panel, <kbd>F6</kbd> an
 | `terminals` | slicc-kernel's terminal API | Terminal sessions; `backend(id)` returns a `TerminalBackend` for `<slicc-terminal>`. |
 | `browser` | `@ai-ecoverse/slicc-cdp` | Tabs, the active tab, `open`, `navigate`, `close`, `screenshot`. |
 | `settings` | local storage | Theme, model, thinking level, composer and diff preferences, the models on offer, and accounts. |
+| `memory` | `@ai-ecoverse/slicc-agent` | Memories with scope, section, tag and body; `save` and `remove`. |
+| `monitor` | all of them | A snapshot of vitals, alerts and sections, re-emitted as the system changes, and `resync`. |
+| `sprinkles` | `@ai-ecoverse/slicc-agent` | Agent-made panels and `send`, which turns a panel's event into a lick. |
+| `tray` | the tray protocol | Connection, role, float kind, followers, spend and budget; `reconnect` and `disconnect`. |
 
 The `kitchen-sink` cone holds every kind of message, content and lick in one conversation, for design work and screenshots. The dummy's fixtures are invented: a small forecast API called harbor, with cones, scoops, a conversation per agent, pending changes, browser tabs and accounts. Its replies are scripted by keyword (tests, fix or add, open or docs, files, anything else), and their tool calls act on the other ports: an edit writes a file and shows up as a change, a browse opens a tab.
 

@@ -6,8 +6,13 @@ import { SliccChanges, SliccDiffPanel } from './app/changes.ts';
 import { SliccChat } from './app/chat.ts';
 import { SliccComposer } from './app/composer.ts';
 import { SliccFiles, SliccFileView } from './app/files.ts';
+import { SliccFreezer } from './app/freezer.ts';
+import { SliccMemory } from './app/memory.ts';
+import { SliccMonitor } from './app/monitor.ts';
 import { SliccSettings } from './app/settings.ts';
+import { SliccSprinkle } from './app/sprinkle.ts';
 import { SliccTerminals } from './app/terminals.ts';
+import { SliccTray } from './app/tray.ts';
 import { defineCodeViews, SliccCodeView, SliccDiffView } from './components/code-view.ts';
 import { defineDock, SliccDock } from './components/dock.ts';
 import { defineFileTree, SliccFileTree } from './components/file-tree.ts';
@@ -50,6 +55,11 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-terminals': SliccTerminals,
   'slicc-browser': SliccBrowser,
   'slicc-settings': SliccSettings,
+  'slicc-memory': SliccMemory,
+  'slicc-monitor': SliccMonitor,
+  'slicc-freezer': SliccFreezer,
+  'slicc-sprinkle': SliccSprinkle,
+  'slicc-tray': SliccTray,
   'slicc-app': SliccApp,
 };
 
