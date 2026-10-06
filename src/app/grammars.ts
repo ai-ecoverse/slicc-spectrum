@@ -21,7 +21,10 @@ export function grammarUrls(
   page: string = globalThis.document?.baseURI ?? 'http://localhost/'
 ): string[] {
   const urls: string[] = [];
-  if (base) urls.push(new URL(`${kind}/dist/${name}.mjs`, new URL(base, page)).href);
+  if (base) {
+    const folder = base.endsWith('/') ? base : `${base}/`;
+    urls.push(new URL(`${kind}/dist/${name}.mjs`, new URL(folder, page)).href);
+  }
   urls.push(`${remote}${kind}@${version}/dist/${name}.mjs`);
   return urls;
 }
