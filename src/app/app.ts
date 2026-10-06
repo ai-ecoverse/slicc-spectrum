@@ -22,6 +22,13 @@ import {
   surfaces,
 } from './panels.ts';
 
+function railIcon(icon: string): TemplateResult {
+  if (icon.startsWith('sp-icon-')) {
+    return staticHtml`<${unsafeStatic(icon)} slot="icon"></${unsafeStatic(icon)}>`;
+  }
+  return html`<slicc-lucide slot="icon" name=${icon}></slicc-lucide>`;
+}
+
 export class SliccApp extends ThemedElement {
   static properties = { ...ThemedElement.properties, screen: { reflect: true } };
   declare screen: ScreenClass;
@@ -282,7 +289,7 @@ export class SliccApp extends ThemedElement {
   #rail(items: readonly Surface[], side: string): TemplateResult {
     return html`<nav class=${`rail ${side}`} aria-label=${`Closed panels, ${side}`}>${items.map(
       (item) =>
-        staticHtml`<sp-action-button quiet size="m" label=${`Open ${item.title}`} title=${item.title} data-surface=${item.id} @click=${() => this.show(item.id)}><${unsafeStatic(item.icon)} slot="icon"></${unsafeStatic(item.icon)}></sp-action-button>`
+        staticHtml`<sp-action-button quiet size="m" label=${`Open ${item.title}`} title=${item.title} data-surface=${item.id} @click=${() => this.show(item.id)}>${railIcon(item.icon)}</sp-action-button>`
     )}</nav>`;
   }
 
@@ -293,6 +300,7 @@ export class SliccApp extends ThemedElement {
   } {
     const dock = this.renderRoot.querySelector('slicc-dock') as SliccDock | null;
     const sprinkles = (this.model?.sprinkles.list() ?? [])
+      .filter((sprinkle) => !sprinkle.inline)
       .map(sprinkleSurface)
       .filter((item) => !dock?.has(item.id));
     const shut = dock && this.#started ? [...sprinkles, ...closed(dock)] : [];

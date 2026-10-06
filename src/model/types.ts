@@ -110,6 +110,7 @@ export type MessagePart =
   | { type: 'question'; question: Question }
   | { type: 'delegation'; kind: DelegationKind; scoop: string; text: string }
   | { type: 'link'; url: string; title: string; description: string }
+  | { type: 'sprinkle'; sprinkle: string }
   | { type: 'error'; message: string; action?: ErrorAction };
 
 export type SendMode = 'send' | 'steer' | 'queue';
@@ -444,6 +445,7 @@ export interface Sprinkle {
   icon: string;
   agentId: string;
   html: string;
+  inline?: boolean;
 }
 
 export interface SprinkleEvents {

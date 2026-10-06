@@ -65,6 +65,7 @@ export class SliccChat extends ThemedElement {
 
   #handlers: Handlers = {
     color: 'light',
+    model: null,
     answer: (questionId, answer) =>
       this.model?.agent.answer(this.model.agent.active(), questionId, answer),
     resolve: (messageId, state) =>
@@ -175,6 +176,7 @@ export class SliccChat extends ThemedElement {
 
   render(): TemplateResult {
     this.#handlers.color = this.color;
+    this.#handlers.model = this.model ?? null;
     const agent = this.#agent();
     const messages = agent ? (this.model?.agent.messages(agent.id) ?? []) : [];
     const model = this.model?.settings.models().find((option) => option.id === agent?.model);

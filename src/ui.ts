@@ -7,6 +7,7 @@ import { SliccChat } from './app/chat.ts';
 import { SliccComposer } from './app/composer.ts';
 import { SliccFiles, SliccFileView } from './app/files.ts';
 import { SliccFreezer } from './app/freezer.ts';
+import { SliccLucide } from './app/lucide.ts';
 import { SliccMemory } from './app/memory.ts';
 import { SliccMonitor } from './app/monitor.ts';
 import { SliccSettings } from './app/settings.ts';
@@ -59,6 +60,7 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-monitor': SliccMonitor,
   'slicc-freezer': SliccFreezer,
   'slicc-sprinkle': SliccSprinkle,
+  'slicc-lucide': SliccLucide,
   'slicc-tray': SliccTray,
   'slicc-app': SliccApp,
 };

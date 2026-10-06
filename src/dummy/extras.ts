@@ -1,4 +1,6 @@
 import type { FrozenCone, Memory, Message, Sprinkle, TrayStatus } from '../model/types.ts';
+import suggestions from './sprinkles/suggestions.shtml';
+import welcome from './sprinkles/welcome.shtml';
 
 const day = 86_400_000;
 const now = Date.UTC(2026, 9, 5, 9, 0);
@@ -136,63 +138,23 @@ export const memories: Memory[] = [
   },
 ];
 
-const sprinkleStyle = `
-body { margin: 0; padding: 16px; font: 13px/1.45 var(--font, system-ui, sans-serif); color: var(--fg); background: var(--bg); }
-h1 { font-size: 15px; margin: 0 0 12px; }
-ul { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 6px; }
-li { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
-li .state { margin-left: auto; color: var(--muted); }
-li.done .state { color: var(--positive); }
-button { font: inherit; padding: 4px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.actions { display: flex; gap: 8px; }
-p.note { color: var(--muted); }
-`;
-
-const sprinkleScript = `
-document.addEventListener('click', (event) => {
-  const button = event.target.closest('[data-event]');
-  if (!button) return;
-  parent.postMessage({ type: 'sprinkle-event', event: button.dataset.event, detail: button.dataset.detail ?? null }, '*');
-  const note = document.querySelector('.note');
-  if (note) note.textContent = 'Sent “' + button.textContent.trim() + '” to the agent.';
-});
-`;
-
-function page(body: string): string {
-  return `<!doctype html><html><head><meta charset="utf-8"><style>${sprinkleStyle}</style></head><body>${body}<script>${sprinkleScript}</script></body></html>`;
-}
-
 export const sprinkles: Sprinkle[] = [
   {
-    id: 'release-board',
-    name: 'release-board',
-    title: 'Release board',
-    icon: 'sp-icon-checkmark-circle',
-    agentId: 'cone-release',
-    html: page(`<h1>harbor 1.9.0</h1>
-<ul>
-  <li class="done">Retry pull request merged <span class="state">done</span></li>
-  <li class="done">Release notes drafted <span class="state">done</span></li>
-  <li>Docs updated to Celsius <span class="state">in review</span></li>
-  <li>Staging smoke test <span class="state">waiting</span></li>
-</ul>
-<div class="actions"><button class="primary" data-event="ship" data-detail="1.9.0">Ship 1.9.0</button><button data-event="hold">Hold</button></div>
-<p class="note"></p>`),
+    id: 'welcome',
+    name: 'welcome',
+    title: 'Welcome',
+    icon: 'hand',
+    agentId: 'cone-sliccy',
+    html: welcome,
+    inline: true,
   },
   {
-    id: 'loose-ends',
-    name: 'loose-ends',
-    title: 'Loose ends',
-    icon: 'sp-icon-filter',
+    id: 'suggestions',
+    name: 'suggestions',
+    title: 'Suggestions',
+    icon: 'ice-cream-cone',
     agentId: 'cone-sliccy',
-    html: page(`<h1>Loose ends</h1>
-<ul>
-  <li>Reply to the vendor about Thursday <button data-event="done" data-detail="vendor">Done</button></li>
-  <li>Renew the staging certificate <button data-event="done" data-detail="certificate">Done</button></li>
-  <li>Move the cache to KV <button data-event="done" data-detail="kv">Done</button></li>
-</ul>
-<p class="note"></p>`),
+    html: suggestions,
   },
 ];
 

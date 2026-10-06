@@ -518,8 +518,8 @@ function work(): Message[] {
         {
           type: 'delegation',
           kind: 'sprinkle',
-          scoop: 'release-board',
-          text: 'Opened the release board sprinkle',
+          scoop: 'suggestions',
+          text: 'Opened the suggestions sprinkle',
         },
         { type: 'delegation', kind: 'drop', scoop: 'amber-heron', text: 'Wrapped up amber-heron' },
       ],

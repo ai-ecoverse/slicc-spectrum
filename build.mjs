@@ -104,7 +104,7 @@ const { metafile } = await build({
   platform: 'browser',
   target: 'es2024',
   sourcemap: 'linked',
-  loader: { '.css': 'text' },
+  loader: { '.css': 'text', '.shtml': 'text' },
   plugins: [inline, dockviewCss, grammars],
   logLevel: 'warning',
   metafile: true,

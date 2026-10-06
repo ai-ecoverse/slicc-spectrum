@@ -19,16 +19,13 @@ export class DummySprinkles extends Emitter<SprinkleEvents> implements SprinkleP
   send(id: string, payload: unknown): void {
     const sprinkle = this.#sprinkles.find((candidate) => candidate.id === id);
     if (!sprinkle) return;
-    const data = (payload ?? {}) as { event?: string; detail?: string | null };
-    const what = data.event
-      ? `“${data.event}”${data.detail ? ` (${data.detail})` : ''}`
-      : 'an event';
+    const data = (payload ?? {}) as { action?: string; data?: unknown };
     this.#agent.lick(
       sprinkle.agentId,
       'sprinkle',
       sprinkle.title,
-      `Sent ${what}`,
-      JSON.stringify(payload, null, 2)
+      data.action || 'event',
+      JSON.stringify(data.data ?? null, null, 2)
     );
   }
 }
