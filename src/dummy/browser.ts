@@ -26,6 +26,7 @@ export function page(tab: BrowserTab): string {
 
 function titleFor(url: string): string {
   const { host, pathname } = new URL(url);
+  if (!host) return 'New tab';
   return pathname === '/' ? host : `${host}${pathname}`;
 }
 

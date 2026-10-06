@@ -44,7 +44,7 @@ test('the shell renders the default layout from the dummy model', async (t) => {
         (b) => b.dataset.surface
       )
     ),
-    ['files']
+    ['files', 'settings']
   );
   assert.equal(
     await page.evaluate(() => window.$('slicc-app', 'sp-theme').getAttribute('system')),
@@ -277,7 +277,9 @@ test('the theme switches between light and dark and survives a reload', async (t
   const light = await page.evaluate(surface);
   assert.equal(light[0], 'light');
 
-  await page.evaluate(() => window.$('slicc-app', 'header sp-action-button').click());
+  await page.evaluate(() =>
+    window.$('slicc-app', 'header sp-action-button[label^=Switch]').click()
+  );
   await page.until(() => window.$('slicc-app', 'sp-theme').getAttribute('color') === 'dark');
   const dark = await page.evaluate(surface);
   assert.notEqual(dark[1], light[1]);
@@ -361,7 +363,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
   assert.deepEqual(await page.evaluate(state), {
     screen: 'desktop',
     panels: ['agents', 'changes', 'chat'],
-    rails: ['files'],
+    rails: ['files', 'settings', 'terminal', 'browser'],
   });
 
   await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('agents'));
@@ -377,7 +379,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
   assert.deepEqual(await page.evaluate(state), {
     screen: 'phone',
     panels: ['chat'],
-    rails: ['agents', 'files', 'changes'],
+    rails: ['agents', 'files', 'changes', 'terminal', 'browser', 'settings'],
   });
   await shot(page, 'phone-light');
 
@@ -388,7 +390,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
   assert.deepEqual(await page.evaluate(state), {
     screen: 'tablet',
     panels: ['agents', 'chat'],
-    rails: ['files', 'changes'],
+    rails: ['files', 'settings', 'changes', 'terminal', 'browser'],
   });
   await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('agents'));
   await page.until(() => !!window.$('slicc-app', '.rail.left [data-surface=agents]'));
@@ -409,7 +411,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
   assert.deepEqual(await page.evaluate(state), {
     screen: 'tablet',
     panels: ['chat'],
-    rails: ['agents', 'files', 'changes'],
+    rails: ['agents', 'files', 'settings', 'changes', 'terminal', 'browser'],
   });
   assert.deepEqual(page.errors, []);
 });
@@ -610,5 +612,159 @@ test('files, changes and diffs in dark', async (t) => {
     window.code('diff:/workspace/harbor/src/routes/forecast.ts').includes('retry')
   );
   await shot(page, 'diff-dark');
+  assert.deepEqual(page.errors, []);
+});
+
+test('terminals run the fake shell, and open and close in tabs', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.$('slicc-app', '.rail.right [data-surface=terminal]').click());
+  await page.until(() => window.screen().includes('user@slicc:/workspace/harbor$'));
+  await page.press('5', 'alt');
+  await page.until(() => /slicc-terminal/.test(window.focused()));
+  await page.type('ls src');
+  await page.press('Enter');
+  await page.until(() => /index\.ts\s+legacy\s+lib\s+routes/.test(window.screen()));
+  await page.type('git status');
+  await page.press('Enter');
+  await page.until(() =>
+    window.screen().replace(/\n/g, '').includes('modified:   /workspace/harbor/src/lib/cache.ts')
+  );
+  await shot(page, 'terminal-light');
+
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-terminals', 'sp-action-button[label="New terminal"]')
+      .click()
+  );
+  await page.until(() => window.model.terminals.list().length === 2);
+  await page.until(
+    () =>
+      window.screen().includes('$') && !window.screen().replace(/\n/g, '').includes('git status')
+  );
+  await page.until(() => /slicc-terminal/.test(window.focused()));
+  await page.type('exit');
+  await page.press('Enter');
+  await page.until(() => window.model.terminals.list().length === 1);
+  await page.until(() => window.screen().replace(/\n/g, '').includes('git status'));
+  assert.deepEqual(page.errors, []);
+});
+
+test('the browser shows tabs, navigates, and follows agents', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.$('slicc-app', '.rail.right [data-surface=browser]').click());
+  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.tab'));
+  const tabs = () =>
+    [
+      ...window.$('slicc-app', 'slicc-dock', 'slicc-browser').shadowRoot.querySelectorAll('.tab'),
+    ].map((tab) => `${tab.dataset.id}:${tab.getAttribute('aria-selected')}`);
+  assert.deepEqual(await page.evaluate(tabs), [
+    'tab-preview:true',
+    'tab-docs:false',
+    'tab-pull:false',
+  ]);
+  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.viewport img'));
+  await shot(page, 'browser-light');
+
+  await page.evaluate(() =>
+    window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.tab[data-id=tab-docs]').click()
+  );
+  await page.until(() => window.model.browser.active() === 'tab-docs');
+  await page.press('6', 'alt');
+  await page.until(() => /slicc-browser > sp-textfield/.test(window.focused()));
+  await page.evaluate(() => {
+    const field = window.$('slicc-app', 'slicc-dock', 'slicc-browser', 'sp-textfield');
+    field.value = '';
+    field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+  });
+  await page.insert('example.com/status');
+  await page.press('Enter');
+  await page.until(
+    () =>
+      window.model.browser.list().find((tab) => tab.id === 'tab-docs').url ===
+      'https://example.com/status'
+  );
+  await page.until(
+    () => window.model.browser.list().find((tab) => tab.id === 'tab-docs').status === 'complete'
+  );
+  await page.until(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-browser', '.viewport img')
+      ?.alt.includes('example.com/status')
+  );
+
+  await page.evaluate(() => window.model.agent.send('cone-harbor', 'Open the units docs'));
+  await page.until(() => window.model.browser.list().length === 4);
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.tab[aria-selected=true] .agent')
+  );
+  assert.match(
+    await page.evaluate(
+      () => window.$('slicc-app', 'slicc-dock', 'slicc-browser', 'form').textContent
+    ),
+    /Driven by harbor/
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('settings change the theme and the composer, and connect accounts', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() =>
+    window.$('slicc-app', 'header sp-action-button[label=Settings]').click()
+  );
+  await page.until(() => window.$('slicc-app', 'slicc-dock').api.activePanel?.id === 'settings');
+  await page.until(
+    () =>
+      !!window.$('slicc-app', 'slicc-dock', 'slicc-settings', '.account[data-id=openai] sp-button')
+  );
+  await shot(page, 'settings-light');
+
+  await page.evaluate(() => {
+    const picker = window.$('slicc-app', 'slicc-dock', 'slicc-settings', 'sp-picker[label=Theme]');
+    picker.value = 'dark';
+    picker.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.until(() => window.$('slicc-app', 'sp-theme').getAttribute('color') === 'dark');
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-settings', 'sp-switch[data-setting=showThinking]')
+      .click()
+  );
+  await page.until(() => window.model.settings.get().showThinking === false);
+
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-settings', '.account[data-id=openai] sp-button')
+      .click()
+  );
+  await page.until(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-settings', '.account[data-id=openai]')
+      .textContent.includes('Connected')
+  );
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-settings', '.account[data-id=github] sp-button')
+      .click()
+  );
+  await page.until(
+    () =>
+      window.model.settings.accounts().find((account) => account.id === 'github').status ===
+      'disconnected'
+  );
+  await shot(page, 'settings-dark');
+  assert.deepEqual(page.errors, []);
+});
+
+test('terminal and browser in dark', async (t) => {
+  const page = await open(t, { color: 'dark' });
+  await page.evaluate(() => window.app.show('browser'));
+  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.viewport img'));
+  await shot(page, 'browser-dark');
+  await page.press('5', 'alt');
+  await page.until(() => /slicc-terminal/.test(window.focused()));
+  await page.type('cat README.md');
+  await page.press('Enter');
+  await page.until(() => window.screen().includes('A small forecast API'));
+  await shot(page, 'terminal-dark');
   assert.deepEqual(page.errors, []);
 });

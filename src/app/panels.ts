@@ -61,6 +61,30 @@ export const surfaces: Surface[] = [
     open: ['desktop'],
     width: 340,
   },
+  {
+    id: 'terminal',
+    title: 'Terminal',
+    tag: 'slicc-terminals',
+    icon: 'sp-icon-code',
+    side: 'right',
+    open: [],
+  },
+  {
+    id: 'browser',
+    title: 'Browser',
+    tag: 'slicc-browser',
+    icon: 'sp-icon-globe-grid',
+    side: 'right',
+    open: [],
+  },
+  {
+    id: 'settings',
+    title: 'Settings',
+    tag: 'slicc-settings',
+    icon: 'sp-icon-settings',
+    side: 'center',
+    open: [],
+  },
 ];
 
 export type DocumentKind = 'file' | 'diff';

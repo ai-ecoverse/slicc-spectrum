@@ -35,11 +35,11 @@ export class SliccDock extends HTMLElement {
 
   connectedCallback(): void {
     if (!this.#api) this.#mount();
-    this.addEventListener('keydown', this.#keydown);
+    this.addEventListener('keydown', this.#keydown, true);
   }
 
   disconnectedCallback(): void {
-    this.removeEventListener('keydown', this.#keydown);
+    this.removeEventListener('keydown', this.#keydown, true);
   }
 
   #keydown = (event: KeyboardEvent) => {
