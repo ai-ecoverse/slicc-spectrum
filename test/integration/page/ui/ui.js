@@ -75,3 +75,31 @@ window.layout = () => {
     })
   );
 };
+
+window.row = (path) => {
+  const tree = window.$(
+    'slicc-app',
+    'slicc-dock',
+    'slicc-files',
+    'slicc-file-tree',
+    'file-tree-container'
+  );
+  return tree?.shadowRoot.querySelector(`[data-item-path="${path}"]`) ?? null;
+};
+
+window.code = (id) => {
+  const content = window.$('slicc-app', 'slicc-dock').content(id);
+  const view = content?.shadowRoot.querySelector('slicc-code-view, slicc-diff-view');
+  const container = view?.shadowRoot.querySelector('diffs-container');
+  return container?.shadowRoot.textContent ?? '';
+};
+
+window.button = (id, text) =>
+  [
+    ...window
+      .$('slicc-app', 'slicc-dock')
+      .content(id)
+      .shadowRoot.querySelectorAll('sp-action-button'),
+  ]
+    .find((candidate) => candidate.textContent.trim() === text)
+    .click();

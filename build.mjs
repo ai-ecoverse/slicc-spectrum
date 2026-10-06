@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { copyFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { env } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
@@ -17,6 +18,49 @@ const inline = {
     build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
       contents: "export const WASM_BASE64 = '';",
     }));
+  },
+};
+
+const bundledLanguages = new Set([
+  'css',
+  'diff',
+  'html',
+  'javascript',
+  'json',
+  'jsonc',
+  'jsx',
+  'markdown',
+  'python',
+  'shellscript',
+  'sql',
+  'toml',
+  'tsx',
+  'typescript',
+  'xml',
+  'yaml',
+]);
+
+const grammarBase = env.SLICC_GRAMMAR_BASE ?? 'https://cdn.jsdelivr.net/npm/@shikijs/';
+const shikiVersions = {
+  langs: JSON.parse(
+    await readFile(new URL('./node_modules/@shikijs/langs/package.json', import.meta.url))
+  ).version,
+  themes: JSON.parse(
+    await readFile(new URL('./node_modules/@shikijs/themes/package.json', import.meta.url))
+  ).version,
+};
+
+const grammars = {
+  name: 'grammars-on-demand',
+  setup(build) {
+    build.onResolve({ filter: /^@shikijs\/(langs|themes)\/[\w.-]+$/ }, (args) => {
+      const [, kind, name] = args.path.match(/^@shikijs\/(langs|themes)\/([\w.-]+)$/);
+      if (kind === 'langs' && bundledLanguages.has(name)) return undefined;
+      return {
+        path: `${grammarBase}${kind}@${shikiVersions[kind]}/dist/${name}.mjs`,
+        external: true,
+      };
+    });
   },
 };
 
@@ -46,7 +90,7 @@ for (const weight of [400, 600]) {
     new URL(`fonts/${name}`, dist)
   );
 }
-await build({
+const { metafile } = await build({
   entryPoints: {
     'slicc-terminal': 'src/index.ts',
     'slicc-ui': 'src/ui.ts',
@@ -61,9 +105,14 @@ await build({
   target: 'es2024',
   sourcemap: 'linked',
   loader: { '.css': 'text' },
-  plugins: [inline, dockviewCss],
+  plugins: [inline, dockviewCss, grammars],
   logLevel: 'warning',
+  metafile: true,
 });
+const react = Object.keys(metafile.inputs).filter((input) =>
+  /node_modules\/react(-dom)?\//.test(input)
+);
+if (react.length > 0) throw new Error(`React must not be bundled: ${react.join(', ')}`);
 
 const tsc = fileURLToPath(new URL('./node_modules/.bin/tsc', import.meta.url));
 execFileSync(tsc, ['-p', 'tsconfig.build.json'], { stdio: 'inherit' });

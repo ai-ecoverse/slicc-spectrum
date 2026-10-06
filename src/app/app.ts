@@ -1,14 +1,17 @@
 import { css, html, nothing, type TemplateResult } from 'lit';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import type { SerializedDockview, SliccDock } from '../components/dock.ts';
-import type { ColorScheme, SliccModel } from '../model/types.ts';
+import type { SliccModel } from '../model/types.ts';
 import { ordered } from './agents.ts';
-import { dot, ModelElement, percent, shared } from './base.ts';
+import { dot, percent, shared, ThemedElement } from './base.ts';
 import { defaultFontBase, installFonts } from './fonts.ts';
 import {
   closed,
   create,
+  type DocumentKind,
   defaultLayout,
+  documents,
+  openDocument,
   openSurface,
   type ScreenClass,
   type Surface,
@@ -17,32 +20,18 @@ import {
   surfaces,
 } from './panels.ts';
 
-export type Color = 'light' | 'dark';
-
-export function resolveColor(scheme: ColorScheme, prefersDark: boolean): Color {
-  if (scheme === 'system') return prefersDark ? 'dark' : 'light';
-  return scheme;
-}
-
-export class SliccApp extends ModelElement {
-  static properties = {
-    ...ModelElement.properties,
-    prefersDark: { state: true },
-    screen: { reflect: true },
-  };
-  declare prefersDark: boolean;
+export class SliccApp extends ThemedElement {
+  static properties = { ...ThemedElement.properties, screen: { reflect: true } };
   declare screen: ScreenClass;
   storage: Storage | null = globalThis.localStorage ?? null;
   layoutKey = 'slicc-ui.layout';
   #fontBase: string | null = defaultFontBase;
   #resize: ResizeObserver | null = null;
   #started: ScreenClass | null = null;
-  #media: MediaQueryList | null = globalThis.matchMedia?.('(prefers-color-scheme: dark)') ?? null;
   #saving = false;
 
   constructor() {
     super();
-    this.prefersDark = this.#media?.matches ?? false;
     this.screen = screenClass(globalThis.innerWidth ?? 1280);
   }
 
@@ -158,6 +147,21 @@ export class SliccApp extends ModelElement {
       align-items: center;
       gap: 6px;
     }
+    .link {
+      font: inherit;
+      color: inherit;
+      background: none;
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+    }
+    .link:hover {
+      color: var(--spectrum-neutral-content-color-default);
+      text-decoration: underline;
+    }
+    .link:focus-visible {
+      outline: 2px solid var(--spectrum-focus-indicator-color);
+    }
     .context {
       display: flex;
       align-items: center;
@@ -166,24 +170,14 @@ export class SliccApp extends ModelElement {
   `,
   ];
 
-  get color(): Color {
-    return resolveColor(this.model?.settings.get().color ?? 'system', this.prefersDark);
-  }
-
   get dock(): SliccDock {
     return this.renderRoot.querySelector('slicc-dock') as SliccDock;
   }
 
-  #prefers = (event: MediaQueryListEvent) => {
-    this.prefersDark = event.matches;
-  };
-
   protected subscribe(model: SliccModel): Array<() => void> {
     const update = () => this.requestUpdate();
-    this.#media?.addEventListener('change', this.#prefers);
     return [
-      () => this.#media?.removeEventListener('change', this.#prefers),
-      model.settings.on('settings', update),
+      ...super.subscribe(model),
       model.agent.on('agents', update),
       model.agent.on('active', update),
       model.files.on('changes', update),
@@ -229,9 +223,15 @@ export class SliccApp extends ModelElement {
   #start(model: SliccModel): void {
     const dock = this.dock;
     this.#saving = false;
-    dock.factories = Object.fromEntries(
-      surfaces.map((item) => [item.id, () => create(item.tag, model)])
-    );
+    dock.factories = {
+      ...Object.fromEntries(surfaces.map((item) => [item.id, () => create(item.tag, model)])),
+      ...Object.fromEntries(
+        Object.entries(documents).map(([kind, document]) => [
+          kind,
+          (params) => create(document.tag, model, params),
+        ])
+      ),
+    };
     const restored = dock.restore(this.#saved());
     if (!restored) defaultLayout(dock, this.screen);
     this.#started = this.screen;
@@ -290,6 +290,15 @@ export class SliccApp extends ModelElement {
     };
   }
 
+  open(kind: DocumentKind, path: string): void {
+    openDocument(this.dock, kind, path, this.screen);
+  }
+
+  #request(kind: DocumentKind, event: Event): void {
+    event.stopPropagation();
+    this.open(kind, (event as CustomEvent<{ path: string }>).detail.path);
+  }
+
   toggleColor(): void {
     this.model?.settings.update({ color: this.color === 'dark' ? 'light' : 'dark' });
   }
@@ -339,7 +348,7 @@ export class SliccApp extends ModelElement {
             >`
           : html`<span>No agent</span>`
       }
-      <span>${changes} ${changes === 1 ? 'change' : 'changes'}</span>
+      <button class="link" @click=${() => this.show('changes')}>${changes} ${changes === 1 ? 'change' : 'changes'}</button>
       <span class="spacer"></span>
       <span class="hints"><kbd>F6</kbd> next group · <kbd>Alt+1–${surfaces.length}</kbd> panels · <kbd>Alt+Shift+T</kbd> theme</span>
     </footer>`;
@@ -378,7 +387,10 @@ export class SliccApp extends ModelElement {
         </header>
         <main>
           ${rails.left}
-          <slicc-dock empty-text="All panels are closed. Open one from a rail or View." @layout-change=${this.#save}></slicc-dock>
+          <slicc-dock empty-text="All panels are closed. Open one from a rail or View." @layout-change=${this.#save}
+            @open-file=${(event: Event) => this.#request('file', event)}
+            @open-diff=${(event: Event) => this.#request('diff', event)}
+          ></slicc-dock>
           ${rails.right}
         </main>
         ${rails.bottom}

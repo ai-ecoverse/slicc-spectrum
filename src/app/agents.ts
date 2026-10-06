@@ -78,7 +78,7 @@ export class SliccAgents extends ModelElement {
   }
 
   focus(): void {
-    this.renderRoot.querySelector<HTMLElement>('li[tabindex="0"]')?.focus();
+    this.focusOn('li[tabindex="0"]');
   }
 
   #items(): HTMLElement[] {

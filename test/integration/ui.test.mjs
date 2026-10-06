@@ -35,8 +35,17 @@ test('the shell renders the default layout from the dummy model', async (t) => {
   const page = await open(t);
   const panels = await page.evaluate(layout);
 
-  assert.deepEqual(Object.keys(panels).sort(), ['agents', 'chat']);
+  assert.deepEqual(Object.keys(panels).sort(), ['agents', 'changes', 'chat']);
   assert.ok(panels.agents.box[0] < panels.chat.box[0], JSON.stringify(panels));
+  assert.ok(panels.changes.box[0] > panels.chat.box[0]);
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.$('slicc-app', '.rail.left').querySelectorAll('[data-surface]')].map(
+        (b) => b.dataset.surface
+      )
+    ),
+    ['files']
+  );
   assert.equal(
     await page.evaluate(() => window.$('slicc-app', 'sp-theme').getAttribute('system')),
     'spectrum-two'
@@ -129,12 +138,15 @@ test('panels move, close, float and come back, and a reload keeps the layout', a
 
   await page.goto('/ui/?delay=5');
   await page.until(
-    () => window.ready === true && window.$('slicc-app', 'slicc-dock')?.api.panels.length === 2
+    () => window.ready === true && window.$('slicc-app', 'slicc-dock')?.api.panels.length === 3
   );
-  await page.until(
-    (expected) => JSON.stringify(window.layout()) === expected,
-    JSON.stringify(panels)
-  );
+  let reloaded;
+  for (let i = 0; i < 40; i++) {
+    reloaded = await page.evaluate(layout);
+    if (JSON.stringify(reloaded) === JSON.stringify(panels)) break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.deepEqual(reloaded, panels);
 
   await page.evaluate(() => window.app.resetLayout());
   const reset = await page.evaluate(layout);
@@ -300,9 +312,13 @@ test('the keyboard reaches every panel, agent and tab', async (t) => {
   await page.until(() => window.model.agent.active() === 'scoop-wren');
 
   await page.press('F6');
-  await page.until(() => /slicc-chat/.test(window.focused()));
+  await page.until(() => /slicc-changes/.test(window.focused()));
   await page.press('F6');
-  await page.until(() => /slicc-agents/.test(window.focused()));
+  await page.until(() => /slicc-chat/.test(window.focused()));
+  await page.press('F6', 'shift');
+  await page.until(() => /slicc-changes/.test(window.focused()));
+  await page.press('3', 'alt');
+  await page.until(() => /slicc-files/.test(window.focused()));
 
   await page.evaluate(() =>
     window.drag(
@@ -317,7 +333,10 @@ test('the keyboard reaches every panel, agent and tab', async (t) => {
       0.5
     )
   );
-  await page.until(() => window.$('slicc-app', 'slicc-dock').api.groups.length === 1);
+  await page.until(() => {
+    const dock = window.$('slicc-app', 'slicc-dock');
+    return dock.api.getPanel('agents').group === dock.api.getPanel('chat').group;
+  });
   await page.press('2', 'alt');
   await page.until(() => window.$('slicc-app', 'slicc-dock').api.activePanel?.id === 'chat');
   await page.press(']', 'ctrl');
@@ -341,8 +360,8 @@ test('each screen class has its own layout, and rails restore closed panels', as
   };
   assert.deepEqual(await page.evaluate(state), {
     screen: 'desktop',
-    panels: ['agents', 'chat'],
-    rails: [],
+    panels: ['agents', 'changes', 'chat'],
+    rails: ['files'],
   });
 
   await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('agents'));
@@ -358,7 +377,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
   assert.deepEqual(await page.evaluate(state), {
     screen: 'phone',
     panels: ['chat'],
-    rails: ['agents'],
+    rails: ['agents', 'files', 'changes'],
   });
   await shot(page, 'phone-light');
 
@@ -369,7 +388,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
   assert.deepEqual(await page.evaluate(state), {
     screen: 'tablet',
     panels: ['agents', 'chat'],
-    rails: [],
+    rails: ['files', 'changes'],
   });
   await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('agents'));
   await page.until(() => !!window.$('slicc-app', '.rail.left [data-surface=agents]'));
@@ -378,7 +397,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
     document.querySelector('slicc-app').style.width = '';
   });
   await page.until(() => document.querySelector('slicc-app').screen === 'desktop');
-  assert.deepEqual((await page.evaluate(state)).panels, ['agents', 'chat']);
+  assert.deepEqual((await page.evaluate(state)).panels, ['agents', 'changes', 'chat']);
 
   await page.goto('/ui/?delay=5');
   await page.until(() => window.ready === true);
@@ -390,7 +409,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
   assert.deepEqual(await page.evaluate(state), {
     screen: 'tablet',
     panels: ['chat'],
-    rails: ['agents'],
+    rails: ['agents', 'files', 'changes'],
   });
   assert.deepEqual(page.errors, []);
 });
@@ -423,5 +442,173 @@ test('code uses the bundled Source Code Pro, and the phone layout works in dark'
   });
   await page.until(() => document.querySelector('slicc-app').screen === 'phone');
   await shot(page, 'phone-dark');
+  assert.deepEqual(page.errors, []);
+});
+
+test('a file opens from the tree in a tab, by click and by keyboard', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.$('slicc-app', '.rail.left [data-surface=files]').click());
+  await page.until(() => /slicc-files/.test(window.focused()));
+  await page.until(() => !!window.row('workspace/harbor/src/lib/units.ts'));
+  assert.match(
+    await page.evaluate(() => window.row('workspace/harbor/src/lib/cache.ts').textContent),
+    /M/
+  );
+  await page.evaluate(() => window.row('workspace/harbor/src/lib/units.ts').click());
+  await page.until(() =>
+    window.code('file:/workspace/harbor/src/lib/units.ts').includes('toFahrenheit')
+  );
+  const tab = await page.evaluate(() => {
+    const dock = window.$('slicc-app', 'slicc-dock');
+    return [dock.api.activePanel.id, dock.api.activePanel.title];
+  });
+  assert.deepEqual(tab, ['file:/workspace/harbor/src/lib/units.ts', 'units.ts']);
+  await shot(page, 'file-light');
+
+  await page.press('3', 'alt');
+  await page.until(() => /slicc-files/.test(window.focused()));
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-files', 'slicc-file-tree')
+      .reveal('workspace/harbor/README.md')
+  );
+  await page.press('Enter');
+  await page.until(() =>
+    window.code('file:/workspace/harbor/README.md').includes('A small forecast API')
+  );
+  const group = await page.evaluate(() => {
+    const dock = window.$('slicc-app', 'slicc-dock');
+    return dock.api
+      .getPanel('file:/workspace/harbor/README.md')
+      .group.panels.map((panel) => panel.id);
+  });
+  assert.deepEqual(group, [
+    'file:/workspace/harbor/src/lib/units.ts',
+    'file:/workspace/harbor/README.md',
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a diff opens from the changes list, switches layout, and accepting or reverting clears it', async (t) => {
+  const page = await open(t);
+  const id = 'diff:/workspace/harbor/src/lib/cache.ts';
+
+  await page.evaluate(() =>
+    window
+      .$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-changes',
+        'li[data-path="/workspace/harbor/src/lib/cache.ts"]'
+      )
+      .click()
+  );
+  await page.until((id) => window.code(id).includes('dayOf'), id);
+  assert.equal(
+    await page.evaluate(() => window.$('slicc-app', 'slicc-dock').api.activePanel.id),
+    id
+  );
+  await shot(page, 'diff-light');
+
+  await page.evaluate((id) => window.button(id, 'Split'), id);
+  await page.until(() => window.model.settings.get().diffStyle === 'split');
+  await page.until(
+    (id) =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content(id)
+        .shadowRoot.querySelector('slicc-diff-view')
+        .getAttribute('diff-style') === 'split',
+    id
+  );
+  await shot(page, 'diff-split');
+
+  await page.evaluate((id) => window.button(id, 'Accept'), id);
+  await page.until(() => window.model.files.changes().length === 3);
+  await page.until(
+    (id) =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content(id)
+        .shadowRoot.textContent.includes('No pending changes'),
+    id
+  );
+
+  await page.press('4', 'alt');
+  await page.until(() => /slicc-changes/.test(window.focused()));
+  await page.press('ArrowDown');
+  await page.press('Enter');
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock').api.activePanel.id ===
+      'diff:/workspace/harbor/src/lib/retry.ts'
+  );
+  await page.evaluate(() =>
+    window
+      .$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-changes',
+        'li[data-path="/workspace/harbor/src/lib/retry.ts"] sp-action-button[label=Revert]'
+      )
+      .click()
+  );
+  await page.until(() => window.model.files.changes().length === 2);
+  await page.until(() => window.row('workspace/harbor/src/lib/retry.ts') === null);
+  assert.match(await page.evaluate(() => window.$('slicc-app', 'footer').textContent), /2 changes/);
+  assert.deepEqual(page.errors, []);
+});
+
+test('an agent edit shows up in changes, in the tree and in the open file', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.app.show('files'));
+  const id = 'file:/workspace/harbor/src/lib/units.ts';
+  await page.evaluate(() => window.app.open('file', '/workspace/harbor/src/lib/units.ts'));
+  await page.until((id) => window.code(id).includes('toFahrenheit'), id);
+  await page.evaluate(() => window.model.agent.send('cone-sliccy', 'Add a Kelvin helper'));
+  await page.until(() => window.model.files.changes().length === 5);
+  await page.until((id) => window.code(id).includes('toKelvin'), id);
+  await page.until(() =>
+    /M/.test(window.row('workspace/harbor/src/lib/units.ts')?.textContent ?? '')
+  );
+  await page.until(
+    () =>
+      !!window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-changes',
+        'li[data-path="/workspace/harbor/src/lib/units.ts"]'
+      )
+  );
+  await page.evaluate(
+    (id) =>
+      [
+        ...window
+          .$('slicc-app', 'slicc-dock')
+          .content(id)
+          .shadowRoot.querySelectorAll('sp-action-button'),
+      ]
+        .find((button) => button.textContent.trim() === 'Diff')
+        .click(),
+    id
+  );
+  await page.until(() =>
+    window.code('diff:/workspace/harbor/src/lib/units.ts').includes('toKelvin')
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('files, changes and diffs in dark', async (t) => {
+  const page = await open(t, { color: 'dark' });
+  await page.evaluate(() => window.app.open('file', '/workspace/harbor/src/routes/forecast.ts'));
+  await page.until(() =>
+    window.code('file:/workspace/harbor/src/routes/forecast.ts').includes('retry')
+  );
+  await shot(page, 'file-dark');
+  await page.evaluate(() => window.app.open('diff', '/workspace/harbor/src/routes/forecast.ts'));
+  await page.until(() =>
+    window.code('diff:/workspace/harbor/src/routes/forecast.ts').includes('retry')
+  );
+  await shot(page, 'diff-dark');
   assert.deepEqual(page.errors, []);
 });

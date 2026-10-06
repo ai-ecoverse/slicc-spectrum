@@ -307,7 +307,7 @@ export class SliccChat extends ModelElement {
   }
 
   focus(): void {
-    this.renderRoot.querySelector<HTMLElement>('sp-textfield')?.focus();
+    this.focusOn('sp-textfield');
   }
 
   send(): void {
