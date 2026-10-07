@@ -372,8 +372,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
       'memory',
       'freezer',
       'settings',
-      'sprinkle:release-board',
-      'sprinkle:loose-ends',
+      'sprinkle:suggestions',
       'terminal',
       'browser',
       'monitor',
@@ -394,8 +393,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
     screen: 'phone',
     panels: ['chat'],
     rails: [
-      'sprinkle:release-board',
-      'sprinkle:loose-ends',
+      'sprinkle:suggestions',
       'agents',
       'files',
       'changes',
@@ -421,8 +419,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
       'memory',
       'freezer',
       'settings',
-      'sprinkle:release-board',
-      'sprinkle:loose-ends',
+      'sprinkle:suggestions',
       'changes',
       'terminal',
       'browser',
@@ -454,8 +451,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
       'memory',
       'freezer',
       'settings',
-      'sprinkle:release-board',
-      'sprinkle:loose-ends',
+      'sprinkle:suggestions',
       'changes',
       'terminal',
       'browser',
@@ -1146,43 +1142,59 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
   assert.deepEqual(page.errors, []);
 });
 
-test('sprinkles run sandboxed and send licks, and the tray shows its status', async (t) => {
+test('SLICC sprinkles run sandboxed with Lucide icons and lick their cone, and the tray shows its status', async (t) => {
   const page = await open(t);
+  await page.evaluate(() => {
+    window.welcome = () =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat')
+        .shadowRoot.querySelector('slicc-sprinkle[inline]');
+    return true;
+  });
+  await page.until(() => !!window.welcome()?.shadowRoot.querySelector('iframe'));
+  await page.until(() => window.welcome().height !== 160);
+  assert.equal(
+    await page.evaluate(() =>
+      window.welcome().shadowRoot.querySelector('iframe').getAttribute('sandbox')
+    ),
+    'allow-scripts'
+  );
+  assert.equal(
+    await page.evaluate(
+      () => !!window.$('slicc-app', '.rail.right [data-surface="sprinkle:welcome"]')
+    ),
+    false
+  );
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', '.rail.right [data-surface="sprinkle:suggestions"] slicc-lucide')
+        ?.shadowRoot.querySelector('svg.lucide-ice-cream-cone')
+  );
   await page.evaluate(() =>
-    window.$('slicc-app', '.rail.right [data-surface="sprinkle:release-board"]').click()
+    window.$('slicc-app', '.rail.right [data-surface="sprinkle:suggestions"]').click()
   );
   await page.until(
     () =>
       !!window
         .$('slicc-app', 'slicc-dock')
-        .content('sprinkle:release-board')
+        .content('sprinkle:suggestions')
         ?.shadowRoot.querySelector('iframe')
-  );
-  assert.equal(
-    await page.evaluate(() =>
-      window
-        .$('slicc-app', 'slicc-dock')
-        .content('sprinkle:release-board')
-        .shadowRoot.querySelector('iframe')
-        .getAttribute('sandbox')
-    ),
-    'allow-scripts'
   );
   await shot(page, 'sprinkle-light');
   await page.evaluate(() => {
-    const frame = window
-      .$('slicc-app', 'slicc-dock')
-      .content('sprinkle:release-board')
-      .shadowRoot.querySelector('iframe');
     window.dispatchEvent(
       new MessageEvent('message', {
-        data: { type: 'sprinkle-event', event: 'ship', detail: '1.9.0' },
-        source: frame.contentWindow,
+        data: { type: 'slicc-lick', action: 'onboarding-complete', data: { name: 'Robin' } },
+        source: window.welcome().shadowRoot.querySelector('iframe').contentWindow,
       })
     );
   });
   await page.until(() =>
-    window.model.agent.messages('cone-release').some((message) => message.channel === 'sprinkle')
+    window.model.agent
+      .messages('cone-sliccy')
+      .some((message) => message.channel === 'sprinkle' && message.text === 'onboarding-complete')
   );
 
   await page.evaluate(() => window.$('slicc-app', 'slicc-tray', '.chip').click());
@@ -1205,7 +1217,7 @@ test('sprinkles run sandboxed and send licks, and the tray shows its status', as
 
 test('new surfaces in dark', async (t) => {
   const page = await open(t, { color: 'dark' });
-  for (const id of ['memory', 'freezer', 'monitor', 'sprinkle:release-board']) {
+  for (const id of ['memory', 'freezer', 'monitor', 'sprinkle:suggestions']) {
     await page.evaluate((id) => window.app.show(id), id);
   }
   await page.until(
@@ -1226,7 +1238,7 @@ test('new surfaces in dark', async (t) => {
   await shot(page, 'freezer-dark');
   await shot(page, 'monitor-dark');
   await page.evaluate(() =>
-    window.$('slicc-app', 'slicc-dock').api.getPanel('sprinkle:release-board').api.setActive()
+    window.$('slicc-app', 'slicc-dock').api.getPanel('sprinkle:suggestions').api.setActive()
   );
   await page.evaluate(() => window.$('slicc-app', 'slicc-tray', '.chip').click());
   await shot(page, 'sprinkle-dark');

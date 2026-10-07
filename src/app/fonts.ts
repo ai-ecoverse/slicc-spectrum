@@ -9,21 +9,43 @@ const code = [400, 600] as const;
 
 export const defaultFontBase = '/fonts/';
 
-export function fontFaces(base: string | null, codeBase: string): string {
-  const faces = code.map(
-    (weight) =>
-      `@font-face{font-family:"Source Code Pro";font-style:normal;font-weight:${weight};font-display:swap;src:url("${codeBase}source-code-pro-latin-${weight}-normal.woff2") format("woff2");}`
-  );
+export interface FontFile {
+  family: string;
+  weight: number;
+  url: string;
+  format: 'woff2' | 'opentype';
+}
+
+let installed: readonly FontFile[] = [];
+
+export function fontFiles(base: string | null, codeBase: string): FontFile[] {
+  const files: FontFile[] = code.map((weight) => ({
+    family: 'Source Code Pro',
+    weight,
+    url: `${codeBase}source-code-pro-latin-${weight}-normal.woff2`,
+    format: 'woff2',
+  }));
   if (base) {
     for (const family of ['adobe-clean', 'Adobe Clean']) {
       for (const [name, weight] of adobeClean) {
-        faces.push(
-          `@font-face{font-family:"${family}";font-style:normal;font-weight:${weight};font-display:swap;src:url("${base}AdobeClean-${name}.otf") format("opentype");}`
-        );
+        files.push({ family, weight, url: `${base}AdobeClean-${name}.otf`, format: 'opentype' });
       }
     }
   }
-  return faces.join('\n');
+  return files;
+}
+
+export function fontFaces(base: string | null, codeBase: string): string {
+  return fontFiles(base, codeBase)
+    .map(
+      (file) =>
+        `@font-face{font-family:"${file.family}";font-style:normal;font-weight:${file.weight};font-display:swap;src:url("${file.url}") format("${file.format}");}`
+    )
+    .join('\n');
+}
+
+export function installedFonts(): readonly FontFile[] {
+  return installed;
 }
 
 export function installFonts(
@@ -35,6 +57,7 @@ export function installFonts(
   const style = existing ?? document.createElement('style');
   style.dataset.sliccFonts = '';
   style.textContent = fontFaces(base, codeBase);
+  installed = fontFiles(base, codeBase);
   if (!existing) document.head.append(style);
   return style;
 }

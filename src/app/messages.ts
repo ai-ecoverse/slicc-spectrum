@@ -11,6 +11,7 @@ import type {
   Media,
   MessagePart,
   Question,
+  SliccModel,
   SystemMessage,
   ToolCall,
   ToolMessage,
@@ -20,6 +21,7 @@ import { markdown } from './markdown.ts';
 
 export interface Handlers {
   color: 'light' | 'dark';
+  model: SliccModel | null;
   answer(questionId: string, answer: string): void;
   resolve(messageId: string, state: Exclude<LickState, 'pending'>): void;
   action(action: ErrorAction): void;
@@ -210,6 +212,8 @@ function part(
       return question(entry.question, handlers);
     case 'delegation':
       return html`<div class="delegation" data-kind=${entry.kind}>↳ <strong>${delegationVerbs[entry.kind]}</strong> <code>${entry.scoop}</code> ${entry.text}</div>`;
+    case 'sprinkle':
+      return html`<slicc-sprinkle inline .model=${handlers.model} sprinkle=${entry.sprinkle}></slicc-sprinkle>`;
     case 'link':
       return html`<a class="link-card" href=${entry.url} target="_blank" rel="noopener noreferrer">
         <strong>${entry.title}</strong><span class="host">${new URL(entry.url).host}</span><span>${entry.description}</span>

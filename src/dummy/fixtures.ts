@@ -387,6 +387,19 @@ export const conversations: Record<string, Message[]> = {
   'cone-kitchen': showcase(),
   'cone-sliccy': [
     {
+      id: 'm-s0',
+      role: 'assistant',
+      status: 'done',
+      createdAt: at(-24 * 60),
+      parts: [
+        {
+          type: 'text',
+          text: 'Hi, I am sliccy. Tell me a little about yourself, and I will set things up for you.',
+        },
+        { type: 'sprinkle', sprinkle: 'welcome' },
+      ],
+    },
+    {
       id: 'm-s1',
       role: 'user',
       text: 'What is on my plate today?',

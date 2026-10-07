@@ -12,3 +12,7 @@ declare module 'dockview-core/css' {
   const text: string;
   export default text;
 }
+declare module '*.shtml' {
+  const text: string;
+  export default text;
+}
