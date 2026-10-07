@@ -35,9 +35,9 @@ test('the shell renders the default layout from the dummy model', async (t) => {
   const page = await open(t);
   const panels = await page.evaluate(layout);
 
-  assert.deepEqual(Object.keys(panels).sort(), ['agents', 'changes', 'chat']);
-  assert.ok(panels.agents.box[0] < panels.chat.box[0], JSON.stringify(panels));
-  assert.ok(panels.changes.box[0] > panels.chat.box[0]);
+  assert.deepEqual(Object.keys(panels).sort(), ['agents', 'changes', 'chat:cone-sliccy']);
+  assert.ok(panels.agents.box[0] < panels['chat:cone-sliccy'].box[0], JSON.stringify(panels));
+  assert.ok(panels.changes.box[0] > panels['chat:cone-sliccy'].box[0]);
   assert.deepEqual(
     await page.evaluate(() =>
       [...window.$('slicc-app', '.rail.left').querySelectorAll('[data-surface]')].map(
@@ -83,30 +83,32 @@ test('panels move, close, float and come back, and a reload keeps the layout', a
     const tab = [...dock.shadowRoot.querySelectorAll('.dv-tab')].find((el) =>
       el.textContent.includes('Agents')
     );
-    const target = dock.api.getPanel('chat').group.element.querySelector('.dv-content-container');
+    const target = dock.api
+      .getPanel('chat:cone-sliccy')
+      .group.element.querySelector('.dv-content-container');
     return window.drag(tab, target, 0.5, 0.95);
   });
   let panels = await page.evaluate(layout);
-  assert.ok(panels.agents.box[1] > panels.chat.box[1], JSON.stringify(panels));
-  assert.equal(panels.agents.box[0], panels.chat.box[0]);
+  assert.ok(panels.agents.box[1] > panels['chat:cone-sliccy'].box[1], JSON.stringify(panels));
+  assert.equal(panels.agents.box[0], panels['chat:cone-sliccy'].box[0]);
 
   await page.evaluate(() => {
     const dock = window.$('slicc-app', 'slicc-dock');
-    const tab = [...dock.shadowRoot.querySelectorAll('.dv-tab')].find((el) =>
-      el.textContent.includes('Chat')
+    const tab = [...dock.shadowRoot.querySelectorAll('.dv-tab')].find(
+      (el) => el.textContent.trim() === 'sliccy'
     );
     tab
       .querySelector('.dv-default-tab-action')
       .dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     tab.querySelector('.dv-default-tab-action').click();
   });
-  await page.until(() => !window.$('slicc-app', 'slicc-dock').has('chat'));
+  await page.until(() => !window.$('slicc-app', 'slicc-dock').has('chat:cone-sliccy'));
 
   await page.evaluate(() => window.$('slicc-app', 'sp-action-menu').click());
   await page.until(() => window.$('slicc-app', 'sp-action-menu').open === true);
   await page.until(() => {
     window.$('slicc-app', 'sp-action-menu sp-menu-item[value=chat]').click();
-    return window.$('slicc-app', 'slicc-dock').has('chat');
+    return window.$('slicc-app', 'slicc-dock').has('chat:cone-sliccy');
   });
 
   await page.evaluate(() => {
@@ -151,7 +153,7 @@ test('panels move, close, float and come back, and a reload keeps the layout', a
   await page.evaluate(() => window.app.resetLayout());
   const reset = await page.evaluate(layout);
   assert.equal(reset.agents.floating, false);
-  assert.ok(reset.agents.box[0] < reset.chat.box[0]);
+  assert.ok(reset.agents.box[0] < reset['chat:cone-sliccy'].box[0]);
   assert.deepEqual(page.errors, []);
 });
 
@@ -333,7 +335,7 @@ test('the keyboard reaches every panel, agent and tab', async (t) => {
       ),
       window
         .$('slicc-app', 'slicc-dock')
-        .api.getPanel('chat')
+        .api.getPanel('chat:cone-sliccy')
         .group.element.querySelector('.dv-content-container'),
       0.5,
       0.5
@@ -341,14 +343,18 @@ test('the keyboard reaches every panel, agent and tab', async (t) => {
   );
   await page.until(() => {
     const dock = window.$('slicc-app', 'slicc-dock');
-    return dock.api.getPanel('agents').group === dock.api.getPanel('chat').group;
+    return dock.api.getPanel('agents').group === dock.api.getPanel('chat:cone-sliccy').group;
   });
   await page.press('2', 'alt');
-  await page.until(() => window.$('slicc-app', 'slicc-dock').api.activePanel?.id === 'chat');
+  await page.until(
+    () => window.$('slicc-app', 'slicc-dock').api.activePanel?.id === 'chat:cone-kitchen'
+  );
   await page.press(']', 'ctrl');
   await page.until(() => window.$('slicc-app', 'slicc-dock').api.activePanel?.id === 'agents');
   await page.press('[', 'ctrl');
-  await page.until(() => window.$('slicc-app', 'slicc-dock').api.activePanel?.id === 'chat');
+  await page.until(
+    () => window.$('slicc-app', 'slicc-dock').api.activePanel?.id === 'chat:cone-kitchen'
+  );
   assert.deepEqual(page.errors, []);
 });
 
@@ -366,7 +372,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
   };
   assert.deepEqual(await page.evaluate(state), {
     screen: 'desktop',
-    panels: ['agents', 'changes', 'chat'],
+    panels: ['agents', 'changes', 'chat:cone-sliccy'],
     rails: [
       'files',
       'memory',
@@ -391,7 +397,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
   await page.until(() => document.querySelector('slicc-app').screen === 'phone');
   assert.deepEqual(await page.evaluate(state), {
     screen: 'phone',
-    panels: ['chat'],
+    panels: ['chat:cone-sliccy'],
     rails: [
       'sprinkle:suggestions',
       'agents',
@@ -413,7 +419,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
   await page.until(() => document.querySelector('slicc-app').screen === 'tablet');
   assert.deepEqual(await page.evaluate(state), {
     screen: 'tablet',
-    panels: ['agents', 'chat'],
+    panels: ['agents', 'chat:cone-sliccy'],
     rails: [
       'files',
       'memory',
@@ -433,7 +439,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
     document.querySelector('slicc-app').style.width = '';
   });
   await page.until(() => document.querySelector('slicc-app').screen === 'desktop');
-  assert.deepEqual((await page.evaluate(state)).panels, ['agents', 'changes', 'chat']);
+  assert.deepEqual((await page.evaluate(state)).panels, ['agents', 'changes', 'chat:cone-sliccy']);
 
   await page.goto('/ui/?delay=5');
   await page.until(() => window.ready === true);
@@ -444,7 +450,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
   await page.until(() => document.querySelector('slicc-app').dock.api.panels.length === 1);
   assert.deepEqual(await page.evaluate(state), {
     screen: 'tablet',
-    panels: ['chat'],
+    panels: ['chat:cone-sliccy'],
     rails: [
       'agents',
       'files',
@@ -1148,7 +1154,7 @@ test('SLICC sprinkles run sandboxed with Lucide icons and lick their cone, and t
     window.welcome = () =>
       window
         .$('slicc-app', 'slicc-dock')
-        .content('chat')
+        .content('chat:cone-sliccy')
         .shadowRoot.querySelector('slicc-sprinkle[inline]');
     return true;
   });
@@ -1273,5 +1279,73 @@ test('a language outside dist loads from the local grammar base first', async (t
       (span) => span.textContent === 'fn' && span.getAttribute('style')?.includes('--diffs')
     );
   });
+  assert.deepEqual(page.errors, []);
+});
+
+test('each thread opens in its own chat tab next to the others', async (t) => {
+  const page = await open(t);
+  const groups = () =>
+    window
+      .$('slicc-app', 'slicc-dock')
+      .api.groups.map((group) => group.panels.map((panel) => panel.id));
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-dock', 'slicc-agents', 'li[data-id=cone-harbor]').click();
+    return true;
+  });
+  await page.until(() => window.$('slicc-app', 'slicc-dock').has('chat:cone-harbor'));
+  await page.evaluate(() => {
+    window.model.agent.select('scoop-otter');
+    return true;
+  });
+  await page.until(() => window.$('slicc-app', 'slicc-dock').has('chat:scoop-otter'));
+  const chatGroup = (await page.evaluate(groups)).find((ids) => ids.includes('chat:cone-sliccy'));
+  assert.deepEqual(chatGroup, ['chat:cone-sliccy', 'chat:cone-harbor', 'chat:scoop-otter']);
+  await page.until(() =>
+    /quiet-otter/.test(window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'header').textContent)
+  );
+  await shot(page, 'threads-light');
+
+  await page.evaluate(() => {
+    window.model.agent.select('cone-harbor');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock').api.getPanel('chat:cone-harbor').api.isVisible === true
+  );
+  assert.equal(
+    (await page.evaluate(groups)).flat().filter((id) => id.startsWith('chat:')).length,
+    3
+  );
+
+  await page.evaluate(() => {
+    [...window.$('slicc-app', 'slicc-dock').shadowRoot.querySelectorAll('.dv-tab')]
+      .find((el) => el.textContent.trim() === 'sliccy')
+      .dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    return true;
+  });
+  await page.until(() => window.model.agent.active() === 'cone-sliccy');
+
+  await page.evaluate(() => {
+    window.model.agent.freeze('cone-harbor');
+    return true;
+  });
+  await page.until(
+    () =>
+      !window.$('slicc-app', 'slicc-dock').has('chat:cone-harbor') &&
+      !window.$('slicc-app', 'slicc-dock').has('chat:scoop-otter')
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('thread tabs in dark', async (t) => {
+  const page = await open(t, { color: 'dark' });
+  await page.evaluate(() => {
+    window.model.agent.select('cone-kitchen');
+    window.model.agent.select('cone-release');
+    return true;
+  });
+  await page.until(() => window.$('slicc-app', 'slicc-dock').has('chat:cone-release'));
+  await shot(page, 'threads-dark');
   assert.deepEqual(page.errors, []);
 });
