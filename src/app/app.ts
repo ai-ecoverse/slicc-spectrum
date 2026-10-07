@@ -294,7 +294,7 @@ export class SliccApp extends ThemedElement {
     }
     this.#prune();
     const agent = this.#active();
-    if (agent && this.#offers('chat')) openChat(dock, agent, this.screen, false);
+    if (agent && this.#offers('chat')) openChat(dock, agent, this.screen, false, false);
   }
 
   #start(model: SliccModel): void {
