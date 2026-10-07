@@ -1,4 +1,4 @@
-import { css, html, nothing, type TemplateResult } from 'lit';
+import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import type { PanelParams, SerializedDockview, SliccDock } from '../components/dock.ts';
 import type { SliccModel, Sprinkle } from '../model/types.ts';
@@ -263,14 +263,14 @@ export class SliccApp extends ThemedElement {
     if (width > 0) this.screen = screenClass(width);
   }
 
-  protected updated(): void {
-    if (this.model && this.#started !== this.screen) this.#start(this.model);
+  protected updated(changed: PropertyValues<this>): void {
+    if (!this.model) return;
+    if (this.#started !== this.screen) this.#start(this.model);
+    else if (changed.has('model')) this.#rebind(this.model);
   }
 
-  #start(model: SliccModel): void {
-    const dock = this.dock;
-    this.#saving = false;
-    dock.factories = {
+  #factories(model: SliccModel): SliccDock['factories'] {
+    return {
       ...Object.fromEntries(this.surfaces.map((item) => [item.id, () => create(item.tag, model)])),
       ...Object.fromEntries(
         Object.entries(documents).map(([kind, document]) => [
@@ -283,6 +283,24 @@ export class SliccApp extends ThemedElement {
         : {}),
       sprinkle: (params) => create('slicc-sprinkle', model, params),
     };
+  }
+
+  #rebind(model: SliccModel): void {
+    const dock = this.dock;
+    dock.factories = this.#factories(model);
+    for (const panel of dock.api.panels) {
+      const element = dock.content(panel.id) as (HTMLElement & { model?: SliccModel }) | undefined;
+      if (element && 'model' in element) element.model = model;
+    }
+    this.#prune();
+    const agent = this.#active();
+    if (agent && this.#offers('chat')) openChat(dock, agent, this.screen, false);
+  }
+
+  #start(model: SliccModel): void {
+    const dock = this.dock;
+    this.#saving = false;
+    dock.factories = this.#factories(model);
     dock.accepts = [dipType];
     this.dips.load(this.storage);
     const saved = this.#saved();
