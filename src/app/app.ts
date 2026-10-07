@@ -292,6 +292,9 @@ export class SliccApp extends ThemedElement {
       const element = dock.content(panel.id) as (HTMLElement & { model?: SliccModel }) | undefined;
       if (element && 'model' in element) element.model = model;
     }
+    this.#prune();
+    const agent = this.#active();
+    if (agent && this.#offers('chat')) openChat(dock, agent, this.screen, false);
   }
 
   #start(model: SliccModel): void {
