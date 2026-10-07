@@ -65,10 +65,13 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
     this.emit('accounts', this.accounts());
   }
 
-  async connect(id: string): Promise<void> {
+  async connect(id: string, secret?: string): Promise<void> {
     await this.#clock.sleep(10);
     const account = this.#accounts.find((candidate) => candidate.id === id);
-    const identity = account?.identity || `${id}-user@example.com`;
+    if (account?.auth === 'api-key' && !secret)
+      throw new Error(`${account.provider} needs an API key`);
+    const identity =
+      account?.auth === 'api-key' ? 'API key' : account?.identity || `${id}-user@example.com`;
     this.#set(id, { status: 'connected', identity });
   }
 
