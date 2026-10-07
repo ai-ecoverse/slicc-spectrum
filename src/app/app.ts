@@ -1,17 +1,20 @@
 import { css, html, nothing, type TemplateResult } from 'lit';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
-import type { SerializedDockview, SliccDock } from '../components/dock.ts';
+import type { PanelParams, SerializedDockview, SliccDock } from '../components/dock.ts';
 import type { SliccModel } from '../model/types.ts';
 import { ordered } from './agents.ts';
 import { dot, percent, shared, ThemedElement } from './base.ts';
 import { defaultFontBase, installFonts } from './fonts.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
 import {
+  chatAgent,
+  chats,
   closed,
   create,
   type DocumentKind,
   defaultLayout,
   documents,
+  openChat,
   openDocument,
   openSprinkle,
   openSurface,
@@ -39,7 +42,7 @@ export class SliccApp extends ThemedElement {
   declare screen: ScreenClass;
   declare surfaces: readonly Surface[];
   storage: Storage | null = globalThis.localStorage ?? null;
-  layoutKey = 'slicc-ui.layout';
+  layoutKey = 'slicc-ui.layout.v2';
   #fontBase: string | null = defaultFontBase;
   #resize: ResizeObserver | null = null;
   #started: ScreenClass | null = null;
@@ -194,8 +197,17 @@ export class SliccApp extends ThemedElement {
     const update = () => this.requestUpdate();
     return [
       ...super.subscribe(model),
-      model.agent.on('agents', update),
-      model.agent.on('active', update),
+      model.agent.on('agents', () => {
+        this.#prune();
+        update();
+      }),
+      model.agent.on('active', () => {
+        const agent = this.#active();
+        if (this.#started && agent && this.#offers('chat')) {
+          openChat(this.dock, agent, this.screen, false);
+        }
+        update();
+      }),
       model.files.on('changes', update),
       model.sprinkles.on('sprinkles', update),
     ];
@@ -256,12 +268,16 @@ export class SliccApp extends ThemedElement {
           (params) => create(document.tag, model, params),
         ])
       ),
+      ...(this.#offers('chat')
+        ? { chat: (params: PanelParams) => create('slicc-chat', model, params) }
+        : {}),
       sprinkle: (params) => create('slicc-sprinkle', model, params),
     };
     const saved = this.#saved();
     const restored = this.#offered(saved, dock.factories) && dock.restore(saved);
-    if (!restored) defaultLayout(dock, this.screen, this.surfaces);
+    if (!restored) defaultLayout(dock, this.screen, this.#active(), this.surfaces);
     this.#started = this.screen;
+    this.#prune();
     this.#saving = true;
     this.#save();
   }
@@ -289,12 +305,36 @@ export class SliccApp extends ThemedElement {
     this.requestUpdate();
   }
 
+  #active(): { id: string; name: string } | null {
+    const model = this.model;
+    return model?.agent.list().find((agent) => agent.id === model.agent.active()) ?? null;
+  }
+
+  #prune(): void {
+    const dock = this.renderRoot.querySelector('slicc-dock') as SliccDock | null;
+    if (!dock || !this.#started) return;
+    const known = new Set(this.model?.agent.list().map((agent) => agent.id));
+    for (const id of chats(dock)) {
+      if (!known.has(chatAgent(id) as string)) dock.close(id);
+    }
+  }
+
+  #activated(event: Event): void {
+    const agent = chatAgent((event as CustomEvent<{ id: string | null }>).detail.id);
+    if (agent && agent !== this.model?.agent.active()) this.model?.agent.select(agent);
+  }
+
   resetLayout(): void {
-    defaultLayout(this.dock, this.screen, this.surfaces);
+    defaultLayout(this.dock, this.screen, this.#active(), this.surfaces);
     this.#save();
   }
 
   show(id: string): void {
+    const agent = this.#active();
+    if (id === 'chat' && agent && this.#offers('chat')) {
+      openChat(this.dock, agent, this.screen);
+      return;
+    }
     const sprinkle = this.model?.sprinkles
       .list()
       .find((candidate) => `sprinkle:${candidate.id}` === id);
@@ -457,6 +497,7 @@ export class SliccApp extends ThemedElement {
         <main>
           ${rails.left}
           <slicc-dock empty-text="All panels are closed. Open one from a rail or View." @layout-change=${this.#save}
+            @active-panel-change=${this.#activated}
             @open-file=${(event: Event) => this.#request('file', event)}
             @open-diff=${(event: Event) => this.#request('diff', event)}
             @show-surface=${(event: Event) => this.show((event as CustomEvent<{ id: string }>).detail.id)}

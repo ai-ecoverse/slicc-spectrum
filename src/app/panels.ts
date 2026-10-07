@@ -187,6 +187,44 @@ export function openSurface(dock: SliccDock, item: Surface, screen: ScreenClass)
   });
 }
 
+export function chatId(agentId: string): string {
+  return `chat:${agentId}`;
+}
+
+export function chatAgent(id: string | null | undefined): string | null {
+  return id?.startsWith('chat:') ? id.slice(5) : null;
+}
+
+export function chats(dock: SliccDock): string[] {
+  return dock.api.panels.map((panel) => panel.id).filter((id) => chatAgent(id) !== null);
+}
+
+export function openChat(
+  dock: SliccDock,
+  agent: { id: string; name: string },
+  screen: ScreenClass,
+  focus = true
+): string {
+  const id = chatId(agent.id);
+  if (!dock.has(id)) {
+    const sibling = chats(dock)[0];
+    const place: Placement = sibling
+      ? { position: { referencePanel: sibling, direction: 'within' } }
+      : placement(dock, 'center', screen);
+    dock.open({
+      id,
+      component: 'chat',
+      title: agent.name,
+      params: { agent: agent.id },
+      inactive: !focus,
+      ...place,
+    });
+  }
+  if (focus) dock.focusPanel(id);
+  else dock.reveal(id);
+  return id;
+}
+
 export function openDocument(
   dock: SliccDock,
   kind: DocumentKind,
@@ -196,10 +234,11 @@ export function openDocument(
   const id = `${kind}:${path}`;
   if (!dock.has(id)) {
     const sibling = dock.api.panels.find((panel) => /^(file|diff):/.test(panel.id));
+    const chat = chats(dock)[0];
     const place: Placement = sibling
       ? { position: { referencePanel: sibling.id, direction: 'within' } }
-      : dock.has('chat') && screen !== 'phone'
-        ? { position: { referencePanel: 'chat', direction: 'right' } }
+      : chat && screen !== 'phone'
+        ? { position: { referencePanel: chat, direction: 'right' } }
         : placement(dock, 'center', screen);
     dock.open({
       id,
@@ -216,20 +255,26 @@ export function openDocument(
 export function defaultLayout(
   dock: SliccDock,
   screen: ScreenClass,
+  agent: { id: string; name: string } | null,
   items: readonly Surface[] = surfaces
 ): void {
   dock.clear();
   const order: Side[] = ['center', 'left', 'right'];
   for (const side of order) {
     for (const item of items) {
-      if (item.side === side && item.open.includes(screen)) openSurface(dock, item, screen);
+      if (item.side !== side || !item.open.includes(screen)) continue;
+      if (item.id !== 'chat') openSurface(dock, item, screen);
+      else if (agent) openChat(dock, agent, screen, false);
     }
   }
-  dock.api.getPanel('chat')?.api.setActive();
+  const chat = chats(dock)[0];
+  if (chat) dock.api.getPanel(chat)?.api.setActive();
 }
 
 export function closed(dock: SliccDock, items: readonly Surface[] = surfaces): Surface[] {
-  return items.filter((item) => !dock.has(item.id));
+  return items.filter((item) =>
+    item.id === 'chat' ? chats(dock).length === 0 : !dock.has(item.id)
+  );
 }
 
 export function sprinkleSurface(sprinkle: Sprinkle): Surface {

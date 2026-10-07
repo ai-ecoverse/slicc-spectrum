@@ -13,6 +13,14 @@ import {
 } from './messages.ts';
 
 export class SliccChat extends ThemedElement {
+  static properties = { ...ThemedElement.properties, agent: {} };
+  declare agent: string;
+
+  constructor() {
+    super();
+    this.agent = '';
+  }
+
   static styles = [
     shared,
     messageCss,
@@ -66,10 +74,8 @@ export class SliccChat extends ThemedElement {
   #handlers: Handlers = {
     color: 'light',
     model: null,
-    answer: (questionId, answer) =>
-      this.model?.agent.answer(this.model.agent.active(), questionId, answer),
-    resolve: (messageId, state) =>
-      this.model?.agent.resolveLick(this.model.agent.active(), messageId, state),
+    answer: (questionId, answer) => this.model?.agent.answer(this.#id(), questionId, answer),
+    resolve: (messageId, state) => this.model?.agent.resolveLick(this.#id(), messageId, state),
     action: (action) => this.#action(action),
     open: (path) =>
       this.dispatchEvent(
@@ -80,13 +86,15 @@ export class SliccChat extends ThemedElement {
   protected subscribe(model: SliccModel): Array<() => void> {
     return [
       ...super.subscribe(model),
-      model.agent.on('active', () => this.#refresh(true)),
+      model.agent.on('active', () => {
+        if (!this.agent) this.#refresh(true);
+      }),
       model.agent.on('agents', () => this.requestUpdate()),
       model.agent.on('messages', (agentId) => {
-        if (agentId === model.agent.active()) this.#refresh(true);
+        if (agentId === this.#id()) this.#refresh(true);
       }),
       model.agent.on('message', ({ agentId }) => {
-        if (agentId === model.agent.active()) this.#refresh(false);
+        if (agentId === this.#id()) this.#refresh(false);
       }),
     ];
   }
@@ -109,15 +117,19 @@ export class SliccChat extends ThemedElement {
     this.focusOn('slicc-composer');
   }
 
+  #id(): string {
+    return this.agent || (this.model?.agent.active() ?? '');
+  }
+
   #agent(): Agent | undefined {
-    const model = this.model;
-    return model?.agent.list().find((agent) => agent.id === model.agent.active());
+    const id = this.#id();
+    return this.model?.agent.list().find((agent) => agent.id === id);
   }
 
   #action(action: ErrorAction): void {
     const model = this.model;
     if (!model) return;
-    const id = model.agent.active();
+    const id = this.#id();
     if (action === 'retry') {
       const last = model.agent
         .messages(id)
@@ -198,7 +210,7 @@ export class SliccChat extends ThemedElement {
           }
         </div>
       </div>
-      ${this.model ? html`<slicc-composer .model=${this.model}></slicc-composer>` : nothing}
+      ${this.model ? html`<slicc-composer .model=${this.model} .agent=${this.agent}></slicc-composer>` : nothing}
     `;
   }
 }

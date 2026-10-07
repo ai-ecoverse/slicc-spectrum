@@ -119,6 +119,11 @@ export class SliccDock extends HTMLElement {
     return this.api.addPanel(options);
   }
 
+  reveal(id: string): void {
+    const panel = this.api.getPanel(id);
+    panel?.group.model.openPanel(panel, { skipSetGroupActive: true });
+  }
+
   close(id: string): void {
     this.api.getPanel(id)?.api.close();
   }

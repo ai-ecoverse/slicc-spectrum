@@ -1,4 +1,4 @@
-import { css, html, nothing, type TemplateResult } from 'lit';
+import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import type { Attachment, SendMode, SliccModel, Thinking, UserMessage } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
 import { size } from './messages.ts';
@@ -128,11 +128,13 @@ export class SliccComposer extends ModelElement {
     attachments: { state: true },
     popup: { state: true },
     dictating: { state: true },
+    agent: {},
   };
   declare value: string;
   declare attachments: Attachment[];
   declare popup: Popup | null;
   declare dictating: boolean;
+  declare agent: string;
   #drafts = new Map<string, { value: string; attachments: Attachment[] }>();
   #history = -1;
   #paths: string[] = [];
@@ -146,6 +148,7 @@ export class SliccComposer extends ModelElement {
     this.attachments = [];
     this.popup = null;
     this.dictating = false;
+    this.agent = '';
   }
 
   static styles = [
@@ -346,14 +349,23 @@ export class SliccComposer extends ModelElement {
     `,
   ];
 
+  protected willUpdate(changed: PropertyValues<this>): void {
+    super.willUpdate(changed);
+    if (changed.has('agent') && this.agent && this.model && this.agent !== this.#agent) {
+      this.#switch(this.agent);
+    }
+  }
+
   protected subscribe(model: SliccModel): Array<() => void> {
-    this.#switch(model.agent.active());
+    this.#switch(this.agent || model.agent.active());
     void model.files.list().then((entries) => {
       this.#paths = entries.filter((entry) => entry.kind === 'file').map((entry) => entry.path);
     });
     const update = () => this.requestUpdate();
     return [
-      model.agent.on('active', (id) => this.#switch(id)),
+      model.agent.on('active', (id) => {
+        if (!this.agent) this.#switch(id);
+      }),
       model.agent.on('agents', update),
       model.agent.on('messages', update),
       model.agent.on('message', update),
