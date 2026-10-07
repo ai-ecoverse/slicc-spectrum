@@ -43,15 +43,24 @@ export class KernelFiles extends Emitter<FileEvents> implements FilePort {
   }
 
   start(): void {
-    if (this.#timer) return;
-    this.#timer = setInterval(() => void this.refresh(), this.#interval);
+    if (this.#timer || this.#observer) return;
     const Observer = (globalThis as { FileSystemObserver?: ObserverConstructor })
       .FileSystemObserver;
-    if (!Observer) return;
-    this.#observer = new Observer(() => void this.refresh());
-    this.#observer.observe(this.#root, { recursive: true }).catch(() => {
+    if (!Observer) {
+      this.#poll();
+      return;
+    }
+    const observer = new Observer(() => void this.refresh());
+    this.#observer = observer;
+    observer.observe(this.#root, { recursive: true }).catch(() => {
+      if (this.#observer !== observer) return;
       this.#observer = null;
+      this.#poll();
     });
+  }
+
+  #poll(): void {
+    this.#timer = setInterval(() => void this.refresh(), this.#interval);
   }
 
   stop(): void {
@@ -96,12 +105,14 @@ export class KernelFiles extends Emitter<FileEvents> implements FilePort {
     );
     const gone = [...this.#entries.values()].filter((entry) => !next.has(entry.path));
     const first = !this.#scanned;
+    const previous = this.#entries;
     this.#entries = next;
     this.#scanned = true;
     if (first || touched.length + gone.length === 0) return;
     this.emit('files', this.#list());
     for (const entry of [...touched, ...gone]) {
-      if (entry.kind === 'file') this.emit('file', entry.path);
+      if (entry.kind === 'file' || previous.get(entry.path)?.kind === 'file')
+        this.emit('file', entry.path);
     }
   }
 

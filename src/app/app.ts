@@ -258,11 +258,18 @@ export class SliccApp extends ThemedElement {
       ),
       sprinkle: (params) => create('slicc-sprinkle', model, params),
     };
-    const restored = dock.restore(this.#saved());
+    const saved = this.#saved();
+    const restored = this.#offered(saved, dock.factories) && dock.restore(saved);
     if (!restored) defaultLayout(dock, this.screen, this.surfaces);
     this.#started = this.screen;
     this.#saving = true;
     this.#save();
+  }
+
+  #offered(layout: SerializedDockview | null, factories: SliccDock['factories']): boolean {
+    return Object.values(layout?.panels ?? {}).every(
+      (panel) => ((panel as { contentComponent?: string }).contentComponent ?? '') in factories
+    );
   }
 
   get storageKey(): string {

@@ -121,7 +121,7 @@ Things found while building this against wterm 0.5.4, recorded here, not pushed 
 
 The layout follows the width of `<slicc-app>`, which it reflects as its `screen` attribute: `phone` (under 640 px) has one column, `tablet` (under 1200 px) two, `desktop` three, like SLICC v6. Each screen class starts with few panels open and saves its own layout (`slicc-ui.layout.<screen>`). Every surface has a home side, left, center or right. Closed panels wait as icons in the left and right rails (on a phone, in one bar at the bottom); one click puts a panel back on its side, next to its neighbours.
 
-`surfaces` on `<slicc-app>` (default: every surface, exported as `surfaces`) is what the app offers: the panels it can open, the View menu, the rails and `Alt+1…9`. An embedder can pass a subset with its own `open` per screen class. The agent picker, the tray and the agent part of the status bar show only when `chat` is offered, the change count only with `changes`, and the settings button only with `settings`. Elements with `slot="status"` go into the status bar, after the built-in items.
+`surfaces` on `<slicc-app>` (default: every surface, exported as `surfaces`) is what the app offers: the panels it can open, the View menu, the rails and `Alt+1…9`. A saved layout with a panel it doesn't offer is dropped for the default. An embedder can pass a subset with its own `open` per screen class. The agent picker, the tray and the agent part of the status bar show only when `chat` is offered, the change count only with `changes`, and the settings button only with `settings`. Elements with `slot="status"` go into the status bar, after the built-in items.
 
 ### Fonts
 
@@ -188,7 +188,7 @@ app.surfaces = surfaces.filter((item) => item.id === 'files' || item.id === 'ter
 app.model = createKernelModel({ kernel, root, storage: localStorage, files: { skip: ['/node_modules'] } });
 ```
 
-- **`KernelFiles`** lists the OPFS root as the tree, reads and writes files through the OPFS API, and removes them recursively. Directories in `skip` show up but aren't scanned. `start()` rescans every `interval` ms (default 2000) and on every `FileSystemObserver` record where the browser has one, and emits `files` and a `file` per changed file, so open tabs follow what the terminal writes. Without an agent there are no pending changes.
+- **`KernelFiles`** lists the OPFS root as the tree, reads and writes files through the OPFS API, and removes them recursively. Directories in `skip` show up but aren't scanned. `start()` rescans on every `FileSystemObserver` record, or every `interval` ms (default 2000) where the browser can't observe OPFS, and emits `files` and a `file` per changed file, so open tabs follow what the terminal writes. Without an agent there are no pending changes.
 - **`KernelTerminals`** opens `bash -i` (or `argv`) in `cwd` (default `/home`) through `kernelBackend`, one session per terminal, as many as the user opens. `open` (default 1) is how many it starts with.
 - Everything else is idle (`IdleAgent`, `IdleBrowser`, `IdleMemory`, `IdleMonitor`, `IdleSprinkles`, `IdleTray`, from `idleModel(storage)`): empty lists, and actions that need a backend throw. Settings are kept in `storage`. Leave their surfaces out of `surfaces`.
 

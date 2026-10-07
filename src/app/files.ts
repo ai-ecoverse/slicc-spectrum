@@ -234,12 +234,13 @@ export class SliccFileView extends ThemedElement {
   async save(): Promise<void> {
     const model = this.model;
     if (!model || this.draft === null) return;
+    const draft = this.draft;
     this.saving = true;
     try {
-      await model.files.write(this.path, this.draft);
-      this.text = this.draft;
+      await model.files.write(this.path, draft);
+      this.text = draft;
       this.missing = false;
-      this.draft = null;
+      if (this.draft === draft) this.draft = null;
     } finally {
       this.saving = false;
     }
