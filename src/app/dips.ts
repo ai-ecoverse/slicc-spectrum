@@ -34,4 +34,12 @@ export class Dips extends Emitter<{ change: readonly string[] }> {
   }
 }
 
-export const dips = new Dips();
+export function dipsOf(node: Node): Dips | null {
+  let current: Node | null = node;
+  while (current) {
+    const found = (current as Node & { dips?: unknown }).dips;
+    if (found instanceof Dips) return found;
+    current = current.parentNode ?? (current as ShadowRoot).host ?? null;
+  }
+  return null;
+}

@@ -1,7 +1,7 @@
 import { css, html, svg, type TemplateResult } from 'lit';
 import type { SliccModel, Sprinkle } from '../model/types.ts';
 import { ThemedElement } from './base.ts';
-import { dips, dipType } from './dips.ts';
+import { Dips, dipsOf, dipType } from './dips.ts';
 import { type FontFile, installedFonts } from './fonts.ts';
 import { icons } from './lucide.ts';
 import theme from './sprinkle-theme.css';
@@ -212,13 +212,16 @@ export class SliccSprinkle extends ThemedElement {
     }
   };
 
+  #dips = new Dips();
+
   protected subscribe(model: SliccModel): Array<() => void> {
+    this.#dips = dipsOf(this) ?? this.#dips;
     globalThis.addEventListener('message', this.#message);
     return [
       ...super.subscribe(model),
       () => globalThis.removeEventListener('message', this.#message),
       model.sprinkles.on('sprinkles', () => this.requestUpdate()),
-      dips.on('change', () => this.requestUpdate()),
+      this.#dips.on('change', () => this.requestUpdate()),
     ];
   }
 
@@ -240,7 +243,7 @@ export class SliccSprinkle extends ThemedElement {
   render(): TemplateResult {
     const data = this.#data;
     if (!data) return html`<div class="note">This sprinkle is gone.</div>`;
-    if (this.inline && dips.has(data.id)) {
+    if (this.inline && this.#dips.has(data.id)) {
       return html`<div class="moved">
         <sp-icon-open-in size="s"></sp-icon-open-in>
         <span>${data.title} is open as a panel.</span>

@@ -4,7 +4,7 @@ import type { PanelParams, SerializedDockview, SliccDock } from '../components/d
 import type { SliccModel, Sprinkle } from '../model/types.ts';
 import { ordered } from './agents.ts';
 import { dot, percent, shared, ThemedElement } from './base.ts';
-import { dips, dipType } from './dips.ts';
+import { Dips, dipType } from './dips.ts';
 import { defaultFontBase, installFonts } from './fonts.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
 import {
@@ -46,6 +46,7 @@ export class SliccApp extends ThemedElement {
   declare surfaces: readonly Surface[];
   storage: Storage | null = globalThis.localStorage ?? null;
   layoutKey = 'slicc-ui.layout.v2';
+  readonly dips = new Dips();
   #fontBase: string | null = defaultFontBase;
   #resize: ResizeObserver | null = null;
   #started: ScreenClass | null = null;
@@ -218,7 +219,7 @@ export class SliccApp extends ThemedElement {
       }),
       model.files.on('changes', update),
       model.sprinkles.on('sprinkles', update),
-      dips.on('change', update),
+      this.dips.on('change', update),
     ];
   }
 
@@ -283,7 +284,7 @@ export class SliccApp extends ThemedElement {
       sprinkle: (params) => create('slicc-sprinkle', model, params),
     };
     dock.accepts = [dipType];
-    dips.load(this.storage);
+    this.dips.load(this.storage);
     const saved = this.#saved();
     const restored = this.#offered(saved, dock.factories) && dock.restore(saved);
     if (!restored) defaultLayout(dock, this.screen, this.#active(), this.surfaces);
@@ -366,7 +367,7 @@ export class SliccApp extends ThemedElement {
   #detach(id: string, place: Placement | null, open: boolean): void {
     const sprinkle = this.#sprinkle(id);
     if (!sprinkle) return;
-    dips.detach(id);
+    this.dips.detach(id);
     if (open) openSprinkle(this.dock, sprinkle, this.screen, place);
   }
 
@@ -409,7 +410,7 @@ export class SliccApp extends ThemedElement {
   } {
     const dock = this.renderRoot.querySelector('slicc-dock') as SliccDock | null;
     const sprinkles = (this.model?.sprinkles.list() ?? [])
-      .filter((sprinkle) => !sprinkle.inline || dips.has(sprinkle.id))
+      .filter((sprinkle) => !sprinkle.inline || this.dips.has(sprinkle.id))
       .map(sprinkleSurface)
       .filter((item) => !dock?.has(item.id));
     const shut = dock && this.#started ? [...sprinkles, ...closed(dock, this.surfaces)] : [];
