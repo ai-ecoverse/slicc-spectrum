@@ -33,6 +33,7 @@ export class SliccSettings extends ModelElement {
         display: block;
         height: 100%;
         overflow-y: auto;
+        container-type: inline-size;
         background: var(--spectrum-background-layer-2-color);
         color: var(--spectrum-neutral-content-color-default);
         font-size: var(--spectrum-font-size-100);
@@ -51,7 +52,7 @@ export class SliccSettings extends ModelElement {
       }
       .row {
         display: grid;
-        grid-template-columns: 200px 1fr;
+        grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
         align-items: center;
         gap: 12px;
         min-height: 40px;
@@ -63,6 +64,14 @@ export class SliccSettings extends ModelElement {
       }
       sp-picker {
         width: 240px;
+        max-width: 100%;
+      }
+      @container (max-width: 480px) {
+        .row {
+          grid-template-columns: minmax(0, 1fr);
+          gap: 4px;
+          padding: 8px 0;
+        }
       }
       .account {
         display: grid;
