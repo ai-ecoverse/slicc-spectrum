@@ -1,6 +1,6 @@
 import { css, html, nothing, type TemplateResult } from 'lit';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
-import type { SerializedDockview, SliccDock } from '../components/dock.ts';
+import type { PanelParams, SerializedDockview, SliccDock } from '../components/dock.ts';
 import type { SliccModel } from '../model/types.ts';
 import { ordered } from './agents.ts';
 import { dot, percent, shared, ThemedElement } from './base.ts';
@@ -268,7 +268,9 @@ export class SliccApp extends ThemedElement {
           (params) => create(document.tag, model, params),
         ])
       ),
-      chat: (params) => create('slicc-chat', model, params),
+      ...(this.#offers('chat')
+        ? { chat: (params: PanelParams) => create('slicc-chat', model, params) }
+        : {}),
       sprinkle: (params) => create('slicc-sprinkle', model, params),
     };
     const saved = this.#saved();

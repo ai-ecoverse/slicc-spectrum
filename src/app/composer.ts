@@ -1,4 +1,4 @@
-import { css, html, nothing, type TemplateResult } from 'lit';
+import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import type { Attachment, SendMode, SliccModel, Thinking, UserMessage } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
 import { size } from './messages.ts';
@@ -348,6 +348,13 @@ export class SliccComposer extends ModelElement {
       }
     `,
   ];
+
+  protected willUpdate(changed: PropertyValues<this>): void {
+    super.willUpdate(changed);
+    if (changed.has('agent') && this.agent && this.model && this.agent !== this.#agent) {
+      this.#switch(this.agent);
+    }
+  }
 
   protected subscribe(model: SliccModel): Array<() => void> {
     this.#switch(this.agent || model.agent.active());
