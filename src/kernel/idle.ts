@@ -14,6 +14,7 @@ import type {
   MonitorEvents,
   MonitorPort,
   MonitorSnapshot,
+  SlashCommand,
   SprinkleEvents,
   SprinklePort,
   TrayEvents,
@@ -56,6 +57,14 @@ export class IdleAgent extends Emitter<AgentEvents> implements AgentPort {
   compact(): void {}
   clear(): void {}
   setModel(): void {}
+  setThinking(): void {}
+  async older(): Promise<readonly Message[]> {
+    return [];
+  }
+  commands(): readonly SlashCommand[] {
+    return [];
+  }
+  async ready(): Promise<void> {}
   createScoop(): Agent {
     throw missing('agent');
   }
