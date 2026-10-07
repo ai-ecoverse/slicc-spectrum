@@ -11,6 +11,8 @@ import type {
   Message,
   MessagePart,
   Outgoing,
+  SlashCommand,
+  Thinking,
   UserMessage,
 } from '../model/types.ts';
 import type { Clock } from './clock.ts';
@@ -347,6 +349,23 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     agent.model = model;
     this.#changed();
   }
+
+  setThinking(agentId: string, thinking: Thinking): void {
+    const agent = this.#agent(agentId);
+    if (!agent) return;
+    agent.thinking = thinking;
+    this.#changed();
+  }
+
+  async older(): Promise<readonly Message[]> {
+    return [];
+  }
+
+  commands(): readonly SlashCommand[] {
+    return [];
+  }
+
+  async ready(): Promise<void> {}
 
   createScoop(parentId: string, name: string): Agent {
     const parent = this.#agent(parentId);

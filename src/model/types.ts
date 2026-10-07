@@ -13,6 +13,8 @@ export interface Agent {
   model: string;
   contextFill: number;
   unread: number;
+  thinking?: Thinking;
+  frozen?: boolean;
 }
 
 export type ToolStatus = 'running' | 'done' | 'error' | 'cancelled';
@@ -26,6 +28,8 @@ export interface ToolCall {
   status: ToolStatus;
   paths: string[];
   image?: string;
+  agentId?: string;
+  pid?: number;
 }
 
 export type AttachmentKind = 'image' | 'text' | 'file' | 'secret';
@@ -114,6 +118,8 @@ export type MessagePart =
   | { type: 'error'; message: string; action?: ErrorAction };
 
 export type SendMode = 'send' | 'steer' | 'queue';
+export type DeliveredAs = 'run' | 'steer' | 'follow-up';
+export type MessageOrigin = 'user' | 'follower' | 'guest';
 
 export interface UserMessage {
   id: string;
@@ -124,6 +130,8 @@ export interface UserMessage {
   mode?: SendMode;
   queued?: boolean;
   from?: string;
+  delivered?: DeliveredAs;
+  origin?: MessageOrigin;
 }
 
 export type AssistantStatus = 'streaming' | 'done' | 'stopped' | 'error';
@@ -132,6 +140,8 @@ export interface Usage {
   input: number;
   output: number;
   cost: number;
+  cacheRead?: number;
+  cacheWrite?: number;
 }
 
 export interface AssistantMessage {
@@ -231,11 +241,20 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   compact(agentId: string): void;
   clear(agentId: string): void;
   setModel(agentId: string, model: string): void;
+  setThinking(agentId: string, thinking: Thinking): void;
+  older(agentId: string, before: string): Promise<readonly Message[]>;
+  commands(agentId: string): readonly SlashCommand[];
+  ready(): Promise<void>;
   createScoop(parentId: string, name: string): Agent;
   frozen(): readonly FrozenCone[];
   freeze(agentId: string): void;
   thaw(id: string): Agent | null;
   discard(id: string): void;
+}
+
+export interface SlashCommand {
+  name: string;
+  description: string;
 }
 
 export interface FrozenCone {
@@ -344,12 +363,16 @@ export interface Account {
   provider: string;
   identity: string;
   status: AccountStatus;
+  auth?: 'oauth' | 'api-key' | 'local';
+  needs?: 'cors-free-transport';
 }
 
 export interface ModelOption {
   id: string;
   label: string;
   provider: string;
+  kind?: 'chat' | 'classifier';
+  reasoning?: boolean;
 }
 
 export interface SettingsEvents {
@@ -362,7 +385,7 @@ export interface SettingsPort extends Subscribable<SettingsEvents> {
   update(patch: Partial<Settings>): void;
   models(): readonly ModelOption[];
   accounts(): readonly Account[];
-  connect(id: string): Promise<void>;
+  connect(id: string, secret?: string): Promise<void>;
   disconnect(id: string): void;
 }
 
