@@ -103,7 +103,7 @@ Things found while building this against wterm 0.5.4, recorded here, not pushed 
 
 ## UI
 
-`dist/slicc-ui.js` is SLICC's app shell on Spectrum Web Components 1.12 with the Spectrum 2 theme (`<sp-theme system="spectrum-two">`), in light and dark. It runs against a typed model, not against the kernel, the agent or the browser directly, and is not wired to any of them yet. `dist/slicc-dummy.js` provides a dummy model that streams replies and tool calls with timers.
+`dist/slicc-ui.js` is SLICC's app shell on Spectrum Web Components 1.12 with the Spectrum 2 theme (`<sp-theme system="spectrum-two">`), in light and dark. It runs against a typed model, not against the kernel, the agent or the browser directly. `dist/slicc-dummy.js` provides a dummy model that streams replies and tool calls with timers, and `dist/slicc-kernel-model.js` a real one for files and terminals on slicc-kernel (see [Kernel model](#kernel-model)).
 
 ```html
 <slicc-app></slicc-app>
@@ -120,6 +120,8 @@ Things found while building this against wterm 0.5.4, recorded here, not pushed 
 ### Layouts and rails
 
 The layout follows the width of `<slicc-app>`, which it reflects as its `screen` attribute: `phone` (under 640 px) has one column, `tablet` (under 1200 px) two, `desktop` three, like SLICC v6. Each screen class starts with few panels open and saves its own layout (`slicc-ui.layout.<screen>`). Every surface has a home side, left, center or right. Closed panels wait as icons in the left and right rails (on a phone, in one bar at the bottom); one click puts a panel back on its side, next to its neighbours.
+
+`surfaces` on `<slicc-app>` (default: every surface, exported as `surfaces`) is what the app offers: the panels it can open, the View menu, the rails and `Alt+1…9`. An embedder can pass a subset with its own `open` per screen class. The agent picker, the tray and the agent part of the status bar show only when `chat` is offered, the change count only with `changes`, and the settings button only with `settings`. Elements with `slot="status"` go into the status bar, after the built-in items.
 
 ### Fonts
 
@@ -170,11 +172,35 @@ Keys: <kbd>Alt</kbd>+<kbd>1</kbd>… opens and focuses a panel, <kbd>F6</kbd> an
 | `sprinkles` | `@ai-ecoverse/slicc-agent` | Sprinkles (`inline` ones show as dips in the chat, not in the rail) and `send`, which turns a sprinkle's lick into a lick on its cone. |
 | `tray` | the tray protocol | Connection, role, float kind, followers, spend and budget; `reconnect` and `disconnect`. |
 
+### Kernel model
+
+`@ai-ecoverse/slicc-spectrum/kernel` (`dist/slicc-kernel-model.js`) backs the sections that work without an agent:
+
+```js
+import { createKernel } from '@ai-ecoverse/slicc-kernel';
+import { createKernelModel } from '@ai-ecoverse/slicc-spectrum/kernel';
+import { surfaces } from '@ai-ecoverse/slicc-spectrum/ui';
+
+const root = await navigator.storage.getDirectory();
+const kernel = await createKernel({ root });
+const app = document.querySelector('slicc-app');
+app.surfaces = surfaces.filter((item) => item.id === 'files' || item.id === 'terminal');
+app.model = createKernelModel({ kernel, root, storage: localStorage, files: { skip: ['/node_modules'] } });
+```
+
+- **`KernelFiles`** lists the OPFS root as the tree, reads and writes files through the OPFS API, and removes them recursively. Directories in `skip` show up but aren't scanned. `start()` rescans every `interval` ms (default 2000) and on every `FileSystemObserver` record where the browser has one, and emits `files` and a `file` per changed file, so open tabs follow what the terminal writes. Without an agent there are no pending changes.
+- **`KernelTerminals`** opens `bash -i` (or `argv`) in `cwd` (default `/home`) through `kernelBackend`, one session per terminal, as many as the user opens. `open` (default 1) is how many it starts with.
+- Everything else is idle (`IdleAgent`, `IdleBrowser`, `IdleMemory`, `IdleMonitor`, `IdleSprinkles`, `IdleTray`, from `idleModel(storage)`): empty lists, and actions that need a backend throw. Settings are kept in `storage`. Leave their surfaces out of `surfaces`.
+
+Each section is its own port, so an embedder can mix real and dummy per section, for example `{ ...createDummyModel(), files: new KernelFiles(root) }`.
+
+`<slicc-file-view>` has **Edit**: the file opens in a plain text area, and **Save** or `Mod+S` writes it through `files.write`; `Escape` cancels.
+
 The `kitchen-sink` cone holds every kind of message, content and lick in one conversation, for design work and screenshots. The dummy's fixtures are invented: a small forecast API called harbor, with cones, scoops, a conversation per agent, pending changes, browser tabs and accounts. Its only sprinkles are SLICC's own: `welcome` (the onboarding wizard, as a dip in the sliccy cone) and `suggestions`, copied from `slicc` (`packages/vfs-root/shared/sprinkles/`, commit `aa29784`) with their comments stripped, as is the sprinkle theme in `src/app/sprinkle-theme.css`. Without file access, `suggestions` shows its empty state. Its replies are scripted by keyword (tests, fix or add, open or docs, files, anything else), and their tool calls act on the other ports: an edit writes a file and shows up as a change, a browse opens a tab.
 
 ### Distribution
 
-The UI is ESM with code splitting: `slicc-ui.js`, `slicc-dummy.js` and `chunk-*.js` next to them in `dist/`, with no bare imports, so the folder can be served as plain files from OPFS. dockview's ESM build has no CSS; the build takes it from dockview's UMD bundle. `@pierre/diffs` highlights with Shiki. `dist/` carries the grammars SLICC needs most (CSS, diff, HTML, JavaScript, JSON, JSX, Markdown, Python, shell, SQL, TOML, TSX, TypeScript, XML, YAML); every other grammar and theme stays out of `dist/` and loads the first time a file needs it. It loads from `grammarBase` first, if set, and then from `https://cdn.jsdelivr.net/npm/@shikijs/` (pinned to the installed version, CORS and CORP headers set). For offline use, install the optional peer dependencies `@shikijs/langs` and `@shikijs/themes` (pinned to the same version; plain relative ESM, no bare imports), serve them, and point `grammarBase` (on `<slicc-app>`, or `setGrammarBase()`) at the folder holding `langs/` and `themes/`, for example `/node_modules/@shikijs/`. The build fails if the peer versions drift from the installed ones. `SLICC_GRAMMAR_BASE` points the build at another CDN. `dist/` is about 55 files and 5.5 MB of JavaScript. The build fails if React is bundled; `@pierre/trees` lists React as a peer dependency, so npm installs it, but the `web-components` entry runs on Preact. Types are in `dist/types/ui.d.ts` and `dist/types/dummy.d.ts`, exported as `@ai-ecoverse/slicc-spectrum/ui` and `/dummy`.
+The UI is ESM with code splitting: `slicc-ui.js`, `slicc-dummy.js` and `chunk-*.js` next to them in `dist/`, with no bare imports, so the folder can be served as plain files from OPFS. dockview's ESM build has no CSS; the build takes it from dockview's UMD bundle. `@pierre/diffs` highlights with Shiki. `dist/` carries the grammars SLICC needs most (CSS, diff, HTML, JavaScript, JSON, JSX, Markdown, Python, shell, SQL, TOML, TSX, TypeScript, XML, YAML); every other grammar and theme stays out of `dist/` and loads the first time a file needs it. It loads from `grammarBase` first, if set, and then from `https://cdn.jsdelivr.net/npm/@shikijs/` (pinned to the installed version, CORS and CORP headers set). For offline use, install the optional peer dependencies `@shikijs/langs` and `@shikijs/themes` (pinned to the same version; plain relative ESM, no bare imports), serve them, and point `grammarBase` (on `<slicc-app>`, or `setGrammarBase()`) at the folder holding `langs/` and `themes/`, for example `/node_modules/@shikijs/`. The build fails if the peer versions drift from the installed ones. `SLICC_GRAMMAR_BASE` points the build at another CDN. `dist/` is about 55 files and 5.5 MB of JavaScript. The build fails if React is bundled; `@pierre/trees` lists React as a peer dependency, so npm installs it, but the `web-components` entry runs on Preact. Types are in `dist/types/ui.d.ts`, `dist/types/dummy.d.ts` and `dist/types/kernel.d.ts`, exported as `@ai-ecoverse/slicc-spectrum/ui`, `/dummy` and `/kernel`.
 
 ### dockview notes
 
@@ -189,7 +215,7 @@ npm run lint
 npm test
 ```
 
-`npm test` builds `dist/` and runs the integration tests in headless Chromium over raw CDP, through the [harness from slicc-shared-web](https://github.com/ai-ecoverse/slicc-shared-web#integration-test-harness), against a fake backend (`test/integration/page/fake-backend.js`). It writes V8 coverage to `coverage/` and CPU profiles, screenshots and console logs to `artifacts/`. The test page is served cross-origin isolated (COOP/COEP), as slicc-kernel requires. `test/integration/kernel.test.mjs` runs `bash -i` end to end on `@ai-ecoverse/slicc-kernel` (a pinned dev dependency), with `@ai-ecoverse/wasm-bash` and `@ai-ecoverse/wasm-coreutils` installed into OPFS by the page (`/kernel.html`). `npm start` serves the test page on port 8080, and the UI at `/ui/`. `test/integration/ui.test.mjs` covers the shell, the layout (moving, closing, floating, reopening and reloading), streaming a reply with a tool call, stopping it, switching themes and the keyboard, and saves screenshots to `artifacts/ui/`.
+`npm test` builds `dist/` and runs the integration tests in headless Chromium over raw CDP, through the [harness from slicc-shared-web](https://github.com/ai-ecoverse/slicc-shared-web#integration-test-harness), against a fake backend (`test/integration/page/fake-backend.js`). It writes V8 coverage to `coverage/` and CPU profiles, screenshots and console logs to `artifacts/`. The test page is served cross-origin isolated (COOP/COEP), as slicc-kernel requires. `test/integration/kernel.test.mjs` runs `bash -i` end to end on `@ai-ecoverse/slicc-kernel` (a pinned dev dependency), with `@ai-ecoverse/wasm-bash` and `@ai-ecoverse/wasm-coreutils` installed into OPFS by the page (`/kernel.html`). `npm start` serves the test page on port 8080, and the UI at `/ui/`. `test/integration/kernel-ui.test.mjs` boots `<slicc-app>` on the kernel model (`/kernel-ui/`): a command in the terminal, its file in the tree, an edit in a file tab read back in the terminal, a second terminal, and a reload. `test/integration/ui.test.mjs` covers the shell, the layout (moving, closing, floating, reopening and reloading), streaming a reply with a tool call, stopping it, switching themes and the keyboard, and saves screenshots to `artifacts/ui/`.
 
 The Biome, TypeScript, lefthook, Renovate and CI configuration comes from [slicc-shared-web](https://github.com/ai-ecoverse/slicc-shared-web), which also provides the `slicc-lint-comments`, `slicc-no-unit-tests` and `slicc-diff-cover` commands used by `npm run lint` and the pre-commit hook.
 

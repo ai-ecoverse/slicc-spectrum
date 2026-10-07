@@ -33,6 +33,10 @@
     "./dummy": {
       "types": "./dist/types/dummy.d.ts",
       "default": "./dist/slicc-dummy.js"
+    },
+    "./kernel": {
+      "types": "./dist/types/kernel.d.ts",
+      "default": "./dist/slicc-kernel-model.js"
     }
   },
   "files": [

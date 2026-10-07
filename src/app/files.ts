@@ -178,16 +178,22 @@ export class SliccFileView extends ThemedElement {
     path: {},
     text: { state: true },
     missing: { state: true },
+    draft: { state: true },
+    saving: { state: true },
   };
   declare path: string;
   declare text: string | null;
   declare missing: boolean;
+  declare draft: string | null;
+  declare saving: boolean;
 
   constructor() {
     super();
     this.path = '';
     this.text = null;
     this.missing = false;
+    this.draft = null;
+    this.saving = false;
   }
 
   static styles = [
@@ -198,8 +204,86 @@ export class SliccFileView extends ThemedElement {
         flex: 1;
         min-height: 0;
       }
+      textarea {
+        flex: 1;
+        min-height: 0;
+        margin: 0;
+        padding: 8px 12px;
+        border: 0;
+        resize: none;
+        outline: none;
+        background: var(--spectrum-background-layer-2-color);
+        color: var(--spectrum-neutral-content-color-default);
+        font-family: var(--spectrum-code-font-family-stack, ui-monospace, monospace);
+        font-size: 13px;
+        line-height: 20px;
+        tab-size: 2;
+      }
     `,
   ];
+
+  edit(): void {
+    this.draft = this.text ?? '';
+    this.focusOn('textarea');
+  }
+
+  cancel(): void {
+    this.draft = null;
+  }
+
+  async save(): Promise<void> {
+    const model = this.model;
+    if (!model || this.draft === null) return;
+    this.saving = true;
+    try {
+      await model.files.write(this.path, this.draft);
+      this.text = this.draft;
+      this.missing = false;
+      this.draft = null;
+    } finally {
+      this.saving = false;
+    }
+  }
+
+  #keydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.cancel();
+    } else if (event.key === 's' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      void this.save();
+    }
+  }
+
+  #actions(): TemplateResult {
+    if (this.draft === null) {
+      return html`<sp-action-button size="s" quiet ?disabled=${this.text === null} @click=${() => this.edit()}>
+        <sp-icon-edit slot="icon"></sp-icon-edit>Edit
+      </sp-action-button>`;
+    }
+    return html`<sp-action-button size="s" quiet @click=${() => this.cancel()}>Cancel</sp-action-button>
+      <sp-action-button size="s" ?disabled=${this.saving} @click=${() => this.save()}>
+        <sp-icon-save-floppy slot="icon"></sp-icon-save-floppy>Save
+      </sp-action-button>`;
+  }
+
+  #body(change: unknown): TemplateResult {
+    if (this.draft !== null) {
+      return html`<textarea
+        aria-label=${`Edit ${this.path}`}
+        spellcheck="false"
+        .value=${this.draft}
+        @input=${(event: Event) => {
+          this.draft = (event.target as HTMLTextAreaElement).value;
+        }}
+        @keydown=${this.#keydown}
+      ></textarea>`;
+    }
+    if (this.missing) {
+      return html`<div class="note">This file doesn’t exist${change ? ' any more' : ''}.</div>`;
+    }
+    return html`<slicc-code-view path=${this.path} color=${this.color} .contents=${this.text}></slicc-code-view>`;
+  }
 
   protected subscribe(model: SliccModel): Array<() => void> {
     void this.#read(model);
@@ -236,11 +320,8 @@ export class SliccFileView extends ThemedElement {
               </sp-action-button>`
             : nothing
         }
+        ${this.#actions()}
       </div>
-      ${
-        this.missing
-          ? html`<div class="note">This file doesn’t exist${change ? ' any more' : ''}.</div>`
-          : html`<slicc-code-view path=${this.path} color=${this.color} .contents=${this.text}></slicc-code-view>`
-      }`;
+      ${this.#body(change)}`;
   }
 }

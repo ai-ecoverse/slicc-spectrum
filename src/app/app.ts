@@ -31,8 +31,13 @@ function railIcon(icon: string): TemplateResult {
 }
 
 export class SliccApp extends ThemedElement {
-  static properties = { ...ThemedElement.properties, screen: { reflect: true } };
+  static properties = {
+    ...ThemedElement.properties,
+    screen: { reflect: true },
+    surfaces: { attribute: false },
+  };
   declare screen: ScreenClass;
+  declare surfaces: readonly Surface[];
   storage: Storage | null = globalThis.localStorage ?? null;
   layoutKey = 'slicc-ui.layout';
   #fontBase: string | null = defaultFontBase;
@@ -43,6 +48,7 @@ export class SliccApp extends ThemedElement {
   constructor() {
     super();
     this.screen = screenClass(globalThis.innerWidth ?? 1280);
+    this.surfaces = surfaces;
   }
 
   static styles = [
@@ -243,7 +249,7 @@ export class SliccApp extends ThemedElement {
     const dock = this.dock;
     this.#saving = false;
     dock.factories = {
-      ...Object.fromEntries(surfaces.map((item) => [item.id, () => create(item.tag, model)])),
+      ...Object.fromEntries(this.surfaces.map((item) => [item.id, () => create(item.tag, model)])),
       ...Object.fromEntries(
         Object.entries(documents).map(([kind, document]) => [
           kind,
@@ -253,7 +259,7 @@ export class SliccApp extends ThemedElement {
       sprinkle: (params) => create('slicc-sprinkle', model, params),
     };
     const restored = dock.restore(this.#saved());
-    if (!restored) defaultLayout(dock, this.screen);
+    if (!restored) defaultLayout(dock, this.screen, this.surfaces);
     this.#started = this.screen;
     this.#saving = true;
     this.#save();
@@ -277,7 +283,7 @@ export class SliccApp extends ThemedElement {
   }
 
   resetLayout(): void {
-    defaultLayout(this.dock, this.screen);
+    defaultLayout(this.dock, this.screen, this.surfaces);
     this.#save();
   }
 
@@ -289,7 +295,7 @@ export class SliccApp extends ThemedElement {
       openSprinkle(this.dock, sprinkle, this.screen);
       return;
     }
-    const item = surface(id);
+    const item = surface(id, this.surfaces);
     if (!item) return;
     openSurface(this.dock, item, this.screen);
     this.dock.focusPanel(id);
@@ -312,7 +318,7 @@ export class SliccApp extends ThemedElement {
       .filter((sprinkle) => !sprinkle.inline)
       .map(sprinkleSurface)
       .filter((item) => !dock?.has(item.id));
-    const shut = dock && this.#started ? [...sprinkles, ...closed(dock)] : [];
+    const shut = dock && this.#started ? [...sprinkles, ...closed(dock, this.surfaces)] : [];
     const phone = this.screen === 'phone';
     return {
       left: this.#rail(phone ? [] : shut.filter((item) => item.side !== 'right'), 'left'),
@@ -337,7 +343,7 @@ export class SliccApp extends ThemedElement {
   #keydown = (event: KeyboardEvent) => {
     if (!event.altKey || event.ctrlKey || event.metaKey) return;
     const digit = event.code.match(/^Digit([1-9])$/)?.[1] ?? event.key.match(/^[1-9]$/)?.[0];
-    const surface = digit ? surfaces[Number(digit) - 1] : undefined;
+    const surface = digit ? this.surfaces[Number(digit) - 1] : undefined;
     if (surface) {
       event.preventDefault();
       this.show(surface.id);
@@ -363,25 +369,38 @@ export class SliccApp extends ThemedElement {
     </sp-menu-item>`;
   }
 
-  #status(): TemplateResult {
+  #offers(id: string): boolean {
+    return this.surfaces.some((item) => item.id === id);
+  }
+
+  #agentStatus(): TemplateResult | typeof nothing {
+    if (!this.#offers('chat')) return nothing;
     const model = this.model;
     const agent = model?.agent.list().find((candidate) => candidate.id === model.agent.active());
     const label = model?.settings.models().find((option) => option.id === agent?.model)?.label;
-    const changes = model?.files.changes().length ?? 0;
-    return html`<footer role="status" aria-label="Status">
-      ${
-        agent
-          ? html`<span class="item">${dot(agent.status)}${agent.name} · ${agent.status}</span>
+    return agent
+      ? html`<span class="item">${dot(agent.status)}${agent.name} · ${agent.status}</span>
             <span>${label ?? agent.model}</span>
             <span class="item" title="Context fill"
               >Context <span class="bar"><span style=${`width: ${percent(agent.contextFill)}`}></span></span>
               ${percent(agent.contextFill)}</span
             >`
-          : html`<span>No agent</span>`
-      }
-      <button class="link" @click=${() => this.show('changes')}>${changes} ${changes === 1 ? 'change' : 'changes'}</button>
+      : html`<span>No agent</span>`;
+  }
+
+  #changes(): TemplateResult | typeof nothing {
+    if (!this.#offers('changes')) return nothing;
+    const changes = this.model?.files.changes().length ?? 0;
+    return html`<button class="link" @click=${() => this.show('changes')}>${changes} ${changes === 1 ? 'change' : 'changes'}</button>`;
+  }
+
+  #status(): TemplateResult {
+    return html`<footer role="status" aria-label="Status">
+      ${this.#agentStatus()}
+      ${this.#changes()}
+      <slot name="status"></slot>
       <span class="spacer"></span>
-      <span class="hints"><kbd>F6</kbd> next group · <kbd>Alt+1–${Math.min(9, surfaces.length)}</kbd> panels · <kbd>Alt+Shift+T</kbd> theme</span>
+      <span class="hints"><kbd>F6</kbd> next group · <kbd>Alt+1–${Math.min(9, this.surfaces.length)}</kbd> panels · <kbd>Alt+Shift+T</kbd> theme</span>
     </footer>`;
   }
 
@@ -393,24 +412,32 @@ export class SliccApp extends ThemedElement {
       <div class="shell">
         <header>
           <span class="brand">slicc</span>
-          <sp-picker size="s" label="Agent" value=${this.model?.agent.active() ?? ''} @change=${this.#pick}>
+          ${
+            this.#offers('chat')
+              ? html`<sp-picker size="s" label="Agent" value=${this.model?.agent.active() ?? ''} @change=${this.#pick}>
             ${agents.map(
               (agent) =>
                 html`<sp-menu-item value=${agent.id}>${agent.kind === 'scoop' ? `↳ ${agent.name}` : agent.name}</sp-menu-item>`
             )}
-          </sp-picker>
+          </sp-picker>`
+              : nothing
+          }
           <span class="spacer"></span>
-          <slicc-tray .model=${this.model}></slicc-tray>
+          ${this.#offers('chat') ? html`<slicc-tray .model=${this.model}></slicc-tray>` : nothing}
           <sp-action-menu size="s" quiet label="View" @change=${this.#view}>
             <sp-icon-view-grid slot="icon"></sp-icon-view-grid>
             <span slot="label">View</span>
-            ${surfaces.map((surface, index) => this.#menuItem(surface, index))}
+            ${this.surfaces.map((surface, index) => this.#menuItem(surface, index))}
             <sp-menu-divider></sp-menu-divider>
             <sp-menu-item value="reset">Reset layout</sp-menu-item>
           </sp-action-menu>
-          <sp-action-button size="s" quiet label="Settings" title="Settings" @click=${() => this.show('settings')}>
+          ${
+            this.#offers('settings')
+              ? html`<sp-action-button size="s" quiet label="Settings" title="Settings" @click=${() => this.show('settings')}>
             <sp-icon-settings slot="icon"></sp-icon-settings>
-          </sp-action-button>
+          </sp-action-button>`
+              : nothing
+          }
           <sp-action-button
             size="s"
             quiet

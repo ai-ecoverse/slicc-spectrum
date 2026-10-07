@@ -127,8 +127,8 @@ export function screenClass(width: number): ScreenClass {
   return 'desktop';
 }
 
-export function surface(id: string): Surface | undefined {
-  return surfaces.find((candidate) => candidate.id === id);
+export function surface(id: string, items: readonly Surface[] = surfaces): Surface | undefined {
+  return items.find((candidate) => candidate.id === id);
 }
 
 export function create(tag: string, model: SliccModel, params: PanelParams = {}): HTMLElement {
@@ -213,19 +213,23 @@ export function openDocument(
   return id;
 }
 
-export function defaultLayout(dock: SliccDock, screen: ScreenClass): void {
+export function defaultLayout(
+  dock: SliccDock,
+  screen: ScreenClass,
+  items: readonly Surface[] = surfaces
+): void {
   dock.clear();
   const order: Side[] = ['center', 'left', 'right'];
   for (const side of order) {
-    for (const item of surfaces) {
+    for (const item of items) {
       if (item.side === side && item.open.includes(screen)) openSurface(dock, item, screen);
     }
   }
   dock.api.getPanel('chat')?.api.setActive();
 }
 
-export function closed(dock: SliccDock): Surface[] {
-  return surfaces.filter((item) => !dock.has(item.id));
+export function closed(dock: SliccDock, items: readonly Surface[] = surfaces): Surface[] {
+  return items.filter((item) => !dock.has(item.id));
 }
 
 export function sprinkleSurface(sprinkle: Sprinkle): Surface {
