@@ -203,7 +203,8 @@ export function openChat(
   dock: SliccDock,
   agent: { id: string; name: string },
   screen: ScreenClass,
-  focus = true
+  focus = true,
+  reveal = true
 ): string {
   const id = chatId(agent.id);
   if (!dock.has(id)) {
@@ -221,7 +222,7 @@ export function openChat(
     });
   }
   if (focus) dock.focusPanel(id);
-  else dock.reveal(id);
+  else if (reveal) dock.reveal(id);
   return id;
 }
 
