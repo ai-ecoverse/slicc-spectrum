@@ -782,16 +782,56 @@ test('settings change the theme and the composer, and connect accounts', async (
   );
   await page.until(() => window.model.settings.get().showThinking === false);
 
+  await page.evaluate(() => window.settingsPart('.account[data-id=openai] sp-button').click());
+  await page.until(() => !!window.settingsPart('form.key[data-id=openai] sp-textfield'));
+  await page.until(() => /sp-textfield/i.test(window.focused()));
+  await page.evaluate(() => {
+    window.settingsPart('form.key[data-id=openai] sp-textfield').value = 'dummy-key-0000';
+  });
+  await shot(page, 'settings-api-key');
+  const masked = await page.evaluate(() => {
+    const field = window.settingsPart('form.key[data-id=openai] sp-textfield');
+    return field.shadowRoot.querySelector('input').type;
+  });
+  assert.equal(masked, 'password');
   await page.evaluate(() =>
-    window
-      .$('slicc-app', 'slicc-dock', 'slicc-settings', '.account[data-id=openai] sp-button')
-      .click()
+    window.settingsPart('form.key[data-id=openai] sp-button[variant=accent]').click()
   );
   await page.until(() =>
-    window
-      .$('slicc-app', 'slicc-dock', 'slicc-settings', '.account[data-id=openai]')
-      .textContent.includes('Connected')
+    window.settingsPart('.account[data-id=openai]').textContent.includes('Connected')
   );
+  await page.until(() => !window.settingsPart('form.key'));
+  const shown = await page.evaluate(() => window.settingsPart('.page').getRootNode().innerHTML);
+  assert.ok(!shown.includes('dummy-key-0000'));
+  assert.match(
+    await page.evaluate(
+      () => window.settingsPart('.account[data-id=openai] .identity').textContent
+    ),
+    /API key/
+  );
+  await page.evaluate(() => {
+    window.model.settings.disconnect('openai');
+  });
+  await page.until(() =>
+    window.settingsPart('.account[data-id=openai]').textContent.includes('Not connected')
+  );
+  await page.evaluate(() => window.settingsPart('.account[data-id=openai] sp-button').click());
+  await page.until(() => !!window.settingsPart('form.key[data-id=openai] sp-textfield'));
+  await page.evaluate(() => {
+    const field = window.settingsPart('form.key[data-id=openai] sp-textfield');
+    field.value = 'dummy-key-0001';
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  });
+  await page.until(() =>
+    window.settingsPart('.account[data-id=openai]').textContent.includes('Connected')
+  );
+  await page.evaluate(() => window.model.settings.disconnect('openai'));
+  await page.evaluate(() => window.settingsPart('.account[data-id=openai] sp-button').click());
+  await page.until(() => !!window.settingsPart('form.key[data-id=openai]'));
+  await page.evaluate(() =>
+    window.settingsPart('form.key[data-id=openai] sp-button[treatment=outline]').click()
+  );
+  await page.until(() => !window.settingsPart('form.key'));
   await page.evaluate(() =>
     window
       .$('slicc-app', 'slicc-dock', 'slicc-settings', '.account[data-id=github] sp-button')

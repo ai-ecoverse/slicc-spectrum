@@ -50,6 +50,8 @@ window.drag = async (source, target, x, y) => {
   await wait();
 };
 
+window.settingsPart = (...path) => window.$('slicc-app', 'slicc-dock', 'slicc-settings', ...path);
+
 window.focused = () => {
   let node = document.activeElement;
   const path = [];

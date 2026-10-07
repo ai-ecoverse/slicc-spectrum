@@ -1,4 +1,4 @@
-import { css, html, type TemplateResult } from 'lit';
+import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Account, Settings, SliccModel } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
 
@@ -9,12 +9,21 @@ const accountStatus = {
 } as const;
 
 export class SliccSettings extends ModelElement {
-  static properties = { ...ModelElement.properties, pending: { state: true } };
+  static properties = {
+    ...ModelElement.properties,
+    pending: { state: true },
+    entering: { state: true },
+    failure: { state: true },
+  };
   declare pending: ReadonlySet<string>;
+  declare entering: string | null;
+  declare failure: { id: string; message: string } | null;
 
   constructor() {
     super();
     this.pending = new Set();
+    this.entering = null;
+    this.failure = null;
   }
 
   static styles = [
@@ -79,6 +88,21 @@ export class SliccSettings extends ModelElement {
       .state .dot[data-variant='positive'] {
         background: var(--spectrum-positive-visual-color);
       }
+      .key {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 0 12px;
+        border-bottom: 1px solid var(--spectrum-gray-200);
+      }
+      .key sp-textfield {
+        flex: 1;
+      }
+      .failure {
+        color: var(--spectrum-negative-content-color-default);
+        font-size: var(--spectrum-font-size-75);
+        padding: 4px 0;
+      }
     `,
   ];
 
@@ -103,13 +127,62 @@ export class SliccSettings extends ModelElement {
     return (event.target as HTMLElement & { checked: boolean }).checked;
   }
 
-  async connect(id: string): Promise<void> {
+  async connect(id: string, secret?: string): Promise<void> {
     this.pending = new Set([...this.pending, id]);
+    this.failure = null;
     try {
-      await this.model?.settings.connect(id);
+      await this.model?.settings.connect(id, secret);
+      if (this.entering === id) this.entering = null;
+    } catch (error) {
+      this.failure = { id, message: (error as Error).message };
     } finally {
       this.pending = new Set([...this.pending].filter((candidate) => candidate !== id));
     }
+  }
+
+  #start(account: Account): void {
+    if (account.auth !== 'api-key') {
+      void this.connect(account.id);
+      return;
+    }
+    this.failure = null;
+    this.entering = account.id;
+    void this.updateComplete.then(() => this.focusOn('.key sp-textfield'));
+  }
+
+  #submit(event: Event, id: string): void {
+    event.preventDefault();
+    const field = (event.currentTarget as HTMLElement).querySelector(
+      'sp-textfield'
+    ) as HTMLElement & {
+      value: string;
+    };
+    const secret = field.value.trim();
+    field.value = '';
+    if (secret) void this.connect(id, secret);
+  }
+
+  #send(event: Event): void {
+    (event.currentTarget as HTMLElement).closest('form')?.requestSubmit();
+  }
+
+  #enter(event: KeyboardEvent): void {
+    if (event.key === 'Enter') this.#send(event);
+  }
+
+  #cancel(): void {
+    this.entering = null;
+    this.failure = null;
+  }
+
+  #key(account: Account): TemplateResult | typeof nothing {
+    if (this.entering !== account.id) return nothing;
+    const busy = this.pending.has(account.id);
+    return html`<form class="key" data-id=${account.id} @submit=${(event: Event) => this.#submit(event, account.id)}>
+        <sp-textfield size="m" type="password" autocomplete="off" label=${`${account.provider} API key`} placeholder="Paste the API key" @keydown=${(event: KeyboardEvent) => this.#enter(event)}></sp-textfield>
+        <sp-button size="s" variant="accent" ?pending=${busy} @click=${(event: Event) => this.#send(event)}>Save</sp-button>
+        <sp-button size="s" variant="secondary" treatment="outline" @click=${() => this.#cancel()}>Cancel</sp-button>
+      </form>`;
   }
 
   #account(account: Account): TemplateResult {
@@ -120,7 +193,7 @@ export class SliccSettings extends ModelElement {
         ? html`<sp-button size="s" variant="secondary" treatment="outline" @click=${() => this.model?.settings.disconnect(account.id)}
             >Disconnect</sp-button
           >`
-        : html`<sp-button size="s" variant="secondary" ?pending=${busy} @click=${() => this.connect(account.id)}
+        : html`<sp-button size="s" variant="secondary" ?pending=${busy} ?disabled=${this.entering === account.id} @click=${() => this.#start(account)}
             >${account.status === 'expired' ? 'Reconnect' : 'Connect'}</sp-button
           >`;
     return html`<div class="account" data-id=${account.id}>
@@ -128,7 +201,9 @@ export class SliccSettings extends ModelElement {
       <span class="identity">${account.identity || '—'}</span>
       <span class="state"><span class="dot" data-variant=${variant}></span>${label}</span>
       ${action}
-    </div>`;
+    </div>
+    ${this.#key(account)}
+    ${this.failure?.id === account.id ? html`<div class="failure" role="alert">${this.failure.message}</div>` : nothing}`;
   }
 
   render(): TemplateResult {
