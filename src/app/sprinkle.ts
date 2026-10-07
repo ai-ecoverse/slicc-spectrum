@@ -1,6 +1,7 @@
-import { css, html, type TemplateResult } from 'lit';
+import { css, html, svg, type TemplateResult } from 'lit';
 import type { SliccModel, Sprinkle } from '../model/types.ts';
 import { ThemedElement } from './base.ts';
+import { Dips, dipsOf, dipType } from './dips.ts';
 import { type FontFile, installedFonts } from './fonts.ts';
 import { icons } from './lucide.ts';
 import theme from './sprinkle-theme.css';
@@ -111,6 +112,8 @@ interface FrameMessage {
   height?: unknown;
 }
 
+const grip = svg`<svg class="grip" viewBox="0 0 8 14" width="8" height="14" aria-hidden="true">${[2, 7, 12].flatMap((y) => [2, 6].map((x) => svg`<circle cx=${x} cy=${y} r="1.25"></circle>`))}</svg>`;
+
 export class SliccSprinkle extends ThemedElement {
   static properties = {
     ...ThemedElement.properties,
@@ -145,6 +148,43 @@ export class SliccSprinkle extends ThemedElement {
       height: 100%;
       border: 0;
     }
+    .handle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: max-content;
+      max-width: 100%;
+      box-sizing: border-box;
+      height: 28px;
+      padding: 0 4px 0 6px;
+      border: 1px solid var(--spectrum-gray-200);
+      border-bottom: 0;
+      border-radius: 6px 6px 0 0;
+      background: var(--spectrum-background-layer-1-color);
+      color: var(--spectrum-neutral-subdued-content-color-default);
+      font-size: var(--spectrum-font-size-75);
+      cursor: grab;
+      user-select: none;
+    }
+    .handle:active {
+      cursor: grabbing;
+    }
+    .handle .grip {
+      fill: currentColor;
+    }
+    .handle .name {
+      color: var(--spectrum-neutral-content-color-default);
+    }
+    .moved {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px dashed var(--spectrum-gray-300);
+      border-radius: 8px;
+      color: var(--spectrum-neutral-subdued-content-color-default);
+      font-size: var(--spectrum-font-size-75);
+    }
     .note {
       padding: 24px;
       color: var(--spectrum-neutral-subdued-content-color-default);
@@ -172,13 +212,28 @@ export class SliccSprinkle extends ThemedElement {
     }
   };
 
+  #dips = new Dips();
+
   protected subscribe(model: SliccModel): Array<() => void> {
+    this.#dips = dipsOf(this) ?? this.#dips;
     globalThis.addEventListener('message', this.#message);
     return [
       ...super.subscribe(model),
       () => globalThis.removeEventListener('message', this.#message),
       model.sprinkles.on('sprinkles', () => this.requestUpdate()),
+      this.#dips.on('change', () => this.requestUpdate()),
     ];
+  }
+
+  #drag = (event: DragEvent) => {
+    const data = this.#data;
+    event.dataTransfer?.setData(dipType, this.sprinkle);
+    event.dataTransfer?.setData('text/plain', data?.title ?? this.sprinkle);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+  };
+
+  #send(type: string, id: string): void {
+    this.dispatchEvent(new CustomEvent(type, { detail: { id }, bubbles: true, composed: true }));
   }
 
   get #data(): Sprinkle | undefined {
@@ -188,7 +243,23 @@ export class SliccSprinkle extends ThemedElement {
   render(): TemplateResult {
     const data = this.#data;
     if (!data) return html`<div class="note">This sprinkle is gone.</div>`;
+    if (this.inline && this.#dips.has(data.id)) {
+      return html`<div class="moved">
+        <sp-icon-open-in size="s"></sp-icon-open-in>
+        <span>${data.title} is open as a panel.</span>
+        <sp-action-button size="s" quiet @click=${() => this.#send('show-surface', `sprinkle:${data.id}`)}>Show</sp-action-button>
+      </div>`;
+    }
     const style = `color-scheme:${this.color};${this.inline ? `height:${this.height}px;` : ''}`;
-    return html`<iframe title=${data.title} sandbox="allow-scripts" style=${style} .srcdoc=${frameDocument(data.html, this.color, data.name)}></iframe>`;
+    const frame = html`<iframe title=${data.title} sandbox="allow-scripts" style=${style} .srcdoc=${frameDocument(data.html, this.color, data.name)}></iframe>`;
+    if (!this.inline) return frame;
+    return html`<div class="handle" draggable="true" title="Drag into the dock or a rail to open as a panel" @dragstart=${this.#drag}>
+        ${grip}
+        <span class="name">${data.title}</span>
+        <sp-action-button size="xs" quiet label=${`Open ${data.title} as a panel`} title="Open as a panel" @click=${() => this.#send('detach-sprinkle', data.id)}>
+          <sp-icon-open-in slot="icon"></sp-icon-open-in>
+        </sp-action-button>
+      </div>
+      ${frame}`;
   }
 }

@@ -27,6 +27,7 @@ import '@spectrum-web-components/icons-workflow/icons/sp-icon-data.js';
 import '@spectrum-web-components/icons-workflow/icons/sp-icon-history.js';
 import '@spectrum-web-components/icons-workflow/icons/sp-icon-lightbulb.js';
 import '@spectrum-web-components/icons-workflow/icons/sp-icon-save-floppy.js';
+import '@spectrum-web-components/icons-workflow/icons/sp-icon-open-in.js';
 import '@spectrum-web-components/icons-workflow/icons/sp-icon-globe-grid.js';
 import '@spectrum-web-components/icons-workflow/icons/sp-icon-code.js';
 import '@spectrum-web-components/icons-workflow/icons/sp-icon-folder.js';

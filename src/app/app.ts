@@ -1,9 +1,10 @@
 import { css, html, nothing, type TemplateResult } from 'lit';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import type { PanelParams, SerializedDockview, SliccDock } from '../components/dock.ts';
-import type { SliccModel } from '../model/types.ts';
+import type { SliccModel, Sprinkle } from '../model/types.ts';
 import { ordered } from './agents.ts';
 import { dot, percent, shared, ThemedElement } from './base.ts';
+import { Dips, dipType } from './dips.ts';
 import { defaultFontBase, installFonts } from './fonts.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
 import {
@@ -14,10 +15,12 @@ import {
   type DocumentKind,
   defaultLayout,
   documents,
+  dropPlacement,
   openChat,
   openDocument,
   openSprinkle,
   openSurface,
+  type Placement,
   type ScreenClass,
   type Surface,
   screenClass,
@@ -43,6 +46,7 @@ export class SliccApp extends ThemedElement {
   declare surfaces: readonly Surface[];
   storage: Storage | null = globalThis.localStorage ?? null;
   layoutKey = 'slicc-ui.layout.v2';
+  readonly dips = new Dips();
   #fontBase: string | null = defaultFontBase;
   #resize: ResizeObserver | null = null;
   #started: ScreenClass | null = null;
@@ -86,6 +90,11 @@ export class SliccApp extends ThemedElement {
       padding: 6px 0;
       box-sizing: border-box;
       background: var(--spectrum-background-layer-1-color);
+    }
+    .rail.drop {
+      background: var(--spectrum-accent-background-color-default);
+      outline: 2px solid var(--spectrum-focus-indicator-color);
+      outline-offset: -2px;
     }
     .rail.left {
       grid-column: 1;
@@ -210,6 +219,7 @@ export class SliccApp extends ThemedElement {
       }),
       model.files.on('changes', update),
       model.sprinkles.on('sprinkles', update),
+      this.dips.on('change', update),
     ];
   }
 
@@ -273,6 +283,8 @@ export class SliccApp extends ThemedElement {
         : {}),
       sprinkle: (params) => create('slicc-sprinkle', model, params),
     };
+    dock.accepts = [dipType];
+    this.dips.load(this.storage);
     const saved = this.#saved();
     const restored = this.#offered(saved, dock.factories) && dock.restore(saved);
     if (!restored) defaultLayout(dock, this.screen, this.#active(), this.surfaces);
@@ -348,8 +360,44 @@ export class SliccApp extends ThemedElement {
     this.dock.focusPanel(id);
   }
 
+  #sprinkle(id: string): Sprinkle | undefined {
+    return this.model?.sprinkles.list().find((candidate) => candidate.id === id);
+  }
+
+  #detach(id: string, place: Placement | null, open: boolean): void {
+    const sprinkle = this.#sprinkle(id);
+    if (!sprinkle) return;
+    this.dips.detach(id);
+    if (open) openSprinkle(this.dock, sprinkle, this.screen, place);
+  }
+
+  #dropped(event: Event): void {
+    const { type, data, panel, position } = (
+      event as CustomEvent<{ type: string; data: string; panel: string | null; position: string }>
+    ).detail;
+    if (type === dipType) this.#detach(data, dropPlacement(panel, position), true);
+  }
+
+  #railOver(event: DragEvent): void {
+    if (!event.dataTransfer?.types.includes(dipType)) return;
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).classList.add('drop');
+  }
+
+  #railLeave(event: DragEvent): void {
+    (event.currentTarget as HTMLElement).classList.remove('drop');
+  }
+
+  #railDrop(event: DragEvent): void {
+    (event.currentTarget as HTMLElement).classList.remove('drop');
+    const id = event.dataTransfer?.getData(dipType);
+    if (!id) return;
+    event.preventDefault();
+    this.#detach(id, null, false);
+  }
+
   #rail(items: readonly Surface[], side: string): TemplateResult {
-    return html`<nav class=${`rail ${side}`} aria-label=${`Closed panels, ${side}`}>${items.map(
+    return html`<nav class=${`rail ${side}`} aria-label=${`Closed panels, ${side}`} @dragover=${this.#railOver} @dragleave=${this.#railLeave} @drop=${this.#railDrop}>${items.map(
       (item) =>
         staticHtml`<sp-action-button quiet size="m" label=${`Open ${item.title}`} title=${item.title} data-surface=${item.id} @click=${() => this.show(item.id)}>${railIcon(item.icon)}</sp-action-button>`
     )}</nav>`;
@@ -362,7 +410,7 @@ export class SliccApp extends ThemedElement {
   } {
     const dock = this.renderRoot.querySelector('slicc-dock') as SliccDock | null;
     const sprinkles = (this.model?.sprinkles.list() ?? [])
-      .filter((sprinkle) => !sprinkle.inline)
+      .filter((sprinkle) => !sprinkle.inline || this.dips.has(sprinkle.id))
       .map(sprinkleSurface)
       .filter((item) => !dock?.has(item.id));
     const shut = dock && this.#started ? [...sprinkles, ...closed(dock, this.surfaces)] : [];
@@ -498,6 +546,8 @@ export class SliccApp extends ThemedElement {
           ${rails.left}
           <slicc-dock empty-text="All panels are closed. Open one from a rail or View." @layout-change=${this.#save}
             @active-panel-change=${this.#activated}
+            @external-drop=${this.#dropped}
+            @detach-sprinkle=${(event: Event) => this.#detach((event as CustomEvent<{ id: string }>).detail.id, null, true)}
             @open-file=${(event: Event) => this.#request('file', event)}
             @open-diff=${(event: Event) => this.#request('diff', event)}
             @show-surface=${(event: Event) => this.show((event as CustomEvent<{ id: string }>).detail.id)}

@@ -1349,3 +1349,113 @@ test('thread tabs in dark', async (t) => {
   await shot(page, 'threads-dark');
   assert.deepEqual(page.errors, []);
 });
+
+test('a dip drags out of the chat into the dock and lives on as a panel', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    window.dip = () =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:cone-sliccy')
+        .shadowRoot.querySelector('slicc-sprinkle[inline]');
+    return true;
+  });
+  await page.until(() => !!window.dip()?.shadowRoot.querySelector('.handle[draggable=true]'));
+  assert.match(
+    await page.evaluate(() => window.dip().shadowRoot.querySelector('.handle').textContent),
+    /Welcome/
+  );
+  await shot(page, 'dip-handle-light');
+  await page.evaluate(() =>
+    window
+      .drag(
+        window.dip().shadowRoot.querySelector('.handle'),
+        window
+          .$('slicc-app', 'slicc-dock')
+          .api.getPanel('changes')
+          .group.element.querySelector('.dv-content-container'),
+        0.5,
+        0.5
+      )
+      .then(() => true)
+  );
+  await page.until(() => window.$('slicc-app', 'slicc-dock').has('sprinkle:welcome'));
+  assert.equal(
+    await page.evaluate(() => {
+      const dock = window.$('slicc-app', 'slicc-dock');
+      return dock.api.getPanel('sprinkle:welcome').group === dock.api.getPanel('changes').group;
+    }),
+    true
+  );
+  await page.until(() => !!window.dip()?.shadowRoot.querySelector('.moved'));
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('sprinkle:welcome')
+        ?.shadowRoot.querySelector('iframe')
+  );
+  await shot(page, 'dip-panel-light');
+
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-dock').close('sprinkle:welcome');
+    return true;
+  });
+  await page.until(() => !!window.$('slicc-app', '.rail.right [data-surface="sprinkle:welcome"]'));
+  await page.evaluate(() => {
+    window.dip().shadowRoot.querySelector('.moved sp-action-button').click();
+    return true;
+  });
+  await page.until(() => window.$('slicc-app', 'slicc-dock').has('sprinkle:welcome'));
+
+  await page.reload();
+  await page.until(() => window.ready === true);
+  await page.until(() => window.$('slicc-app', 'slicc-dock').has('sprinkle:welcome'));
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('slicc-ui.dips'))), [
+    'welcome',
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a dip dropped on a rail waits there, and its button opens it as a panel', async (t) => {
+  const page = await open(t, { color: 'dark' });
+  await page.evaluate(() => {
+    window.dip = () =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:cone-sliccy')
+        .shadowRoot.querySelector('slicc-sprinkle[inline]');
+    return true;
+  });
+  await page.until(() => !!window.dip()?.shadowRoot.querySelector('.handle'));
+  await shot(page, 'dip-handle-dark');
+  await page.evaluate(() =>
+    window
+      .drag(
+        window.dip().shadowRoot.querySelector('.handle'),
+        window.$('slicc-app', '.rail.right'),
+        0.5,
+        0.9
+      )
+      .then(() => true)
+  );
+  await page.until(() => !!window.$('slicc-app', '.rail.right [data-surface="sprinkle:welcome"]'));
+  assert.equal(
+    await page.evaluate(() => window.$('slicc-app', 'slicc-dock').has('sprinkle:welcome')),
+    false
+  );
+  await page.until(() => !!window.dip()?.shadowRoot.querySelector('.moved'));
+  await page.evaluate(() => {
+    window.$('slicc-app', '.rail.right [data-surface="sprinkle:welcome"]').click();
+    return true;
+  });
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('sprinkle:welcome')
+        ?.shadowRoot.querySelector('iframe')
+  );
+  await shot(page, 'dip-panel-dark');
+  assert.deepEqual(page.errors, []);
+});
