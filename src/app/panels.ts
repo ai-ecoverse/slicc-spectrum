@@ -288,7 +288,26 @@ export function sprinkleSurface(sprinkle: Sprinkle): Surface {
   };
 }
 
-export function openSprinkle(dock: SliccDock, sprinkle: Sprinkle, screen: ScreenClass): string {
+const directions: Record<string, Direction> = {
+  left: 'left',
+  right: 'right',
+  top: 'above',
+  bottom: 'below',
+  center: 'within',
+};
+
+export function dropPlacement(panel: string | null, position: string): Placement | null {
+  return panel
+    ? { position: { referencePanel: panel, direction: directions[position] ?? 'within' } }
+    : null;
+}
+
+export function openSprinkle(
+  dock: SliccDock,
+  sprinkle: Sprinkle,
+  screen: ScreenClass,
+  place: Placement | null = null
+): string {
   const id = `sprinkle:${sprinkle.id}`;
   if (!dock.has(id)) {
     dock.open({
@@ -296,7 +315,7 @@ export function openSprinkle(dock: SliccDock, sprinkle: Sprinkle, screen: Screen
       component: 'sprinkle',
       title: sprinkle.title,
       params: { sprinkle: sprinkle.id },
-      ...placement(dock, 'right', screen),
+      ...(place ?? placement(dock, 'right', screen)),
     });
   }
   dock.focusPanel(id);

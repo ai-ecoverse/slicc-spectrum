@@ -25,6 +25,7 @@ export const theme: DockviewTheme = {
 
 export class SliccDock extends HTMLElement {
   factories: Record<string, PanelFactory> = {};
+  accepts: string[] = [];
   #api: DockviewApi | null = null;
   #contents = new Map<string, HTMLElement>();
 
@@ -76,11 +77,30 @@ export class SliccDock extends HTMLElement {
     api.onDidActivePanelChange(({ panel }) =>
       this.#dispatch('active-panel-change', { id: panel?.id ?? null })
     );
+    api.onUnhandledDragOver((event) => {
+      if (this.#accepted(event.nativeEvent)) event.accept();
+    });
+    api.onDidDrop((event) => {
+      const type = this.#accepted(event.nativeEvent);
+      if (!type) return;
+      const transfer = (event.nativeEvent as DragEvent).dataTransfer as DataTransfer;
+      this.#dispatch('external-drop', {
+        type,
+        data: transfer.getData(type),
+        panel: event.group?.activePanel?.id ?? null,
+        position: event.position,
+      });
+    });
     api.onDidRemovePanel((panel) => {
       this.#contents.delete(panel.id);
       this.#dispatch('panel-close', { id: panel.id });
     });
     this.#api = api;
+  }
+
+  #accepted(native: Event): string | undefined {
+    const types = native instanceof DragEvent ? [...(native.dataTransfer?.types ?? [])] : [];
+    return this.accepts.find((type) => types.includes(type));
   }
 
   #create(id: string, name: string) {
