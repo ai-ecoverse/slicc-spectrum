@@ -119,6 +119,7 @@ const { metafile } = await build({
     'slicc-terminal': 'src/index.ts',
     'slicc-ui': 'src/ui.ts',
     'slicc-dummy': 'src/dummy.ts',
+    'slicc-kernel-model': 'src/kernel.ts',
   },
   outdir: 'dist',
   bundle: true,

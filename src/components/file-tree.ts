@@ -43,8 +43,19 @@ export class SliccFileTree extends HTMLElement {
   }
 
   set paths(value: readonly string[]) {
+    const expanded = this.#paths.length > 0 ? this.#expandedNow() : this.#expanded;
     this.#paths = value;
-    this.#tree?.resetPaths(value, { initialExpandedPaths: this.#expanded });
+    this.#tree?.resetPaths(value, { initialExpandedPaths: expanded });
+  }
+
+  #expandedNow(): string[] {
+    const tree = this.#tree;
+    return this.#paths
+      .filter((path) => {
+        const item = path.endsWith('/') ? tree?.getItem(path) : null;
+        return !!item && 'isExpanded' in item && item.isExpanded();
+      })
+      .map((path) => path.slice(0, -1));
   }
 
   get gitStatus(): readonly GitStatusEntry[] {
