@@ -3,6 +3,7 @@ import type { Change, FileEntry, FileEvents, FilePort } from '../model/types.ts'
 
 export interface KernelFilesOptions {
   skip?: readonly string[];
+  hide?: readonly string[];
   interval?: number;
 }
 
@@ -24,6 +25,7 @@ function same(a: FileEntry | undefined, b: FileEntry): boolean {
 export class KernelFiles extends Emitter<FileEvents> implements FilePort {
   #root: FileSystemDirectoryHandle;
   #skip: Set<string>;
+  #hide: Set<string>;
   #interval: number;
   #entries = new Map<string, FileEntry>();
   #scanned = false;
@@ -34,11 +36,12 @@ export class KernelFiles extends Emitter<FileEvents> implements FilePort {
 
   constructor(
     root: FileSystemDirectoryHandle,
-    { skip = [], interval = 2000 }: KernelFilesOptions = {}
+    { skip = [], hide = [], interval = 2000 }: KernelFilesOptions = {}
   ) {
     super();
     this.#root = root;
     this.#skip = new Set(skip);
+    this.#hide = new Set(hide);
     this.#interval = interval;
   }
 
@@ -82,6 +85,7 @@ export class KernelFiles extends Emitter<FileEvents> implements FilePort {
     ).values();
     for await (const handle of values) {
       const path = `${prefix}/${handle.name}`;
+      if (this.#hide.has(path)) continue;
       if (handle.kind === 'directory') {
         out.set(path, { path, kind: 'directory', size: 0, modified: 0 });
         if (!this.#skip.has(path)) await this.#walk(handle, path, out).catch(() => {});
