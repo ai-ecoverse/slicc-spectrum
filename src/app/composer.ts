@@ -26,6 +26,7 @@ export interface Choice {
   value: string;
   label: string;
   detail: string;
+  group?: string;
 }
 
 export interface Command {
@@ -112,14 +113,14 @@ export function readFile(file: Blob): Promise<string> {
   });
 }
 
-export function filter(items: Choice[], query: string): Choice[] {
+export function filter(items: Choice[], query: string, limit = 8): Choice[] {
   const needle = query.toLowerCase();
   return items
     .filter(
       (item) =>
         item.value.toLowerCase().includes(needle) || item.label.toLowerCase().includes(needle)
     )
-    .slice(0, 8);
+    .slice(0, limit);
 }
 
 export function trigger(
@@ -130,7 +131,7 @@ export function trigger(
   const argument = before.match(/^\/(\w+)\s+(\S*)$/);
   if (argument)
     return { kind: 'argument', start: before.length - argument[2].length, query: argument[2] };
-  const command = before.match(/^\/(\w*)$/);
+  const command = before.match(/^\/([\w:-]*)$/);
   if (command) return { kind: 'command', start: 0, query: command[1] };
   const mention = before.match(/(^|\s)@([\w./-]*)$/);
   if (mention)
@@ -306,6 +307,12 @@ export class SliccComposer extends ModelElement {
       .item .label {
         font-family: var(--swc-code-font-family-stack);
       }
+      .heading {
+        padding: var(--swc-spacing-100) var(--swc-spacing-100) var(--swc-spacing-50);
+        font-size: var(--swc-font-size-75);
+        font-weight: var(--swc-bold-font-weight);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
       .item .detail,
       .empty,
       .secret .lead {
@@ -363,6 +370,13 @@ export class SliccComposer extends ModelElement {
 
   protected firstUpdated(): void {
     this.#wire();
+  }
+
+  protected updated(changed: Map<string, unknown>): void {
+    if (changed.has('popup'))
+      this.renderRoot
+        .querySelector('.item[aria-selected="true"]')
+        ?.scrollIntoView({ block: 'nearest' });
   }
 
   #wire(): void {
@@ -547,14 +561,22 @@ export class SliccComposer extends ModelElement {
   #choices(kind: PopupKind, query: string): Choice[] {
     const model = this.model as SliccModel;
     if (kind === 'command') {
-      return filter(
-        commands.map((command) => ({
+      const builtins = commands.map((command) => ({
+        value: command.name,
+        label: `/${command.name}`,
+        detail: command.detail,
+      }));
+      const own = model.agent
+        .commands(this.#agent)
+        .filter((command) => !commands.some((builtin) => builtin.name === command.name))
+        .map((command) => ({
           value: command.name,
           label: `/${command.name}`,
-          detail: command.detail,
-        })),
-        query
-      );
+          detail: command.description,
+          group: command.kind === 'skill' ? 'Skills' : 'Prompts',
+        }))
+        .sort((a, b) => (a.group === b.group ? 0 : a.group === 'Prompts' ? -1 : 1));
+      return filter([...builtins, ...own], query, Number.POSITIVE_INFINITY);
     }
     if (kind === 'argument') {
       const name = this.value.match(/^\/(\w+)/)?.[1];
@@ -580,9 +602,12 @@ export class SliccComposer extends ModelElement {
     if (!area) return;
     if (this.popup?.kind === 'file' || this.popup?.kind === 'secret') return;
     const found = trigger(this.value, area.selectionStart ?? this.value.length);
-    this.popup = found
-      ? { ...found, items: this.#choices(found.kind, found.query), index: 0 }
-      : null;
+    const name = this.value.match(/^\/(\w+)/)?.[1];
+    const takes = commands.some((command) => command.name === name && command.args);
+    this.popup =
+      found && (found.kind !== 'argument' || takes)
+        ? { ...found, items: this.#choices(found.kind, found.query), index: 0 }
+        : null;
   }
 
   openPopup(kind: 'file' | 'secret'): void {
@@ -801,22 +826,34 @@ export class SliccComposer extends ModelElement {
       mention: 'Mention',
       file: 'Attach a file from SLICC',
     }[popup.kind];
+    const option = (item: Choice, index: number) => html`<div
+      class="item"
+      role="option"
+      aria-selected=${index === popup.index ? 'true' : 'false'}
+      data-value=${item.value}
+      @mousedown=${(event: Event) => {
+        event.preventDefault();
+        this.pick(item);
+      }}
+    >
+      <span class="label">${item.label}</span><span class="detail">${item.detail}</span>
+    </div>`;
+    const sections: { group?: string; entries: [Choice, number][] }[] = [];
+    popup.items.forEach((item, index) => {
+      const last = sections.at(-1);
+      if (last && last.group === item.group) last.entries.push([item, index]);
+      else sections.push({ group: item.group, entries: [[item, index]] });
+    });
     return html`<div class="popup" role="listbox" aria-label=${title} data-kind=${popup.kind}>
       ${
         popup.items.length
-          ? popup.items.map(
-              (item, index) => html`<div
-                class="item"
-                role="option"
-                aria-selected=${index === popup.index ? 'true' : 'false'}
-                data-value=${item.value}
-                @mousedown=${(event: Event) => {
-                  event.preventDefault();
-                  this.pick(item);
-                }}
-              >
-                <span class="label">${item.label}</span><span class="detail">${item.detail}</span>
-              </div>`
+          ? sections.map(({ group, entries }) =>
+              group
+                ? html`<div class="section" role="group" aria-label=${group} data-group=${group}>
+                    <div class="heading" aria-hidden="true">${group}</div>
+                    ${entries.map(([item, index]) => option(item, index))}
+                  </div>`
+                : entries.map(([item, index]) => option(item, index))
             )
           : html`<div class="empty">Nothing matches.</div>`
       }

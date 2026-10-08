@@ -261,6 +261,7 @@ export interface AgentPort extends Subscribable<AgentEvents> {
 export interface SlashCommand {
   name: string;
   description: string;
+  kind?: 'prompt' | 'skill';
 }
 
 export interface FrozenCone {

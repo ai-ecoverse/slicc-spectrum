@@ -1762,6 +1762,75 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
   assert.deepEqual(page.errors, []);
 });
 
+test('the slash popup offers the agent’s prompts and skills and sends them as messages', async (t) => {
+  const page = await open(t, { delay: '0' });
+  await page.press('2', 'alt');
+  await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
+  await page.insert('/');
+  await page.until(
+    () =>
+      !!window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'slicc-composer',
+        '.popup .section[data-group=Skills]'
+      )
+  );
+  const listed = await page.evaluate(() => {
+    const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.popup');
+    return {
+      values: [...root.querySelectorAll('.item')].map((item) => item.dataset.value),
+      groups: [...root.querySelectorAll('.section')].map((section) =>
+        section.getAttribute('aria-label')
+      ),
+      heading: getComputedStyle(root.querySelector('.heading')).textTransform,
+    };
+  });
+  assert.deepEqual(listed.values.slice(-2), ['review', 'skill:pdf']);
+  assert.equal(listed.values[0], 'clear');
+  assert.deepEqual(listed.groups, ['Prompts', 'Skills']);
+  assert.equal(listed.heading, 'none');
+  await shot(page, 'composer-agent-commands');
+
+  await page.press('ArrowUp');
+  await page.until(() => {
+    const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.popup');
+    const item = root.querySelector('.item[aria-selected=true]');
+    const box = root.getBoundingClientRect();
+    const rect = item.getBoundingClientRect();
+    return item.dataset.value === 'skill:pdf' && rect.top >= box.top && rect.bottom <= box.bottom;
+  });
+  await shot(page, 'composer-agent-skills');
+  await page.press('Enter');
+  await page.until(
+    () =>
+      window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'slicc-composer',
+        'swc-prompt-field',
+        'textarea'
+      ).value === '/skill:pdf '
+  );
+  assert.equal(
+    await page.evaluate(
+      () => !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.popup')
+    ),
+    true
+  );
+  await page.insert('merge the tide charts');
+  await page.press('Enter');
+  await page.until(() =>
+    window.model.agent
+      .messages('cone-sliccy')
+      .some(
+        (message) => message.role === 'user' && message.text === '/skill:pdf merge the tide charts'
+      )
+  );
+});
+
 test('the prompt field gets its registered properties, new lines, the add menu and queue actions', async (t) => {
   const page = await open(t, { delay: '40' });
   await page.press('2', 'alt');
