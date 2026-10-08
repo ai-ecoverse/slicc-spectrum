@@ -192,7 +192,7 @@ export class SliccMemory extends ModelElement {
   }
 
   async #forget(memory: Memory): Promise<void> {
-    const body = "Agents won't remember this anymore. You can't undo this.";
+    const body = 'Agents won’t remember this anymore. You can’t undo this.';
     if (await confirm({ title: `Forget “${memory.title}”?`, body, action: 'Forget' }))
       this.model?.memory.remove(memory.id);
   }

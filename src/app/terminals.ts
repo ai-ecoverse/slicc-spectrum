@@ -161,7 +161,7 @@ export class SliccTerminals extends ThemedElement {
   }
 
   async #ask(info: TerminalInfo): Promise<void> {
-    const body = "The shell and anything running in it stop. You can't undo this.";
+    const body = 'The shell and anything running in it stop. You can’t undo this.';
     if (await confirm({ title: `Close ${info.title}?`, body, action: 'Close' }))
       this.close(info.id);
   }

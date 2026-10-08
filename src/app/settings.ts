@@ -245,8 +245,9 @@ export class SliccSettings extends ModelElement {
   }
 
   async #disconnect(account: Account): Promise<void> {
-    const body = `Agents can't use ${account.provider} until you connect it again.`;
-    if (await confirm({ title: `Disconnect ${account.provider}?`, body, action: 'Disconnect' }))
+    const body = `Agents can’t use ${account.provider} until you connect it again.`;
+    const title = `Disconnect ${account.provider}?`;
+    if (await confirm({ title, body, action: 'Disconnect', variant: 'confirmation' }))
       this.model?.settings.disconnect(account.id);
   }
 

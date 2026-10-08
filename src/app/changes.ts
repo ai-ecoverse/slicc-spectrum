@@ -11,7 +11,7 @@ function folder(path: string): string {
 const confirmRevert = (path: string): Promise<boolean> =>
   confirm({
     title: `Revert ${basename(path)}?`,
-    body: `This discards the agent's edits to ${path}. You can't undo this.`,
+    body: `This discards the agent’s edits to ${path}. You can’t undo this.`,
     action: 'Revert',
   });
 
@@ -91,7 +91,7 @@ export class SliccChanges extends ModelElement {
     const changes = files?.changes() ?? [];
     const count = changes.length;
     const title = `Revert ${count} ${count === 1 ? 'change' : 'changes'}?`;
-    const body = "This discards the agents' edits and puts every file back. You can't undo this.";
+    const body = 'This discards the agents’ edits and puts every file back. You can’t undo this.';
     if (action === 'revert' && !(await confirm({ title, body, action: 'Revert all' }))) return;
     for (const change of changes) {
       if (action === 'accept') files?.accept(change.path);

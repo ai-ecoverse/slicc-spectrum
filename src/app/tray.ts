@@ -130,7 +130,8 @@ export class SliccTray extends ModelElement {
 
   async #disconnect(name: string): Promise<void> {
     const body = 'This SLICC stops syncing with the tray until you reconnect.';
-    if (await confirm({ title: `Disconnect from ${name}?`, body, action: 'Disconnect' }))
+    const title = `Disconnect from ${name}?`;
+    if (await confirm({ title, body, action: 'Disconnect', variant: 'confirmation' }))
       this.model?.tray.disconnect();
   }
 

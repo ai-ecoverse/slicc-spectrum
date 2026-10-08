@@ -74,7 +74,7 @@ test('Revert all asks first: cancel keeps the changes, confirm reverts them', as
     role: 'alertdialog',
     modal: true,
     title: 'Revert 4 changes?',
-    body: "This discards the agents' edits and puts every file back. You can't undo this.",
+    body: 'This discards the agents’ edits and puts every file back. You can’t undo this.',
     variant: 'destructive',
     buttons: [
       ['Cancel', 'secondary'],
@@ -235,12 +235,14 @@ test('every destructive action asks first and acts only on confirm', async (t) =
     window.model.settings.accounts().find((a) => a.status === 'connected')
   );
   const disconnect = (id) =>
-    [...window.settingsPart(`.account[data-id="${id}"]`).querySelectorAll('sp-button')]
+    [...window.settingsPart(`.account[data-id="${id}"]`).querySelectorAll('swc-button')]
       .find((button) => button.textContent.trim() === 'Disconnect')
       .click();
   await page.evaluate(disconnect, account.id);
   await page.until(dialog);
   assert.equal((await page.evaluate(dialog)).title, `Disconnect ${account.provider}?`);
+  assert.equal((await page.evaluate(dialog)).variant, 'confirmation');
+  assert.deepEqual((await page.evaluate(dialog)).buttons[1], ['Disconnect', 'accent']);
   await page.evaluate(answer, false);
   await page.until(closed);
   await page.evaluate(disconnect, account.id);
@@ -260,6 +262,7 @@ test('every destructive action asks first and acts only on confirm', async (t) =
   await page.evaluate(leave);
   await page.until(dialog);
   assert.match((await page.evaluate(dialog)).title, /^Disconnect from .+\?$/);
+  assert.equal((await page.evaluate(dialog)).variant, 'confirmation');
   await page.evaluate(answer, false);
   await page.until(closed);
   assert.notEqual(await page.evaluate(() => window.model.tray.status().connection), 'offline');

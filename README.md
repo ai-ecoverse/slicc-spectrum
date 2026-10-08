@@ -160,12 +160,12 @@ Keys: <kbd>Alt</kbd>+<kbd>1</kbd>… opens and focuses a panel, <kbd>F6</kbd> an
 
 ### Confirmations
 
-Destructive actions ask first: reverting one change or all, deleting a frozen cone, forgetting a memory, disconnecting an account or the tray, and closing a terminal. `confirm({ title, body, action, variant, trigger })`, exported from `dist/slicc-ui.js`, opens a modal alert dialog (1.12 `sp-alert-dialog`, as Gen2 has no dialog yet) inside `<slicc-app>`'s themed shadow root and resolves `true` on the action and `false` on Cancel or <kbd>Esc</kbd>. Focus starts on Cancel and goes back to `trigger` (default: the focused element) when it closes. `variant` is `destructive` (default, a negative action button) or `confirmation` (accent). Title the dialog with a question, say what can't be undone in `body`, and name the action with a verb.
+Destructive actions ask first: reverting one change or all, deleting a frozen cone, forgetting a memory, disconnecting an account or the tray, and closing a terminal. `confirm({ title, body, action, variant, trigger })`, exported from `dist/slicc-ui.js`, opens a modal alert dialog (1.12 `sp-alert-dialog`, as Gen2 has no dialog yet) inside `<slicc-app>`'s themed shadow root and resolves `true` on the action and `false` on Cancel or <kbd>Esc</kbd>. Focus starts on Cancel and goes back to `trigger` (default: the focused element) when it closes. `variant` is `destructive` (default, a negative action button) for actions that lose data for good, or `confirmation` (accent) for ones you can take back, like disconnecting. Title the dialog with a question, say what can’t be undone in `body`, and name the action with a verb.
 
 ```js
 import { confirm } from './dist/slicc-ui.js';
 
-if (await confirm({ title: 'Delete harbor?', body: "Its scoops and messages are deleted. You can't undo this.", action: 'Delete' })) remove();
+if (await confirm({ title: 'Delete harbor?', body: 'Its scoops and messages are deleted. You can’t undo this.', action: 'Delete' })) remove();
 ```
 
 ### Model
