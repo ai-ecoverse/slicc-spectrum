@@ -855,7 +855,7 @@ test('files, changes and diffs in dark', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
-test('terminals run the fake shell, and open and close in tabs', async (t) => {
+test('terminals run the fake shell, each in its own panel', async (t) => {
   const page = await open(t);
   await page.evaluate(() => window.$('slicc-app', '.rail.right [data-surface=terminal]').click());
   await page.until(() => window.screen().includes('user@slicc:/workspace/harbor$'));
@@ -871,78 +871,236 @@ test('terminals run the fake shell, and open and close in tabs', async (t) => {
   );
   await shot(page, 'terminal-light');
 
-  await page.evaluate(() =>
+  const terminals = () =>
     window
-      .$('slicc-app', 'slicc-dock', 'slicc-terminals', 'sp-action-button[label="New terminal"]')
-      .click()
+      .dock()
+      .api.panels.filter((panel) => panel.id.startsWith('terminal:'))
+      .map((panel) => `${panel.id}:${panel.title}`);
+  assert.deepEqual(await page.evaluate(terminals), ['terminal:term-1:bash · harbor']);
+  assert.match(
+    await page.evaluate(() =>
+      window.terminal().shadowRoot.querySelector('.bar').textContent.replace(/\s+/g, ' ')
+    ),
+    /\/workspace\/harbor New terminal/
+  );
+
+  await page.evaluate(() =>
+    window.terminal().shadowRoot.querySelector('swc-action-button').click()
   );
   await page.until(() => window.model.terminals.list().length === 2);
+  await page.until(() => window.dock().has('terminal:term-2'));
+  await page.until(() => window.dock().api.activePanel?.id === 'terminal:term-2');
   await page.until(
     () =>
       window.screen().includes('$') && !window.screen().replace(/\n/g, '').includes('git status')
   );
   await page.until(() => /slicc-terminal/.test(window.focused()));
+  await page.type('cd src');
+  await page.press('Enter');
+  await page.until(() => window.screen().includes('/workspace/harbor/src$'));
+  await page.evaluate(() =>
+    window
+      .dock()
+      .api.getPanel('terminal:term-2')
+      .api.moveTo({
+        group: window.dock().api.getPanel('chat:cone-sliccy').api.group,
+        position: 'bottom',
+      })
+  );
+  await page.until(
+    () =>
+      window.dock().api.getPanel('terminal:term-2').api.group !==
+      window.dock().api.getPanel('terminal:term-1').api.group
+  );
+  await page.until(() => window.screen().includes('/workspace/harbor/src$'));
+  await page.evaluate(() => window.terminal().focus());
+  await page.type('pwd');
+  await page.press('Enter');
+  await page.until(() => window.screen().split('\n').includes('/workspace/harbor/src'));
+  await shot(page, 'terminal-panels-light');
+
   await page.type('exit');
   await page.press('Enter');
   await page.until(() => window.model.terminals.list().length === 1);
+  await page.until(() => !window.dock().has('terminal:term-2'));
   await page.until(() => window.screen().replace(/\n/g, '').includes('git status'));
+
+  await page.evaluate(() => {
+    const tab = [...window.dock().shadowRoot.querySelectorAll('.dv-tab')].find(
+      (el) => el.textContent.trim() === 'bash · harbor'
+    );
+    tab
+      .querySelector('.slicc-tab-close')
+      .dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    tab.querySelector('.slicc-tab-close').click();
+  });
+  await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
+  await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
+  await page.until(() => window.model.terminals.list().length === 0);
+  await page.until(() => !!window.$('slicc-app', '.rail.right [data-surface=terminal]'));
+  await page.evaluate(() => window.$('slicc-app', 'sp-action-menu').click());
+  await page.until(() => window.$('slicc-app', 'sp-action-menu').open === true);
+  await page.until(() => {
+    const created = window.model.terminals.list().length === 1;
+    if (!created && !(Date.now() - (window.clicked ?? 0) < 1000)) {
+      window.clicked = Date.now();
+      window.$('slicc-app', 'sp-action-menu sp-menu-item[value=new-terminal]')?.click();
+    }
+    return created;
+  });
+  await page.until(() => window.dock().has('terminal:term-3'));
+
+  await page.evaluate(() =>
+    window.model.terminals.open({ cwd: '/workspace/docs', agentId: 'cone-harbor' })
+  );
+  await page.until(() => window.dock().has('terminal:term-4'));
+  assert.equal(await page.evaluate(() => window.dock().api.activePanel?.id), 'terminal:term-3');
+  assert.equal(
+    await page.evaluate(() => window.dock().api.getPanel('terminal:term-4').title),
+    'bash 4 · docs'
+  );
+  await page.evaluate(() => window.dock().focusPanel('terminal:term-4'));
+  await page.until(() =>
+    /Driven by harbor/.test(window.dock().content('terminal:term-4')?.shadowRoot.textContent)
+  );
   assert.deepEqual(page.errors, []);
 });
 
-test('the browser shows tabs, navigates, and follows agents', async (t) => {
+test('the browser lists its windows with thumbnails, and follows agents', async (t) => {
   const page = await open(t);
   await page.evaluate(() => window.$('slicc-app', '.rail.right [data-surface=browser]').click());
-  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.tab'));
-  const tabs = () =>
-    [
-      ...window.$('slicc-app', 'slicc-dock', 'slicc-browser').shadowRoot.querySelectorAll('.tab'),
-    ].map((tab) => `${tab.dataset.id}:${tab.getAttribute('aria-selected')}`);
-  assert.deepEqual(await page.evaluate(tabs), [
-    'tab-preview:true',
-    'tab-docs:false',
-    'tab-pull:false',
+  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.window'));
+  const windows = () =>
+    [...window.$('slicc-app', 'slicc-dock', 'slicc-browser').shadowRoot.querySelectorAll('li')].map(
+      (item) =>
+        `${item.dataset.id}:${item.querySelector('.window').getAttribute('aria-current')}:${item.querySelector('.host').textContent}`
+    );
+  assert.deepEqual(await page.evaluate(windows), [
+    'tab-preview:true:localhost:8787',
+    'tab-docs:false:api.example.com',
+    'tab-pull:false:git.example.com',
   ]);
-  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.viewport img'));
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-browser').shadowRoot.querySelectorAll('.thumb img')
+        .length === 3
+  );
+  const first = await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-browser', 'li[data-id=tab-preview]')
+      .textContent.replace(/\s+/g, ' ')
+      .trim()
+  );
+  assert.match(first, /harbor · localhost localhost:8787 Loaded Active Driven by harbor/);
+  assert.equal(
+    await page.evaluate(() =>
+      window
+        .$('slicc-app', 'slicc-dock', 'slicc-browser', 'li[data-id=tab-docs] swc-close-button')
+        .getAttribute('accessible-label')
+    ),
+    'Close Forecast API reference'
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        getComputedStyle(
+          window.$('slicc-app', 'slicc-dock', 'slicc-browser', 'ul')
+        ).gridTemplateColumns.split(' ').length
+    ),
+    1
+  );
   await shot(page, 'browser-light');
 
   await page.evaluate(() =>
-    window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.tab[data-id=tab-docs]').click()
+    window.$('slicc-app', 'slicc-dock', 'slicc-browser', 'li[data-id=tab-docs] .window').focus()
   );
-  await page.until(() => window.model.browser.active() === 'tab-docs');
-  await page.press('6', 'alt');
-  await page.until(() => /slicc-browser > sp-textfield/.test(window.focused()));
-  await page.evaluate(() => {
-    const field = window.$('slicc-app', 'slicc-dock', 'slicc-browser', 'sp-textfield');
-    field.value = '';
-    field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-  });
-  await page.insert('example.com/status');
   await page.press('Enter');
+  await page.until(() => window.model.browser.active() === 'tab-docs');
   await page.until(
     () =>
-      window.model.browser.list().find((tab) => tab.id === 'tab-docs').url ===
-      'https://example.com/status'
+      window
+        .$('slicc-app', 'slicc-dock', 'slicc-browser', 'li[data-id=tab-docs] .window')
+        .getAttribute('aria-current') === 'true'
   );
-  await page.until(
-    () => window.model.browser.list().find((tab) => tab.id === 'tab-docs').status === 'complete'
+  await page.evaluate(() =>
+    window.$('slicc-app', 'slicc-dock', 'slicc-browser', 'li[data-id=tab-pull] .window').click()
+  );
+  await page.until(() => window.model.browser.active() === 'tab-pull');
+
+  await page.press('6', 'alt');
+  await page.until(() => /slicc-browser > button$/.test(window.focused()));
+  assert.equal(
+    await page.evaluate(() =>
+      window
+        .$('slicc-app', 'slicc-dock', 'slicc-browser', '.window[aria-current=true]')
+        .closest('li')
+        .getAttribute('data-id')
+    ),
+    'tab-pull'
+  );
+  assert.doesNotMatch(await page.evaluate(() => window.focused()), /sp-textfield/);
+  await page.evaluate(() =>
+    window.$('slicc-app', 'slicc-dock', 'slicc-browser', 'sp-textfield').focus()
+  );
+  await page.until(() => /slicc-browser > sp-textfield/.test(window.focused()));
+  await page.insert('example.com/status');
+  await page.press('Enter');
+  await page.until(() =>
+    window.model.browser.list().some((tab) => tab.url === 'https://example.com/status')
   );
   await page.until(() =>
+    window.model.browser
+      .list()
+      .some((tab) => tab.url === 'https://example.com/status' && tab.status === 'complete')
+  );
+  await page.until(() =>
+    [
+      ...window.$('slicc-app', 'slicc-dock', 'slicc-browser').shadowRoot.querySelectorAll('li'),
+    ].some(
+      (item) =>
+        item.textContent.includes('example.com') &&
+        item.textContent.includes('Loaded') &&
+        !!item.querySelector('.thumb img')
+    )
+  );
+  assert.equal(
+    await page.evaluate(
+      () => window.$('slicc-app', 'slicc-dock', 'slicc-browser', 'sp-textfield').value
+    ),
+    ''
+  );
+
+  await page.evaluate(() =>
     window
-      .$('slicc-app', 'slicc-dock', 'slicc-browser', '.viewport img')
-      ?.alt.includes('example.com/status')
+      .$('slicc-app', 'slicc-dock', 'slicc-browser', 'li[data-id=tab-pull] swc-close-button')
+      .click()
+  );
+  await page.until(() => !window.model.browser.list().some((tab) => tab.id === 'tab-pull'));
+  await page.until(
+    () => !window.$('slicc-app', 'slicc-dock', 'slicc-browser', 'li[data-id=tab-pull]')
   );
 
   await page.evaluate(() => window.model.agent.send('cone-harbor', 'Open the units docs'));
   await page.until(() => window.model.browser.list().length === 4);
   await page.until(
-    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.tab[aria-selected=true] .agent')
+    () =>
+      [
+        ...window
+          .$('slicc-app', 'slicc-dock', 'slicc-browser')
+          .shadowRoot.querySelectorAll('.driver'),
+      ].length === 2
   );
-  assert.match(
-    await page.evaluate(
-      () => window.$('slicc-app', 'slicc-dock', 'slicc-browser', 'form').textContent
-    ),
-    /Driven by harbor/
+
+  await page.evaluate(() =>
+    window.$('slicc-app', 'slicc-dock').api.getPanel('browser').api.maximize()
   );
+  await page.until(
+    () =>
+      getComputedStyle(
+        window.$('slicc-app', 'slicc-dock', 'slicc-browser', 'ul')
+      ).gridTemplateColumns.split(' ').length > 1
+  );
+  await shot(page, 'browser-grid-light');
   assert.deepEqual(page.errors, []);
 });
 
@@ -1065,7 +1223,7 @@ test('settings change the theme and the composer, and connect accounts', async (
 test('terminal and browser in dark', async (t) => {
   const page = await open(t, { color: 'dark' });
   await page.evaluate(() => window.app.show('browser'));
-  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.viewport img'));
+  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.thumb img'));
   await shot(page, 'browser-dark');
   await page.press('5', 'alt');
   await page.until(() => /slicc-terminal/.test(window.focused()));

@@ -13,7 +13,7 @@ import { SliccMemory } from './app/memory.ts';
 import { SliccMonitor } from './app/monitor.ts';
 import { SliccSettings } from './app/settings.ts';
 import { SliccSprinkle } from './app/sprinkle.ts';
-import { SliccTerminals } from './app/terminals.ts';
+import { SliccTerminalPanel } from './app/terminals.ts';
 import { SliccTray } from './app/tray.ts';
 import { SliccUpdates } from './app/updates.ts';
 import { defineCodeViews, SliccCodeView, SliccDiffView } from './components/code-view.ts';
@@ -61,7 +61,7 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-file-view': SliccFileView,
   'slicc-changes': SliccChanges,
   'slicc-diff-panel': SliccDiffPanel,
-  'slicc-terminals': SliccTerminals,
+  'slicc-terminal-panel': SliccTerminalPanel,
   'slicc-browser': SliccBrowser,
   'slicc-settings': SliccSettings,
   'slicc-memory': SliccMemory,

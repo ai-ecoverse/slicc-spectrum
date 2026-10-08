@@ -274,17 +274,34 @@ test('every destructive action asks first and acts only on confirm', async (t) =
   await page.evaluate(() => window.app.show('terminal'));
   await page.until(() => window.model.terminals.list().length > 0);
   const terminals = await page.evaluate(() => window.model.terminals.list().length);
-  const close = () => window.$('slicc-app', 'slicc-dock', 'slicc-terminals', '.tab .close').click();
-  await page.evaluate(close);
+  const first = () => `terminal:${window.model.terminals.list()[0].id}`;
+  const has = (id) => !!window.$('slicc-app', 'slicc-dock').api.getPanel(id);
+  const panel = await page.evaluate(first);
+  const close = (id) =>
+    window
+      .$('slicc-app', 'slicc-dock')
+      .api.getPanel(id)
+      .view.tab.element.querySelector('.slicc-tab-close')
+      .click();
+  await page.evaluate(close, panel);
   await page.until(dialog);
   assert.match((await page.evaluate(dialog)).title, /^Close .+\?$/);
+  assert.equal(await page.evaluate(has, panel), true);
   await page.evaluate(answer, false);
   await page.until(closed);
   assert.equal(await page.evaluate(() => window.model.terminals.list().length), terminals);
-  await page.evaluate(close);
+  assert.equal(await page.evaluate(has, panel), true);
+  await page.evaluate((id) => window.$('slicc-app', 'slicc-dock').close(id), panel);
+  await page.until(dialog);
+  await page.evaluate(answer, false);
+  await page.until(closed);
+  await page.until((id) => !!window.$('slicc-app', 'slicc-dock').api.getPanel(id), panel);
+  assert.equal(await page.evaluate(() => window.model.terminals.list().length), terminals);
+  await page.evaluate(close, panel);
   await page.until(dialog);
   await page.evaluate(answer, true);
   await page.until((count) => window.model.terminals.list().length === count - 1, terminals);
+  assert.equal(await page.evaluate(has, panel), false);
   assert.deepEqual(page.errors, []);
 });
 

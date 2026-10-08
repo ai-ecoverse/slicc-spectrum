@@ -14,7 +14,7 @@ async function boot(page) {
 }
 
 async function run(page, command, expected) {
-  await page.evaluate(() => window.$('slicc-app', 'slicc-dock', 'slicc-terminals').focus());
+  await page.evaluate(() => window.terminal().focus());
   await page.type(command);
   await page.press('Enter');
   await page.until((text) => window.screen().includes(text), expected);
@@ -27,7 +27,7 @@ test('terminals and files run on slicc-kernel and OPFS, and keep across a reload
   const panels = await page.evaluate(() =>
     window.$('slicc-app', 'slicc-dock').api.panels.map((panel) => panel.id)
   );
-  assert.deepEqual(panels.sort(), ['files', 'terminal']);
+  assert.deepEqual(panels.sort(), ['files', 'terminal:term-1']);
   assert.equal(await page.evaluate(() => window.$('slicc-app', 'sp-picker')), null);
   assert.equal(await page.evaluate(() => window.$('slicc-app', 'slicc-tray')), null);
   assert.equal(
@@ -76,21 +76,77 @@ test('terminals and files run on slicc-kernel and OPFS, and keep across a reload
   await page.screenshot(new URL('kernel-ui.png', page.dir));
 
   await page.evaluate(() =>
-    window
-      .$('slicc-app', 'slicc-dock', 'slicc-terminals')
-      .shadowRoot.querySelector('[label="New terminal"]')
-      .click()
+    window.terminal().shadowRoot.querySelector('swc-action-button').click()
   );
-  await page.until(
-    () =>
-      window.$('slicc-app', 'slicc-dock', 'slicc-terminals').shadowRoot.querySelectorAll('.tab')
-        .length === 2
-  );
+  await page.until(() => window.$('slicc-app', 'slicc-dock').has('terminal:term-2'));
+  await page.until(() => window.terminal() === window.content('terminal:term-2'));
   await page.until(() => window.screen().includes('slicc:~$'));
   await run(page, 'echo "second $((1 + 1))"', 'second 2');
 
   await boot(page);
   await page.until(() => window.code('file:/home/notes.txt').includes('from bash'));
+  assert.deepEqual(
+    await page.evaluate(() =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .api.panels.map((panel) => panel.id)
+        .sort()
+    ),
+    ['file:/home/notes.txt', 'files', 'terminal:term-1']
+  );
   await run(page, 'cat notes.txt', 'edited in a tab');
+  assert.deepEqual(page.errors, []);
+});
+
+test('moving or floating a terminal panel keeps its bash session', async (t) => {
+  const page = await chrome.page(t);
+  await boot(page);
+  await run(page, 'mkdir -p /tmp; cd /tmp; X=1; echo "set $((40 + 2))"', 'set 42');
+  const lines = () => window.screen().split('\n');
+
+  await page.evaluate(() => {
+    const dock = window.$('slicc-app', 'slicc-dock');
+    const panel = dock.api.getPanel('terminal:term-1');
+    const files = dock.api.getPanel('files');
+    panel.api.moveTo({ group: files.api.group, position: 'bottom' });
+  });
+  await page.until(() => {
+    const dock = window.$('slicc-app', 'slicc-dock');
+    return dock.api.getPanel('terminal:term-1').api.group !== dock.api.getPanel('files').api.group;
+  });
+  await page.until(() => window.screen().includes('set 42'));
+  await run(page, 'pwd', 'slicc:/tmp$ pwd');
+  await page.until(() => window.screen().split('\n').includes('/tmp'));
+  await run(page, 'echo "x=$X"', 'x=1');
+
+  await page.evaluate(() => {
+    const dock = window.$('slicc-app', 'slicc-dock');
+    dock.api.addFloatingGroup(dock.api.getPanel('terminal:term-1'), {
+      x: 80,
+      y: 80,
+      width: 720,
+      height: 360,
+    });
+  });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock').api.getPanel('terminal:term-1').api.location.type ===
+      'floating'
+  );
+  await page.evaluate(() => window.terminal().focus());
+  await page.type('echo "still $X in $(pwd)"');
+  await page.press('Enter');
+  await page.until(() => window.screen().replace(/\n/g, '').includes('still 1 in /tmp'));
+  assert.equal(await page.evaluate(() => window.model.terminals.list().length), 1);
+  assert.ok((await page.evaluate(lines)).some((line) => line.includes('x=1')));
+
+  await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('terminal:term-1'));
+  await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
+  await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
+  await page.until(() => window.model.terminals.list().length === 0);
+  await page.evaluate(() => window.app.show('terminal'));
+  await page.until(() => window.$('slicc-app', 'slicc-dock').has('terminal:term-2'));
+  await page.until(() => window.screen().includes('slicc:~$'));
+  await run(page, 'echo "fresh [$X]"', 'fresh []');
   assert.deepEqual(page.errors, []);
 });

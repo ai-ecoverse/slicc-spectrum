@@ -88,11 +88,17 @@ window.code = (id) =>
     ?.shadowRoot.querySelector('slicc-code-view')
     ?.shadowRoot.querySelector('diffs-container')?.shadowRoot.textContent ?? '';
 
+window.terminal = () => {
+  const dock = window.$('slicc-app', 'slicc-dock');
+  const visible = (dock?.api.panels ?? [])
+    .filter((panel) => panel.id.startsWith('terminal:') && panel.api.isVisible)
+    .map((panel) => panel.id);
+  const active = dock?.api.activePanel?.id;
+  const id = visible.includes(active) ? active : visible.at(-1);
+  return id ? dock.content(id) : null;
+};
+
 window.screen = () =>
-  [
-    ...(window
-      .$('slicc-app', 'slicc-dock', 'slicc-terminals')
-      ?.shadowRoot.querySelectorAll('slicc-terminal:not([hidden]) .term-row') ?? []),
-  ]
+  [...(window.terminal()?.shadowRoot.querySelectorAll('slicc-terminal .term-row') ?? [])]
     .map((row) => row.textContent.trimEnd())
     .join('\n');
