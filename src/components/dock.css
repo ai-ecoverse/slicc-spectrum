@@ -14,8 +14,8 @@
 .slicc-dock-theme {
   color-scheme: inherit;
   --dv-paneview-active-outline-color: var(--spectrum-focus-indicator-color, #4b75ff);
-  --dv-tabs-and-actions-container-font-size: var(--spectrum-font-size-75, 12px);
-  --dv-tabs-and-actions-container-height: 30px;
+  --dv-tabs-and-actions-container-font-size: var(--swc-font-size-100);
+  --dv-tabs-and-actions-container-height: var(--swc-tab-item-compact-height-medium);
   --dv-drag-over-background-color: color-mix(
     in srgb,
     var(--spectrum-accent-visual-color, #4b75ff) 16%,
@@ -24,8 +24,8 @@
   --dv-drag-over-border-color: var(--spectrum-accent-visual-color, #4b75ff);
   --dv-drag-over-border: 1px solid var(--spectrum-accent-visual-color, #4b75ff);
   --dv-edge-dock-indicator-color: var(--spectrum-accent-visual-color, #4b75ff);
-  --dv-tabs-container-scrollbar-color: var(--spectrum-gray-400, #c6c6c6);
-  --dv-icon-hover-background-color: var(--spectrum-gray-200, #e1e1e1);
+  --dv-tabs-container-scrollbar-color: var(--swc-gray-400);
+  --dv-icon-hover-background-color: var(--swc-gray-100);
   --dv-floating-box-shadow:
     0 0 0 1px var(--spectrum-gray-300, #dadada),
     0 8px 24px var(--spectrum-drop-shadow-color, rgba(0, 0, 0, 0.16));
@@ -48,60 +48,127 @@
   --dv-sash-border-radius: 0px;
   --dv-dropdown-border-radius: var(--spectrum-corner-radius-75, 4px);
   --dv-tab-close-icon-size: inherit;
-  --dv-group-view-background-color: var(--spectrum-background-layer-2-color, #fff);
-  --dv-tabs-and-actions-container-background-color: var(
-    --spectrum-background-layer-1-color,
-    #f8f8f8
-  );
-  --dv-activegroup-visiblepanel-tab-background-color: var(
-    --spectrum-background-layer-2-color,
-    #fff
-  );
+  --dv-group-view-background-color: var(--swc-background-layer-2-color);
+  --dv-tabs-and-actions-container-background-color: var(--swc-background-layer-2-color);
+  --dv-activegroup-visiblepanel-tab-background-color: transparent;
   --dv-activegroup-hiddenpanel-tab-background-color: transparent;
-  --dv-inactivegroup-visiblepanel-tab-background-color: var(
-    --spectrum-background-layer-2-color,
-    #fff
-  );
+  --dv-inactivegroup-visiblepanel-tab-background-color: transparent;
   --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
-  --dv-tab-divider-color: var(--spectrum-gray-200, #e1e1e1);
-  --dv-activegroup-visiblepanel-tab-color: var(--spectrum-neutral-content-color-default, #292929);
-  --dv-activegroup-hiddenpanel-tab-color: var(
-    --spectrum-neutral-subdued-content-color-default,
-    #505050
-  );
-  --dv-inactivegroup-visiblepanel-tab-color: var(
-    --spectrum-neutral-subdued-content-color-default,
-    #505050
-  );
-  --dv-inactivegroup-hiddenpanel-tab-color: var(--spectrum-gray-600, #717171);
+  --dv-tab-divider-color: var(--swc-gray-200);
+  --dv-activegroup-visiblepanel-tab-color: var(--swc-gray-800);
+  --dv-activegroup-hiddenpanel-tab-color: var(--swc-gray-700);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--swc-gray-800);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--swc-gray-700);
   --dv-separator-border: var(--spectrum-gray-200, #e1e1e1);
   --dv-paneview-header-border-color: var(--spectrum-gray-200, #e1e1e1);
-  --dv-scrollbar-background-color: var(--spectrum-gray-400, #c6c6c6);
+  --dv-scrollbar-background-color: var(--swc-gray-400);
   --dv-context-menu-background-color: var(--spectrum-background-elevated-color, #fff);
   --dv-context-menu-color: var(--spectrum-neutral-content-color-default, #292929);
   color: var(--spectrum-neutral-content-color-default, #292929);
 }
 
+.slicc-dock-theme .dv-tabs-container {
+  --dv-tab-divider-color: transparent;
+  scrollbar-width: none;
+}
+
 .slicc-dock-theme .dv-tab {
-  padding: 0 8px 0 12px;
-  border-right: 1px solid var(--dv-tab-divider-color);
+  display: flex;
+  align-items: center;
+  padding-block: 0;
+  padding-inline: calc(var(--swc-tab-item-to-tab-item-compact-horizontal-medium) / 2);
 }
 
-.slicc-dock-theme
-  .dv-groupview.dv-active-group
-  > .dv-tabs-and-actions-container
-  .dv-tab.dv-active-tab {
-  box-shadow: inset 0 -2px 0 var(--spectrum-accent-visual-color, #4b75ff);
+.slicc-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--swc-spacing-85);
+  block-size: var(--swc-component-height-75);
+  color: var(--swc-gray-700);
+  font-size: var(--swc-font-size-100);
+  font-weight: normal;
+  line-height: var(--swc-line-height-100);
+  white-space: nowrap;
 }
 
-.slicc-dock-theme .dv-tabs-and-actions-container {
-  border-bottom: 1px solid var(--spectrum-gray-200, #e1e1e1);
+.dv-tab.dv-active-tab .slicc-tab,
+.dv-tab:hover .slicc-tab {
+  color: var(--swc-gray-800);
 }
 
-.slicc-dock-theme .dv-tab:focus-visible,
-.slicc-dock-theme .dv-tab:focus-within {
-  outline: 2px solid var(--spectrum-focus-indicator-color, #4b75ff);
-  outline-offset: -2px;
+.dv-tabs-container .dv-tab.dv-active-tab .slicc-tab::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: calc(
+    (var(--swc-component-height-75) - var(--dv-tabs-and-actions-container-height)) /
+    2
+  );
+  block-size: var(--swc-tab-selection-indicator-thickness);
+  border-radius: var(--swc-corner-radius-100);
+  background-color: var(--swc-gray-800);
+  pointer-events: none;
+}
+
+.dv-tab:focus-visible .slicc-tab {
+  border-radius: var(--swc-corner-radius-100);
+  outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+  outline-offset: var(--swc-spacing-50);
+}
+
+.slicc-tab-close {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  inline-size: var(--swc-component-height-75);
+  block-size: var(--swc-component-height-75);
+  border-radius: var(--swc-corner-radius-full);
+  color: var(--swc-gray-800);
+  cursor: pointer;
+  transition-property: color, background-color;
+  transition-duration: var(--swc-animation-duration-100);
+  transition-timing-function: var(--swc-animation-ease-in-out);
+}
+
+.slicc-tab-close:hover {
+  color: var(--swc-gray-900);
+  background-color: var(--swc-gray-100);
+}
+
+.dv-tab.dv-inactive-tab .slicc-tab-close {
+  display: none;
+}
+
+.dv-tabs-overflow-container .dv-tab {
+  block-size: var(--dv-tabs-and-actions-container-height);
+}
+
+.slicc-dock-theme .dv-tabs-overflow-dropdown-default {
+  color: var(--swc-gray-700);
+  font-size: var(--swc-font-size-100);
+}
+
+.slicc-dock-theme .dv-tabs-overflow-dropdown-default:hover {
+  color: var(--swc-gray-800);
+}
+
+@media (forced-colors: active) {
+  .slicc-tab {
+    color: ButtonText;
+  }
+
+  .dv-tab.dv-active-tab .slicc-tab {
+    color: Highlight;
+  }
+
+  .dv-tabs-container .dv-tab.dv-active-tab .slicc-tab::after {
+    background-color: Highlight;
+  }
+
+  .dv-tab:focus-visible .slicc-tab {
+    outline-color: Highlight;
+  }
 }
 
 .slicc-dock-theme .dv-watermark {
