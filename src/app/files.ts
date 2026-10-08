@@ -259,12 +259,12 @@ export class SliccFileView extends ThemedElement {
   #actions(): TemplateResult {
     if (this.draft === null) {
       return html`<sp-action-button size="s" quiet ?disabled=${this.text === null} @click=${() => this.edit()}>
-        <sp-icon-edit slot="icon"></sp-icon-edit>Edit
+        <swc-icon-edit slot="icon"></swc-icon-edit>Edit
       </sp-action-button>`;
     }
     return html`<sp-action-button size="s" quiet @click=${() => this.cancel()}>Cancel</sp-action-button>
       <sp-action-button size="s" ?disabled=${this.saving} @click=${() => this.save()}>
-        <sp-icon-save-floppy slot="icon"></sp-icon-save-floppy>Save
+        <swc-icon-save-floppy slot="icon"></swc-icon-save-floppy>Save
       </sp-action-button>`;
   }
 
@@ -317,7 +317,7 @@ export class SliccFileView extends ThemedElement {
             ? html`<span class="status" data-status=${change.status}>${letters[change.status]}</span>
               <span>${change.status} by ${agentName(this.model, change.agentId)}</span>
               <sp-action-button size="s" quiet @click=${() => request(this, 'open-diff', this.path)}>
-                <sp-icon-compare slot="icon"></sp-icon-compare>Diff
+                <swc-icon-compare slot="icon"></swc-icon-compare>Diff
               </sp-action-button>`
             : nothing
         }

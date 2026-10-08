@@ -5,7 +5,7 @@ import type { SliccModel, Sprinkle, UpdatesPort } from '../model/types.ts';
 import { ordered } from './agents.ts';
 import { dot, percent, shared, ThemedElement } from './base.ts';
 import { Dips, dipType } from './dips.ts';
-import { defaultFontBase, installFonts } from './fonts.ts';
+import { defaultFontBase, defaultVariableFont, installFonts } from './fonts.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
 import {
   chatAgent,
@@ -28,10 +28,11 @@ import {
   surface,
   surfaces,
 } from './panels.ts';
+import { theme } from './theme.ts';
 import { UpdateVisibility, updatesStatus } from './updates.ts';
 
 function railIcon(icon: string): TemplateResult {
-  if (icon.startsWith('sp-icon-')) {
+  if (icon.startsWith('swc-icon-')) {
     return staticHtml`<${unsafeStatic(icon)} slot="icon"></${unsafeStatic(icon)}>`;
   }
   return html`<slicc-lucide slot="icon" name=${icon}></slicc-lucide>`;
@@ -49,6 +50,7 @@ export class SliccApp extends ThemedElement {
   layoutKey = 'slicc-ui.layout.v2';
   readonly dips = new Dips();
   #fontBase: string | null = defaultFontBase;
+  #variableFont: string | null = defaultVariableFont;
   #resize: ResizeObserver | null = null;
   #started: ScreenClass | null = null;
   #saving = false;
@@ -62,13 +64,23 @@ export class SliccApp extends ThemedElement {
   }
 
   static styles = [
+    theme,
     shared,
     css`
     :host {
       display: block;
       height: 100%;
     }
+    .swc-theme {
+      display: block;
+      height: 100%;
+      --swc-sans-font-family-stack:
+        adobe-clean-spectrum-vf, 'Adobe Clean Spectrum VF', adobe-clean, 'Adobe Clean',
+        'Source Sans Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu,
+        'Trebuchet MS', 'Lucida Grande', sans-serif;
+    }
     sp-theme {
+      --spectrum-sans-font-family-stack: var(--swc-sans-font-family-stack);
       display: block;
       height: 100%;
       background: var(--spectrum-background-base-color);
@@ -260,6 +272,15 @@ export class SliccApp extends ThemedElement {
     if (this.isConnected) this.#fonts();
   }
 
+  get variableFont(): string | null {
+    return this.#variableFont;
+  }
+
+  set variableFont(value: string | null) {
+    this.#variableFont = value;
+    if (this.isConnected) this.#fonts();
+  }
+
   get grammarBase(): string | null {
     return grammarBase();
   }
@@ -269,7 +290,12 @@ export class SliccApp extends ThemedElement {
   }
 
   #fonts(): void {
-    installFonts(this.ownerDocument, this.#fontBase, new URL('./fonts/', import.meta.url).href);
+    installFonts(
+      this.ownerDocument,
+      this.#fontBase,
+      new URL('./fonts/', import.meta.url).href,
+      this.#variableFont
+    );
   }
 
   #measure(): void {
@@ -565,7 +591,7 @@ export class SliccApp extends ThemedElement {
     const color = this.color;
     const agents = ordered(this.model?.agent.list() ?? []);
     const rails = this.#rails();
-    return html`<sp-theme system="spectrum-two" color=${color} scale="medium" style=${`color-scheme: ${color}`}>
+    return html`<div class=${`swc-theme swc-theme--sizeM swc-theme--${color}`}><sp-theme system="spectrum-two" color=${color} scale="medium">
       <div class="shell">
         <header>
           <span class="brand">slicc</span>
@@ -582,7 +608,7 @@ export class SliccApp extends ThemedElement {
           <span class="spacer"></span>
           ${this.#offers('chat') ? html`<slicc-tray .model=${this.model} ?compact=${this.screen === 'phone'}></slicc-tray>` : nothing}
           <sp-action-menu size="s" quiet label="View" @change=${this.#view}>
-            <sp-icon-view-grid slot="icon"></sp-icon-view-grid>
+            <swc-icon-view-grid slot="icon"></swc-icon-view-grid>
             <span slot="label">View</span>
             ${this.surfaces.map((surface, index) => this.#menuItem(surface, index))}
             <sp-menu-divider></sp-menu-divider>
@@ -591,7 +617,7 @@ export class SliccApp extends ThemedElement {
           ${
             this.#offers('settings')
               ? html`<sp-action-button size="s" quiet label="Settings" title="Settings" @click=${() => this.show('settings')}>
-            <sp-icon-settings slot="icon"></sp-icon-settings>
+            <swc-icon-settings slot="icon"></swc-icon-settings>
           </sp-action-button>`
               : nothing
           }
@@ -601,7 +627,7 @@ export class SliccApp extends ThemedElement {
             label=${color === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
             @click=${this.toggleColor}
           >
-            <sp-icon-contrast slot="icon"></sp-icon-contrast>
+            <swc-icon-contrast slot="icon"></swc-icon-contrast>
           </sp-action-button>
         </header>
         <main>
@@ -619,6 +645,6 @@ export class SliccApp extends ThemedElement {
         ${rails.bottom}
         ${this.#status()}
       </div>
-    </sp-theme>`;
+    </sp-theme></div>`;
   }
 }

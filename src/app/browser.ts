@@ -216,12 +216,12 @@ export class SliccBrowser extends ModelElement {
           ${tabs.map((candidate) => this.#tabButton(candidate, active))}
         </div>
         <sp-action-button size="s" quiet label="New tab" title="New tab" @click=${() => this.model?.browser.open('about:blank')}>
-          <sp-icon-add slot="icon"></sp-icon-add>
+          <swc-icon-add slot="icon"></swc-icon-add>
         </sp-action-button>
       </div>
       <form @submit=${this.#navigate}>
         <sp-action-button size="s" quiet label="Reload" title="Reload" ?disabled=${!tab} @click=${() => this.#reload()}>
-          <sp-icon-refresh slot="icon"></sp-icon-refresh>
+          <swc-icon-refresh slot="icon"></swc-icon-refresh>
         </sp-action-button>
         <sp-textfield
           size="s"

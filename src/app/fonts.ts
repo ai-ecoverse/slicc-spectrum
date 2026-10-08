@@ -9,9 +9,12 @@ const code = [400, 600] as const;
 
 export const defaultFontBase = '/fonts/';
 
+export const defaultVariableFont =
+  'https://use.typekit.net/af/ca4cba/0000000000000000775c55a1/31/l?primer=f592e0a4b9356877842506ce344308576437e4f677d7c9b78ca2162e6cad991a&fvd=n1&v=3';
+
 export interface FontFile {
   family: string;
-  weight: number;
+  weight: number | string;
   url: string;
   format: 'woff2' | 'opentype';
 }
@@ -35,8 +38,18 @@ export function fontFiles(base: string | null, codeBase: string): FontFile[] {
   return files;
 }
 
-export function fontFaces(base: string | null, codeBase: string): string {
-  return fontFiles(base, codeBase)
+export function variableFile(url: string | null): FontFile[] {
+  return url
+    ? [{ family: 'adobe-clean-spectrum-vf', weight: '100 900', url, format: 'woff2' }]
+    : [];
+}
+
+function allFiles(base: string | null, codeBase: string, variable: string | null): FontFile[] {
+  return [...variableFile(variable), ...fontFiles(base, codeBase)];
+}
+
+export function fontFaces(base: string | null, codeBase: string, variable: string | null): string {
+  return allFiles(base, codeBase, variable)
     .map(
       (file) =>
         `@font-face{font-family:"${file.family}";font-style:normal;font-weight:${file.weight};font-display:swap;src:url("${file.url}") format("${file.format}");}`
@@ -51,13 +64,14 @@ export function installedFonts(): readonly FontFile[] {
 export function installFonts(
   document: Document,
   base: string | null,
-  codeBase: string
+  codeBase: string,
+  variable: string | null
 ): HTMLStyleElement {
   const existing = document.head.querySelector<HTMLStyleElement>('style[data-slicc-fonts]');
   const style = existing ?? document.createElement('style');
   style.dataset.sliccFonts = '';
-  style.textContent = fontFaces(base, codeBase);
-  installed = fontFiles(base, codeBase);
+  style.textContent = fontFaces(base, codeBase, variable);
+  installed = allFiles(base, codeBase, variable);
   if (!existing) document.head.append(style);
   return style;
 }

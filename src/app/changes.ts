@@ -117,10 +117,10 @@ export class SliccChanges extends ModelElement {
       <span class="where"><bdi>${folder(change.path)} · ${agentName(this.model, change.agentId)}</bdi></span>
       <span class="actions">
         <sp-action-button size="xs" quiet label="Accept" title="Accept" @click=${(event: Event) => this.#accept(event, change.path)}>
-          <sp-icon-checkmark slot="icon"></sp-icon-checkmark>
+          <swc-icon-checkmark slot="icon"></swc-icon-checkmark>
         </sp-action-button>
         <sp-action-button size="xs" quiet label="Revert" title="Revert" @click=${(event: Event) => this.#revert(event, change.path)}>
-          <sp-icon-revert slot="icon"></sp-icon-revert>
+          <swc-icon-revert slot="icon"></swc-icon-revert>
         </sp-action-button>
       </span>
     </li>`;
@@ -198,10 +198,10 @@ export class SliccDiffPanel extends ThemedElement {
           <sp-action-button value="split" ?selected=${style === 'split'} @click=${() => this.#style('split')}>Split</sp-action-button>
         </sp-action-group>
         <sp-action-button size="s" quiet @click=${() => model?.files.accept(this.path)}>
-          <sp-icon-checkmark slot="icon"></sp-icon-checkmark>Accept
+          <swc-icon-checkmark slot="icon"></swc-icon-checkmark>Accept
         </sp-action-button>
         <sp-action-button size="s" quiet @click=${() => model?.files.revert(this.path)}>
-          <sp-icon-revert slot="icon"></sp-icon-revert>Revert
+          <swc-icon-revert slot="icon"></swc-icon-revert>Revert
         </sp-action-button>
       </div>
       <slicc-diff-view

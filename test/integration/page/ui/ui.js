@@ -11,6 +11,7 @@ const model = createDummyModel({
 if (params.has('color')) model.settings.update({ color: params.get('color') });
 const app = document.querySelector('slicc-app');
 if (params.has('fonts')) app.fontBase = params.get('fonts') || null;
+if (params.has('vf')) app.variableFont = params.get('vf') || null;
 if (params.has('grammars')) app.grammarBase = params.get('grammars');
 app.model = model;
 window.model = model;

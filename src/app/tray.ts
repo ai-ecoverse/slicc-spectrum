@@ -148,7 +148,7 @@ export class SliccTray extends ModelElement {
       >
         <span class="dot" data-variant=${connectionVariant[status.connection]}></span>
         <span>${status.name}</span>
-        <span class="muted followers"><sp-icon-user-group size="xs"></sp-icon-user-group>${status.followers.length}</span>
+        <span class="muted followers"><swc-icon-user-group size="xs"></swc-icon-user-group>${status.followers.length}</span>
         <span class="muted">${status.budget.percent}%</span>
       </button>
       ${
