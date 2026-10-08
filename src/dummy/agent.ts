@@ -44,6 +44,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   #clock: Clock;
   #effects: Omit<Effects, 'agentId'>;
   #next = 1;
+  #cones = 1;
 
   constructor(
     agents: readonly Agent[],
@@ -453,6 +454,41 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
         createdAt: Date.now(),
       });
     }
+    this.#changed();
+    return { ...agent };
+  }
+
+  async drop(agentId: string): Promise<void> {
+    const agent = this.#agent(agentId);
+    if (agent?.kind !== 'scoop') throw new Error('Only scoops can be dropped');
+    this.stop(agentId);
+    this.#agents = this.#agents.filter((candidate) => candidate !== agent);
+    this.#messages.delete(agentId);
+    this.#queues.delete(agentId);
+    this.#suggestions.delete(agentId);
+    if (this.#active === agentId) this.select(agent.parentId ?? (this.#agents[0] as Agent).id);
+    this.#changed();
+  }
+
+  async createCone(name: string): Promise<Agent> {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error('A cone needs a name');
+    if (this.#agents.some((agent) => agent.kind === 'cone' && agent.name === trimmed)) {
+      throw new Error(`A cone named ${trimmed} already exists`);
+    }
+    const agent: Agent = {
+      id: `cone-${this.#cones++}`,
+      name: trimmed,
+      kind: 'cone',
+      parentId: null,
+      status: 'idle',
+      model: 'claude-sonnet-5-5',
+      contextFill: 0,
+      unread: 0,
+    };
+    this.#agents.push(agent);
+    this.#messages.set(agent.id, []);
+    this.#queues.set(agent.id, []);
     this.#changed();
     return { ...agent };
   }

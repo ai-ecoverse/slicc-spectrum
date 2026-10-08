@@ -1,6 +1,10 @@
+import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
+import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
+import '@adobe/spectrum-wc-icons/swc-icon-close.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Agent, SliccModel } from '../model/types.ts';
 import { ModelElement, percent, shared, statusLabel, statusLight } from './base.ts';
+import { confirm } from './confirm.ts';
 
 export function ordered(agents: readonly Agent[]): Agent[] {
   const cones = agents.filter((agent) => agent.kind === 'cone');
@@ -8,6 +12,14 @@ export function ordered(agents: readonly Agent[]): Agent[] {
 }
 
 export class SliccAgents extends ModelElement {
+  static properties = { ...ModelElement.properties, errors: { state: true } };
+  declare errors: Record<string, string>;
+
+  constructor() {
+    super();
+    this.errors = {};
+  }
+
   static styles = [
     shared,
     css`
@@ -26,8 +38,8 @@ export class SliccAgents extends ModelElement {
     }
     li {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto;
-      grid-template-areas: 'name unread fill' 'status unread fill';
+      grid-template-columns: minmax(0, 1fr) auto auto auto;
+      grid-template-areas: 'name unread fill drop' 'status unread fill drop' 'error error error error';
       align-items: center;
       column-gap: var(--swc-spacing-100);
       padding: var(--swc-spacing-75) var(--swc-spacing-200);
@@ -77,6 +89,33 @@ export class SliccAgents extends ModelElement {
       grid-area: status;
       justify-self: start;
     }
+    .drop {
+      grid-area: drop;
+      visibility: hidden;
+    }
+    li:hover .drop,
+    li:focus-within .drop {
+      visibility: visible;
+    }
+    .error {
+      grid-area: error;
+      margin-block-start: var(--swc-spacing-75);
+      color: var(--swc-negative-color-1100);
+      font-size: var(--swc-font-size-75);
+    }
+    .sr {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    @media (hover: none), (pointer: coarse) {
+      .drop {
+        visibility: visible;
+      }
+    }
   `,
   ];
 
@@ -115,14 +154,71 @@ export class SliccAgents extends ModelElement {
       event.preventDefault();
       const id = items[index]?.dataset.id;
       if (id) this.#select(id);
+    } else if (event.key === 'Delete') {
+      const agent = this.model?.agent.list().find((item) => item.id === items[index]?.dataset.id);
+      if (agent && this.#droppable(agent)) {
+        event.preventDefault();
+        void this.#drop(agent, items[index]);
+      }
     }
+  }
+
+  #droppable(agent: Agent): boolean {
+    return agent.kind === 'scoop' && Boolean(this.model?.agent.drop);
+  }
+
+  async #drop(agent: Agent, trigger: HTMLElement): Promise<void> {
+    const port = this.model?.agent;
+    if (!port?.drop) return;
+    const ok = await confirm({
+      title: `Drop scoop ${agent.name}?`,
+      body: 'It stops working. Its files stay.',
+      action: 'Drop',
+      variant: 'destructive',
+      trigger,
+    });
+    if (!ok) return;
+    const active = port.active() === agent.id;
+    const { [agent.id]: _, ...rest } = this.errors;
+    this.errors = rest;
+    try {
+      await port.drop(agent.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.errors = { ...this.errors, [agent.id]: `Couldn’t drop ${agent.name}: ${message}` };
+      return;
+    }
+    if (active && agent.parentId && port.active() !== agent.parentId) port.select(agent.parentId);
+    await this.updateComplete;
+    this.focus();
+  }
+
+  #dropButton(agent: Agent): TemplateResult | typeof nothing {
+    if (!this.#droppable(agent)) return nothing;
+    const id = `drop-${agent.id}`;
+    const label = `Drop scoop ${agent.name}`;
+    return html`<swc-action-button
+        id=${id}
+        class="drop"
+        size="l"
+        quiet
+        tabindex="-1"
+        data-action="drop"
+        accessible-label=${label}
+        @click=${(event: Event) => {
+          event.stopPropagation();
+          void this.#drop(agent, event.currentTarget as HTMLElement);
+        }}
+        ><swc-icon-close slot="icon"></swc-icon-close></swc-action-button
+      ><swc-tooltip for=${id} placement="start">${label}</swc-tooltip>`;
   }
 
   #row(agent: Agent, active: string): TemplateResult {
     const selected = agent.id === active;
+    const error = this.errors[agent.id];
     const label = `${agent.name}: ${statusLabel[agent.status]}, ${percent(agent.contextFill)} context${
       agent.unread ? `, ${agent.unread} unread` : ''
-    }`;
+    }${error ? `. ${error}` : ''}`;
     return html`<li
       role="option"
       class=${agent.kind}
@@ -130,6 +226,7 @@ export class SliccAgents extends ModelElement {
       aria-selected=${selected ? 'true' : 'false'}
       aria-label=${label}
       tabindex=${selected ? '0' : '-1'}
+      aria-keyshortcuts=${this.#droppable(agent) ? 'Delete' : nothing}
       title=${label}
       @click=${() => this.#select(agent.id)}
     >
@@ -141,14 +238,18 @@ export class SliccAgents extends ModelElement {
       }
       <span class="fill">${percent(agent.contextFill)}</span>
       ${statusLight(agent.status)}
+      ${this.#dropButton(agent)}
+      ${error ? html`<span class="error">${error}</span>` : nothing}
     </li>`;
   }
 
   render(): TemplateResult {
     const agents = ordered(this.model?.agent.list() ?? []);
     const active = this.model?.agent.active() ?? '';
+    const errors = Object.values(this.errors);
     return html`<ul role="listbox" aria-label="Cones and scoops" @keydown=${this.#keydown}>
-      ${agents.map((agent) => this.#row(agent, active))}
-    </ul>`;
+        ${agents.map((agent) => this.#row(agent, active))}
+      </ul>
+      <div class="sr" role="status">${errors.at(-1) ?? ''}</div>`;
   }
 }

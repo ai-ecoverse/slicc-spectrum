@@ -5,7 +5,7 @@ import { SliccBrowser } from './app/browser.ts';
 import { SliccChanges, SliccDiffPanel } from './app/changes.ts';
 import { SliccChat } from './app/chat.ts';
 import { SliccComposer } from './app/composer.ts';
-import { SliccConfirm } from './app/confirm.ts';
+import { SliccConfirm, SliccPrompt } from './app/confirm.ts';
 import { SliccFiles, SliccFileView } from './app/files.ts';
 import { SliccFreezer } from './app/freezer.ts';
 import { SliccLucide } from './app/lucide.ts';
@@ -23,8 +23,8 @@ import { define as defineTerminal } from './slicc-terminal.ts';
 
 export type { Color } from './app/base.ts';
 export { resolveColor } from './app/base.ts';
-export type { ConfirmOptions, ConfirmVariant } from './app/confirm.ts';
-export { confirm } from './app/confirm.ts';
+export type { ConfirmOptions, ConfirmVariant, PromptOptions } from './app/confirm.ts';
+export { confirm, prompt } from './app/confirm.ts';
 export type { GrammarKind } from './app/grammars.ts';
 export { grammarBase, setGrammarBase } from './app/grammars.ts';
 export type { Placement, Surface } from './app/panels.ts';
@@ -50,6 +50,7 @@ export {
   SliccFiles,
   SliccFileTree,
   SliccFileView,
+  SliccPrompt,
   SliccUpdates,
 };
 
@@ -72,6 +73,7 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-tray': SliccTray,
   'slicc-updates': SliccUpdates,
   'slicc-confirm': SliccConfirm,
+  'slicc-prompt': SliccPrompt,
   'slicc-app': SliccApp,
 };
 

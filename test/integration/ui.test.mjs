@@ -97,7 +97,15 @@ test('the shell renders the default layout from the dummy model', async (t) => {
         item.textContent.trim()
       )
     ),
-    ['sliccy', 'kitchen-sink', 'harbor', 'release-notes', 'inbox-triage', 'Show all agents']
+    [
+      'sliccy',
+      'kitchen-sink',
+      'harbor',
+      'release-notes',
+      'inbox-triage',
+      'New cone',
+      'Show all agents',
+    ]
   );
   assert.deepEqual(
     chrome.requests.filter((path) => path.startsWith('/node_modules/')),
@@ -2208,11 +2216,12 @@ test('the agent picker lists cones and opens the agents panel for the rest', asy
         )
       )
       .then((items) => [
-        items.slice(0, -1).every(([value]) => value.startsWith('cone-')),
-        items.length > 2,
+        items.slice(0, -2).every(([value]) => value.startsWith('cone-')),
+        items.length > 3,
+        items.at(-2),
         items.at(-1),
       ]),
-    [true, true, ['slicc:all-agents', 'Show all agents']]
+    [true, true, ['slicc:new-cone', 'New cone'], ['slicc:all-agents', 'Show all agents']]
   );
   await page.evaluate(() => {
     const picker = window.$('slicc-app', 'header sp-picker');
