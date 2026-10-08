@@ -1624,7 +1624,7 @@ test('sprinkle frames resolve the host Gen2 tokens and follow the theme without 
           document.body.append(node);
           const value = getComputedStyle(node).getPropertyValue(property);
           node.remove();
-          return property === 'font-family' ? value.split(',')[0] : value;
+          return property === 'font-family' ? [...new Set(value.split(',').map((family) => family.trim()))].join(', ') : value;
         });
         const root = document.documentElement;
         parent.postMessage({ type: 'probe-result', loaded, values, light: root.classList.contains('theme-light'), scheme: getComputedStyle(root).colorScheme, outline: getComputedStyle(document.querySelector('button')).outlineColor }, '*');
@@ -1670,7 +1670,7 @@ test('sprinkle frames resolve the host Gen2 tokens and follow the theme without 
         theme.append(node);
         const value = getComputedStyle(node).getPropertyValue(property);
         node.remove();
-        return property === 'font-family' ? value.split(',')[0] : value;
+        return value;
       });
     };
     return true;

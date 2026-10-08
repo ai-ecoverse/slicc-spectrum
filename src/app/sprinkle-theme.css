@@ -48,7 +48,9 @@
   --s2-border-subtle: var(--swc-gray-200);
   --s2-border-focus: var(--swc-focus-indicator-color);
 
-  --s2-font-family: var(--swc-sans-font-family-stack);
+  --s2-font-family:
+    adobe-clean-spectrum-vf, "Adobe Clean Spectrum VF", adobe-clean, "Adobe Clean",
+    var(--swc-sans-font-family-stack);
   --s2-font-mono: var(--swc-code-font-family-stack);
 
   --s2-font-size-50: var(--swc-font-size-50);
