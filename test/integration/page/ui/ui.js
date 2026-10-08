@@ -107,7 +107,7 @@ window.button = (id, text) =>
     ...window
       .$('slicc-app', 'slicc-dock')
       .content(id)
-      .shadowRoot.querySelectorAll('sp-action-button'),
+      .shadowRoot.querySelectorAll('sp-action-button, swc-action-button, swc-button'),
   ]
     .find((candidate) => candidate.textContent.trim() === text)
     .click();

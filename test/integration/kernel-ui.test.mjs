@@ -54,7 +54,7 @@ test('terminals and files run on slicc-kernel and OPFS, and keep across a reload
 
   await page.evaluate(() => {
     const view = window.content('file:/home/notes.txt');
-    [...view.shadowRoot.querySelectorAll('sp-action-button')]
+    [...view.shadowRoot.querySelectorAll('swc-action-button, swc-button')]
       .find((button) => button.textContent.trim() === 'Edit')
       .click();
   });

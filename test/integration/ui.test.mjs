@@ -789,7 +789,7 @@ test('a diff opens from the changes list, switches layout, and accepting or reve
         'slicc-app',
         'slicc-dock',
         'slicc-changes',
-        'li[data-path="/workspace/harbor/src/lib/retry.ts"] sp-action-button[label=Revert]'
+        'li[data-path="/workspace/harbor/src/lib/retry.ts"] swc-action-button[accessible-label="Revert retry.ts"]'
       )
       .click()
   );
@@ -828,7 +828,7 @@ test('an agent edit shows up in changes, in the tree and in the open file', asyn
         ...window
           .$('slicc-app', 'slicc-dock')
           .content(id)
-          .shadowRoot.querySelectorAll('sp-action-button'),
+          .shadowRoot.querySelectorAll('swc-action-button'),
       ]
         .find((button) => button.textContent.trim() === 'Diff')
         .click(),
@@ -1494,7 +1494,7 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
       ...window
         .$('slicc-app', 'slicc-dock')
         .content('freezer')
-        .shadowRoot.querySelectorAll('.card[data-id=cone-kv-spike] sp-action-button'),
+        .shadowRoot.querySelectorAll('.card[data-id=cone-kv-spike] swc-action-button'),
     ]
       .find((button) => button.textContent.trim() === 'Thaw')
       .click()
@@ -1506,7 +1506,7 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
       ...window
         .$('slicc-app', 'slicc-dock')
         .content('freezer')
-        .shadowRoot.querySelectorAll('.bar sp-action-button'),
+        .shadowRoot.querySelectorAll('.bar swc-action-button'),
     ]
       .find((button) => /Freeze kv-spike/.test(button.textContent))
       .click()

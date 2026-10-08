@@ -1,3 +1,5 @@
+import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
+import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import { css, html, type TemplateResult } from 'lit';
 import type { FrozenCone, SliccModel } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
@@ -21,34 +23,41 @@ export class SliccFreezer extends ModelElement {
         flex: 1;
         min-height: 0;
         overflow-y: auto;
-        padding: 6px 8px;
+        padding: var(--swc-spacing-100);
         display: grid;
         grid-template-columns: minmax(0, 1fr);
         align-content: start;
-        gap: 6px;
+        gap: var(--swc-spacing-100);
       }
       .card {
-        border: 1px solid var(--spectrum-gray-200);
-        border-radius: var(--spectrum-corner-radius-75);
-        padding: 6px 8px;
-        background: var(--spectrum-background-layer-1-color);
+        display: grid;
+        gap: var(--swc-spacing-50);
+        border-radius: var(--swc-corner-radius-medium-default);
+        padding: var(--swc-spacing-100) var(--swc-spacing-200);
+        background: var(--swc-background-layer-1-color);
       }
-      .card strong {
-        display: block;
+      .name {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--swc-spacing-75) var(--swc-spacing-100);
+        font-weight: var(--swc-bold-font-weight);
       }
-      .title,
-      .meta {
+      .title {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
         overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        overflow-wrap: anywhere;
+        line-height: var(--swc-line-height-100);
       }
       .meta {
-        color: var(--spectrum-neutral-subdued-content-color-default);
+        color: var(--swc-neutral-subdued-content-color-default);
       }
       .actions {
         display: flex;
-        gap: 4px;
-        margin-top: 4px;
+        gap: var(--swc-spacing-75);
+        margin-inline-start: calc(-1 * var(--swc-spacing-100));
       }
     `,
   ];
@@ -63,7 +72,7 @@ export class SliccFreezer extends ModelElement {
   }
 
   focus(): void {
-    this.focusOn('sp-action-button');
+    this.focusOn('swc-action-button');
   }
 
   async #delete(cone: FrozenCone): Promise<void> {
@@ -77,12 +86,12 @@ export class SliccFreezer extends ModelElement {
     const label =
       model.settings.models().find((option) => option.id === cone.model)?.label ?? cone.model;
     return html`<div class="card" data-id=${cone.id}>
-      <strong>${cone.name}</strong>
+      <div class="name">${cone.name}<swc-badge size="s" variant="neutral" subtle>${label}</swc-badge></div>
       <div class="title" title=${cone.title}>${cone.title}</div>
-      <div class="meta">${cone.messages} messages · ${label} · frozen ${ago(cone.frozenAt)}</div>
+      <div class="meta">${cone.messages} messages · frozen ${ago(cone.frozenAt)}</div>
       <div class="actions">
-        <sp-action-button size="s" quiet @click=${() => model.agent.thaw(cone.id)}>Thaw</sp-action-button>
-        <sp-action-button size="s" quiet @click=${() => this.#delete(cone)}>Delete</sp-action-button>
+        <swc-action-button size="s" quiet accessible-label=${`Thaw ${cone.name}`} @click=${() => model.agent.thaw(cone.id)}>Thaw</swc-action-button>
+        <swc-action-button size="s" quiet accessible-label=${`Delete ${cone.name}`} @click=${() => this.#delete(cone)}>Delete</swc-action-button>
       </div>
     </div>`;
   }
@@ -95,7 +104,7 @@ export class SliccFreezer extends ModelElement {
         <span>${cones.length} frozen ${cones.length === 1 ? 'cone' : 'cones'}</span><span class="spacer"></span>
         ${
           active?.kind === 'cone'
-            ? html`<sp-action-button size="s" quiet @click=${() => model?.agent.freeze(active.id)}>Freeze ${active.name}</sp-action-button>`
+            ? html`<swc-action-button size="s" quiet @click=${() => model?.agent.freeze(active.id)}>Freeze ${active.name}</swc-action-button>`
             : ''
         }
       </div>

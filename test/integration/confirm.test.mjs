@@ -57,7 +57,7 @@ const revertAll = () =>
   [
     ...window
       .$('slicc-app', 'slicc-dock', 'slicc-changes')
-      .shadowRoot.querySelectorAll('.bar sp-action-button'),
+      .shadowRoot.querySelectorAll('.bar swc-action-button'),
   ]
     .find((button) => button.textContent.trim() === 'Revert all')
     .click();
@@ -102,7 +102,7 @@ test('the dialog takes focus on Cancel, Escape cancels, and focus goes back to t
     [
       ...window
         .$('slicc-app', 'slicc-dock', 'slicc-changes')
-        .shadowRoot.querySelectorAll('.bar sp-action-button'),
+        .shadowRoot.querySelectorAll('.bar swc-action-button'),
     ]
       .find((button) => button.textContent.trim() === 'Revert all')
       .focus();
@@ -121,7 +121,7 @@ test('the dialog takes focus on Cancel, Escape cancels, and focus goes back to t
   await page.press('Escape');
   await page.until(closed);
   assert.equal(await page.evaluate(() => window.model.files.changes().length), 4);
-  await page.until(() => /slicc-changes > sp-action-button$/.test(window.focused()));
+  await page.until(() => /slicc-changes > swc-action-button > button$/.test(window.focused()));
 
   await page.press('Enter');
   await page.until(dialog);
@@ -129,7 +129,7 @@ test('the dialog takes focus on Cancel, Escape cancels, and focus goes back to t
   await page.press('Enter');
   await page.until(closed);
   assert.equal(await page.evaluate(() => window.model.files.changes().length), 4);
-  await page.until(() => /slicc-changes > sp-action-button$/.test(window.focused()));
+  await page.until(() => /slicc-changes > swc-action-button > button$/.test(window.focused()));
 
   await page.press(' ');
   await page.until(dialog);
@@ -158,7 +158,7 @@ test('every destructive action asks first and acts only on confirm', async (t) =
         'slicc-app',
         'slicc-dock',
         'slicc-changes',
-        'li[data-path="/workspace/harbor/src/lib/retry.ts"] sp-action-button[label=Revert]'
+        'li[data-path="/workspace/harbor/src/lib/retry.ts"] swc-action-button[accessible-label="Revert retry.ts"]'
       )
       .click();
   await ask(revert, 'Revert retry.ts?');
@@ -175,7 +175,7 @@ test('every destructive action asks first and acts only on confirm', async (t) =
     [
       ...window
         .part('diff:/workspace/harbor/src/lib/cache.ts', '.bar')
-        .querySelectorAll('sp-action-button'),
+        .querySelectorAll('swc-action-button'),
     ]
       .find((button) => button.textContent.trim() === 'Revert')
       .click();
@@ -191,7 +191,7 @@ test('every destructive action asks first and acts only on confirm', async (t) =
   await page.until(() => !!window.part('freezer', '.card'));
   const frozen = await page.evaluate(() => window.model.agent.frozen().length);
   const discard = () =>
-    [...window.part('freezer', '.card').querySelectorAll('sp-action-button')]
+    [...window.part('freezer', '.card').querySelectorAll('swc-action-button')]
       .find((button) => button.textContent.trim() === 'Delete')
       .click();
   await page.evaluate(discard);
@@ -211,7 +211,7 @@ test('every destructive action asks first and acts only on confirm', async (t) =
   await page.evaluate(() => window.part('memory', '.row .head').click());
   await page.until(() => !!window.part('memory', '.row .body'));
   const forget = () =>
-    [...window.part('memory', '.row .actions').querySelectorAll('sp-action-button')]
+    [...window.part('memory', '.row .actions').querySelectorAll('swc-action-button')]
       .find((button) => button.textContent.trim() === 'Forget')
       .click();
   await page.evaluate(forget);
@@ -297,7 +297,7 @@ for (const [name, color, browser] of [
     const page = await open(t, color, browser);
     await page.evaluate(() => window.app.show('changes'));
     await page.until(
-      () => !!window.$('slicc-app', 'slicc-dock', 'slicc-changes', '.bar sp-action-button')
+      () => !!window.$('slicc-app', 'slicc-dock', 'slicc-changes', '.bar swc-action-button')
     );
     await page.evaluate(revertAll);
     await page.until(dialog);

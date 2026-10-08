@@ -1,3 +1,5 @@
+import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
+import '@adobe/spectrum-wc/components/button/swc-button.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { GitStatusEntry } from '../components/file-tree.ts';
 import type { Change, FileEntry, SliccModel } from '../model/types.ts';
@@ -43,26 +45,27 @@ export const panelCss = css`
     flex-direction: column;
     height: 100%;
     min-height: 0;
-    background: var(--spectrum-background-layer-2-color);
-    color: var(--spectrum-neutral-content-color-default);
-    font-size: var(--spectrum-font-size-75);
+    background: var(--swc-background-layer-2-color);
+    color: var(--swc-neutral-content-color-default);
+    font-family: var(--swc-sans-font-family-stack);
+    font-size: var(--swc-font-size-75);
   }
   .bar {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--swc-spacing-100);
     flex: none;
-    height: 32px;
-    padding: 0 8px 0 12px;
-    border-bottom: 1px solid var(--spectrum-gray-200);
-    background: var(--spectrum-background-layer-1-color);
-    color: var(--spectrum-neutral-subdued-content-color-default);
+    min-height: var(--swc-component-height-100);
+    padding: 0 var(--swc-spacing-100) 0 var(--swc-spacing-200);
+    border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
+    background: var(--swc-background-layer-1-color);
+    color: var(--swc-neutral-subdued-content-color-default);
     white-space: nowrap;
     overflow: hidden;
   }
   .bar .path {
-    font-family: var(--spectrum-code-font-family-stack, ui-monospace, monospace);
-    color: var(--spectrum-neutral-content-color-default);
+    font-family: var(--swc-code-font-family-stack);
+    color: var(--swc-neutral-content-color-default);
     overflow: hidden;
     text-overflow: ellipsis;
   }
@@ -74,28 +77,49 @@ export const panelCss = css`
     min-height: 0;
   }
   .note {
-    padding: 24px;
-    color: var(--spectrum-neutral-subdued-content-color-default);
+    padding: var(--swc-spacing-400);
+    color: var(--swc-neutral-subdued-content-color-default);
+  }
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
   .status {
     display: inline-block;
-    width: 14px;
+    min-width: var(--swc-spacing-300);
     text-align: center;
-    font-weight: 700;
-    font-family: var(--spectrum-code-font-family-stack, ui-monospace, monospace);
+    font-weight: var(--swc-bold-font-weight);
+    font-family: var(--swc-code-font-family-stack);
   }
   .status[data-status='added'] {
-    color: var(--spectrum-positive-visual-color);
+    color: var(--swc-positive-color-1000);
   }
   .status[data-status='modified'] {
-    color: var(--spectrum-notice-visual-color);
+    color: var(--swc-notice-color-1000);
   }
   .status[data-status='deleted'] {
-    color: var(--spectrum-negative-visual-color);
+    color: var(--swc-negative-color-1000);
   }
 `;
 
 export const letters = { added: 'A', modified: 'M', deleted: 'D' } as const;
+
+export const statusLabels = { added: 'Added', modified: 'Modified', deleted: 'Deleted' } as const;
+
+export function statusMark(status: Change['status'], announce = true): TemplateResult {
+  return html`<span class="status" data-status=${status} title=${statusLabels[status]}
+    ><span aria-hidden="true">${letters[status]}</span>${
+      announce ? html`<span class="sr">${statusLabels[status]}</span>` : nothing
+    }</span
+  >`;
+}
 
 export class SliccFiles extends ModelElement {
   static properties = { ...ModelElement.properties, count: { state: true } };
@@ -208,23 +232,26 @@ export class SliccFileView extends ThemedElement {
         flex: 1;
         min-height: 0;
         margin: 0;
-        padding: 8px 12px;
+        padding: var(--swc-spacing-100) var(--swc-spacing-200);
         border: 0;
         resize: none;
-        outline: none;
-        background: var(--spectrum-background-layer-2-color);
-        color: var(--spectrum-neutral-content-color-default);
-        font-family: var(--spectrum-code-font-family-stack, ui-monospace, monospace);
-        font-size: 13px;
-        line-height: 20px;
+        background: var(--swc-background-layer-2-color);
+        color: var(--swc-code-color);
+        font-family: var(--swc-code-font-family-stack);
+        font-size: var(--swc-code-size-xs);
+        line-height: var(--swc-code-line-height);
         tab-size: 2;
+      }
+      textarea:focus-visible {
+        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+        outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
       }
     `,
   ];
 
   edit(): void {
     this.draft = this.text ?? '';
-    this.focusOn('textarea');
+    void this.updateComplete.then(() => this.focusOn('textarea'));
   }
 
   cancel(): void {
@@ -258,14 +285,14 @@ export class SliccFileView extends ThemedElement {
 
   #actions(): TemplateResult {
     if (this.draft === null) {
-      return html`<sp-action-button size="s" quiet ?disabled=${this.text === null} @click=${() => this.edit()}>
+      return html`<swc-action-button size="s" quiet ?disabled=${this.text === null} @click=${() => this.edit()}>
         <swc-icon-edit slot="icon"></swc-icon-edit>Edit
-      </sp-action-button>`;
+      </swc-action-button>`;
     }
-    return html`<sp-action-button size="s" quiet @click=${() => this.cancel()}>Cancel</sp-action-button>
-      <sp-action-button size="s" ?disabled=${this.saving} @click=${() => this.save()}>
-        <swc-icon-save-floppy slot="icon"></swc-icon-save-floppy>Save
-      </sp-action-button>`;
+    return html`<swc-action-button size="s" quiet @click=${() => this.cancel()}>Cancel</swc-action-button>
+      <swc-button size="s" variant="accent" ?pending=${this.saving} ?disabled=${this.saving} @click=${() => this.save()}
+        >Save</swc-button
+      >`;
   }
 
   #body(change: unknown): TemplateResult {
@@ -314,11 +341,11 @@ export class SliccFileView extends ThemedElement {
         <span class="spacer"></span>
         ${
           change
-            ? html`<span class="status" data-status=${change.status}>${letters[change.status]}</span>
-              <span>${change.status} by ${agentName(this.model, change.agentId)}</span>
-              <sp-action-button size="s" quiet @click=${() => request(this, 'open-diff', this.path)}>
+            ? html`${statusMark(change.status, false)}
+              <span>${statusLabels[change.status]} by ${agentName(this.model, change.agentId)}</span>
+              <swc-action-button size="s" quiet @click=${() => request(this, 'open-diff', this.path)}>
                 <swc-icon-compare slot="icon"></swc-icon-compare>Diff
-              </sp-action-button>`
+              </swc-action-button>`
             : nothing
         }
         ${this.#actions()}
