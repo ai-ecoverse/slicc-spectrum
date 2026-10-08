@@ -910,7 +910,7 @@ test('settings change the theme and the composer, and connect accounts', async (
   await page.until(() => window.$('slicc-app', 'slicc-dock').api.activePanel?.id === 'settings');
   await page.until(
     () =>
-      !!window.$('slicc-app', 'slicc-dock', 'slicc-settings', '.account[data-id=openai] sp-button')
+      !!window.$('slicc-app', 'slicc-dock', 'slicc-settings', '.account[data-id=openai] swc-button')
   );
   await shot(page, 'settings-light');
 
@@ -927,7 +927,7 @@ test('settings change the theme and the composer, and connect accounts', async (
   );
   await page.until(() => window.model.settings.get().showThinking === false);
 
-  await page.evaluate(() => window.settingsPart('.account[data-id=openai] sp-button').click());
+  await page.evaluate(() => window.settingsPart('.account[data-id=openai] swc-button').click());
   await page.until(() => !!window.settingsPart('form.key[data-id=openai] sp-textfield'));
   await page.until(() => /sp-textfield/i.test(window.focused()));
   await page.evaluate(() => {
@@ -940,7 +940,7 @@ test('settings change the theme and the composer, and connect accounts', async (
   });
   assert.equal(masked, 'password');
   await page.evaluate(() =>
-    window.settingsPart('form.key[data-id=openai] sp-button[variant=accent]').click()
+    window.settingsPart('form.key[data-id=openai] swc-button[data-action=save]').click()
   );
   await page.until(() =>
     window.settingsPart('.account[data-id=openai]').textContent.includes('Connected')
@@ -960,7 +960,7 @@ test('settings change the theme and the composer, and connect accounts', async (
   await page.until(() =>
     window.settingsPart('.account[data-id=openai]').textContent.includes('Not connected')
   );
-  await page.evaluate(() => window.settingsPart('.account[data-id=openai] sp-button').click());
+  await page.evaluate(() => window.settingsPart('.account[data-id=openai] swc-button').click());
   await page.until(() => !!window.settingsPart('form.key[data-id=openai] sp-textfield'));
   await page.evaluate(() => {
     const field = window.settingsPart('form.key[data-id=openai] sp-textfield');
@@ -971,15 +971,20 @@ test('settings change the theme and the composer, and connect accounts', async (
     window.settingsPart('.account[data-id=openai]').textContent.includes('Connected')
   );
   await page.evaluate(() => window.model.settings.disconnect('openai'));
-  await page.evaluate(() => window.settingsPart('.account[data-id=openai] sp-button').click());
+  await page.evaluate(() => window.settingsPart('.account[data-id=openai] swc-button').click());
   await page.until(() => !!window.settingsPart('form.key[data-id=openai]'));
   await page.evaluate(() =>
-    window.settingsPart('form.key[data-id=openai] sp-button[treatment=outline]').click()
+    window.settingsPart('form.key[data-id=openai] swc-button[data-action=cancel]').click()
   );
   await page.until(() => !window.settingsPart('form.key'));
   await page.evaluate(() =>
     window
-      .$('slicc-app', 'slicc-dock', 'slicc-settings', '.account[data-id=github] sp-button')
+      .$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-settings',
+        '.account[data-id=github] swc-button[data-action=disconnect]'
+      )
       .click()
   );
   await page.until(
@@ -997,7 +1002,11 @@ test('settings change the theme and the composer, and connect accounts', async (
     const overflow = await page.evaluate(() => {
       const host = window.settingsPart('.page').getRootNode().host;
       const edge = host.getBoundingClientRect().right;
-      return [...host.shadowRoot.querySelectorAll('sp-picker, sp-switch, .account sp-button')]
+      return [
+        ...host.shadowRoot.querySelectorAll(
+          'sp-picker, sp-switch, .account swc-button, .account swc-status-light'
+        ),
+      ]
         .filter((element) => element.getBoundingClientRect().right > edge + 0.5)
         .map((element) => element.getAttribute('label') ?? element.textContent.trim());
     });

@@ -22,10 +22,11 @@ const status = () => window.$('slicc-app', '[data-updates]')?.textContent;
 test('boot opens the panel and readiness closes it without closing a manual reopen', async (t) => {
   const page = await open(t, 'boot');
   await page.until(shown);
-  await page.until(() =>
-    window
-      .$('slicc-app', 'slicc-dock', 'slicc-updates', '[data-id=agent] sp-badge')
-      ?.textContent.includes('63/95')
+  await page.until(
+    () =>
+      window
+        .$('slicc-app', 'slicc-dock', 'slicc-updates', '[data-id=agent] swc-progress-bar')
+        ?.getAttribute('value-label') === '63 of 95'
   );
   assert.equal(
     await page.evaluate(
@@ -36,13 +37,29 @@ test('boot opens the panel and readiness closes it without closing a manual reop
     6
   );
   assert.equal(await page.evaluate(status), 'updating 3');
-  assert.match(
-    await page.evaluate(
-      () =>
-        window.$('slicc-app', 'slicc-dock', 'slicc-updates', '[data-id=grammars] sp-badge')
-          .textContent
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const item = window.$('slicc-app', 'slicc-dock', 'slicc-updates', '[data-id=grammars]');
+      return [
+        item.querySelector('swc-status-light').textContent.trim(),
+        item.querySelector('swc-progress-bar').getAttribute('value-label'),
+      ];
+    }),
+    ['Linking', '12 of 15']
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window
+        .$('slicc-app', 'slicc-dock', 'slicc-updates', '[data-id=global] swc-progress-bar')
+        .hasAttribute('indeterminate')
     ),
-    /Linking 12\/15/
+    true
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      Boolean(window.$('slicc-app', 'slicc-dock', 'slicc-updates', 'h1, sp-badge, swc-badge'))
+    ),
+    false
   );
   await page.evaluate(() => {
     window.$('slicc-app', 'slicc-dock', 'slicc-updates', '[data-id=agent] summary').click();
@@ -161,7 +178,7 @@ test('new failures reopen once, show diagnostics and Retry, and dispatch errors 
   );
   await page.until(
     () =>
-      window.$('slicc-app', 'slicc-dock', 'slicc-updates', '[role=alert]')?.textContent ===
+      window.$('slicc-app', 'slicc-dock', 'slicc-updates', '[role=alert]')?.textContent.trim() ===
       'The update service is offline.'
   );
   await page.evaluate(() => window.model.updates.setScenario('current'));
@@ -237,10 +254,11 @@ for (const [name, color, browser] of [
   test(`Install / Update screenshots in ${name}`, async (t) => {
     const page = await open(t, 'boot', color, browser);
     await page.until(shown);
-    await page.until(() =>
-      window
-        .$('slicc-app', 'slicc-dock', 'slicc-updates', '[data-id=agent] sp-badge')
-        ?.textContent.includes('63/95')
+    await page.until(
+      () =>
+        window
+          .$('slicc-app', 'slicc-dock', 'slicc-updates', '[data-id=agent] swc-progress-bar')
+          ?.getAttribute('value-label') === '63 of 95'
     );
     if (name === 'narrow') {
       assert.equal(await page.evaluate(() => window.app.screen), 'phone');

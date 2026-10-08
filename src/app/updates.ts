@@ -1,13 +1,24 @@
+import '@adobe/spectrum-wc/components/button/swc-button.js';
+import '@adobe/spectrum-wc/components/divider/swc-divider.js';
+import '@adobe/spectrum-wc/components/progress-bar/swc-progress-bar.js';
+import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
+import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
-import type { SliccModel, UpdateAction, UpdateItem, UpdatesPort } from '../model/types.ts';
-import { ModelElement, shared } from './base.ts';
+import type {
+  SliccModel,
+  UpdateAction,
+  UpdateItem,
+  UpdateState,
+  UpdatesPort,
+} from '../model/types.ts';
+import { ModelElement } from './base.ts';
 
 const states = {
   current: ['neutral', 'Up to date'],
-  checking: ['informative', 'Checking'],
-  downloading: ['informative', 'Downloading'],
-  linking: ['informative', 'Linking'],
+  checking: ['info', 'Checking'],
+  downloading: ['info', 'Downloading'],
+  linking: ['info', 'Linking'],
   installed: ['positive', 'Installed'],
   available: ['notice', 'Update available'],
   ready: ['notice', 'Ready to apply'],
@@ -21,13 +32,21 @@ const actions: Record<UpdateAction, string> = {
   retry: 'Retry',
 };
 
+const running: ReadonlySet<UpdateState> = new Set(['checking', 'downloading', 'linking']);
+
+function hint(port: UpdatesPort | undefined): string {
+  if (!port) return 'Update information is not connected.';
+  if (port.ready()) {
+    return 'Your agent is ready. Background updates appear here; apply them when it suits you.';
+  }
+  return 'Preparing your agent. You can keep working; this panel closes when the agent is ready.';
+}
+
 export function updatesStatus(items: readonly UpdateItem[]): string | null {
   const failed = items.filter((item) => item.state === 'failed').length;
   if (failed) return `${failed} failed`;
-  const running = items.filter((item) =>
-    ['checking', 'downloading', 'linking'].includes(item.state)
-  ).length;
-  if (running) return `updating ${running}`;
+  const busy = items.filter((item) => running.has(item.state)).length;
+  if (busy) return `updating ${busy}`;
   if (items.some((item) => item.state === 'ready' || item.state === 'available')) {
     return 'update ready';
   }
@@ -78,105 +97,112 @@ export class SliccUpdates extends ModelElement {
   }
 
   static styles = [
-    shared,
     css`
       :host {
         display: block;
         height: 100%;
         overflow: auto;
         container-type: inline-size;
-        background: var(--spectrum-background-layer-2-color);
-        color: var(--spectrum-neutral-content-color-default);
-        font-size: var(--spectrum-font-size-100);
+        background: var(--swc-background-layer-2-color);
+        color: var(--swc-neutral-content-color-default);
+        font-size: var(--swc-font-size-100);
+        line-height: var(--swc-line-height-100);
       }
       .page {
         max-width: 800px;
-        padding: 24px;
+        padding: var(--swc-spacing-400);
         margin: 0 auto;
       }
-      h1 {
-        font-size: var(--spectrum-font-size-400);
-        margin: 0 0 8px;
-      }
-      .hint, .meta, summary {
-        color: var(--spectrum-neutral-subdued-content-color-default);
-        font-size: var(--spectrum-font-size-75);
-      }
       .hint {
-        margin: 0 0 24px;
-        line-height: 1.5;
+        margin: 0 0 var(--swc-spacing-300);
+        color: var(--swc-neutral-subdued-content-color-default);
+        line-height: var(--swc-line-height-200);
       }
       article {
-        padding: 16px 0;
-        border-top: 1px solid var(--spectrum-gray-200);
+        display: grid;
+        gap: var(--swc-spacing-200);
+        padding: var(--swc-spacing-300) 0;
+      }
+      h2 {
+        margin: 0;
+        font-size: var(--swc-font-size-200);
+        font-weight: var(--swc-bold-font-weight);
+        line-height: var(--swc-heading-line-height);
+        color: var(--swc-heading-color);
       }
       .head, .meta, .actions {
         display: flex;
         align-items: center;
         flex-wrap: wrap;
-        gap: 8px 12px;
+        gap: var(--swc-spacing-100) var(--swc-spacing-200);
       }
-      .head {
+      .head, .meta {
         justify-content: space-between;
-        margin-bottom: 8px;
       }
       .meta {
-        justify-content: space-between;
-        line-height: 1.5;
+        color: var(--swc-neutral-subdued-content-color-default);
+        font-size: var(--swc-font-size-75);
+        line-height: var(--swc-line-height-200);
+      }
+      swc-status-light {
+        align-self: center;
       }
       .version {
-        font-family: var(--spectrum-code-font-family);
+        font-family: var(--swc-code-font-family-stack);
       }
-      progress {
-        display: block;
+      swc-progress-bar {
         width: 100%;
-        height: 4px;
-        margin: 12px 0;
-        accent-color: var(--spectrum-accent-visual-color);
-      }
-      .actions {
-        margin-top: 12px;
       }
       .error {
-        margin: 12px 0 0;
-        padding: 12px;
-        border-left: 3px solid var(--spectrum-negative-visual-color);
-        background: var(--spectrum-background-layer-1-color);
-        color: var(--spectrum-negative-content-color-default);
+        display: flex;
+        align-items: flex-start;
+        gap: var(--swc-spacing-100);
+        padding: var(--swc-spacing-200);
+        border-radius: var(--swc-corner-radius-medium-default);
+        background: var(--swc-negative-subtle-background-color-default);
+        color: var(--swc-neutral-content-color-default);
         overflow-wrap: anywhere;
-        line-height: 1.5;
+        line-height: var(--swc-line-height-200);
+        --swc-icon-color: var(--swc-negative-content-color-default);
       }
-      details {
-        margin-top: 12px;
+      swc-icon-alert-triangle {
+        flex: none;
+        margin-block-start: var(--swc-spacing-50);
       }
       summary {
         cursor: pointer;
         width: fit-content;
+        color: var(--swc-neutral-subdued-content-color-default);
+        border-radius: var(--swc-corner-radius-small-default);
+      }
+      summary:hover {
+        color: var(--swc-neutral-subdued-content-color-hover);
       }
       summary:focus-visible {
-        outline: 2px solid var(--spectrum-focus-indicator-color);
-        outline-offset: 3px;
+        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+        outline-offset: var(--swc-focus-ring-gap);
       }
       pre {
-        padding: 12px;
-        max-height: 180px;
+        margin: var(--swc-spacing-200) 0 0;
+        padding: var(--swc-spacing-200);
+        max-height: calc(var(--swc-spacing-1000) * 2);
         overflow: auto;
-        background: var(--spectrum-background-layer-1-color);
-        border: 1px solid var(--spectrum-gray-200);
-        border-radius: 4px;
-        font-family: var(--spectrum-code-font-family);
-        font-size: var(--spectrum-font-size-75);
-        line-height: 1.5;
+        background: var(--swc-background-layer-1-color);
+        border-radius: var(--swc-corner-radius-medium-default);
+        font-family: var(--swc-code-font-family-stack);
+        font-size: var(--swc-font-size-75);
+        line-height: var(--swc-line-height-200);
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
       @container (max-width: 480px) {
         .page {
-          padding: 16px;
+          padding: var(--swc-spacing-300);
         }
-        .head, .meta {
+        .meta {
           align-items: flex-start;
           flex-direction: column;
+          gap: var(--swc-spacing-50);
         }
       }
     `,
@@ -205,7 +231,7 @@ export class SliccUpdates extends ModelElement {
   }
 
   focus(): void {
-    this.focusOn('sp-button, summary');
+    this.focusOn('swc-button, summary');
   }
 
   async act(id: string, action: UpdateAction): Promise<void> {
@@ -229,30 +255,72 @@ export class SliccUpdates extends ModelElement {
     }
   }
 
+  #progress(item: UpdateItem): TemplateResult | typeof nothing {
+    const progress = item.progress;
+    if (progress) {
+      return html`<swc-progress-bar
+        size="s"
+        min-value="0"
+        max-value=${progress.total}
+        value=${progress.done}
+        value-label=${`${progress.done} of ${progress.total}`}
+        accessible-label=${`${item.label}: ${progress.phase === 'download' ? 'downloading' : 'linking'}`}
+      ></swc-progress-bar>`;
+    }
+    if (!running.has(item.state)) return nothing;
+    return html`<swc-progress-bar
+      size="s"
+      indeterminate
+      accessible-label=${`${item.label}: ${states[item.state][1].toLowerCase()}`}
+    ></swc-progress-bar>`;
+  }
+
+  #actions(item: UpdateItem): TemplateResult | typeof nothing {
+    if (!item.actions.length) return nothing;
+    const busy = this.pending.has(item.id);
+    return html`<div class="actions">${item.actions.map(
+      (action) =>
+        html`<swc-button
+          size="m"
+          variant="accent"
+          data-action=${action}
+          accessible-label=${`${actions[action]}: ${item.label}`}
+          ?pending=${busy}
+          @click=${() => void this.act(item.id, action)}
+        >${actions[action]}</swc-button>`
+    )}</div>`;
+  }
+
+  #checked(at: number | null): TemplateResult {
+    if (at === null) return html`<span>Not checked yet</span>`;
+    const date = new Date(at);
+    const shown = date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+    return html`<span>Checked <time datetime=${date.toISOString()}>${shown}</time></span>`;
+  }
+
   #item(item: UpdateItem): TemplateResult {
     const [variant, label] = states[item.state];
-    const progress = item.progress;
     const error = this.failures.get(item.id) ?? item.error;
-    return html`<article data-id=${item.id} data-state=${item.state} aria-label=${item.label}>
+    return html`<swc-divider size="s"></swc-divider>
+    <article data-id=${item.id} data-state=${item.state} aria-label=${item.label}>
       <div class="head">
-        <strong>${item.label}</strong>
-        <sp-badge size="s" variant=${variant}>${label}${progress ? ` ${progress.done}/${progress.total}` : ''}</sp-badge>
+        <h2>${item.label}</h2>
+        <swc-status-light variant=${variant}>${label}</swc-status-light>
       </div>
       <div class="meta">
         <span class="version">${item.from ?? 'Not installed'}${item.to && item.to !== item.from ? html` → ${item.to}` : nothing}</span>
-        ${
-          item.checkedAt === null
-            ? html`<span>Not checked yet</span>`
-            : html`<span>Checked <time datetime=${new Date(item.checkedAt).toISOString()}>${new Date(item.checkedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</time></span>`
-        }
+        ${this.#checked(item.checkedAt)}
       </div>
-      ${progress ? html`<progress aria-label=${`${item.label}: ${progress.phase === 'download' ? 'downloading' : 'linking'}`} value=${progress.done} max=${progress.total}></progress>` : nothing}
-      ${error ? html`<div class="error" role="alert">${error}</div>` : nothing}
+      ${this.#progress(item)}
       ${
-        item.actions.length
-          ? html`<div class="actions">${item.actions.map((action) => html`<sp-button size="s" variant="secondary" treatment="outline" ?disabled=${this.pending.has(item.id)} ?pending=${this.pending.has(item.id)} data-action=${action} @click=${() => void this.act(item.id, action)}>${actions[action]}</sp-button>`)}</div>`
+        error
+          ? html`<div class="error" role="alert">
+              <swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>
+              <span>${error}</span>
+            </div>`
           : nothing
       }
+      ${this.#actions(item)}
       ${item.log ? html`<details><summary>Install log</summary><pre>${item.log}</pre></details>` : nothing}
     </article>`;
   }
@@ -260,8 +328,7 @@ export class SliccUpdates extends ModelElement {
   render(): TemplateResult {
     const port = this.model?.updates;
     return html`<div class="page">
-      <h1>Install / Update</h1>
-      <p class="hint">${!port ? 'Update information is not connected.' : port.ready() ? 'Your agent is ready. Background updates appear here; apply them when it suits you.' : 'Preparing your agent. You can keep working; this panel closes when the agent is ready.'}</p>
+      <p class="hint">${hint(port)}</p>
       ${repeat(
         port?.list() ?? [],
         (item) => item.id,

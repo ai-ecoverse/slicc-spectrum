@@ -1,6 +1,9 @@
+import '@adobe/spectrum-wc/components/button/swc-button.js';
+import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
+import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Account, Settings, SliccModel } from '../model/types.ts';
-import { ModelElement, shared } from './base.ts';
+import { ModelElement } from './base.ts';
 
 const accountStatus = {
   connected: ['positive', 'Connected'],
@@ -27,90 +30,129 @@ export class SliccSettings extends ModelElement {
   }
 
   static styles = [
-    shared,
     css`
       :host {
         display: block;
         height: 100%;
         overflow-y: auto;
         container-type: inline-size;
-        background: var(--spectrum-background-layer-2-color);
-        color: var(--spectrum-neutral-content-color-default);
-        font-size: var(--spectrum-font-size-100);
+        background: var(--swc-background-layer-2-color);
+        color: var(--swc-neutral-content-color-default);
+        font-size: var(--swc-font-size-100);
+        line-height: var(--swc-line-height-100);
       }
       .page {
         max-width: 640px;
-        padding: 16px 24px 32px;
+        padding: var(--swc-spacing-300) var(--swc-spacing-400) var(--swc-spacing-500);
       }
       h2 {
-        font-size: var(--spectrum-font-size-75);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--spectrum-neutral-subdued-content-color-default);
-        margin: 24px 0 8px;
-        font-weight: 700;
+        font-size: var(--swc-heading-size-xs);
+        font-weight: var(--swc-bold-font-weight);
+        line-height: var(--swc-heading-line-height);
+        color: var(--swc-heading-color);
+        margin: var(--swc-spacing-500) 0 var(--swc-spacing-200);
+      }
+      h2:first-child {
+        margin-top: var(--swc-spacing-200);
+      }
+      .rows {
+        display: grid;
+        row-gap: var(--swc-spacing-200);
       }
       .row {
         display: grid;
-        grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
         align-items: center;
-        gap: 12px;
-        min-height: 40px;
-        border-bottom: 1px solid var(--spectrum-gray-200);
+        gap: var(--swc-spacing-200);
+        min-height: var(--swc-component-height-200);
       }
-      .row label,
-      .row .label {
-        color: var(--spectrum-neutral-content-color-default);
+      .switches {
+        display: flex;
+        flex-wrap: wrap;
+        column-gap: var(--swc-spacing-400);
       }
       sp-picker {
         width: 240px;
         max-width: 100%;
       }
-      @container (max-width: 480px) {
-        .row {
-          grid-template-columns: minmax(0, 1fr);
-          gap: 4px;
-          padding: 8px 0;
-        }
+      .accounts {
+        display: grid;
+        grid-template-columns: minmax(0, max-content) minmax(0, 1fr) max-content max-content;
+        align-items: center;
+        gap: var(--swc-spacing-300) var(--swc-spacing-400);
+      }
+      .account,
+      .key,
+      .failure {
+        grid-column: 1 / -1;
       }
       .account {
         display: grid;
-        grid-template-columns: 120px 1fr auto auto;
+        grid-template-columns: subgrid;
         align-items: center;
-        gap: 12px;
-        min-height: 44px;
-        border-bottom: 1px solid var(--spectrum-gray-200);
-      }
-      .identity {
-        color: var(--spectrum-neutral-subdued-content-color-default);
-        font-size: var(--spectrum-font-size-75);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        min-height: var(--swc-component-height-200);
       }
       .state {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: var(--spectrum-font-size-75);
+        align-self: center;
       }
-      .state .dot[data-variant='positive'] {
-        background: var(--spectrum-positive-visual-color);
+      .provider {
+        font-weight: var(--swc-bold-font-weight);
+      }
+      .identity {
+        color: var(--swc-neutral-subdued-content-color-default);
+        overflow-wrap: anywhere;
       }
       .key {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
-        gap: 8px;
-        padding: 8px 0 12px;
-        border-bottom: 1px solid var(--spectrum-gray-200);
+        gap: var(--swc-spacing-100);
       }
       .key sp-textfield {
-        flex: 1;
+        flex: 1 1 auto;
       }
       .failure {
-        color: var(--spectrum-negative-content-color-default);
-        font-size: var(--spectrum-font-size-75);
-        padding: 4px 0;
+        display: flex;
+        align-items: flex-start;
+        gap: var(--swc-spacing-100);
+        color: var(--swc-negative-content-color-default);
+        font-size: var(--swc-font-size-75);
+        line-height: var(--swc-line-height-200);
+        --swc-icon-color: var(--swc-negative-content-color-default);
+      }
+      @container (max-width: 480px) {
+        .page {
+          padding-inline: var(--swc-spacing-300);
+        }
+        .row {
+          grid-template-columns: minmax(0, 1fr);
+          gap: var(--swc-spacing-75);
+        }
+        .accounts {
+          grid-template-columns: minmax(0, 1fr) max-content;
+          row-gap: var(--swc-spacing-400);
+        }
+        .account {
+          grid-template-columns: minmax(0, 1fr) max-content;
+          grid-template-areas: 'provider action' 'identity action' 'state action';
+          column-gap: var(--swc-spacing-300);
+          row-gap: var(--swc-spacing-50);
+        }
+        .provider {
+          grid-area: provider;
+        }
+        .identity {
+          grid-area: identity;
+        }
+        .state {
+          grid-area: state;
+        }
+        .account swc-button {
+          grid-area: action;
+        }
+        .key sp-textfield {
+          flex-basis: 100%;
+        }
       }
     `,
   ];
@@ -188,31 +230,59 @@ export class SliccSettings extends ModelElement {
     if (this.entering !== account.id) return nothing;
     const busy = this.pending.has(account.id);
     return html`<form class="key" data-id=${account.id} @submit=${(event: Event) => this.#submit(event, account.id)}>
-        <sp-textfield size="m" type="password" autocomplete="off" label=${`${account.provider} API key`} placeholder="Paste the API key" @keydown=${(event: KeyboardEvent) => this.#enter(event)}></sp-textfield>
-        <sp-button size="s" variant="accent" ?pending=${busy} @click=${(event: Event) => this.#send(event)}>Save</sp-button>
-        <sp-button size="s" variant="secondary" treatment="outline" @click=${() => this.#cancel()}>Cancel</sp-button>
+        <sp-textfield
+          size="m"
+          type="password"
+          autocomplete="off"
+          label=${`${account.provider} API key`}
+          placeholder="Paste the API key"
+          @keydown=${(event: KeyboardEvent) => this.#enter(event)}
+        ></sp-textfield>
+        <swc-button size="m" variant="accent" data-action="save" ?pending=${busy} @click=${(event: Event) => this.#send(event)}>Save</swc-button>
+        <swc-button size="m" variant="secondary" data-action="cancel" @click=${() => this.#cancel()}>Cancel</swc-button>
       </form>`;
+  }
+
+  #action(account: Account): TemplateResult {
+    if (account.status === 'connected') {
+      return html`<swc-button
+        size="m"
+        variant="secondary"
+        data-action="disconnect"
+        accessible-label=${`Disconnect ${account.provider}`}
+        @click=${() => this.model?.settings.disconnect(account.id)}
+      >Disconnect</swc-button>`;
+    }
+    const label = account.status === 'expired' ? 'Reconnect' : 'Connect';
+    const entering = this.entering === account.id;
+    return html`<swc-button
+      size="m"
+      variant="secondary"
+      data-action="connect"
+      accessible-label=${`${label} ${account.provider}`}
+      ?pending=${!entering && this.pending.has(account.id)}
+      ?disabled=${entering}
+      @click=${() => this.#start(account)}
+    >${label}</swc-button>`;
   }
 
   #account(account: Account): TemplateResult {
     const [variant, label] = accountStatus[account.status];
-    const busy = this.pending.has(account.id);
-    const action =
-      account.status === 'connected'
-        ? html`<sp-button size="s" variant="secondary" treatment="outline" @click=${() => this.model?.settings.disconnect(account.id)}
-            >Disconnect</sp-button
-          >`
-        : html`<sp-button size="s" variant="secondary" ?pending=${busy} ?disabled=${this.entering === account.id} @click=${() => this.#start(account)}
-            >${account.status === 'expired' ? 'Reconnect' : 'Connect'}</sp-button
-          >`;
+    const failure =
+      this.failure?.id === account.id
+        ? html`<div class="failure" role="alert">
+            <swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>
+            <span>${this.failure.message}</span>
+          </div>`
+        : nothing;
     return html`<div class="account" data-id=${account.id}>
-      <strong>${account.provider}</strong>
-      <span class="identity">${account.identity || '—'}</span>
-      <span class="state"><span class="dot" data-variant=${variant}></span>${label}</span>
-      ${action}
+      <span class="provider">${account.provider}</span>
+      <span class="identity">${account.identity}</span>
+      <swc-status-light class="state" variant=${variant}>${label}</swc-status-light>
+      ${this.#action(account)}
     </div>
     ${this.#key(account)}
-    ${this.failure?.id === account.id ? html`<div class="failure" role="alert">${this.failure.message}</div>` : nothing}`;
+    ${failure}`;
   }
 
   render(): TemplateResult {
@@ -221,6 +291,7 @@ export class SliccSettings extends ModelElement {
     if (!(settings && value)) return html`<div class="page">No settings.</div>`;
     return html`<div class="page">
       <h2>Appearance</h2>
+      <div class="rows">
       <div class="row">
         <span class="label" id="theme">Theme</span>
         <sp-picker size="m" label="Theme" aria-labelledby="theme" value=${value.color} @change=${(e: Event) => this.#update({ color: this.#value(e) as Settings['color'] })}>
@@ -229,7 +300,9 @@ export class SliccSettings extends ModelElement {
           <sp-menu-item value="dark">Dark</sp-menu-item>
         </sp-picker>
       </div>
+      </div>
       <h2>Agent</h2>
+      <div class="rows">
       <div class="row">
         <span class="label" id="model">Model for new cones</span>
         <sp-picker size="m" label="Model" aria-labelledby="model" value=${value.model} @change=${(e: Event) => this.#update({ model: this.#value(e) })}>
@@ -247,7 +320,7 @@ export class SliccSettings extends ModelElement {
       </div>
       <div class="row">
         <span class="label">Chat</span>
-        <div>
+        <div class="switches">
           <sp-switch ?checked=${value.sendOnEnter} data-setting="sendOnEnter" @change=${(e: Event) => this.#update({ sendOnEnter: this.#checked(e) })}>Enter sends, Shift+Enter adds a line</sp-switch>
           <sp-switch ?checked=${value.showThinking} data-setting="showThinking" @change=${(e: Event) => this.#update({ showThinking: this.#checked(e) })}>Show thinking</sp-switch>
         </div>
@@ -259,8 +332,9 @@ export class SliccSettings extends ModelElement {
           <sp-menu-item value="split">Split</sp-menu-item>
         </sp-picker>
       </div>
+      </div>
       <h2>Accounts</h2>
-      ${settings.accounts().map((account) => this.#account(account))}
+      <div class="accounts">${settings.accounts().map((account) => this.#account(account))}</div>
     </div>`;
   }
 }
