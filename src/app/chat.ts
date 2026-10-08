@@ -143,11 +143,25 @@ export class SliccChat extends ThemedElement {
     void this.updateComplete.then(() => this.#pin());
   }
 
-  protected firstUpdated(): void {
+  #observe(): void {
     const log = this.#log();
     this.#resize.observe(log);
     this.#resize.observe(log.firstElementChild as Element);
     this.#refresh(true);
+  }
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    if (this.hasUpdated) this.#observe();
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.#resize.disconnect();
+  }
+
+  protected firstUpdated(): void {
+    this.#observe();
   }
 
   focus(): void {
