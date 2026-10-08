@@ -59,7 +59,7 @@ const actionLabels: Record<ErrorAction, string> = {
 };
 
 export function time(at: number): string {
-  return new Date(at).toISOString().slice(11, 16);
+  return new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
 
 export function day(at: number): string {
@@ -67,7 +67,6 @@ export function day(at: number): string {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
-    timeZone: 'UTC',
   });
 }
 
