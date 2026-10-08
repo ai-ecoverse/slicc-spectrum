@@ -17,7 +17,11 @@ async function open(t, updates = 'current', color = 'light', browser = chrome) {
 }
 
 const shown = () => window.app.dock.has('updates');
-const status = () => window.$('slicc-app', '[data-updates]')?.textContent;
+const status = () =>
+  window
+    .$('slicc-app', '[data-updates]')
+    ?.getAttribute('accessible-label')
+    ?.replace('Install / Update: ', '');
 
 test('boot opens the panel and readiness closes it without closing a manual reopen', async (t) => {
   const page = await open(t, 'boot');
@@ -93,7 +97,11 @@ test('boot opens the panel and readiness closes it without closing a manual reop
 test('background updates stay hidden, reopen from status and dispatch component actions', async (t) => {
   const page = await open(t);
   await page.evaluate(() => window.model.updates.setScenario('available'));
-  await page.until(() => window.$('slicc-app', '[data-updates]')?.textContent === 'update ready');
+  await page.until(
+    () =>
+      window.$('slicc-app', '[data-updates]')?.getAttribute('accessible-label') ===
+      'Install / Update: update ready'
+  );
   assert.equal(await page.evaluate(shown), false);
   await page.evaluate(() => {
     window.dispatched = [];
@@ -208,7 +216,11 @@ test('a boot failure prevents auto-close until it is resolved', async (t) => {
   const page = await open(t, 'boot');
   await page.until(shown);
   await page.evaluate(() => window.model.updates.setScenario('failure'));
-  await page.until(() => window.$('slicc-app', '[data-updates]')?.textContent === '1 failed');
+  await page.until(
+    () =>
+      window.$('slicc-app', '[data-updates]')?.getAttribute('accessible-label') ===
+      'Install / Update: 1 failed'
+  );
   assert.equal(await page.evaluate(shown), true);
   await page.evaluate(() => window.model.updates.setScenario('current'));
   await page.until(() => !window.app.dock.has('updates'));

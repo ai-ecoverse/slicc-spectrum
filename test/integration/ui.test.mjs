@@ -57,7 +57,7 @@ test('the shell renders the default layout from the dummy model', async (t) => {
   assert.deepEqual(
     await page.evaluate(() => [
       window.$('slicc-app', '.rail.left [data-surface=files] [slot=icon]').localName,
-      window.$('slicc-app', 'header sp-action-button[label^=Switch] [slot=icon]').localName,
+      window.$('slicc-app', 'header swc-action-button#theme [slot=icon]').localName,
       [...window.$('slicc-app').shadowRoot.querySelectorAll('[slot=icon]')].filter((icon) =>
         icon.localName.startsWith('sp-icon-')
       ).length,
@@ -78,10 +78,27 @@ test('the shell renders the default layout from the dummy model', async (t) => {
   assert.deepEqual(rows[0], ['cone-sliccy', 'cone', 'true']);
   assert.deepEqual(rows[1], ['scoop-wren', 'scoop', 'false']);
   assert.equal(rows.length, 8);
-  const status = await page.evaluate(() =>
-    window.$('slicc-app', 'footer').textContent.replace(/\s+/g, ' ')
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const header = window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'header');
+      return [
+        window.$('slicc-app', 'footer'),
+        header.querySelector('swc-status-light').textContent,
+        [...header.querySelectorAll('sp-picker')].map((picker) => picker.getAttribute('label')),
+        header.querySelector('swc-meter').getAttribute('value'),
+        /sliccy/.test(header.textContent),
+      ];
+    }),
+    [null, 'Idle', ['Model', 'Thinking'], '21', false]
   );
-  assert.match(status, /sliccy · idle Claude Sonnet 5\.5 Context 21% 4 changes/);
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.$('slicc-app', 'header sp-picker').querySelectorAll('sp-menu-item')].map((item) =>
+        item.textContent.trim()
+      )
+    ),
+    ['sliccy', 'kitchen-sink', 'harbor', 'release-notes', 'inbox-triage', 'Show all agents']
+  );
   assert.deepEqual(
     chrome.requests.filter((path) => path.startsWith('/node_modules/')),
     []
@@ -173,7 +190,12 @@ test('panels move, close, float and come back, and a reload keeps the layout', a
       el.textContent.includes('Agents')
     );
     tab.dispatchEvent(
-      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 60 })
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 40,
+        clientY: 60,
+      })
     );
   });
   await page.until(() =>
@@ -446,9 +468,7 @@ test('the theme switches between light and dark and survives a reload', async (t
   assert.equal(light[0], 'light');
   assert.equal(light[2], 'light');
 
-  await page.evaluate(() =>
-    window.$('slicc-app', 'header sp-action-button[label^=Switch]').click()
-  );
+  await page.evaluate(() => window.$('slicc-app', 'header swc-action-button#theme').click());
   await page.until(() => window.$('slicc-app', 'sp-theme').getAttribute('color') === 'dark');
   const dark = await page.evaluate(surface);
   assert.notEqual(dark[1], light[1]);
@@ -574,10 +594,16 @@ test('each screen class has its own layout, and rails restore closed panels', as
       'memory',
       'freezer',
       'monitor',
-      'settings',
-      'updates',
     ],
   });
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [
+        ...window.$('slicc-app', '.rail.bottom sp-action-menu').querySelectorAll('sp-menu-item'),
+      ].map((item) => item.getAttribute('value'))
+    ),
+    ['settings', 'updates']
+  );
   await shot(page, 'phone-light');
 
   await page.evaluate(() => {
@@ -797,7 +823,12 @@ test('a diff opens from the changes list, switches layout, and accepting or reve
   await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
   await page.until(() => window.model.files.changes().length === 2);
   await page.until(() => window.row('workspace/harbor/src/lib/retry.ts') === null);
-  assert.match(await page.evaluate(() => window.$('slicc-app', 'footer').textContent), /2 changes/);
+  await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('changes'));
+  await page.until(
+    () =>
+      window.$('slicc-app', '.rail [data-surface=changes]')?.getAttribute('accessible-label') ===
+        'Open Changes, 2 changes' && window.$('slicc-app', '.badged swc-badge').textContent === '2'
+  );
   assert.deepEqual(page.errors, []);
 });
 
@@ -1106,9 +1137,7 @@ test('the browser lists its windows with thumbnails, and follows agents', async 
 
 test('settings change the theme and the composer, and connect accounts', async (t) => {
   const page = await open(t);
-  await page.evaluate(() =>
-    window.$('slicc-app', 'header sp-action-button[label=Settings]').click()
-  );
+  await page.evaluate(() => window.$('slicc-app', 'header swc-action-button#settings').click());
   await page.until(() => window.$('slicc-app', 'slicc-dock').api.activePanel?.id === 'settings');
   await page.until(
     () =>
@@ -1263,7 +1292,12 @@ test('tool cards show the command, its timeout, and an edit as a diff', async (t
   );
   assert.deepEqual(
     cards.find((card) => card.name === 'edit_file'),
-    { name: 'edit_file', meta: null, input: null, diff: '/workspace/harbor/src/lib/cache.ts' }
+    {
+      name: 'edit_file',
+      meta: null,
+      input: null,
+      diff: '/workspace/harbor/src/lib/cache.ts',
+    }
   );
   await page.until(() =>
     window
@@ -1484,11 +1518,13 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
       '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4" fill="red"/></svg>';
     const data = new DataTransfer();
     data.items.add(new File([svg], 'pasted.svg', { type: 'image/svg+xml' }));
-    window
-      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'textarea')
-      .dispatchEvent(
-        new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
-      );
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'textarea').dispatchEvent(
+      new ClipboardEvent('paste', {
+        clipboardData: data,
+        bubbles: true,
+        cancelable: true,
+      })
+    );
   });
   await page.until(
     () =>
@@ -1722,7 +1758,11 @@ test('SLICC sprinkles run sandboxed with Lucide icons and lick their cone, and t
   await page.evaluate(() => {
     window.dispatchEvent(
       new MessageEvent('message', {
-        data: { type: 'slicc-lick', action: 'onboarding-complete', data: { name: 'Robin' } },
+        data: {
+          type: 'slicc-lick',
+          action: 'onboarding-complete',
+          data: { name: 'Robin' },
+        },
         source: window.welcome().shadowRoot.querySelector('iframe').contentWindow,
       })
     );
@@ -1734,21 +1774,23 @@ test('SLICC sprinkles run sandboxed with Lucide icons and lick their cone, and t
   );
 
   await page.evaluate(() => window.$('slicc-app', 'slicc-tray', '.chip').click());
-  await page.until(() => !!window.$('slicc-app', 'slicc-tray', '.panel'));
+  await page.until(() => window.$('slicc-app', 'slicc-tray', 'swc-popover').open === true);
   assert.match(
     await page.evaluate(() => window.$('slicc-app', 'slicc-tray', '.panel').textContent),
     /leader/
   );
   await shot(page, 'tray-light');
   await page.evaluate(() =>
-    [...window.$('slicc-app', 'slicc-tray').shadowRoot.querySelectorAll('.panel sp-action-button')]
+    [...window.$('slicc-app', 'slicc-tray').shadowRoot.querySelectorAll('.panel swc-action-button')]
       .find((button) => button.textContent.trim() === 'Disconnect')
       .click()
   );
   await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
   await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
   await page.until(
-    () => window.$('slicc-app', 'slicc-tray', '.chip .dot').dataset.variant === 'neutral'
+    () =>
+      window.$('slicc-app', 'slicc-tray', '.chip swc-status-light').getAttribute('variant') ===
+      'neutral'
   );
   assert.deepEqual(page.errors, []);
 });
@@ -1941,8 +1983,13 @@ test('each thread opens in its own chat tab next to the others', async (t) => {
   await page.until(() => window.$('slicc-app', 'slicc-dock').has('chat:scoop-otter'));
   const chatGroup = (await page.evaluate(groups)).find((ids) => ids.includes('chat:cone-sliccy'));
   assert.deepEqual(chatGroup, ['chat:cone-sliccy', 'chat:cone-harbor', 'chat:scoop-otter']);
-  await page.until(() =>
-    /quiet-otter/.test(window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'header').textContent)
+  await page.until(
+    () =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:scoop-otter')
+        ?.shadowRoot.querySelector('header swc-meter')
+        ?.getAttribute('value') === '12'
   );
   await shot(page, 'threads-light');
 
@@ -2098,5 +2145,79 @@ test('a dip dropped on a rail waits there, and its button opens it as a panel', 
         ?.shadowRoot.querySelector('iframe')
   );
   await shot(page, 'dip-panel-dark');
+  assert.deepEqual(page.errors, []);
+});
+
+test('status notices show under the header and collapse when hidden', async (t) => {
+  const page = await open(t);
+  const height = () => window.$('slicc-app', '.notices').getBoundingClientRect().height;
+  assert.equal(await page.evaluate(height), 0);
+  await page.evaluate(() => {
+    const style = document.createElement('style');
+    style.textContent = 'slicc-app > [slot="status"] { color: rgb(1, 2, 3); }';
+    document.head.append(style);
+    const note = document.createElement('span');
+    note.slot = 'status';
+    note.id = 'note';
+    note.textContent = 'Network offline';
+    window.app.append(note);
+    return true;
+  });
+  await page.until(() => window.$('slicc-app', '.notices').getBoundingClientRect().height > 0);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const note = document.getElementById('note');
+      const header = window.$('slicc-app', 'header').getBoundingClientRect();
+      return [
+        getComputedStyle(note).color,
+        Math.round(note.getBoundingClientRect().top) === Math.round(header.bottom),
+      ];
+    }),
+    ['rgb(1, 2, 3)', true]
+  );
+  await shot(page, 'notice-light');
+  await page.evaluate(() => {
+    document.getElementById('note').hidden = true;
+    return true;
+  });
+  await page.until(() => window.$('slicc-app', '.notices').getBoundingClientRect().height === 0);
+  assert.deepEqual(page.errors, []);
+});
+
+test('the agent picker lists cones and opens the agents panel for the rest', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('agents'));
+  assert.deepEqual(
+    await page
+      .evaluate(() =>
+        [...window.$('slicc-app', 'header sp-picker').querySelectorAll('sp-menu-item')].map(
+          (item) => [item.value, item.textContent.trim()]
+        )
+      )
+      .then((items) => [
+        items.slice(0, -1).every(([value]) => value.startsWith('cone-')),
+        items.length > 2,
+        items.at(-1),
+      ]),
+    [true, true, ['slicc:all-agents', 'Show all agents']]
+  );
+  await page.evaluate(() => {
+    const picker = window.$('slicc-app', 'header sp-picker');
+    picker.value = 'slicc:all-agents';
+    picker.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.until(() => window.$('slicc-app', 'slicc-dock').api.activePanel?.id === 'agents');
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const picker = window.$('slicc-app', 'header sp-picker');
+      return [picker.value, picker.open, window.model.agent.active()];
+    }),
+    ['cone-sliccy', false, 'cone-sliccy']
+  );
+  await page.evaluate(() => {
+    window.model.agent.select('scoop-otter');
+    return true;
+  });
+  await page.until(() => window.$('slicc-app', 'header sp-picker').value === 'cone-harbor');
   assert.deepEqual(page.errors, []);
 });

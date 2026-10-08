@@ -32,7 +32,7 @@ test('terminals and files run on slicc-kernel and OPFS, and keep across a reload
   assert.equal(await page.evaluate(() => window.$('slicc-app', 'slicc-tray')), null);
   assert.equal(
     await page.evaluate(
-      () => window.$('slicc-app', 'footer slot[name=status]').assignedElements()[0].textContent
+      () => window.$('slicc-app', '.notices slot[name=status]').assignedElements()[0].textContent
     ),
     'network: test'
   );

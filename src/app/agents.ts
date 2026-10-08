@@ -1,6 +1,6 @@
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Agent, SliccModel } from '../model/types.ts';
-import { dot, ModelElement, percent, shared } from './base.ts';
+import { ModelElement, percent, shared, statusLabel, statusLight } from './base.ts';
 
 export function ordered(agents: readonly Agent[]): Agent[] {
   const cones = agents.filter((agent) => agent.kind === 'cone');
@@ -15,53 +15,62 @@ export class SliccAgents extends ModelElement {
       display: block;
       height: 100%;
       overflow-y: auto;
-      background: var(--spectrum-background-layer-1-color);
-      color: var(--spectrum-neutral-content-color-default);
-      font-size: var(--spectrum-font-size-75);
+      background: var(--swc-background-layer-1-color);
+      color: var(--swc-neutral-content-color-default);
+      font-size: var(--swc-font-size-100);
     }
     ul {
       list-style: none;
       margin: 0;
-      padding: 4px 0;
+      padding: var(--swc-spacing-75) 0;
     }
     li {
       display: grid;
-      grid-template-columns: auto 1fr auto auto;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      grid-template-areas: 'name unread fill' 'status unread fill';
       align-items: center;
-      gap: 8px;
-      height: 28px;
-      padding: 0 10px;
+      column-gap: var(--swc-spacing-100);
+      padding: var(--swc-spacing-75) var(--swc-spacing-200);
       cursor: pointer;
-      outline: none;
     }
     li.scoop {
-      padding-left: 26px;
+      padding-inline-start: calc(var(--swc-spacing-200) + var(--swc-spacing-300));
     }
     li:hover {
-      background: var(--spectrum-gray-100);
+      background: var(--swc-gray-100);
     }
     li[aria-selected='true'] {
-      background: color-mix(in srgb, var(--spectrum-accent-visual-color) 14%, transparent);
+      background: var(--swc-gray-200);
+      box-shadow: inset var(--swc-spacing-50) 0 0 var(--swc-accent-visual-color);
     }
     li:focus-visible {
-      box-shadow: inset 0 0 0 2px var(--spectrum-focus-indicator-color);
+      outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+      outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
     }
     .name {
+      grid-area: name;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
     .cone .name {
-      font-weight: 600;
-    }
-    .fill {
-      font-variant-numeric: tabular-nums;
-      color: var(--spectrum-neutral-subdued-content-color-default);
-      min-width: 3ch;
-      text-align: right;
+      font-weight: var(--swc-bold-font-weight);
     }
     .unread {
-      min-width: 16px;
+      grid-area: unread;
+      align-self: center;
+    }
+    .fill {
+      grid-area: fill;
+      font-size: var(--swc-font-size-75);
+      font-variant-numeric: tabular-nums;
+      color: var(--swc-neutral-subdued-content-color-default);
+      min-width: 4ch;
+      text-align: end;
+    }
+    swc-status-light {
+      grid-area: status;
+      justify-self: start;
     }
   `,
   ];
@@ -106,7 +115,7 @@ export class SliccAgents extends ModelElement {
 
   #row(agent: Agent, active: string): TemplateResult {
     const selected = agent.id === active;
-    const label = `${agent.name}: ${agent.status}, ${percent(agent.contextFill)} context${
+    const label = `${agent.name}: ${statusLabel[agent.status]}, ${percent(agent.contextFill)} context${
       agent.unread ? `, ${agent.unread} unread` : ''
     }`;
     return html`<li
@@ -119,12 +128,14 @@ export class SliccAgents extends ModelElement {
       title=${label}
       @click=${() => this.#select(agent.id)}
     >
-      ${dot(agent.status)}
       <span class="name">${agent.name}</span>
-      <span class="unread">${
-        agent.unread ? html`<span class="count">${agent.unread}</span>` : nothing
-      }</span>
+      ${
+        agent.unread
+          ? html`<swc-badge class="unread" size="s" variant="informative">${agent.unread}</swc-badge>`
+          : nothing
+      }
       <span class="fill">${percent(agent.contextFill)}</span>
+      ${statusLight(agent.status)}
     </li>`;
   }
 

@@ -1,6 +1,13 @@
 import { css, html, nothing, type TemplateResult } from 'lit';
-import type { Agent, ErrorAction, Message, SliccModel, UserMessage } from '../model/types.ts';
-import { dot, shared, ThemedElement } from './base.ts';
+import type {
+  Agent,
+  ErrorAction,
+  Message,
+  SliccModel,
+  Thinking,
+  UserMessage,
+} from '../model/types.ts';
+import { meterVariant, shared, statusLight, ThemedElement } from './base.ts';
 import type { SliccComposer } from './composer.ts';
 import {
   assistant,
@@ -38,20 +45,28 @@ export class SliccChat extends ThemedElement {
       }
       header {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
-        gap: 8px;
-        padding: 0 12px;
-        height: 32px;
+        gap: var(--swc-spacing-50) var(--swc-spacing-100);
+        padding: var(--swc-spacing-75) var(--swc-spacing-200);
         flex: none;
-        border-bottom: 1px solid var(--spectrum-gray-200);
-        font-size: var(--spectrum-font-size-75);
-        color: var(--spectrum-neutral-subdued-content-color-default);
+        border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
+        font-size: var(--swc-font-size-75);
+        color: var(--swc-neutral-subdued-content-color-default);
         white-space: nowrap;
-        overflow: hidden;
       }
-      header strong {
-        color: var(--spectrum-neutral-content-color-default);
-        font-weight: 600;
+      header sp-picker {
+        --mod-picker-spacing-label-to-picker-quiet: calc(-1 * var(--swc-border-width-100));
+        min-width: 0;
+        width: auto;
+      }
+      header swc-status-light {
+        align-self: center;
+      }
+      header swc-meter {
+        flex: 0 1 calc(var(--swc-spacing-400) * 6);
+        min-width: calc(var(--swc-spacing-400) * 4);
+        margin-inline-start: auto;
       }
       .log {
         flex: 1;
@@ -197,20 +212,30 @@ export class SliccChat extends ThemedElement {
     return out;
   }
 
+  #meta(agent: Agent): TemplateResult {
+    const model = this.model as SliccModel;
+    const fill = Math.round(agent.contextFill * 100);
+    return html`${statusLight(agent.status)}
+      <sp-picker size="s" quiet label="Model" value=${agent.model} @change=${(event: Event) => model.agent.setModel(agent.id, (event.target as HTMLInputElement).value)}>
+        ${model.settings.models().map((option) => html`<sp-menu-item value=${option.id}>${option.label}</sp-menu-item>`)}
+      </sp-picker>
+      <sp-picker size="s" quiet label="Thinking" value=${model.settings.get().thinking} @change=${(event: Event) => model.settings.update({ thinking: (event.target as HTMLInputElement).value as Thinking })}>
+        <sp-menu-item value="off">No thinking</sp-menu-item>
+        <sp-menu-item value="low">Think a little</sp-menu-item>
+        <sp-menu-item value="medium">Think</sp-menu-item>
+        <sp-menu-item value="high">Think hard</sp-menu-item>
+      </sp-picker>
+      <swc-meter size="s" label-position="side" value=${fill} variant=${meterVariant(fill)}><span slot="label">Context</span></swc-meter>`;
+  }
+
   render(): TemplateResult {
     this.#handlers.color = this.color;
     this.#handlers.model = this.model ?? null;
     const agent = this.#agent();
     const messages = agent ? (this.model?.agent.messages(agent.id) ?? []) : [];
-    const model = this.model?.settings.models().find((option) => option.id === agent?.model);
     return html`
       <header>
-        ${
-          agent
-            ? html`${dot(agent.status)}<strong>${agent.name}</strong><span>${agent.kind}</span><span>·</span>
-              <span>${agent.status}</span><span>·</span><span>${model?.label ?? agent.model}</span>`
-            : html`<span>No agent</span>`
-        }
+        ${agent ? this.#meta(agent) : html`<span>No agent</span>`}
       </header>
       <div class="log" role="log" aria-live="polite" aria-label="Conversation">
         <div class="column">

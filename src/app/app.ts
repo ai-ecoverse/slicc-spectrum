@@ -1,9 +1,8 @@
 import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import type { PanelParams, SerializedDockview, SliccDock } from '../components/dock.ts';
-import type { SliccModel, Sprinkle, UpdatesPort } from '../model/types.ts';
-import { ordered } from './agents.ts';
-import { dot, percent, shared, ThemedElement } from './base.ts';
+import type { Agent, SliccModel, Sprinkle, UpdatesPort } from '../model/types.ts';
+import { shared, ThemedElement } from './base.ts';
 import { Dips, dipType } from './dips.ts';
 import { defaultFontBase, defaultVariableFont, installFonts } from './fonts.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
@@ -39,6 +38,22 @@ function railIcon(icon: string): TemplateResult {
   return html`<slicc-lucide slot="icon" name=${icon}></slicc-lucide>`;
 }
 
+export const allAgents = 'slicc:all-agents';
+
+export const railPitch = 36;
+
+export function railCapacity(width: number, count: number): number {
+  if (!width) return count;
+  const slots = Math.max(1, Math.floor((width - 16 + 4) / railPitch));
+  return count <= slots ? count : Math.max(0, slots - 1);
+}
+
+export function updatesVariant(status: string): 'negative' | 'info' | 'notice' {
+  if (status.endsWith('failed')) return 'negative';
+  if (status.startsWith('updating')) return 'info';
+  return 'notice';
+}
+
 export class SliccApp extends ThemedElement {
   static properties = {
     ...ThemedElement.properties,
@@ -54,6 +69,7 @@ export class SliccApp extends ThemedElement {
   #fontBase: string | null = defaultFontBase;
   #variableFont: string | null = defaultVariableFont;
   #resize: ResizeObserver | null = null;
+  #width = 0;
   #started: ScreenClass | null = null;
   #saving = false;
   #updatesPort: UpdatesPort | undefined;
@@ -89,138 +105,117 @@ export class SliccApp extends ThemedElement {
       color: var(--spectrum-neutral-content-color-default);
     }
     .shell {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: 40px minmax(0, 1fr) auto 24px;
+      display: flex;
+      flex-direction: column;
       height: 100%;
     }
     main {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr) auto;
+      flex: 1;
       min-height: 0;
+    }
+    .notices {
+      display: flex;
+      flex-direction: column;
+      flex: none;
+      font-size: var(--swc-font-size-75);
+      color: var(--swc-neutral-content-color-default);
+    }
+    .notices ::slotted(:not([hidden])) {
+      padding: var(--swc-spacing-75) var(--swc-spacing-200);
+      border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
+      background: var(--swc-background-layer-2-color);
     }
     .rail {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 4px;
-      width: 40px;
-      padding: 6px 0;
+      gap: var(--swc-spacing-75);
+      width: calc(var(--swc-component-height-100) + var(--swc-spacing-100));
+      padding: var(--swc-spacing-100) 0;
       box-sizing: border-box;
-      background: var(--spectrum-background-layer-1-color);
+      background: var(--swc-background-layer-1-color);
     }
     .rail.drop {
-      background: var(--spectrum-accent-background-color-default);
-      outline: 2px solid var(--spectrum-focus-indicator-color);
-      outline-offset: -2px;
+      background: var(--swc-gray-200);
+      outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+      outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
     }
     .rail.left {
       grid-column: 1;
-      border-right: 1px solid var(--spectrum-gray-200);
+      border-right: var(--swc-border-width-100) solid var(--swc-gray-200);
     }
     .rail.right {
       grid-column: 3;
-      border-left: 1px solid var(--spectrum-gray-200);
+      border-left: var(--swc-border-width-100) solid var(--swc-gray-200);
     }
     main slicc-dock {
       grid-column: 2;
       grid-row: 1;
     }
     .rail.bottom {
+      flex: none;
       flex-direction: row;
       justify-content: safe center;
       width: auto;
-      height: 44px;
-      padding: 0 8px;
-      border-top: 1px solid var(--spectrum-gray-200);
-      overflow-x: auto;
+      height: calc(var(--swc-component-height-100) + var(--swc-spacing-200));
+      padding: 0 var(--swc-spacing-100);
+      border-top: var(--swc-border-width-100) solid var(--swc-gray-200);
     }
     .rail:empty {
       display: none;
     }
-    :host([screen='phone']) footer .hints {
-      display: none;
+    .badged {
+      position: relative;
+      display: inline-flex;
+    }
+    .badged swc-badge {
+      --swc-badge-height: var(--swc-spacing-300);
+      --swc-badge-padding-block: var(--swc-spacing-50);
+      --swc-badge-padding-inline: var(--swc-spacing-75);
+      --swc-badge-corner-radius: var(--swc-spacing-100);
+      --swc-badge-line-height: 1;
+      position: absolute;
+      inset-block-start: calc(-1 * var(--swc-spacing-50));
+      inset-inline-end: calc(-1 * var(--swc-spacing-75));
+      pointer-events: none;
+    }
+    header swc-status-light {
+      align-self: center;
     }
     :host([screen='phone']) header sp-picker {
       min-width: 0;
       width: 0;
       flex: 1;
     }
-    :host([screen='phone']) header .spacer {
+    :host([screen='phone']) header .spacer,
+    :host([screen='phone']) header .view-label {
       display: none;
     }
     header {
       display: flex;
+      flex: none;
       align-items: center;
-      gap: 8px;
-      padding: 0 8px 0 12px;
-      border-bottom: 1px solid var(--spectrum-gray-200);
-      background: var(--spectrum-background-layer-1-color);
+      gap: var(--swc-spacing-100);
+      height: calc(var(--swc-component-height-100) + var(--swc-spacing-100));
+      padding: 0 var(--swc-spacing-100) 0 var(--swc-spacing-200);
+      border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
+      background: var(--swc-background-layer-1-color);
     }
     .brand {
-      font-weight: 800;
-      font-size: var(--spectrum-font-size-100);
-      letter-spacing: -0.01em;
-      margin-right: 8px;
+      font-weight: var(--swc-extra-bold-font-weight);
+      font-size: var(--swc-font-size-100);
+      margin-inline-end: var(--swc-spacing-100);
     }
     .spacer {
       flex: 1;
     }
     sp-picker {
-      min-width: 200px;
+      min-width: calc(var(--swc-spacing-400) * 8);
     }
     slicc-dock {
       height: 100%;
-    }
-    footer {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      padding: 0 12px;
-      border-top: 1px solid var(--spectrum-gray-200);
-      background: var(--spectrum-background-layer-1-color);
-      color: var(--spectrum-neutral-subdued-content-color-default);
-      font-size: var(--spectrum-font-size-50);
-      white-space: nowrap;
-      overflow: hidden;
-    }
-    .bar {
-      display: inline-block;
-      width: 48px;
-      height: 4px;
-      border-radius: 2px;
-      background: var(--spectrum-gray-200);
-      overflow: hidden;
-    }
-    .bar > span {
-      display: block;
-      height: 100%;
-      background: var(--spectrum-accent-visual-color);
-    }
-    .item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .link {
-      font: inherit;
-      color: inherit;
-      background: none;
-      border: 0;
-      padding: 0;
-      cursor: pointer;
-    }
-    .link:hover {
-      color: var(--spectrum-neutral-content-color-default);
-      text-decoration: underline;
-    }
-    .link:focus-visible {
-      outline: 2px solid var(--spectrum-focus-indicator-color);
-    }
-    .context {
-      display: flex;
-      align-items: center;
-      gap: 6px;
     }
   `,
   ];
@@ -306,7 +301,13 @@ export class SliccApp extends ThemedElement {
 
   #measure(): void {
     const width = this.getBoundingClientRect().width;
-    if (width > 0) this.screen = screenClass(width);
+    if (width > 0) {
+      this.screen = screenClass(width);
+      if (width !== this.#width) {
+        this.#width = width;
+        this.requestUpdate();
+      }
+    }
   }
 
   protected updated(changed: PropertyValues<this>): void {
@@ -418,7 +419,7 @@ export class SliccApp extends ThemedElement {
     this.requestUpdate();
   }
 
-  #active(): { id: string; name: string } | null {
+  #active(): Agent | null {
     const model = this.model;
     return model?.agent.list().find((agent) => agent.id === model.agent.active()) ?? null;
   }
@@ -507,11 +508,31 @@ export class SliccApp extends ThemedElement {
     this.#detach(id, null, false);
   }
 
+  #railButton(item: Surface, side: string): TemplateResult {
+    const changes = item.id === 'changes' ? (this.model?.files.changes().length ?? 0) : 0;
+    const label = changes
+      ? `Open ${item.title}, ${changes} ${changes === 1 ? 'change' : 'changes'}`
+      : `Open ${item.title}`;
+    const button = staticHtml`<swc-action-button id=${`rail-${item.id}`} quiet size="m" accessible-label=${label} data-surface=${item.id} @click=${() => this.show(item.id)}>${railIcon(item.icon)}</swc-action-button>`;
+    const tooltip = html`<swc-tooltip for=${`rail-${item.id}`} placement=${{ left: 'end', right: 'start', bottom: 'top' }[side]}>${item.title}</swc-tooltip>`;
+    return changes
+      ? html`<span class="badged">${button}<swc-badge size="s" variant="neutral" aria-hidden="true">${changes}</swc-badge></span>${tooltip}`
+      : html`${button}${tooltip}`;
+  }
+
+  #more(items: readonly Surface[]): TemplateResult | typeof nothing {
+    if (!items.length) return nothing;
+    return staticHtml`<sp-action-menu quiet size="m" label="More panels" placement="top-end" @change=${(event: Event) => this.show((event.target as HTMLElement & { value: string }).value)}>
+      <swc-icon-more slot="icon"></swc-icon-more>
+      ${items.map((item) => staticHtml`<sp-menu-item value=${item.id}>${railIcon(item.icon)}${item.title}</sp-menu-item>`)}
+    </sp-action-menu>`;
+  }
+
   #rail(items: readonly Surface[], side: string): TemplateResult {
-    return html`<nav class=${`rail ${side}`} aria-label=${`Closed panels, ${side}`} @dragover=${this.#railOver} @dragleave=${this.#railLeave} @drop=${this.#railDrop}>${items.map(
-      (item) =>
-        staticHtml`<sp-action-button quiet size="m" label=${`Open ${item.title}`} title=${item.title} data-surface=${item.id} @click=${() => this.show(item.id)}>${railIcon(item.icon)}</sp-action-button>`
-    )}</nav>`;
+    const fit = side === 'bottom' ? railCapacity(this.#width, items.length) : items.length;
+    return html`<nav class=${`rail ${side}`} aria-label=${`Closed panels, ${side}`} @dragover=${this.#railOver} @dragleave=${this.#railLeave} @drop=${this.#railDrop}>${items
+      .slice(0, fit)
+      .map((item) => this.#railButton(item, side))}${this.#more(items.slice(fit))}</nav>`;
   }
 
   #rails(): {
@@ -568,11 +589,24 @@ export class SliccApp extends ThemedElement {
     const value = (event.target as HTMLElement & { value: string }).value;
     if (value === 'reset') this.resetLayout();
     else if (value === 'new-terminal') this.newTerminal();
+    else if (value === 'next-group') this.dock.cycleGroup(1);
+    else if (value === 'theme') this.toggleColor();
     else this.show(value);
   }
 
+  #cone(): string {
+    const agent = this.#active() as Agent | null;
+    return agent?.kind === 'scoop' ? (agent.parentId ?? '') : (agent?.id ?? '');
+  }
+
   #pick(event: Event): void {
-    this.model?.agent.select((event.target as HTMLElement & { value: string }).value);
+    const picker = event.target as HTMLElement & { value: string };
+    if (picker.value === allAgents) {
+      picker.value = this.#cone();
+      this.show('agents');
+      return;
+    }
+    this.model?.agent.select(picker.value);
   }
 
   #menuItem(surface: Surface, index: number): TemplateResult {
@@ -585,44 +619,30 @@ export class SliccApp extends ThemedElement {
     return this.surfaces.some((item) => item.id === id);
   }
 
-  #agentStatus(): TemplateResult | typeof nothing {
-    if (!this.#offers('chat')) return nothing;
-    const model = this.model;
-    const agent = model?.agent.list().find((candidate) => candidate.id === model.agent.active());
-    const label = model?.settings.models().find((option) => option.id === agent?.model)?.label;
-    return agent
-      ? html`<span class="item">${dot(agent.status)}${agent.name} · ${agent.status}</span>
-            <span>${label ?? agent.model}</span>
-            <span class="item" title="Context fill"
-              >Context <span class="bar"><span style=${`width: ${percent(agent.contextFill)}`}></span></span>
-              ${percent(agent.contextFill)}</span
-            >`
-      : html`<span>No agent</span>`;
-  }
-
-  #changes(): TemplateResult | typeof nothing {
-    if (!this.#offers('changes')) return nothing;
-    const changes = this.model?.files.changes().length ?? 0;
-    return html`<button class="link" @click=${() => this.show('changes')}>${changes} ${changes === 1 ? 'change' : 'changes'}</button>`;
-  }
-
-  #status(): TemplateResult {
+  #updatesIndicator(): TemplateResult | typeof nothing {
     const updates = this.#offers('updates')
       ? updatesStatus(this.model?.updates?.list() ?? [])
       : null;
-    return html`<footer role="status" aria-label="Status">
-      ${updates ? html`<button class="link" aria-label=${`Install / Update: ${updates}`} data-updates @click=${() => this.show('updates')}>${updates}</button>` : nothing}
-      ${this.#agentStatus()}
-      ${this.#changes()}
-      <slot name="status"></slot>
-      <span class="spacer"></span>
-      <span class="hints"><kbd>F6</kbd> next group · <kbd>Alt+1–${Math.min(9, this.surfaces.length)}</kbd> panels · <kbd>Alt+Shift+T</kbd> theme</span>
-    </footer>`;
+    if (!updates) return nothing;
+    const text = updates[0].toUpperCase() + updates.slice(1);
+    return html`<swc-action-button id="updates" quiet size="s" data-updates accessible-label=${`Install / Update: ${updates}`} @click=${() => this.show('updates')}>
+        <swc-status-light size="s" variant=${updatesVariant(updates)}>${text}</swc-status-light>
+      </swc-action-button>`;
+  }
+
+  #headerButton(
+    id: string,
+    label: string,
+    icon: TemplateResult,
+    click: () => void
+  ): TemplateResult {
+    return html`<swc-action-button id=${id} size="s" quiet accessible-label=${label} @click=${click}>${icon}</swc-action-button>
+      <swc-tooltip for=${id} placement="bottom">${label}</swc-tooltip>`;
   }
 
   render(): TemplateResult {
     const color = this.color;
-    const agents = ordered(this.model?.agent.list() ?? []);
+    const cones = (this.model?.agent.list() ?? []).filter((agent) => agent.kind === 'cone');
     const rails = this.#rails();
     return html`<div class=${`swc-theme swc-theme--sizeM swc-theme--${color}`}><sp-theme system="spectrum-two" color=${color} scale="medium">
       <div class="shell">
@@ -630,40 +650,46 @@ export class SliccApp extends ThemedElement {
           <span class="brand">slicc</span>
           ${
             this.#offers('chat')
-              ? html`<sp-picker size="s" label="Agent" value=${this.model?.agent.active() ?? ''} @change=${this.#pick}>
-            ${agents.map(
-              (agent) =>
-                html`<sp-menu-item value=${agent.id}>${agent.kind === 'scoop' ? `↳ ${agent.name}` : agent.name}</sp-menu-item>`
-            )}
+              ? html`<sp-picker size="s" label="Agent" value=${this.#cone()} @change=${this.#pick}>
+            ${cones.map((agent) => html`<sp-menu-item value=${agent.id}>${agent.name}</sp-menu-item>`)}
+            ${
+              this.#offers('agents')
+                ? html`<sp-menu-divider></sp-menu-divider><sp-menu-item value=${allAgents}>Show all agents</sp-menu-item>`
+                : nothing
+            }
           </sp-picker>`
               : nothing
           }
           <span class="spacer"></span>
+          ${this.#updatesIndicator()}
           ${this.#offers('chat') ? html`<slicc-tray .model=${this.model} ?compact=${this.screen === 'phone'}></slicc-tray>` : nothing}
           <sp-action-menu size="s" quiet label="View" @change=${this.#view}>
             <swc-icon-view-grid slot="icon"></swc-icon-view-grid>
-            <span slot="label">View</span>
+            <span slot="label" class="view-label">View</span>
             ${this.surfaces.map((surface, index) => this.#menuItem(surface, index))}
             ${this.#offers('terminal') ? html`<sp-menu-item value="new-terminal">New terminal</sp-menu-item>` : nothing}
             <sp-menu-divider></sp-menu-divider>
             <sp-menu-item value="reset">Reset layout</sp-menu-item>
+            <sp-menu-divider></sp-menu-divider>
+            <sp-menu-group size="s">
+              <span slot="header">Keyboard shortcuts</span>
+              <sp-menu-item value="next-group">Next panel group<kbd slot="value">F6</kbd></sp-menu-item>
+              <sp-menu-item value="theme">${color === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}<kbd slot="value">Alt+Shift+T</kbd></sp-menu-item>
+            </sp-menu-group>
           </sp-action-menu>
           ${
             this.#offers('settings')
-              ? html`<sp-action-button size="s" quiet label="Settings" title="Settings" @click=${() => this.show('settings')}>
-            <swc-icon-settings slot="icon"></swc-icon-settings>
-          </sp-action-button>`
+              ? this.#headerButton(
+                  'settings',
+                  'Settings',
+                  html`<swc-icon-settings slot="icon"></swc-icon-settings>`,
+                  () => this.show('settings')
+                )
               : nothing
           }
-          <sp-action-button
-            size="s"
-            quiet
-            label=${color === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-            @click=${this.toggleColor}
-          >
-            <swc-icon-contrast slot="icon"></swc-icon-contrast>
-          </sp-action-button>
+          ${this.#headerButton('theme', color === 'dark' ? 'Switch to light theme' : 'Switch to dark theme', html`<swc-icon-contrast slot="icon"></swc-icon-contrast>`, () => this.toggleColor())}
         </header>
+        <div class="notices"><slot name="status"></slot></div>
         <main>
           ${rails.left}
           <slicc-dock empty-text="All panels are closed. Open one from a rail or View." @layout-change=${this.#save}
@@ -678,7 +704,6 @@ export class SliccApp extends ThemedElement {
           ${rails.right}
         </main>
         ${rails.bottom}
-        ${this.#status()}
       </div>
     </sp-theme></div>`;
   }
