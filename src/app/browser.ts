@@ -194,12 +194,13 @@ export class SliccBrowser extends ModelElement {
   }
 
   focus(): void {
-    const pick = () =>
-      (
-        this.renderRoot.querySelector<HTMLElement>('.window[aria-current="true"]') ??
-        this.renderRoot.querySelector<HTMLElement>('.window')
-      )?.focus();
-    void this.updateComplete.then(pick);
+    void this.updateComplete.then(() =>
+      this.focusOn(
+        this.renderRoot.querySelector('.window[aria-current="true"]')
+          ? '.window[aria-current="true"]'
+          : '.window'
+      )
+    );
   }
 
   #key(tab: BrowserTab): string {
