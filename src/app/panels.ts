@@ -112,6 +112,14 @@ export const surfaces: Surface[] = [
     side: 'center',
     open: [],
   },
+  {
+    id: 'updates',
+    title: 'Install / Update',
+    tag: 'slicc-updates',
+    icon: 'sp-icon-refresh',
+    side: 'center',
+    open: [],
+  },
 ];
 
 export type DocumentKind = 'file' | 'diff';

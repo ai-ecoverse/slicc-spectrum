@@ -14,6 +14,7 @@ import { SliccSettings } from './app/settings.ts';
 import { SliccSprinkle } from './app/sprinkle.ts';
 import { SliccTerminals } from './app/terminals.ts';
 import { SliccTray } from './app/tray.ts';
+import { SliccUpdates } from './app/updates.ts';
 import { defineCodeViews, SliccCodeView, SliccDiffView } from './components/code-view.ts';
 import { defineDock, SliccDock } from './components/dock.ts';
 import { defineFileTree, SliccFileTree } from './components/file-tree.ts';
@@ -45,6 +46,7 @@ export {
   SliccFiles,
   SliccFileTree,
   SliccFileView,
+  SliccUpdates,
 };
 
 const elements: Record<string, CustomElementConstructor> = {
@@ -64,6 +66,7 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-sprinkle': SliccSprinkle,
   'slicc-lucide': SliccLucide,
   'slicc-tray': SliccTray,
+  'slicc-updates': SliccUpdates,
   'slicc-app': SliccApp,
 };
 

@@ -49,6 +49,9 @@ export class SliccTray extends ModelElement {
       .chip:hover {
         background: var(--spectrum-gray-100);
       }
+      :host([compact]) .chip > span:not(.dot) {
+        display: none;
+      }
       .chip:focus-visible {
         outline: 2px solid var(--spectrum-focus-indicator-color);
       }

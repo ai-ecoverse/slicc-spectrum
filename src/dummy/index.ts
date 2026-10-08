@@ -11,13 +11,23 @@ import { DummySettings } from './settings.ts';
 import { DummySprinkles } from './sprinkles.ts';
 import { DummyTerminals } from './terminals.ts';
 import { DummyTray } from './tray.ts';
+import { DummyUpdates, type UpdateScenario } from './updates.ts';
 
 export interface DummyOptions {
   delay?: number;
   storage?: Storage | null;
+  updates?: UpdateScenario;
 }
 
-export function createDummyModel({ delay = 30, storage = null }: DummyOptions = {}): SliccModel {
+export interface DummyModel extends SliccModel {
+  updates: DummyUpdates;
+}
+
+export function createDummyModel({
+  delay = 30,
+  storage = null,
+  updates = 'current',
+}: DummyOptions = {}): DummyModel {
   const time = clock(delay);
   const files = new DummyFiles(fixtures.files, fixtures.directories, fixtures.pending, time);
   const browser = new DummyBrowser(fixtures.tabs, time);
@@ -44,6 +54,7 @@ export function createDummyModel({ delay = 30, storage = null }: DummyOptions = 
     memory: new DummyMemory(extras.memories),
     sprinkles: new DummySprinkles(extras.sprinkles, agent),
     tray: new DummyTray(extras.tray, time),
+    updates: new DummyUpdates(updates, time),
   };
   return { ...base, monitor: new DummyMonitor(base) };
 }

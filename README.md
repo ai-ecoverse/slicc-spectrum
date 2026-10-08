@@ -143,6 +143,7 @@ Text is Adobe Clean and code Spectrum's Source Code Pro. Source Code Pro (OFL) i
 | `<slicc-terminals>` | Terminal sessions in tabs, each a `<slicc-terminal>` on the session's `TerminalBackend`. Sessions stay alive while hidden; `exit` closes the tab. |
 | `<slicc-browser>` | Browser tabs with the agent driving each, an address bar, reload, and the active tab's screenshot. |
 | `<slicc-settings>` | Theme, the model and thinking level for new cones, composer and diff preferences, and accounts to connect, reconnect or disconnect. |
+| `<slicc-updates>` | Install / Update: component states, version changes, last checks, download and link counts, action buttons, failures with Retry, and collapsible install logs. Opens at boot until the agent is ready without failures. Background updates stay in the status bar; new failures reopen the panel. Also available through View and the rails. |
 | `<slicc-memory>` | What agents remember, globally or per cone, grouped by section: search, filter by tag, expand, edit, add and forget. |
 | `<slicc-monitor>` | The live monitor: vitals with sparklines (active agents, spend, budget, fullest context), alerts, and the topology (cones and scoops, terminals, tabs, pending changes, sprinkles, tray followers). |
 | `<slicc-freezer>` | Frozen cones, archived with their scoops: thaw to bring one back, delete, or freeze the active cone (also `/freeze`). |
@@ -171,6 +172,11 @@ Keys: <kbd>Alt</kbd>+<kbd>1</kbd>… opens and focuses a panel, <kbd>F6</kbd> an
 | `monitor` | all of them | A snapshot of vitals, alerts and sections, re-emitted as the system changes, and `resync`. |
 | `sprinkles` | `@ai-ecoverse/slicc-agent` | Sprinkles (`inline` ones show as dips in the chat, not in the rail) and `send`, which turns a sprinkle's lick into a lick on its cone. |
 | `tray` | the tray protocol | Connection, role, float kind, followers, spend and budget; `reconnect` and `disconnect`. |
+| `updates` (optional) | BIOS installers | `list()` returns `UpdateItem` rows for BIOS, kernel, agent, grammars, global pnpm packages, skills and UI. `ready()` explicitly reports agent readiness, independently of agent activity. Emit `items` whenever rows or readiness change. `act(id, action)` resolves when dispatched or rejects with a displayed error; actions are `retry`, `update-now`, `restart-agent` and `reload`. Missing ports preserve existing adapters and report disconnected information in the panel. Real installer wiring belongs to ai-ecoverse/slicc-bios#70. |
+
+The dummy supports `createDummyModel({ updates: 'boot' | 'current' | 'available' | 'restart' | 'failure' })`, also selectable with `?updates=` on `/ui/`. Fixtures stay stable for inspection; `model.updates.setScenario('current')` completes boot. Dummy Update now and Retry simulate download and link progress; Restart agent and Reload only change fixture state, never restart a real process or reload the browser. `updateFixtures` and `DummyUpdates` are exported from `/dummy`.
+
+On phones the tray uses a compact indicator (its full status remains available on activation), the agent picker shrinks to fit, and the bottom rail scrolls when needed. The update status comes first so progress and failures remain reachable on narrow screens.
 
 ### Kernel model
 

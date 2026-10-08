@@ -1,7 +1,7 @@
 import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import type { PanelParams, SerializedDockview, SliccDock } from '../components/dock.ts';
-import type { SliccModel, Sprinkle } from '../model/types.ts';
+import type { SliccModel, Sprinkle, UpdatesPort } from '../model/types.ts';
 import { ordered } from './agents.ts';
 import { dot, percent, shared, ThemedElement } from './base.ts';
 import { Dips, dipType } from './dips.ts';
@@ -28,6 +28,7 @@ import {
   surface,
   surfaces,
 } from './panels.ts';
+import { UpdateVisibility, updatesStatus } from './updates.ts';
 
 function railIcon(icon: string): TemplateResult {
   if (icon.startsWith('sp-icon-')) {
@@ -51,6 +52,8 @@ export class SliccApp extends ThemedElement {
   #resize: ResizeObserver | null = null;
   #started: ScreenClass | null = null;
   #saving = false;
+  #updatesPort: UpdatesPort | undefined;
+  #updatesVisibility: UpdateVisibility | null = null;
 
   constructor() {
     super();
@@ -73,6 +76,7 @@ export class SliccApp extends ThemedElement {
     }
     .shell {
       display: grid;
+      grid-template-columns: minmax(0, 1fr);
       grid-template-rows: 40px minmax(0, 1fr) auto 24px;
       height: 100%;
     }
@@ -110,16 +114,25 @@ export class SliccApp extends ThemedElement {
     }
     .rail.bottom {
       flex-direction: row;
-      justify-content: center;
+      justify-content: safe center;
       width: auto;
       height: 44px;
       padding: 0 8px;
       border-top: 1px solid var(--spectrum-gray-200);
+      overflow-x: auto;
     }
     .rail:empty {
       display: none;
     }
     :host([screen='phone']) footer .hints {
+      display: none;
+    }
+    :host([screen='phone']) header sp-picker {
+      min-width: 0;
+      width: 0;
+      flex: 1;
+    }
+    :host([screen='phone']) header .spacer {
       display: none;
     }
     header {
@@ -220,6 +233,7 @@ export class SliccApp extends ThemedElement {
       model.files.on('changes', update),
       model.sprinkles.on('sprinkles', update),
       this.dips.on('change', update),
+      ...(model.updates ? [model.updates.on('items', update)] : []),
     ];
   }
 
@@ -265,8 +279,33 @@ export class SliccApp extends ThemedElement {
 
   protected updated(changed: PropertyValues<this>): void {
     if (!this.model) return;
-    if (this.#started !== this.screen) this.#start(this.model);
+    const layout = this.#started !== this.screen;
+    if (layout) this.#start(this.model);
     else if (changed.has('model')) this.#rebind(this.model);
+    this.#updates(layout);
+  }
+
+  #updates(layout: boolean): void {
+    const port = this.model?.updates;
+    if (port !== this.#updatesPort) {
+      this.#updatesPort = port;
+      this.#updatesVisibility = port ? new UpdateVisibility(port.ready()) : null;
+    }
+    if (!port || !this.#offers('updates')) return;
+    const change = this.#updatesVisibility?.change(port, layout);
+    if (change === 'open') {
+      if (this.dock.has('updates')) this.dock.reveal('updates');
+      else {
+        this.show('updates');
+        if (!port.ready()) this.dock.api.getPanel('updates')?.api.updateParameters({ boot: true });
+      }
+    } else if (
+      this.dock.api.getPanel('updates')?.params?.boot &&
+      port.ready() &&
+      !port.list().some((item) => item.state === 'failed')
+    ) {
+      this.dock.close('updates');
+    }
   }
 
   #factories(model: SliccModel): SliccDock['factories'] {
@@ -375,6 +414,7 @@ export class SliccApp extends ThemedElement {
     const item = surface(id, this.surfaces);
     if (!item) return;
     openSurface(this.dock, item, this.screen);
+    if (id === 'updates') this.dock.api.getPanel(id)?.api.updateParameters({ boot: false });
     this.dock.focusPanel(id);
   }
 
@@ -478,7 +518,7 @@ export class SliccApp extends ThemedElement {
 
   #menuItem(surface: Surface, index: number): TemplateResult {
     return html`<sp-menu-item value=${surface.id}>
-      ${surface.title}<kbd slot="value">Alt+${index + 1}</kbd>
+      ${surface.title}${index < 9 ? html`<kbd slot="value">Alt+${index + 1}</kbd>` : nothing}
     </sp-menu-item>`;
   }
 
@@ -508,7 +548,11 @@ export class SliccApp extends ThemedElement {
   }
 
   #status(): TemplateResult {
+    const updates = this.#offers('updates')
+      ? updatesStatus(this.model?.updates?.list() ?? [])
+      : null;
     return html`<footer role="status" aria-label="Status">
+      ${updates ? html`<button class="link" aria-label=${`Install / Update: ${updates}`} data-updates @click=${() => this.show('updates')}>${updates}</button>` : nothing}
       ${this.#agentStatus()}
       ${this.#changes()}
       <slot name="status"></slot>
@@ -536,7 +580,7 @@ export class SliccApp extends ThemedElement {
               : nothing
           }
           <span class="spacer"></span>
-          ${this.#offers('chat') ? html`<slicc-tray .model=${this.model}></slicc-tray>` : nothing}
+          ${this.#offers('chat') ? html`<slicc-tray .model=${this.model} ?compact=${this.screen === 'phone'}></slicc-tray>` : nothing}
           <sp-action-menu size="s" quiet label="View" @change=${this.#view}>
             <sp-icon-view-grid slot="icon"></sp-icon-view-grid>
             <span slot="label">View</span>
