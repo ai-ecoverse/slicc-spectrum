@@ -149,6 +149,10 @@ export class SliccSprinkle extends ThemedElement {
       height: 100%;
       border: 0;
     }
+    .frame {
+      border: 1px solid var(--spectrum-gray-200);
+      background: var(--spectrum-background-layer-1-color);
+    }
     .handle {
       display: flex;
       align-items: center;
@@ -261,6 +265,6 @@ export class SliccSprinkle extends ThemedElement {
           <swc-icon-open-in slot="icon"></swc-icon-open-in>
         </sp-action-button>
       </div>
-      ${frame}`;
+      <div class="frame">${frame}</div>`;
   }
 }
