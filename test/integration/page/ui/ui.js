@@ -67,6 +67,30 @@ window.focused = () => {
   return path.join(' > ');
 };
 
+window.activated = () => {
+  const chain = [];
+  let node = document.activeElement;
+  while (node) {
+    chain.push(node);
+    node = node.shadowRoot?.activeElement ?? null;
+  }
+  const buttons = ['button', 'checkbox', 'radio', 'range', 'file', 'submit', 'reset', 'color'];
+  const text = (element) =>
+    element.isContentEditable ||
+    ['textarea', 'sp-search', 'sp-textfield'].includes(element.localName) ||
+    (element.localName === 'input' && !buttons.includes(element.type));
+  const dock = window.dock();
+  const id = dock.api.activePanel?.id ?? '';
+  const content = dock.content(id);
+  return {
+    id,
+    focused: !!content && chain.includes(content),
+    path: chain.map((element) => element.localName).join(' > '),
+    text: chain.some(text),
+    terminal: !!chain.at(-1)?.closest('slicc-terminal'),
+  };
+};
+
 window.layout = () => {
   const dock = window.$('slicc-app', 'slicc-dock');
   return Object.fromEntries(

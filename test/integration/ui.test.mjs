@@ -498,6 +498,86 @@ test('the theme switches between light and dark and survives a reload', async (t
   assert.deepEqual(page.errors, []);
 });
 
+async function pointer(t, fine) {
+  const page = await chrome.page(t);
+  await page.init(
+    new Function(`
+      const real = window.matchMedia.bind(window);
+      window.matchMedia = (query) => {
+        const list = real(query);
+        const kind = query.match(/\\(pointer: (fine|coarse)\\)/)?.[1];
+        if (kind) Object.defineProperty(list, 'matches', { value: kind === ${JSON.stringify(fine ? 'fine' : 'coarse')} });
+        return list;
+      };
+    `)
+  );
+  const url = '/ui/?delay=5&color=light';
+  await page.goto(url);
+  if (!(await settled(page))) await page.goto(url);
+  await page.until(() => window.dock()?.api.panels.length > 0);
+  return page;
+}
+
+test('with a coarse pointer, activating a panel never focuses a text field', async (t) => {
+  const page = await pointer(t, false);
+  assert.equal(await page.evaluate(() => matchMedia('(pointer: fine)').matches), false);
+  assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), true);
+  const seen = [];
+  const check = async (want) => {
+    const state = await page
+      .within(
+        5000,
+        (want) => {
+          const state = window.activated();
+          return (state.focused || want.startsWith('sprinkle:')) &&
+            (state.id === want || state.id.startsWith(`${want}:`))
+            ? state
+            : null;
+        },
+        want
+      )
+      .catch(async () =>
+        assert.fail(`${want}: ${JSON.stringify(await page.evaluate(() => window.activated()))}`)
+      );
+    if (state.terminal) assert.match(state.id, /^terminal:/);
+    else assert.equal(state.text, false, `${want}: ${state.path}`);
+    seen.push(`${state.id}: ${state.path}`);
+  };
+  const rails = await page.evaluate(() =>
+    [...window.app.shadowRoot.querySelectorAll('.rail [data-surface]')].map(
+      (button) => button.dataset.surface
+    )
+  );
+  assert.ok(rails.includes('memory') && rails.includes('browser'), rails.join());
+  for (const id of rails) {
+    await page.evaluate(
+      (id) => window.app.shadowRoot.querySelector(`.rail [data-surface="${id}"]`).click(),
+      id
+    );
+    await check(id);
+  }
+  const keys = await page.evaluate(() => window.app.surfaces.slice(0, 9).map((item) => item.id));
+  for (const [index, id] of keys.entries()) {
+    await page.press(String(index + 1), 'alt');
+    await check(id);
+  }
+  t.diagnostic(seen.join('\n'));
+  assert.ok(
+    seen.some((line) => /^chat:.*slicc-chat > div$/.test(line)),
+    seen.join('\n')
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('with a fine pointer, activating chat focuses the composer', async (t) => {
+  const page = await pointer(t, true);
+  await page.press('1', 'alt');
+  await page.until(() => /slicc-agents/.test(window.focused()));
+  await page.press('2', 'alt');
+  await page.until(() => /slicc-chat > slicc-composer > textarea$/.test(window.focused()));
+  assert.deepEqual(page.errors, []);
+});
+
 test('the keyboard reaches every panel, agent and tab', async (t) => {
   const page = await open(t);
   await page.press('1', 'alt');

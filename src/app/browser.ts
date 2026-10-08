@@ -195,11 +195,7 @@ export class SliccBrowser extends ModelElement {
 
   focus(): void {
     void this.updateComplete.then(() =>
-      this.focusOn(
-        this.renderRoot.querySelector('.window[aria-current="true"]')
-          ? '.window[aria-current="true"]'
-          : '.window'
-      )
+      this.focusOn('.window[aria-current="true"]', '.window', 'form swc-button')
     );
   }
 

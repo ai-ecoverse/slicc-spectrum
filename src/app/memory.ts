@@ -170,7 +170,7 @@ export class SliccMemory extends ModelElement {
   }
 
   focus(): void {
-    this.focusOn('sp-search');
+    this.focusOn('.head', '.bar swc-action-button');
   }
 
   #save(memory: Partial<Memory>): void {
