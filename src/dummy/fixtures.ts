@@ -599,6 +599,25 @@ export const conversations: Record<string, Message[]> = {
         },
       ],
     },
+    {
+      id: 'm-r3',
+      role: 'lick',
+      channel: 'cron',
+      severity: 'error',
+      title: 'Crontab',
+      text: 'Crontab line 3 is invalid',
+      body: '30 25 * * *  sweep-drafts\nThe hour is 25. It must be 0 to 23.',
+      createdAt: at(-1430),
+    },
+    {
+      id: 'm-r4',
+      role: 'lick',
+      channel: 'fswatch',
+      severity: 'warn',
+      title: '/workspace/notes',
+      text: 'File watch on /workspace/notes stopped; retrying',
+      createdAt: at(-1429),
+    },
   ],
   'cone-triage': [
     {

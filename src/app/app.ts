@@ -1,8 +1,10 @@
 import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
+import { keyed } from 'lit/directives/keyed.js';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import type { PanelParams, SerializedDockview, SliccDock } from '../components/dock.ts';
 import type { Agent, SliccModel, Sprinkle, UpdatesPort } from '../model/types.ts';
 import { shared, ThemedElement } from './base.ts';
+import { prompt } from './confirm.ts';
 import { Dips, dipType } from './dips.ts';
 import { defaultFontBase, defaultVariableFont, installFonts } from './fonts.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
@@ -43,6 +45,8 @@ export function changeCount(count: number): string {
 }
 
 export const allAgents = 'slicc:all-agents';
+
+export const newCone = 'slicc:new-cone';
 
 export const railPitch = 52;
 
@@ -635,7 +639,32 @@ export class SliccApp extends ThemedElement {
       this.show('agents');
       return;
     }
+    if (picker.value === newCone) {
+      picker.value = this.#cone();
+      void this.#newCone(picker);
+      return;
+    }
     this.model?.agent.select(picker.value);
+  }
+
+  async #newCone(trigger: HTMLElement): Promise<void> {
+    const port = this.model?.agent;
+    const create = port?.createCone?.bind(port);
+    if (!port || !create) return;
+    let created: Agent | undefined;
+    await prompt({
+      title: 'New cone',
+      label: 'Name',
+      action: 'Create',
+      trigger,
+      submit: async (name) => {
+        created = await create(name);
+      },
+    });
+    if (!created) return;
+    port.select(created.id);
+    await this.updateComplete;
+    this.renderRoot.querySelector<HTMLElement>('header sp-picker')?.focus();
   }
 
   #menuItem(surface: Surface, index: number): TemplateResult {
@@ -679,14 +708,22 @@ export class SliccApp extends ThemedElement {
           <span class="brand">slicc</span>
           ${
             this.#offers('chat')
-              ? html`<sp-picker size="s" label="Agent" value=${this.#cone()} @change=${this.#pick}>
+              ? keyed(
+                  cones.map((agent) => agent.id).join(' '),
+                  html`<sp-picker size="s" label="Agent" value=${this.#cone()} @change=${this.#pick}>
             ${cones.map((agent) => html`<sp-menu-item value=${agent.id}>${agent.name}</sp-menu-item>`)}
+            ${
+              this.model?.agent.createCone
+                ? html`<sp-menu-divider></sp-menu-divider><sp-menu-item value=${newCone} data-action="new-cone"><swc-icon-add slot="icon"></swc-icon-add>New cone</sp-menu-item>`
+                : nothing
+            }
             ${
               this.#offers('agents')
                 ? html`<sp-menu-divider></sp-menu-divider><sp-menu-item value=${allAgents}>Show all agents</sp-menu-item>`
                 : nothing
             }
           </sp-picker>`
+                )
               : nothing
           }
           <span class="spacer"></span>

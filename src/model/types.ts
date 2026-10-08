@@ -209,6 +209,7 @@ export interface LickMessage {
   body?: string;
   count?: number;
   state?: LickState;
+  severity?: 'warn' | 'error';
 }
 
 export type Message = UserMessage | AssistantMessage | SystemMessage | ToolMessage | LickMessage;
@@ -253,6 +254,8 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   thaw(id: string): Agent | null;
   discard(id: string): void;
   rewind?(agentId: string, messageId: string): Promise<Outgoing | null>;
+  drop?(agentId: string): Promise<void>;
+  createCone?(name: string): Promise<Agent>;
 }
 
 export interface SlashCommand {

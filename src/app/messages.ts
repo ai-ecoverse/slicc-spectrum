@@ -1,3 +1,6 @@
+import '@adobe/spectrum-wc/components/badge/swc-badge.js';
+import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
+import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type {
   ActionCard,
@@ -340,12 +343,31 @@ export function system(message: SystemMessage, handlers: Handlers): TemplateResu
   </div>`;
 }
 
+const severities = {
+  error: {
+    prefix: 'Error: ',
+    variant: 'negative',
+    icon: html`<swc-icon-alert-diamond slot="icon" size="s" aria-hidden="true"></swc-icon-alert-diamond>`,
+  },
+  warn: {
+    prefix: 'Warning: ',
+    variant: 'notice',
+    icon: html`<swc-icon-alert-triangle slot="icon" size="s" aria-hidden="true"></swc-icon-alert-triangle>`,
+  },
+} as const;
+
+function severityBadge(message: LickMessage, label: string): TemplateResult | null {
+  if (!message.severity) return null;
+  const { prefix, variant, icon } = severities[message.severity];
+  return html`<span class="sr">${prefix}</span><swc-badge class="severity" size="s" variant=${variant} subtle>${icon}${label}</swc-badge>`;
+}
+
 export function lick(message: LickMessage, handlers: Handlers): TemplateResult {
   const [label, variant] = lickLabels[message.channel];
   const decide = message.channel === 'sudo-request' && message.state === 'pending';
   const outcome =
     message.state === 'confirmed' ? 'Allowed' : message.state === 'dismissed' ? 'Denied' : '';
-  const head = html`<span class="channel" data-hue=${variant}>${label}</span>
+  const head = html`${severityBadge(message, label) ?? html`<span class="channel" data-hue=${variant}>${label}</span>`}
     <strong>${message.title}</strong>
     <span class="text">${message.text}</span>
     ${message.count && message.count > 1 ? html`<span class="times" title="Coalesced events">×${message.count}</span>` : nothing}
@@ -358,9 +380,9 @@ export function lick(message: LickMessage, handlers: Handlers): TemplateResult {
       </div>`
     : nothing;
   if (!message.body) {
-    return html`<div class="lick" data-id=${message.id} data-channel=${message.channel}><div class="lick-head">${head}</div>${actions}</div>`;
+    return html`<div class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}><div class="lick-head">${head}</div>${actions}</div>`;
   }
-  const details = html`<details class="lick" data-id=${message.id} data-channel=${message.channel}>
+  const details = html`<details class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}>
     <summary class="lick-head"><span class="chevron" aria-hidden="true">▸</span>${head}</summary>
     <pre class="output">${message.body}</pre>
   </details>`;
@@ -915,6 +937,26 @@ export const messageCss = css`
   .lick strong {
     white-space: nowrap;
   }
+  .lick[data-severity] {
+    border-inline-start: var(--swc-border-width-400) solid var(--severity);
+  }
+  .lick[data-severity='error'] {
+    --severity: var(--swc-negative-visual-color);
+  }
+  .lick[data-severity='warn'] {
+    --severity: var(--swc-notice-visual-color);
+  }
+  .lick .severity {
+    flex: none;
+  }
+  .lick .sr {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   .lick .times,
   .lick .when {
     color: var(--spectrum-neutral-subdued-content-color-default);
@@ -933,6 +975,9 @@ export const messageCss = css`
   .pending > details.lick {
     border: 0;
     margin: 0;
+  }
+  .pending > details.lick[data-severity] {
+    border-inline-start: var(--swc-border-width-400) solid var(--severity);
   }
   .caret {
     display: inline-block;
