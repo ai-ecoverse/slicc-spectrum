@@ -169,6 +169,24 @@ test('every destructive action asks first and acts only on confirm', async (t) =
   await page.evaluate(answer, true);
   await page.until(() => window.model.files.changes().length === 3);
 
+  await page.evaluate(() => window.app.open('diff', '/workspace/harbor/src/lib/cache.ts'));
+  await page.until(() => !!window.part('diff:/workspace/harbor/src/lib/cache.ts', '.bar'));
+  const revertDiff = () =>
+    [
+      ...window
+        .part('diff:/workspace/harbor/src/lib/cache.ts', '.bar')
+        .querySelectorAll('sp-action-button'),
+    ]
+      .find((button) => button.textContent.trim() === 'Revert')
+      .click();
+  await ask(revertDiff, 'Revert cache.ts?');
+  await page.evaluate(answer, false);
+  await page.until(closed);
+  assert.equal(await page.evaluate(() => window.model.files.changes().length), 3);
+  await ask(revertDiff, 'Revert cache.ts?');
+  await page.evaluate(answer, true);
+  await page.until(() => window.model.files.changes().length === 2);
+
   await page.evaluate(() => window.app.show('freezer'));
   await page.until(() => !!window.part('freezer', '.card'));
   const frozen = await page.evaluate(() => window.model.agent.frozen().length);
