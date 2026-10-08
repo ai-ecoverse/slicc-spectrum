@@ -38,9 +38,15 @@ function railIcon(icon: string): TemplateResult {
   return html`<slicc-lucide slot="icon" name=${icon}></slicc-lucide>`;
 }
 
+export function changeCount(count: number): string {
+  return `${count} ${count === 1 ? 'change' : 'changes'}`;
+}
+
 export const allAgents = 'slicc:all-agents';
 
-export const railPitch = 36;
+export const railPitch = 52;
+
+export const phoneRail = ['agents', 'files', 'changes', 'terminal', 'browser'];
 
 export function railCapacity(width: number, count: number): number {
   if (!width) return count;
@@ -157,11 +163,19 @@ export class SliccApp extends ThemedElement {
     .rail.bottom {
       flex: none;
       flex-direction: row;
-      justify-content: safe center;
+      justify-content: space-evenly;
       width: auto;
-      height: calc(var(--swc-component-height-100) + var(--swc-spacing-200));
+      height: calc(var(--swc-component-height-300) + var(--swc-spacing-100));
       padding: 0 var(--swc-spacing-100);
       border-top: var(--swc-border-width-100) solid var(--swc-gray-200);
+    }
+    .rail.bottom swc-action-button {
+      --swc-action-button-min-block-size: var(--swc-component-height-300);
+      min-inline-size: var(--swc-component-height-300);
+    }
+    .rail.bottom sp-action-menu {
+      --mod-actionbutton-height: var(--swc-component-height-300);
+      --mod-actionbutton-min-width: var(--swc-component-height-300);
     }
     .rail:empty {
       display: none;
@@ -183,6 +197,9 @@ export class SliccApp extends ThemedElement {
     }
     header swc-status-light {
       align-self: center;
+    }
+    header slicc-tray {
+      margin-inline-end: var(--swc-spacing-200);
     }
     :host([screen='phone']) header sp-picker {
       min-width: 0;
@@ -509,10 +526,8 @@ export class SliccApp extends ThemedElement {
   }
 
   #railButton(item: Surface, side: string): TemplateResult {
-    const changes = item.id === 'changes' ? (this.model?.files.changes().length ?? 0) : 0;
-    const label = changes
-      ? `Open ${item.title}, ${changes} ${changes === 1 ? 'change' : 'changes'}`
-      : `Open ${item.title}`;
+    const changes = item.id === 'changes' ? this.#changes() : 0;
+    const label = changes ? `Open ${item.title}, ${changeCount(changes)}` : `Open ${item.title}`;
     const button = staticHtml`<swc-action-button id=${`rail-${item.id}`} quiet size="m" accessible-label=${label} data-surface=${item.id} @click=${() => this.show(item.id)}>${railIcon(item.icon)}</swc-action-button>`;
     const tooltip = html`<swc-tooltip for=${`rail-${item.id}`} placement=${{ left: 'end', right: 'start', bottom: 'top' }[side]}>${item.title}</swc-tooltip>`;
     return changes
@@ -520,19 +535,33 @@ export class SliccApp extends ThemedElement {
       : html`${button}${tooltip}`;
   }
 
+  #changes(): number {
+    return this.model?.files.changes().length ?? 0;
+  }
+
   #more(items: readonly Surface[]): TemplateResult | typeof nothing {
     if (!items.length) return nothing;
-    return staticHtml`<sp-action-menu quiet size="m" label="More panels" placement="top-end" @change=${(event: Event) => this.show((event.target as HTMLElement & { value: string }).value)}>
+    const changes = items.some((item) => item.id === 'changes') ? this.#changes() : 0;
+    const label = changes ? `More panels, ${changeCount(changes)}` : 'More panels';
+    const menu = staticHtml`<sp-action-menu quiet size="m" label=${label} placement="top-end" @change=${(event: Event) => this.show((event.target as HTMLElement & { value: string }).value)}>
       <swc-icon-more slot="icon"></swc-icon-more>
       ${items.map((item) => staticHtml`<sp-menu-item value=${item.id}>${railIcon(item.icon)}${item.title}</sp-menu-item>`)}
     </sp-action-menu>`;
+    return changes
+      ? html`<span class="badged">${menu}<swc-badge size="s" variant="neutral" aria-hidden="true">${changes}</swc-badge></span>`
+      : menu;
   }
 
   #rail(items: readonly Surface[], side: string): TemplateResult {
-    const fit = side === 'bottom' ? railCapacity(this.#width, items.length) : items.length;
-    return html`<nav class=${`rail ${side}`} aria-label=${`Closed panels, ${side}`} @dragover=${this.#railOver} @dragleave=${this.#railLeave} @drop=${this.#railDrop}>${items
-      .slice(0, fit)
-      .map((item) => this.#railButton(item, side))}${this.#more(items.slice(fit))}</nav>`;
+    const primary = side === 'bottom' ? items.filter((item) => phoneRail.includes(item.id)) : items;
+    const fit =
+      primary.length < items.length
+        ? Math.min(primary.length, railCapacity(this.#width, Infinity))
+        : railCapacity(this.#width, items.length);
+    const shown = side === 'bottom' ? primary.slice(0, fit) : items;
+    return html`<nav class=${`rail ${side}`} aria-label=${`Closed panels, ${side}`} @dragover=${this.#railOver} @dragleave=${this.#railLeave} @drop=${this.#railDrop}>${shown.map(
+      (item) => this.#railButton(item, side)
+    )}${this.#more(items.filter((item) => !shown.includes(item)))}</nav>`;
   }
 
   #rails(): {

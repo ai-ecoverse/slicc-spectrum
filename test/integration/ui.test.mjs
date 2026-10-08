@@ -584,25 +584,34 @@ test('each screen class has its own layout, and rails restore closed panels', as
   assert.deepEqual(await page.evaluate(state), {
     screen: 'phone',
     panels: ['chat:cone-sliccy'],
-    rails: [
-      'sprinkle:suggestions',
-      'agents',
-      'files',
-      'changes',
-      'terminal',
-      'browser',
-      'memory',
-      'freezer',
-      'monitor',
-    ],
+    rails: ['agents', 'files', 'changes', 'terminal', 'browser'],
   });
   assert.deepEqual(
     await page.evaluate(() =>
       [
         ...window.$('slicc-app', '.rail.bottom sp-action-menu').querySelectorAll('sp-menu-item'),
-      ].map((item) => item.getAttribute('value'))
+      ].map((item) => [item.getAttribute('value'), item.textContent.trim()])
     ),
-    ['settings', 'updates']
+    [
+      ['sprinkle:suggestions', 'Suggestions'],
+      ['memory', 'Memory'],
+      ['freezer', 'Freezer'],
+      ['monitor', 'Monitor'],
+      ['settings', 'Settings'],
+      ['updates', 'Install / Update'],
+    ]
+  );
+  assert.ok(
+    await page.evaluate(() =>
+      [
+        ...window.app.shadowRoot.querySelectorAll(
+          '.rail.bottom swc-action-button, .rail.bottom sp-action-menu'
+        ),
+      ].every((button) => {
+        const box = button.getBoundingClientRect();
+        return box.width >= 44 && box.height >= 44;
+      })
+    )
   );
   await shot(page, 'phone-light');
 

@@ -57,6 +57,11 @@ export class SliccAgents extends ModelElement {
       font-weight: var(--swc-bold-font-weight);
     }
     .unread {
+      --swc-badge-height: var(--swc-spacing-300);
+      --swc-badge-padding-block: var(--swc-spacing-50);
+      --swc-badge-padding-inline: var(--swc-spacing-75);
+      --swc-badge-corner-radius: var(--swc-spacing-100);
+      --swc-badge-line-height: 1;
       grid-area: unread;
       align-self: center;
     }
@@ -131,7 +136,7 @@ export class SliccAgents extends ModelElement {
       <span class="name">${agent.name}</span>
       ${
         agent.unread
-          ? html`<swc-badge class="unread" size="s" variant="informative">${agent.unread}</swc-badge>`
+          ? html`<swc-badge class="unread" size="s" variant="accent">${agent.unread}</swc-badge>`
           : nothing
       }
       <span class="fill">${percent(agent.contextFill)}</span>

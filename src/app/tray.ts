@@ -47,8 +47,17 @@ export class SliccTray extends ModelElement {
       .chip swc-status-light {
         align-self: center;
       }
+      .chip .followers {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--swc-spacing-50);
+      }
+      .chip .short,
       :host([compact]) .chip .detail {
         display: none;
+      }
+      :host([compact]) .chip .short {
+        display: inline;
       }
       .muted {
         color: var(--swc-neutral-subdued-content-color-default);
@@ -118,20 +127,23 @@ export class SliccTray extends ModelElement {
     if (!model) return html``;
     const status = model.tray.status();
     const connection = connectionLabel[status.connection];
+    const followers = `${status.followers.length} ${status.followers.length === 1 ? 'follower' : 'followers'}`;
+    const light = status.connection === 'live' ? status.name : `${status.name}, ${connection}`;
     return html`<swc-action-button
         id="chip"
         class="chip"
         size="s"
         quiet
-        accessible-label=${`Tray ${status.name}: ${connection}, ${status.followers.length} followers, ${status.budget.percent}% of budget`}
+        accessible-label=${`Tray ${status.name}: ${connection}, ${followers}`}
       >
         <span>
-          <swc-status-light size="s" variant=${connectionVariant[status.connection]}>${connection}</swc-status-light>
-          <span class="detail">${status.name}</span>
-          <span class="detail muted"><swc-icon-user-group size="s"></swc-icon-user-group>${status.followers.length}</span>
-          <span class="detail muted">${status.budget.percent}%</span>
+          <swc-status-light size="s" variant=${connectionVariant[status.connection]}>
+            <span class="detail">${light}</span><span class="short">${connection}</span>
+          </swc-status-light>
+          <span class="detail muted followers"><swc-icon-user-group size="s"></swc-icon-user-group>${status.followers.length}</span>
         </span>
       </swc-action-button>
+      <swc-tooltip for="chip" placement="bottom">${`${connection}, ${followers}`}</swc-tooltip>
       <swc-popover for="chip" placement="bottom-end" accessible-label="Tray" @swc-open=${() => {
         this.copied = false;
       }}>
