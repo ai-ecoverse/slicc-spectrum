@@ -22,6 +22,9 @@ export function deepActive(root: Document | ShadowRoot): HTMLElement | null {
 
 export const scrollback = 1 << 18;
 
+const laid = ({ width, height }: { width: number; height: number }): boolean =>
+  width > 0 && height > 0;
+
 const ended: TerminalSession = { write() {}, resize() {}, close() {} };
 
 class KeptSession implements TerminalBackend {
@@ -241,7 +244,14 @@ export class SliccTerminalPanel extends ThemedElement {
     if (this.#screen && bound?.port === model.terminals && bound.id === info.id)
       return this.#screen;
     const terminal = document.createElement('slicc-terminal') as SliccTerminal;
-    terminal.backend = keep(model.terminals, info.id);
+    const backend = keep(model.terminals, info.id);
+    terminal.backend = {
+      open: async (sink) => {
+        await this.#placed(info.id);
+        terminal.fit();
+        return backend.open(sink, { cols: terminal.cols, rows: terminal.rows });
+      },
+    };
     terminal.addEventListener('exit', () => model.terminals.close(info.id));
     this.#screen = terminal;
     this.#bound = { port: model.terminals, id: info.id };
@@ -255,6 +265,22 @@ export class SliccTerminalPanel extends ThemedElement {
       () => {}
     );
     return terminal;
+  }
+
+  #placed(id: string): Promise<void> {
+    const host = (this.getRootNode() as Partial<ShadowRoot>).host;
+    const panel =
+      host?.localName === 'slicc-dock'
+        ? (host as SliccDock).api.getPanel(terminalPanel(id))
+        : undefined;
+    if (!panel || laid(panel.api)) return Promise.resolve();
+    return new Promise((resolve) => {
+      const watch = panel.api.onDidDimensionsChange((size) => {
+        if (!laid(size)) return;
+        watch.dispose();
+        resolve();
+      });
+    });
   }
 
   #request(): void {
