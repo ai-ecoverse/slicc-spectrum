@@ -1085,6 +1085,18 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
   );
   await shot(page, 'composer-queued');
   await page.insert('Show me the files too');
+  await page.until(() =>
+    /Steer/.test(
+      window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'slicc-composer',
+        'sp-button[variant=accent]'
+      )?.textContent ?? ''
+    )
+  );
+  await shot(page, 'composer-steer');
   await page.press('Enter');
   await page.until(() =>
     window.model.agent
