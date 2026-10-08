@@ -67,7 +67,7 @@ const lickInfo = (id) => {
     .content('chat:cone-release')
     .shadowRoot.querySelector(`.lick[data-id="${id}"]`);
   const head = lick.querySelector('.lick-head');
-  const badge = head.querySelector('swc-badge');
+  const badge = head.querySelector('swc-badge.severity');
   const style = getComputedStyle(lick);
   const hidden = head.querySelector('.sr');
   const sr = hidden ? getComputedStyle(hidden) : { display: 'none' };

@@ -1,3 +1,6 @@
+import '@adobe/spectrum-wc/components/badge/swc-badge.js';
+import '@adobe/spectrum-wc/components/button/swc-button.js';
+import '@adobe/spectrum-wc/patterns/ai-toolkit/conversation-thread/swc-conversation-thread.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type {
   Agent,
@@ -19,6 +22,17 @@ import {
   toolMessage,
   user,
 } from './messages.ts';
+
+const navigation = new Set([
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+]);
 
 let touched = false;
 document.addEventListener(
@@ -54,10 +68,10 @@ export class SliccChat extends ThemedElement {
         flex-direction: column;
         height: 100%;
         min-height: 0;
-        background: var(--spectrum-background-layer-2-color);
-        color: var(--spectrum-neutral-content-color-default);
-        font-size: var(--spectrum-font-size-100);
-        line-height: 1.5;
+        background: var(--swc-background-layer-2-color);
+        color: var(--swc-neutral-content-color-default);
+        font-size: var(--swc-font-size-100);
+        line-height: var(--swc-line-height-200);
       }
       header {
         display: flex;
@@ -84,25 +98,28 @@ export class SliccChat extends ThemedElement {
         min-width: calc(var(--swc-spacing-400) * 4);
         margin-inline-start: auto;
       }
+      header .frozen {
+        color: var(--swc-neutral-content-color-default);
+      }
       .log {
         flex: 1;
         min-height: 0;
         overflow-y: auto;
-        padding: 12px 16px 24px;
+        padding: var(--swc-spacing-200) var(--swc-spacing-300) var(--swc-spacing-400);
       }
       .log:focus-visible {
         outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
         outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
       }
       .column {
-        max-width: 860px;
+        max-inline-size: 860px;
         margin: 0 auto;
       }
       .empty {
-        color: var(--spectrum-neutral-subdued-content-color-default);
+        color: var(--swc-neutral-subdued-content-color-default);
         text-align: center;
-        padding: 48px 0;
-        font-size: var(--spectrum-font-size-75);
+        padding: var(--swc-spacing-700) 0;
+        font-size: var(--swc-font-size-75);
       }
     `,
   ];
@@ -110,6 +127,7 @@ export class SliccChat extends ThemedElement {
   #handlers: Handlers = {
     color: 'light',
     model: null,
+    readOnly: false,
     answer: (questionId, answer) => this.model?.agent.answer(this.#id(), questionId, answer),
     resolve: (messageId, state) => this.model?.agent.resolveLick(this.#id(), messageId, state),
     action: (action, messageId) => this.#action(action, messageId),
@@ -117,6 +135,24 @@ export class SliccChat extends ThemedElement {
       this.dispatchEvent(
         new CustomEvent('open-file', { detail: { path }, bubbles: true, composed: true })
       ),
+    show: (id) =>
+      this.dispatchEvent(
+        new CustomEvent('show-surface', { detail: { id }, bubbles: true, composed: true })
+      ),
+    suggest: (text) => void this.model?.agent.send(this.#id(), text),
+  };
+
+  #keys = {
+    capture: true,
+    handleEvent: (event: KeyboardEvent): void => {
+      const target = event.composedPath()[0];
+      if (
+        navigation.has(event.key) &&
+        target instanceof HTMLElement &&
+        target.matches('input, textarea, select')
+      )
+        event.stopPropagation();
+    },
   };
 
   protected subscribe(model: SliccModel): Array<() => void> {
@@ -186,7 +222,7 @@ export class SliccChat extends ThemedElement {
 
   focus(): void {
     if (!touched && globalThis.matchMedia('(pointer: fine)').matches)
-      this.focusOn('slicc-composer');
+      this.focusOn('slicc-composer', '.log');
     else this.focusOn('.log');
   }
 
@@ -226,7 +262,7 @@ export class SliccChat extends ThemedElement {
     );
   }
 
-  #message(message: Message, agent: Agent): TemplateResult {
+  #message(message: Message, agent: Agent, suggestion: string | null): TemplateResult {
     const model = this.model as SliccModel;
     switch (message.role) {
       case 'assistant': {
@@ -239,7 +275,8 @@ export class SliccChat extends ThemedElement {
           agent.name,
           label,
           this.#handlers,
-          model.settings.get().showThinking
+          model.settings.get().showThinking,
+          suggestion
         );
       }
       case 'user':
@@ -256,6 +293,12 @@ export class SliccChat extends ThemedElement {
   #items(messages: readonly Message[], agent: Agent): TemplateResult[] {
     const out: TemplateResult[] = [];
     let previous = '';
+    const model = this.model as SliccModel;
+    const last = messages.at(-1);
+    const suggestion =
+      last?.role === 'assistant' && !agent.frozen && !model.agent.busy(agent.id)
+        ? model.agent.suggestion(agent.id)
+        : null;
     for (const message of messages) {
       const label = day(message.createdAt);
       if (label !== previous) {
@@ -264,7 +307,7 @@ export class SliccChat extends ThemedElement {
         );
         previous = label;
       }
-      out.push(this.#message(message, agent));
+      out.push(this.#message(message, agent, message === last ? suggestion : null));
     }
     return out;
   }
@@ -272,6 +315,13 @@ export class SliccChat extends ThemedElement {
   #meta(agent: Agent): TemplateResult {
     const model = this.model as SliccModel;
     const fill = Math.round(agent.contextFill * 100);
+    const meter = html`<swc-meter size="s" label-position="side" value=${fill} variant=${meterVariant(fill)}><span slot="label">Context</span></swc-meter>`;
+    if (agent.frozen) {
+      return html`<swc-badge size="s" variant="informative" subtle>Frozen</swc-badge>
+        <span class="frozen">Read only</span>
+        <swc-button size="s" variant="secondary" fill-style="outline" data-action="thaw" @click=${() => model.agent.thaw(agent.id)}>Thaw</swc-button>
+        ${meter}`;
+    }
     return html`${statusLight(agent.status)}
       <sp-picker size="s" quiet label="Model" value=${agent.model} @change=${(event: Event) => model.agent.setModel(agent.id, (event.target as HTMLInputElement).value)}>
         ${model.settings.models().map((option) => html`<sp-menu-item value=${option.id}>${option.label}</sp-menu-item>`)}
@@ -282,13 +332,14 @@ export class SliccChat extends ThemedElement {
         <sp-menu-item value="medium">Think</sp-menu-item>
         <sp-menu-item value="high">Think hard</sp-menu-item>
       </sp-picker>
-      <swc-meter size="s" label-position="side" value=${fill} variant=${meterVariant(fill)}><span slot="label">Context</span></swc-meter>`;
+      ${meter}`;
   }
 
   render(): TemplateResult {
     this.#handlers.color = this.color;
     this.#handlers.model = this.model ?? null;
     const agent = this.#agent();
+    this.#handlers.readOnly = !!agent?.frozen;
     const messages = agent ? (this.model?.agent.messages(agent.id) ?? []) : [];
     return html`
       <header>
@@ -302,15 +353,15 @@ export class SliccChat extends ThemedElement {
         tabindex="-1"
         @scroll=${this.#scroll}
       >
-        <div class="column">
+        <div class="column" @keydown=${this.#keys}>
           ${
             agent && messages.length > 0
-              ? this.#items(messages, agent)
+              ? html`<swc-conversation-thread>${this.#items(messages, agent)}</swc-conversation-thread>`
               : html`<div class="empty">No messages yet. Ask ${agent?.name ?? 'the agent'} something.</div>`
           }
         </div>
       </div>
-      ${this.model ? html`<slicc-composer .model=${this.model} .agent=${this.agent}></slicc-composer>` : nothing}
+      ${this.model && !agent?.frozen ? html`<slicc-composer .model=${this.model} .agent=${this.agent}></slicc-composer>` : nothing}
     `;
   }
 }

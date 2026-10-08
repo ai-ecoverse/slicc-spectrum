@@ -77,7 +77,7 @@ test('the shell renders the default layout from the dummy model', async (t) => {
   );
   assert.deepEqual(rows[0], ['cone-sliccy', 'cone', 'true']);
   assert.deepEqual(rows[1], ['scoop-wren', 'scoop', 'false']);
-  assert.equal(rows.length, 8);
+  assert.equal(rows.length, 9);
   assert.deepEqual(
     await page.evaluate(() => {
       const header = window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'header');
@@ -103,6 +103,7 @@ test('the shell renders the default layout from the dummy model', async (t) => {
       'harbor',
       'release-notes',
       'inbox-triage',
+      'tide-tables',
       'New cone',
       'Show all agents',
     ]
@@ -294,8 +295,12 @@ test('sending a message streams a reply with a tool call', async (t) => {
   });
   await page.until(
     () =>
-      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'article.assistant:last-of-type')?.dataset
-        .status === 'done'
+      window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'swc-conversation-turn.assistant:last-of-type'
+      )?.dataset.status === 'done'
   );
 
   const seen = await page.evaluate(() => window.seen);
@@ -309,7 +314,7 @@ test('sending a message streams a reply with a tool call', async (t) => {
   assert.ok(new Set(lengths).size > 5, JSON.stringify(lengths));
   const reply = await page.evaluate(() =>
     window
-      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'article.assistant:last-of-type')
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-conversation-turn.assistant:last-of-type')
       .textContent.replace(/\s+/g, ' ')
   );
   assert.match(reply, /bash Run the tests done/);
@@ -335,7 +340,7 @@ test('sending a message streams a reply with a tool call', async (t) => {
         'slicc-app',
         'slicc-dock',
         'slicc-chat',
-        'article.assistant:last-of-type details.tool summary'
+        'swc-conversation-turn.assistant:last-of-type details.tool summary'
       )
       .click();
   });
@@ -346,7 +351,7 @@ test('sending a message streams a reply with a tool call', async (t) => {
           'slicc-app',
           'slicc-dock',
           'slicc-chat',
-          'article.assistant:last-of-type details.tool[open] .output'
+          'swc-conversation-turn.assistant:last-of-type details.tool[open] .output'
         ).textContent
     ),
     /ℹ pass 3/
@@ -386,7 +391,7 @@ test('a content-filter stop drops the last turn and puts its prompt back in the 
       [
         ...window
           .$('slicc-app', 'slicc-dock', 'slicc-chat')
-          .shadowRoot.querySelectorAll('sp-button'),
+          .shadowRoot.querySelectorAll('swc-button'),
       ]
         .filter((button) => button.textContent.trim() === 'Drop the last turn')
         .at(-1)
@@ -409,7 +414,7 @@ test('a content-filter stop drops the last turn and puts its prompt back in the 
     return [
       error.querySelector('.lead').textContent,
       error.querySelector('.detail').textContent,
-      error.querySelector('sp-button').textContent.trim(),
+      error.querySelector('swc-button').textContent.trim(),
     ];
   });
   assert.deepEqual(card, [
@@ -483,8 +488,12 @@ test('a running reply stops with Escape', async (t) => {
   await page.press('Escape');
   await page.until(
     () =>
-      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'article.assistant:last-of-type')?.dataset
-        .status === 'stopped'
+      window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'swc-conversation-turn.assistant:last-of-type'
+      )?.dataset.status === 'stopped'
   );
   assert.deepEqual(page.errors, []);
 });
@@ -1451,10 +1460,10 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
       channels: [
         ...new Set([...root.querySelectorAll('.lick')].map((lick) => lick.dataset.channel)),
       ].length,
-      user: count('article.user'),
-      steered: count('article.user[data-mode=steer]'),
-      assistant: count('article.assistant'),
-      tool: count('article.tool-message'),
+      user: count('.message.user'),
+      steered: count('.message.user[data-mode=steer]'),
+      assistant: count('.message.assistant'),
+      tool: count('.message.tool-message'),
       cluster: count('details.cluster'),
       markers: count('.marker'),
       errors: count('.error-card'),
@@ -1519,7 +1528,7 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     const all = [...chat.shadowRoot.querySelectorAll('.error-card')];
     all.at(0).scrollIntoView({ block: 'center' });
     return all.map((card) => {
-      const button = card.querySelector('sp-button');
+      const button = card.querySelector('swc-button');
       return {
         lead: card.querySelector('.lead, strong')?.textContent.trim(),
         detail: card.querySelector('.detail')?.textContent.trim() ?? null,
@@ -1550,7 +1559,7 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     [
       ...window
         .$('slicc-app', 'slicc-dock', 'slicc-chat')
-        .shadowRoot.querySelectorAll('.question[data-state=open] sp-button'),
+        .shadowRoot.querySelectorAll('.question[data-state=open] swc-button'),
     ]
       .find((button) => button.textContent.trim() === 'Move it to KV')
       .click()
@@ -1562,7 +1571,7 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     [
       ...window
         .$('slicc-app', 'slicc-dock', 'slicc-chat')
-        .shadowRoot.querySelectorAll('.pending sp-button'),
+        .shadowRoot.querySelectorAll('.pending swc-button'),
     ]
       .find((button) => button.textContent.trim() === 'Allow')
       .click()
@@ -1670,7 +1679,7 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
     () =>
       window
         .$('slicc-app', 'slicc-dock', 'slicc-chat')
-        .shadowRoot.querySelectorAll('article.user .attachment').length === 1
+        .shadowRoot.querySelectorAll('.message.user .attachment').length === 1
   );
 
   await page.until(() => window.model.agent.busy('cone-sliccy') === false);
@@ -1716,10 +1725,10 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
     [
       ...window
         .$('slicc-app', 'slicc-dock', 'slicc-chat')
-        .shadowRoot.querySelectorAll('article.user[data-delivered] .tag'),
+        .shadowRoot.querySelectorAll('.message.user[data-delivered] .tag'),
     ].map((tag) => tag.textContent)
   );
-  assert.deepEqual([...new Set(tags)].sort(), ['follow-up', 'steered']);
+  assert.deepEqual([...new Set(tags)].sort(), ['Follow-up', 'Steered']);
   await shot(page, 'composer-delivered');
 
   await page.press('ArrowUp');
@@ -2764,5 +2773,142 @@ test('the file tree follows the app theme, not the system one', async (t) => {
   );
   assert.deepEqual(await page.evaluate(theme), ['dark', true, false]);
   await shot(page, 'tree-dark');
+  assert.deepEqual(page.errors, []);
+});
+
+test('the conversation runs on the AI toolkit and keeps its keys, suggestions and delegations', async (t) => {
+  const page = await open(t, { delay: '0' });
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot;
+      const thread = root.querySelector('.log .column swc-conversation-thread');
+      const turns = [...thread.children];
+      return [
+        turns.every((turn) => turn.localName === 'swc-conversation-turn' || turn.matches('.day')),
+        turns.some((turn) => turn.getAttribute('type') === 'user'),
+        turns.some((turn) => turn.getAttribute('type') === 'system'),
+        !!root.querySelector('.message.assistant swc-system-message'),
+        !!root.querySelector('.message.user swc-user-message.body'),
+      ];
+    }),
+    [true, true, true, true, true]
+  );
+
+  const kept = await page.evaluate(() => {
+    const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot;
+    const turn = root.querySelector('swc-conversation-turn.assistant');
+    const input = document.createElement('input');
+    input.className = 'probe';
+    turn.querySelector('.reply').append(input);
+    input.focus();
+    return root.activeElement === input;
+  });
+  assert.equal(kept, true);
+  for (const key of ['ArrowUp', 'ArrowDown', 'Home', 'End']) await page.press(key);
+  assert.equal(
+    await page.evaluate(
+      () => window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot.activeElement?.className
+    ),
+    'probe'
+  );
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.probe').remove();
+    return true;
+  });
+
+  await page.evaluate(() => void window.model.agent.send('cone-sliccy', { text: 'Run the tests' }));
+  await page.until(
+    () =>
+      !!window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'swc-suggestion-item[data-action=suggestion]'
+      )
+  );
+  const suggestion = await page.evaluate(() => {
+    const item = window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-suggestion-item');
+    const text = item.textContent.trim();
+    item.shadowRoot.querySelector('swc-button').click();
+    return text;
+  });
+  await page.until(
+    (text) =>
+      window.model.agent
+        .messages('cone-sliccy')
+        .filter((message) => message.role === 'user')
+        .at(-1)?.text === text,
+    suggestion
+  );
+
+  await page.evaluate(() => window.model.agent.select('cone-harbor'));
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', '[data-action=open-scoop]')
+  );
+  assert.equal(
+    await page.evaluate(() => {
+      const button = window.$('slicc-app', 'slicc-dock', 'slicc-chat', '[data-action=open-scoop]');
+      button.click();
+      return button.dataset.target;
+    }),
+    'scoop-otter'
+  );
+  await page.until(
+    () => window.$('slicc-app', 'slicc-dock').api.activePanel?.id === 'chat:scoop-otter'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('agent requests, frozen cones and long lick bodies render as their own kind', async (t) => {
+  const page = await open(t, { delay: '0' });
+  await page.evaluate(() => window.model.agent.select('scoop-otter'));
+  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', '[data-id=m-o1]'));
+  const request = await page.evaluate(() => {
+    const turn = window.$('slicc-app', 'slicc-dock', 'slicc-chat', '[data-id=m-o1]');
+    const bubble = turn.querySelector('.bubble');
+    return [
+      turn.dataset.origin,
+      turn.querySelector('.who').textContent,
+      turn.querySelector('.meta swc-badge')?.textContent.trim(),
+      getComputedStyle(bubble).alignSelf,
+    ];
+  });
+  assert.deepEqual(request, ['agent', 'harbor', 'Agent', 'flex-start']);
+  await shot(page, 'chat-agent-request');
+
+  await page.evaluate(() => window.model.agent.select('cone-tides'));
+  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', '[data-action=thaw]'));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot;
+      return [!!root.querySelector('slicc-composer'), !!root.querySelector('sp-picker')];
+    }),
+    [false, false]
+  );
+  await shot(page, 'chat-frozen');
+  await page.evaluate(() =>
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat', '[data-action=thaw]').click()
+  );
+  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer'));
+  assert.equal(
+    await page.evaluate(
+      () => window.model.agent.list().find((agent) => agent.id === 'cone-tides').frozen
+    ),
+    undefined
+  );
+
+  await page.evaluate(() => window.model.agent.select('cone-release'));
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.lick[data-id=m-r5]')
+  );
+  const wrap = await page.evaluate(() => {
+    const lick = window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.lick[data-id=m-r5]');
+    lick.open = true;
+    lick.style.maxInlineSize = '320px';
+    const pre = lick.querySelector('pre');
+    const style = getComputedStyle(pre);
+    return [style.whiteSpace, style.overflowWrap, pre.scrollWidth <= pre.clientWidth];
+  });
+  assert.deepEqual(wrap, ['pre-wrap', 'anywhere', true]);
   assert.deepEqual(page.errors, []);
 });

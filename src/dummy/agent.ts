@@ -549,7 +549,13 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
 
   thaw(id: string): Agent | null {
     const ice = this.#ice.get(id);
-    if (!ice) return null;
+    if (!ice) {
+      const agent = this.#agent(id);
+      if (!agent?.frozen) return null;
+      delete agent.frozen;
+      this.#changed();
+      return { ...agent };
+    }
     this.#ice.delete(id);
     this.#frozen = this.#frozen.filter((cone) => cone.id !== id);
     for (const { agent, messages } of ice) {
