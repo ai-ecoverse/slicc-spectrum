@@ -1,10 +1,11 @@
-import { css, html, svg, type TemplateResult } from 'lit';
+import { css, html, type PropertyValues, svg, type TemplateResult } from 'lit';
 import type { SliccModel, Sprinkle } from '../model/types.ts';
-import { ThemedElement } from './base.ts';
+import { type Color, ThemedElement } from './base.ts';
 import { Dips, dipsOf, dipType } from './dips.ts';
 import { type FontFile, installedFonts } from './fonts.ts';
 import { icons } from './lucide.ts';
 import theme from './sprinkle-theme.css';
+import { sprinkleTokens } from './sprinkle-tokens.ts';
 
 export const bridge = `(() => {
   const post = (message) => parent.postMessage(message, '*');
@@ -50,6 +51,7 @@ export const bridge = `(() => {
     const message = event.data || {};
     if (message.type === 'slicc-icons') swap(message.icons);
     if (message.type === 'slicc-fonts') fonts(message.fonts);
+    if (message.type === 'slicc-theme') document.documentElement.classList.toggle('theme-light', message.color === 'light');
   });
   const size = () => {
     const style = getComputedStyle(document.body);
@@ -62,8 +64,8 @@ export const bridge = `(() => {
   post({ type: 'slicc-ready' });
 })();`;
 
-export function frameDocument(source: string, color: 'light' | 'dark', name: string): string {
-  const scheme = `<style>:root{color-scheme:${color};}${theme}</style>`;
+export function frameDocument(source: string, color: Color, name: string): string {
+  const scheme = `<style>${sprinkleTokens}${theme}</style>`;
   const light = `<script>document.documentElement.classList.toggle('theme-light', ${color === 'light'});</script>`;
   const script = `<script data-name="${name.replace(/"/g, '&quot;')}">${bridge}</script>`;
   const injection = light + scheme + script;
@@ -210,6 +212,7 @@ export class SliccSprinkle extends ThemedElement {
     } else if (data.type === 'slicc-icons' && Array.isArray(data.names)) {
       source.postMessage({ type: 'slicc-icons', icons: await icons(data.names) }, '*');
     } else if (data.type === 'slicc-ready') {
+      source.postMessage({ type: 'slicc-theme', color: this.color }, '*');
       const fonts = await frameFonts(installedFonts(), document.baseURI);
       source.postMessage({ type: 'slicc-fonts', fonts }, '*');
     } else if (data.type === 'slicc-size' && typeof data.height === 'number') {
@@ -245,6 +248,22 @@ export class SliccSprinkle extends ThemedElement {
     return this.model?.sprinkles.list().find((candidate) => candidate.id === this.sprinkle);
   }
 
+  #frame = { key: '', doc: '' };
+
+  #document(data: Sprinkle): string {
+    const key = `${data.name}\n${data.html}`;
+    if (this.#frame.key !== key)
+      this.#frame = { key, doc: frameDocument(data.html, this.color, data.name) };
+    return this.#frame.doc;
+  }
+
+  protected updated(changed: PropertyValues): void {
+    super.updated(changed);
+    this.renderRoot
+      .querySelector('iframe')
+      ?.contentWindow?.postMessage({ type: 'slicc-theme', color: this.color }, '*');
+  }
+
   render(): TemplateResult {
     const data = this.#data;
     if (!data) return html`<div class="note">This sprinkle is gone.</div>`;
@@ -256,7 +275,7 @@ export class SliccSprinkle extends ThemedElement {
       </div>`;
     }
     const style = `color-scheme:${this.color};${this.inline ? `height:${this.height}px;` : ''}`;
-    const frame = html`<iframe title=${data.title} sandbox="allow-scripts" style=${style} .srcdoc=${frameDocument(data.html, this.color, data.name)}></iframe>`;
+    const frame = html`<iframe title=${data.title} sandbox="allow-scripts" style=${style} .srcdoc=${this.#document(data)}></iframe>`;
     if (!this.inline) return frame;
     return html`<div class="handle" draggable="true" title="Drag into the dock or a rail to open as a panel" @dragstart=${this.#drag}>
         ${grip}

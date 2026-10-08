@@ -1595,6 +1595,115 @@ test('SLICC sprinkles run sandboxed with Lucide icons and lick their cone, and t
   assert.deepEqual(page.errors, []);
 });
 
+test('sprinkle frames resolve the host Gen2 tokens and follow the theme without reloading', async (t) => {
+  const page = await open(t);
+  const pairs = [
+    ['--s2-gray-800', '--swc-gray-800', 'color'],
+    ['--s2-bg-layer-1', '--swc-background-layer-1-color', 'background-color'],
+    ['--s2-bg-elevated', '--swc-background-elevated-color', 'background-color'],
+    ['--s2-content-default', '--swc-neutral-content-color-default', 'color'],
+    ['--s2-content-secondary', '--swc-neutral-subdued-content-color-default', 'color'],
+    ['--s2-content-positive', '--swc-positive-color-900', 'color'],
+    ['--s2-accent', '--swc-accent-background-color-default', 'background-color'],
+    ['--s2-negative', '--swc-negative-background-color-default', 'background-color'],
+    ['--s2-border-focus', '--swc-focus-indicator-color', 'color'],
+    [
+      '--uxc-positive-subtle-bg',
+      '--swc-positive-subtle-background-color-default',
+      'background-color',
+    ],
+    ['--uxc-positive-subtle-text', '--swc-positive-color-1000', 'color'],
+    ['--s2-shadow-elevated', '--swc-drop-shadow-elevated', 'box-shadow'],
+    ['--s2-font-size-100', '--swc-font-size-100', 'font-size'],
+    ['--s2-radius-default', '--swc-corner-radius-medium-default', 'border-top-left-radius'],
+    ['--s2-spacing-100', '--swc-spacing-100', 'padding-top'],
+    ['--s2-font-family', '--swc-sans-font-family-stack', 'font-family'],
+  ];
+  await page.evaluate(() => {
+    const probe = `<!DOCTYPE html><html><head></head><body><button class="sprinkle-btn sprinkle-btn--primary">Go</button><script>
+      const loaded = Math.random();
+      addEventListener('message', (event) => {
+        if (event.data?.type !== 'probe') return;
+        const values = event.data.pairs.map(([name, , property]) => {
+          const node = document.createElement('div');
+          node.style.setProperty(property, 'var(' + name + ')');
+          document.body.append(node);
+          const value = getComputedStyle(node).getPropertyValue(property);
+          node.remove();
+          return property === 'font-family' ? [...new Set(value.split(',').map((family) => family.trim()))].join(', ') : value;
+        });
+        const root = document.documentElement;
+        parent.postMessage({ type: 'probe-result', loaded, values, light: root.classList.contains('theme-light'), scheme: getComputedStyle(root).colorScheme, outline: getComputedStyle(document.querySelector('button')).outlineColor }, '*');
+      });
+    </script></body></html>`;
+    const list = window.model.sprinkles.list.bind(window.model.sprinkles);
+    window.model.sprinkles.list = () => [
+      ...list(),
+      {
+        id: 'probe',
+        name: 'probe',
+        title: 'Probe',
+        icon: 'hand',
+        agentId: 'cone-sliccy',
+        html: probe,
+      },
+    ];
+    const element = document.createElement('slicc-sprinkle');
+    element.setAttribute('inline', '');
+    element.sprinkle = 'probe';
+    element.model = window.model;
+    document.body.append(element);
+    window.probe = (pairs) =>
+      new Promise((resolve) => {
+        const frame = element.shadowRoot.querySelector('iframe');
+        const timer = setInterval(
+          () => frame.contentWindow.postMessage({ type: 'probe', pairs }, '*'),
+          50
+        );
+        const listen = (event) => {
+          if (event.source !== frame.contentWindow || event.data?.type !== 'probe-result') return;
+          clearInterval(timer);
+          removeEventListener('message', listen);
+          resolve(event.data);
+        };
+        addEventListener('message', listen);
+      });
+    window.host = (pairs) => {
+      const theme = window.$('slicc-app', '.swc-theme');
+      return pairs.map(([, name, property]) => {
+        const node = document.createElement('div');
+        node.style.setProperty(property, `var(${name})`);
+        theme.append(node);
+        const value = getComputedStyle(node).getPropertyValue(property);
+        node.remove();
+        return value;
+      });
+    };
+    return true;
+  });
+
+  const light = await page.evaluate((pairs) => window.probe(pairs), pairs);
+  assert.equal(light.light, true);
+  assert.equal(light.scheme, 'light');
+  assert.deepEqual(light.values, await page.evaluate((pairs) => window.host(pairs), pairs));
+  assert.notEqual(light.values[0], '');
+
+  await page.evaluate(() => window.model.settings.update({ color: 'dark' }));
+  await page.until(() => window.$('slicc-app', '.swc-theme').classList.contains('swc-theme--dark'));
+  let dark;
+  for (let i = 0; i < 50; i++) {
+    dark = await page.evaluate((pairs) => window.probe(pairs), pairs);
+    if (!dark.light) break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.equal(dark.light, false);
+  assert.equal(dark.scheme, 'dark');
+  assert.equal(dark.loaded, light.loaded);
+  assert.deepEqual(dark.values, await page.evaluate((pairs) => window.host(pairs), pairs));
+  assert.notDeepEqual(dark.values, light.values);
+  assert.deepEqual(page.errors, []);
+});
+
 test('new surfaces in dark', async (t) => {
   const page = await open(t, { color: 'dark' });
   for (const id of ['memory', 'freezer', 'monitor', 'sprinkle:suggestions']) {
