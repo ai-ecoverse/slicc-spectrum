@@ -7,3 +7,4 @@ Web components for SLICC: `<slicc-terminal>` (wterm) and the app UI on Spectrum 
 - No React. Import Spectrum components one by one.
 - Fixtures are invented; nothing real goes in, except SLICC's own sprinkles (`src/dummy/sprinkles/`).
 - Integration tests run on slicc-shared-web's CDP harness through `test/integration/chrome.mjs`; the UI test page is `test/integration/page/ui/`.
+- Keep `data-id`, `data-action`, `data-surface` and `slot="status"` stable: embedders (slicc-bios) test on them, not on tag names.
