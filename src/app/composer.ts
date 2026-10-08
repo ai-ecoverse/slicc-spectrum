@@ -286,10 +286,6 @@ export class SliccComposer extends ModelElement {
       .spacer {
         flex: 1;
       }
-      .toolbar sp-picker {
-        min-width: 0;
-        width: auto;
-      }
       .hint {
         max-width: 860px;
         margin: 4px auto 0;
@@ -795,22 +791,6 @@ export class SliccComposer extends ModelElement {
     </div>`;
   }
 
-  #meta(): TemplateResult | typeof nothing {
-    const model = this.model;
-    const agent = model?.agent.list().find((candidate) => candidate.id === this.#agent);
-    if (!(model && agent)) return nothing;
-    const thinking = model.settings.get().thinking;
-    return html`<sp-picker size="s" quiet label="Model" value=${agent.model} @change=${(event: Event) => model.agent.setModel(agent.id, (event.target as HTMLInputElement).value)}>
-        ${model.settings.models().map((option) => html`<sp-menu-item value=${option.id}>${option.label}</sp-menu-item>`)}
-      </sp-picker>
-      <sp-picker size="s" quiet label="Thinking" value=${thinking} @change=${(event: Event) => model.settings.update({ thinking: (event.target as HTMLInputElement).value as Thinking })}>
-        <sp-menu-item value="off">No thinking</sp-menu-item>
-        <sp-menu-item value="low">Think a little</sp-menu-item>
-        <sp-menu-item value="medium">Think</sp-menu-item>
-        <sp-menu-item value="high">Think hard</sp-menu-item>
-      </sp-picker>`;
-  }
-
   render(): TemplateResult {
     const busy = this.#busy();
     const agent = this.model?.agent.list().find((candidate) => candidate.id === this.#agent);
@@ -857,7 +837,6 @@ export class SliccComposer extends ModelElement {
               <sp-menu-item value="file">Attach a file from SLICC</sp-menu-item>
               <sp-menu-item value="secret">Share a secret</sp-menu-item>
             </sp-action-menu>
-            ${this.#meta()}
             <span class="spacer"></span>
             ${speech ? html`<sp-action-button size="s" quiet ?selected=${this.dictating} label="Dictate" @click=${() => this.dictate()}><swc-icon-microphone slot="icon"></swc-icon-microphone></sp-action-button>` : nothing}
             ${
