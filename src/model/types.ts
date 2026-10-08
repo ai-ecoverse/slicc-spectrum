@@ -115,7 +115,7 @@ export type MessagePart =
   | { type: 'delegation'; kind: DelegationKind; scoop: string; text: string }
   | { type: 'link'; url: string; title: string; description: string }
   | { type: 'sprinkle'; sprinkle: string }
-  | { type: 'error'; message: string; action?: ErrorAction };
+  | { type: 'error'; message: string; detail?: string; action?: ErrorAction };
 
 export type SendMode = 'send' | 'steer' | 'queue';
 export type DeliveredAs = 'run' | 'steer' | 'follow-up';

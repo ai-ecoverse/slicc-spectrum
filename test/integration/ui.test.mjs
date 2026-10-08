@@ -950,6 +950,40 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     await shot(page, `kitchen-sink-light-${index + 1}`);
   }
 
+  const cards = await page.evaluate(async () => {
+    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    chat.style.width = '400px';
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const all = [...chat.shadowRoot.querySelectorAll('.error-card')];
+    all.at(0).scrollIntoView({ block: 'center' });
+    return all.map((card) => {
+      const button = card.querySelector('sp-button');
+      return {
+        lead: card.querySelector('.lead, strong')?.textContent.trim(),
+        detail: card.querySelector('.detail')?.textContent.trim() ?? null,
+        oneLine: !button || button.getBoundingClientRect().height < 34,
+        inside:
+          !button ||
+          button.getBoundingClientRect().right <= card.getBoundingClientRect().right + 0.5,
+      };
+    });
+  });
+  assert.ok(
+    cards.every((card) => card.oneLine && card.inside),
+    JSON.stringify(cards)
+  );
+  assert.ok(
+    cards.some(
+      (card) =>
+        card.lead === 'The request is too large for this model.' &&
+        card.detail === 'The model returned 413: the request is larger than its context window.'
+    )
+  );
+  await shot(page, 'error-cards-narrow');
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat').style.width = '';
+  });
+
   await page.evaluate(() =>
     [
       ...window

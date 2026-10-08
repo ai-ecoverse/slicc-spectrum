@@ -635,7 +635,8 @@ function events(): Message[] {
         },
         {
           type: 'error',
-          message: 'The model returned 413: the request is larger than its context window.',
+          message: 'The request is too large for this model.',
+          detail: 'The model returned 413: the request is larger than its context window.',
           action: 'change-model',
         },
       ],
