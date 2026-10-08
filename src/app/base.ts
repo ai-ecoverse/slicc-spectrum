@@ -32,6 +32,7 @@ export class ModelElement extends LitElement {
   connectedCallback(): void {
     super.connectedCallback();
     this.#bind();
+    this.requestUpdate();
   }
 
   disconnectedCallback(): void {
