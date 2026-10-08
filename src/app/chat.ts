@@ -20,6 +20,22 @@ import {
   user,
 } from './messages.ts';
 
+let touched = false;
+document.addEventListener(
+  'pointerdown',
+  (event) => {
+    touched = event.pointerType !== 'mouse';
+  },
+  true
+);
+document.addEventListener(
+  'keydown',
+  () => {
+    touched = false;
+  },
+  true
+);
+
 export class SliccChat extends ThemedElement {
   static properties = { ...ThemedElement.properties, agent: {} };
   declare agent: string;
@@ -169,7 +185,8 @@ export class SliccChat extends ThemedElement {
   }
 
   focus(): void {
-    if (globalThis.matchMedia('(pointer: fine)').matches) this.focusOn('slicc-composer');
+    if (!touched && globalThis.matchMedia('(pointer: fine)').matches)
+      this.focusOn('slicc-composer');
     else this.focusOn('.log');
   }
 
