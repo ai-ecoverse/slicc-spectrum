@@ -164,6 +164,26 @@ test('new failures reopen once, show diagnostics and Retry, and dispatch errors 
       window.$('slicc-app', 'slicc-dock', 'slicc-updates', '[role=alert]')?.textContent ===
       'The update service is offline.'
   );
+  await page.evaluate(() => window.model.updates.setScenario('current'));
+  await page.until(() => !window.$('slicc-app', 'slicc-dock', 'slicc-updates', '[role=alert]'));
+  assert.deepEqual(page.errors, []);
+});
+
+test('a manually saved updates panel stays open after boot readiness', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.app.show('updates'));
+  await page.until(shown);
+  await page.goto('/ui/?updates=boot&color=light&delay=20');
+  await page.until(() => window.ready && window.app.dock.has('updates'));
+  assert.equal(
+    await page.evaluate(() => window.app.dock.api.getPanel('updates').params.boot),
+    false
+  );
+  await page.evaluate(async () => {
+    window.model.updates.setScenario('current');
+    await window.app.updateComplete;
+  });
+  assert.equal(await page.evaluate(shown), true);
   assert.deepEqual(page.errors, []);
 });
 

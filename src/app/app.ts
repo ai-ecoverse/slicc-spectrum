@@ -294,13 +294,15 @@ export class SliccApp extends ThemedElement {
     if (!port || !this.#offers('updates')) return;
     const change = this.#updatesVisibility?.change(port, layout);
     if (change === 'open') {
-      this.show('updates');
-      if (!port.ready()) this.dock.api.getPanel('updates')?.api.updateParameters({ boot: true });
+      if (this.dock.has('updates')) this.dock.reveal('updates');
+      else {
+        this.show('updates');
+        if (!port.ready()) this.dock.api.getPanel('updates')?.api.updateParameters({ boot: true });
+      }
     } else if (
-      change === 'close' ||
-      (this.dock.api.getPanel('updates')?.params?.boot &&
-        port.ready() &&
-        !port.list().some((item) => item.state === 'failed'))
+      this.dock.api.getPanel('updates')?.params?.boot &&
+      port.ready() &&
+      !port.list().some((item) => item.state === 'failed')
     ) {
       this.dock.close('updates');
     }

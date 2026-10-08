@@ -185,7 +185,23 @@ export class SliccUpdates extends ModelElement {
   protected subscribe(model: SliccModel): Array<() => void> {
     this.pending = new Set();
     this.failures = new Map();
-    return model.updates ? [model.updates.on('items', () => this.requestUpdate())] : [];
+    const port = model.updates;
+    if (!port) return [];
+    let previous = new Map(port.list().map(({ id, state, error }) => [id, { state, error }]));
+    return [
+      port.on('items', (items) => {
+        const next = new Map(items.map(({ id, state, error }) => [id, { state, error }]));
+        this.failures = new Map(
+          [...this.failures].filter(([id]) => {
+            const before = previous.get(id);
+            const after = next.get(id);
+            return before && after && before.state === after.state && before.error === after.error;
+          })
+        );
+        previous = next;
+        this.requestUpdate();
+      }),
+    ];
   }
 
   focus(): void {
