@@ -90,7 +90,7 @@ export function fontData(url: string): Promise<ArrayBuffer | null> {
 export async function frameFonts(
   files: readonly FontFile[],
   base: string
-): Promise<Array<{ family: string; weight: number; data: ArrayBuffer }>> {
+): Promise<Array<{ family: string; weight: number | string; data: ArrayBuffer }>> {
   const loaded = await Promise.all(
     files.map(async (file) => ({
       family: file.family,
@@ -98,8 +98,9 @@ export async function frameFonts(
       data: await fontData(new URL(file.url, base).href),
     }))
   );
-  return loaded.filter((font): font is { family: string; weight: number; data: ArrayBuffer } =>
-    Boolean(font.data)
+  return loaded.filter(
+    (font): font is { family: string; weight: number | string; data: ArrayBuffer } =>
+      Boolean(font.data)
   );
 }
 

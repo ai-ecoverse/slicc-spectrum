@@ -44,8 +44,8 @@
   --s2-border-focus: var(--s2-accent);
 
   --s2-font-family:
-    "Adobe Clean", "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    sans-serif;
+    "adobe-clean-spectrum-vf", "Adobe Clean Spectrum VF", "Adobe Clean", "Source Sans Pro",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --s2-font-mono: "Source Code Pro", "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
 
   --s2-font-size-50: 11px;

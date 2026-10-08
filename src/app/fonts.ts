@@ -14,7 +14,7 @@ export const defaultVariableFont =
 
 export interface FontFile {
   family: string;
-  weight: number;
+  weight: number | string;
   url: string;
   format: 'woff2' | 'opentype';
 }
@@ -38,22 +38,23 @@ export function fontFiles(base: string | null, codeBase: string): FontFile[] {
   return files;
 }
 
-export function variableFace(url: string | null): string[] {
+export function variableFile(url: string | null): FontFile[] {
   return url
-    ? [
-        `@font-face{font-family:"adobe-clean-spectrum-vf";font-style:normal;font-weight:100 900;font-display:swap;src:url("${url}") format("woff2");}`,
-      ]
+    ? [{ family: 'adobe-clean-spectrum-vf', weight: '100 900', url, format: 'woff2' }]
     : [];
 }
 
+function allFiles(base: string | null, codeBase: string, variable: string | null): FontFile[] {
+  return [...variableFile(variable), ...fontFiles(base, codeBase)];
+}
+
 export function fontFaces(base: string | null, codeBase: string, variable: string | null): string {
-  return [
-    ...variableFace(variable),
-    ...fontFiles(base, codeBase).map(
+  return allFiles(base, codeBase, variable)
+    .map(
       (file) =>
         `@font-face{font-family:"${file.family}";font-style:normal;font-weight:${file.weight};font-display:swap;src:url("${file.url}") format("${file.format}");}`
-    ),
-  ].join('\n');
+    )
+    .join('\n');
 }
 
 export function installedFonts(): readonly FontFile[] {
@@ -70,7 +71,7 @@ export function installFonts(
   const style = existing ?? document.createElement('style');
   style.dataset.sliccFonts = '';
   style.textContent = fontFaces(base, codeBase, variable);
-  installed = fontFiles(base, codeBase);
+  installed = allFiles(base, codeBase, variable);
   if (!existing) document.head.append(style);
   return style;
 }
