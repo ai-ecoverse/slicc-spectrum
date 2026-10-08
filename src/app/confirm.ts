@@ -245,6 +245,10 @@ export class SliccPrompt extends LitElement {
     this.#dialog.close();
   }
 
+  #cancel(event: Event): void {
+    if (this.pending) event.preventDefault();
+  }
+
   #closed(): void {
     this.#result.resolve(null);
     this.remove();
@@ -252,7 +256,7 @@ export class SliccPrompt extends LitElement {
   }
 
   render(): TemplateResult {
-    return html`<dialog aria-labelledby="title" @close=${this.#closed}>
+    return html`<dialog aria-labelledby="title" @cancel=${this.#cancel} @close=${this.#closed}>
       <sp-alert-dialog>
         <h2 id="title" slot="heading">${this.heading}</h2>
         <sp-field-label for="field" size="m">${this.label}</sp-field-label>
@@ -266,7 +270,7 @@ export class SliccPrompt extends LitElement {
           @keydown=${this.#key}
           >${this.error ? html`<sp-help-text slot="negative-help-text" icon>${this.error}</sp-help-text>` : nothing}</sp-textfield
         >
-        <swc-button slot="button" variant="secondary" fill-style="outline" data-cancel @click=${() => this.#dialog.close()}>Cancel</swc-button>
+        <swc-button slot="button" variant="secondary" fill-style="outline" data-cancel ?disabled=${this.pending} @click=${() => this.#dialog.close()}>Cancel</swc-button>
         <swc-button
           slot="button"
           variant="accent"

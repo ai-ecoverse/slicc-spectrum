@@ -178,7 +178,6 @@ export class SliccAgents extends ModelElement {
       trigger,
     });
     if (!ok) return;
-    const active = port.active() === agent.id;
     const { [agent.id]: _, ...rest } = this.errors;
     this.errors = rest;
     try {
@@ -188,7 +187,10 @@ export class SliccAgents extends ModelElement {
       this.errors = { ...this.errors, [agent.id]: `Couldn’t drop ${agent.name}: ${message}` };
       return;
     }
-    if (active && agent.parentId && port.active() !== agent.parentId) port.select(agent.parentId);
+    const current = port.active();
+    const stale =
+      current === agent.id || !port.list().some((candidate) => candidate.id === current);
+    if (stale && agent.parentId) port.select(agent.parentId);
     await this.updateComplete;
     this.focus();
   }

@@ -976,6 +976,9 @@ export const messageCss = css`
     border: 0;
     margin: 0;
   }
+  .pending > details.lick[data-severity] {
+    border-inline-start: var(--swc-border-width-400) solid var(--severity);
+  }
   .caret {
     display: inline-block;
     width: 7px;

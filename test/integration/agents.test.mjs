@@ -114,6 +114,19 @@ test('error and warning licks get a severity badge, an icon, an edge and a prefi
       srVisible: true,
     }
   );
+  assert.equal(
+    await page.evaluate(() => {
+      const root = window.$('slicc-app', 'slicc-dock').content('chat:cone-release').shadowRoot;
+      const pending = document.createElement('div');
+      pending.className = 'pending';
+      pending.append(root.querySelector('.lick[data-id="m-r3"]').cloneNode(true));
+      root.append(pending);
+      const width = getComputedStyle(pending.firstChild).borderInlineStartWidth;
+      pending.remove();
+      return width;
+    }),
+    '4px'
+  );
   const plain = await page.evaluate(lickInfo, 'm-r1');
   assert.deepEqual(
     [plain.severity, plain.variant, plain.name.slice(0, 18)],
@@ -133,9 +146,10 @@ test('Drop asks first; cancel keeps the scoop, confirm removes it, closes its ch
       window.dropButton('cone-sliccy'),
       window.dropButton('scoop-otter').getAttribute('accessible-label'),
       Math.round(window.dropButton('scoop-otter').getBoundingClientRect().height),
-      getComputedStyle(window.dropButton('scoop-heron')).visibility,
+      getComputedStyle(window.dropButton('scoop-heron')).visibility ===
+        (matchMedia('(hover: none), (pointer: coarse)').matches ? 'visible' : 'hidden'),
     ]),
-    [true, true, null, null, 'Drop scoop quiet-otter', 40, 'hidden']
+    [true, true, null, null, 'Drop scoop quiet-otter', 40, true]
   );
   await page.evaluate(() => {
     window.model.agent.select('scoop-otter');
