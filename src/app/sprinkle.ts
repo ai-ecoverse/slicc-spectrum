@@ -102,7 +102,11 @@ export function store(state: unknown): string {
     exists: (path) => call('exists', [path]),
     getState: () => state,
     setState(value) {
-      state = value === undefined ? null : value;
+      try {
+        state = JSON.parse(JSON.stringify(value === undefined ? null : value));
+      } catch (error) {
+        return Promise.reject(error);
+      }
       return call('setState', [state]).then(() => undefined);
     },
   });

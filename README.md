@@ -184,7 +184,7 @@ A sprinkle's frame gets `window.slicc` with `name` and `lick(event)`. When the m
 - `slicc.readFile(path)` resolves with the file's text.
 - `slicc.exists(path)` resolves with a boolean.
 - `slicc.getState()` returns the sprinkle's saved value, or `null`, synchronously: the frame is built with it, so `var saved = slicc.getState()` works on load.
-- `slicc.setState(value)` updates that value at once and resolves when it is saved. The value must survive `postMessage`. It outlives the frame: reopening the panel or rebuilding the sprinkle starts with it.
+- `slicc.setState(value)` updates that value at once and resolves when it is saved. State is JSON: what `JSON.stringify` drops or changes is gone (a `Map` becomes `{}`, `NaN` becomes `null`), and a value it can't serialize, like a cycle or a function, rejects and leaves state as it was. It outlives the frame: reopening the panel or rebuilding the sprinkle starts with it.
 
 Paths are the agent's: `/shared/…` and `/home/…`, nothing else. A refusal or a missing file rejects with an `Error`. There is no `exec`: a sprinkle that needs a command asks its cone with `slicc.lick()`. Without `call`, none of the four exist, so guard them (`typeof slicc.readFile === 'function'`) and fall back.
 
