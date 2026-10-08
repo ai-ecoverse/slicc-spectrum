@@ -411,7 +411,9 @@ export class SliccComposer extends ModelElement {
       known.run(model, this.#agent, (command[2] ?? '').trim());
       return;
     }
-    const resolved: SendMode = mode === 'steer' ? 'steer' : this.#busy() ? 'queue' : 'send';
+    const busy = this.#busy();
+    const resolved: SendMode =
+      mode === 'queue' ? (busy ? 'queue' : 'send') : busy || mode === 'steer' ? 'steer' : 'send';
     void model.agent.send(this.#agent, { text, attachments, mode: resolved });
   }
 
@@ -640,7 +642,7 @@ export class SliccComposer extends ModelElement {
       handled = true;
     } else if (!handled && event.key === 'Enter') {
       const modified = event.metaKey || event.ctrlKey;
-      if (modified) this.send('steer');
+      if (modified) this.send('queue');
       else if (!event.shiftKey && sendOnEnter) this.send();
       handled = modified || (!event.shiftKey && sendOnEnter);
     }
@@ -848,7 +850,7 @@ export class SliccComposer extends ModelElement {
               busy && !canSend
                 ? html`<sp-button size="s" variant="secondary" treatment="outline" @click=${() => this.model?.agent.stop(this.#agent)}>Stop</sp-button>`
                 : html`<sp-button size="s" variant="accent" ?disabled=${!canSend} @click=${() => this.send()}>
-                    <sp-icon-send slot="icon"></sp-icon-send>${busy ? 'Queue' : 'Send'}
+                    <sp-icon-send slot="icon"></sp-icon-send>${busy ? 'Steer' : 'Send'}
                   </sp-button>`
             }
           </div>
@@ -860,7 +862,7 @@ export class SliccComposer extends ModelElement {
         }} />
       </div>
       <div class="hint">
-        <kbd>Enter</kbd> ${busy ? 'queue' : 'send'} · <kbd>Ctrl+Enter</kbd> steer · <kbd>Shift+Enter</kbd> new line · <kbd>/</kbd> commands ·
+        <kbd>Enter</kbd> ${busy ? 'steer' : 'send'} · <kbd>Ctrl+Enter</kbd> queue · <kbd>Shift+Enter</kbd> new line · <kbd>/</kbd> commands ·
         <kbd>@</kbd> mention · <kbd>↑</kbd> history${busy ? html` · <kbd>Esc</kbd> stop` : nothing}
       </div>`;
   }
