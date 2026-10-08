@@ -261,8 +261,14 @@ test('sending a message streams a reply with a tool call', async (t) => {
   await page.type('Run the tests');
   await page.until(
     () =>
-      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'textarea').value ===
-      'Run the tests'
+      window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'slicc-composer',
+        'swc-prompt-field',
+        'textarea'
+      ).value === 'Run the tests'
   );
   await page.press('Enter');
 
@@ -276,14 +282,16 @@ test('sending a message streams a reply with a tool call', async (t) => {
       )
   );
   await shot(page, 'chat-streaming');
-  assert.equal(
-    await page.evaluate(() =>
-      window
-        .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'sp-button')
-        .textContent.trim()
-    ),
-    'Stop'
-  );
+  await page.until(() => {
+    const field = window.$(
+      'slicc-app',
+      'slicc-dock',
+      'slicc-chat',
+      'slicc-composer',
+      'swc-prompt-field'
+    );
+    return field.hasAttribute('generating') && field.getAttribute('stop-label') === 'Stop';
+  });
   await page.until(
     () =>
       window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'article.assistant:last-of-type')?.dataset
@@ -308,7 +316,15 @@ test('sending a message streams a reply with a tool call', async (t) => {
   assert.match(reply, /All 3 tests pass/);
   assert.equal(
     await page.evaluate(
-      () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'textarea').value
+      () =>
+        window.$(
+          'slicc-app',
+          'slicc-dock',
+          'slicc-chat',
+          'slicc-composer',
+          'swc-prompt-field',
+          'textarea'
+        ).value
     ),
     ''
   );
@@ -346,8 +362,14 @@ test('a content-filter stop drops the last turn and puts its prompt back in the 
   const composed = (text) =>
     page.until(
       (text) =>
-        window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'textarea').value ===
-        text,
+        window.$(
+          'slicc-app',
+          'slicc-dock',
+          'slicc-chat',
+          'slicc-composer',
+          'swc-prompt-field',
+          'textarea'
+        ).value === text,
       text
     );
   const failures = (count) =>
@@ -410,7 +432,9 @@ test('a content-filter stop drops the last turn and puts its prompt back in the 
   await shot(page, 'filtered-after');
 
   await page.evaluate(() =>
-    window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'textarea').select()
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field', 'textarea')
+      .select()
   );
   await page.insert('Summarize the notes');
   await page.press('Enter');
@@ -566,7 +590,9 @@ test('with a fine pointer, activating chat focuses the composer', async (t) => {
   await page.press('1', 'alt');
   await page.until(() => /slicc-agents/.test(window.focused()));
   await page.press('2', 'alt');
-  await page.until(() => /slicc-chat > slicc-composer > textarea$/.test(window.focused()));
+  await page.until(() =>
+    /slicc-chat > slicc-composer > swc-prompt-field > textarea$/.test(window.focused())
+  );
   assert.deepEqual(page.errors, []);
 });
 
@@ -1559,10 +1585,8 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
 
 test('the composer runs commands, mentions, attaches, queues and steers', async (t) => {
   const page = await open(t, { delay: '20' });
-  const composer = (...path) =>
-    window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', ...path);
   await page.press('2', 'alt');
-  await page.until(() => /slicc-composer > textarea/.test(window.focused()));
+  await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
 
   await page.insert('/comp');
   await page.until(
@@ -1598,8 +1622,14 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
   await page.press('Tab');
   await page.until(
     () =>
-      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'textarea').value ===
-      'Ask @tidal-wren '
+      window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'slicc-composer',
+        'swc-prompt-field',
+        'textarea'
+      ).value === 'Ask @tidal-wren '
   );
 
   await page.evaluate(() => {
@@ -1607,13 +1637,16 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
       '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4" fill="red"/></svg>';
     const data = new DataTransfer();
     data.items.add(new File([svg], 'pasted.svg', { type: 'image/svg+xml' }));
-    window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'textarea').dispatchEvent(
-      new ClipboardEvent('paste', {
-        clipboardData: data,
-        bubbles: true,
-        cancelable: true,
-      })
-    );
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field', 'textarea')
+      .dispatchEvent(
+        new ClipboardEvent('paste', {
+          clipboardData: data,
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+        })
+      );
   });
   await page.until(
     () =>
@@ -1622,7 +1655,7 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
         'slicc-dock',
         'slicc-chat',
         'slicc-composer',
-        '.chip[data-kind=image]'
+        'swc-upload-attachment[data-kind=image]'
       )
   );
   await shot(page, 'composer-attachment');
@@ -1657,17 +1690,16 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
   );
   await shot(page, 'composer-queued');
   await page.insert('Show me the files too');
-  await page.until(() =>
-    /Steer/.test(
-      window.$(
-        'slicc-app',
-        'slicc-dock',
-        'slicc-chat',
-        'slicc-composer',
-        'sp-button[variant=accent]'
-      )?.textContent ?? ''
-    )
-  );
+  await page.until(() => {
+    const field = window.$(
+      'slicc-app',
+      'slicc-dock',
+      'slicc-chat',
+      'slicc-composer',
+      'swc-prompt-field'
+    );
+    return field.getAttribute('send-label') === 'Steer' && !field.hasAttribute('generating');
+  });
   await shot(page, 'composer-steer');
   await page.press('Enter');
   await page.until(() =>
@@ -1693,20 +1725,187 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
   await page.press('ArrowUp');
   await page.until(
     () =>
-      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'textarea').value ===
-      'Then open the docs'
+      window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'slicc-composer',
+        'swc-prompt-field',
+        'textarea'
+      ).value === 'Then open the docs'
   );
   await page.press('ArrowDown');
   await page.until(
     () =>
-      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'textarea').value === ''
+      window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'slicc-composer',
+        'swc-prompt-field',
+        'textarea'
+      ).value === ''
   );
   await page.until(() => !!window.model.agent.suggestion('cone-sliccy'));
   await page.press('Tab');
   await page.until(
     () =>
-      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'textarea').value ===
-      window.model.agent.suggestion('cone-sliccy')
+      window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'slicc-composer',
+        'swc-prompt-field',
+        'textarea'
+      ).value === window.model.agent.suggestion('cone-sliccy')
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('the prompt field gets its registered properties, new lines, the add menu and queue actions', async (t) => {
+  const page = await open(t, { delay: '40' });
+  await page.press('2', 'alt');
+  await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
+
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const field = window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'slicc-composer',
+        'swc-prompt-field'
+      );
+      return [
+        document.head.querySelectorAll('style[data-slicc-properties]').length,
+        getComputedStyle(field).getPropertyValue('--swc-prompt-field-brand-color').trim(),
+        getComputedStyle(field).getPropertyValue('--_swc-prompt-field-bg-stop-1').trim() !== '',
+      ];
+    }),
+    [1, 'rgb(236, 105, 255)', true]
+  );
+
+  await page.insert('first');
+  await page.press('Enter', 'shift');
+  await page.insert('second');
+  await page.until(
+    () =>
+      window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'slicc-composer',
+        'swc-prompt-field',
+        'textarea'
+      ).value === 'first\nsecond'
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window.model.agent.messages('cone-sliccy').some((message) => message.text === 'first')
+    ),
+    false
+  );
+
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
+      .shadowRoot.querySelector('.swc-PromptField-upload')
+      .click()
+  );
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-popover')?.open ===
+      true
+  );
+  await page.until(() => /slicc-composer > sp-menu/.test(window.focused()));
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'sp-menu-item[value=secret]')
+      .click()
+  );
+  await page.until(
+    () =>
+      !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'form.secret') &&
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-popover').open ===
+        false
+  );
+  await page.until(() => /slicc-composer > input/.test(window.focused()));
+  await page.insert('api token');
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'form.secret swc-button')
+      .click()
+  );
+  await page.until(
+    () =>
+      window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'slicc-composer',
+        'swc-upload-attachment[data-kind=secret] [slot=title]'
+      )?.textContent === 'API_TOKEN'
+  );
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-upload-attachment')
+      .shadowRoot.querySelector('.swc-UploadAttachment-dismiss')
+      .click()
+  );
+  await page.until(
+    () =>
+      !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-upload-attachment')
+  );
+
+  await page.evaluate(() => {
+    void window.model.agent.send('cone-sliccy', { text: 'Run the tests' });
+    void window.model.agent.send('cone-sliccy', { text: 'Queued one', mode: 'queue' });
+    void window.model.agent.send('cone-sliccy', { text: 'Queued two', mode: 'queue' });
+  });
+  await page.until(
+    () =>
+      window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer')
+        .shadowRoot.querySelectorAll('.queued').length === 2
+  );
+  await shot(page, 'composer-queue-actions');
+  await page.evaluate(() =>
+    window
+      .$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'slicc-composer',
+        '.queued:last-child [data-action=unqueue]'
+      )
+      .click()
+  );
+  await page.until(() => window.model.agent.queue('cone-sliccy').length === 1);
+  await page.evaluate(() =>
+    window
+      .$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'slicc-composer',
+        '.queued [data-action=send-now]'
+      )
+      .click()
+  );
+  await page.until(() =>
+    window.model.agent
+      .messages('cone-sliccy')
+      .some(
+        (message) =>
+          message.role === 'user' && message.text === 'Queued one' && message.delivered === 'steer'
+      )
+  );
+  await page.until(() => !window.model.agent.busy('cone-sliccy'));
+  assert.equal(
+    await page.evaluate(() =>
+      window.model.agent.messages('cone-sliccy').some((message) => message.text === 'Queued two')
+    ),
+    false
   );
   assert.deepEqual(page.errors, []);
 });

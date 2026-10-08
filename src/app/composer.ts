@@ -1,4 +1,14 @@
+import '@adobe/spectrum-wc/components/button/swc-button.js';
+import '@adobe/spectrum-wc/components/close-button/swc-close-button.js';
+import '@adobe/spectrum-wc/patterns/ai-toolkit/prompt-field/swc-prompt-field.js';
+import '@adobe/spectrum-wc/patterns/ai-toolkit/upload-attachment/swc-upload-attachment.js';
+import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
+import '@adobe/spectrum-wc-icons/swc-icon-clock.js';
+import '@adobe/spectrum-wc-icons/swc-icon-file.js';
+import '@adobe/spectrum-wc-icons/swc-icon-file-text.js';
+import '@adobe/spectrum-wc-icons/swc-icon-lock.js';
 import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
+import { live } from 'lit/directives/live.js';
 import type {
   Attachment,
   Outgoing,
@@ -128,6 +138,8 @@ export function trigger(
   return null;
 }
 
+type Field = HTMLElement & { updateComplete: Promise<boolean> };
+
 export class SliccComposer extends ModelElement {
   static properties = {
     ...ModelElement.properties,
@@ -148,6 +160,7 @@ export class SliccComposer extends ModelElement {
   #agent = '';
   #next = 1;
   #recognition: { stop(): void } | null = null;
+  #keys = { capture: true, handleEvent: (event: KeyboardEvent) => this.#keydown(event) };
 
   constructor() {
     super();
@@ -164,10 +177,9 @@ export class SliccComposer extends ModelElement {
       :host {
         display: block;
         flex: none;
-        border-top: 1px solid var(--spectrum-gray-200);
-        padding: 8px 12px;
-        background: var(--spectrum-background-layer-1-color);
-        font-size: var(--spectrum-font-size-100);
+        padding: var(--swc-spacing-100) var(--swc-spacing-200) var(--swc-spacing-200);
+        background: var(--swc-background-layer-1-color);
+        font-size: var(--swc-font-size-100);
         position: relative;
       }
       .column {
@@ -175,176 +187,161 @@ export class SliccComposer extends ModelElement {
         margin: 0 auto;
         position: relative;
       }
+      swc-prompt-field {
+        display: block;
+      }
       .queue {
+        list-style: none;
+        margin: 0 0 var(--swc-spacing-100);
+        padding: 0;
         display: grid;
-        gap: 4px;
-        margin-bottom: 6px;
+        gap: var(--swc-spacing-75);
       }
       .queued {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 4px 8px;
-        border-radius: var(--spectrum-corner-radius-75);
-        background: var(--spectrum-gray-100);
-        border: 1px dashed var(--spectrum-gray-300);
-        font-size: var(--spectrum-font-size-75);
+        gap: var(--swc-spacing-100);
+        padding: var(--swc-spacing-50) var(--swc-spacing-50) var(--swc-spacing-50) var(--swc-spacing-200);
+        border-radius: var(--swc-corner-radius-medium-default);
+        background: var(--swc-neutral-subtle-background-color-default);
+        border: var(--swc-border-width-100) dashed var(--swc-gray-300);
+        color: var(--swc-neutral-content-color-default);
+      }
+      .queued swc-icon-clock {
+        flex: none;
+        color: var(--swc-neutral-subdued-content-color-default);
       }
       .queued .text {
         flex: 1;
+        min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      .card {
-        border: 1px solid var(--spectrum-gray-400);
-        border-radius: var(--spectrum-corner-radius-100);
-        background: var(--spectrum-background-layer-2-color);
-        padding: 6px 8px 4px;
-      }
-      .card:focus-within {
-        border-color: var(--spectrum-focus-indicator-color);
-        box-shadow: 0 0 0 1px var(--spectrum-focus-indicator-color);
-      }
-      .card[data-drop] {
-        border-style: dashed;
-        border-color: var(--spectrum-accent-visual-color);
-      }
-      textarea {
-        display: block;
-        width: 100%;
-        box-sizing: border-box;
-        border: 0;
-        outline: none;
-        resize: none;
-        background: transparent;
-        color: inherit;
-        font: inherit;
-        line-height: 1.45;
-        min-height: 22px;
-        max-height: 220px;
-        padding: 2px 2px 4px;
-      }
-      textarea::placeholder {
-        color: var(--spectrum-neutral-subdued-content-color-default);
-      }
-      .chips {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-bottom: 6px;
-      }
-      .chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        max-width: 240px;
-        padding: 2px 4px 2px 6px;
-        border: 1px solid var(--spectrum-gray-300);
-        border-radius: var(--spectrum-corner-radius-75);
-        font-size: var(--spectrum-font-size-75);
-      }
-      .chip[data-error] {
-        border-color: var(--spectrum-negative-visual-color);
-      }
-      .chip img {
-        width: 20px;
-        height: 20px;
-        object-fit: cover;
-        border-radius: 3px;
-      }
-      .chip .name {
+      .sr {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
         overflow: hidden;
-        text-overflow: ellipsis;
+        clip-path: inset(50%);
         white-space: nowrap;
       }
-      .chip .size {
-        color: var(--spectrum-neutral-subdued-content-color-default);
-        white-space: nowrap;
-      }
-      .x {
-        all: unset;
-        cursor: pointer;
-        width: 16px;
-        height: 16px;
-        display: inline-grid;
+      .thumb {
+        display: grid;
         place-items: center;
-        border-radius: 3px;
-        color: var(--spectrum-neutral-subdued-content-color-default);
+        border-radius: var(--swc-corner-radius-medium-default);
+        background: var(--swc-gray-100);
+        color: var(--swc-neutral-subdued-content-color-default);
       }
-      .x:hover {
-        background: var(--spectrum-gray-200);
+      .thumb[data-error] {
+        color: var(--swc-negative-content-color-default);
       }
-      .x:focus-visible {
-        outline: 2px solid var(--spectrum-focus-indicator-color);
+      img[slot='thumbnail'] {
+        object-fit: cover;
+        border-radius: var(--swc-corner-radius-medium-default);
       }
-      .toolbar {
+      .failed {
+        color: var(--swc-negative-content-color-default);
+      }
+      .below {
         display: flex;
         align-items: center;
-        gap: 4px;
-      }
-      .spacer {
-        flex: 1;
+        gap: var(--swc-spacing-100);
+        max-width: 860px;
+        margin: var(--swc-spacing-75) auto 0;
+        min-height: var(--swc-component-height-75);
       }
       .hint {
-        max-width: 860px;
-        margin: 4px auto 0;
-        font-size: var(--spectrum-font-size-50);
-        color: var(--spectrum-neutral-subdued-content-color-default);
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: var(--swc-font-size-75);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .below swc-action-button {
+        margin-inline-start: auto;
+      }
+      swc-action-button.selected {
+        --swc-action-button-background-color-default: var(--swc-neutral-background-color-selected-default);
+        --swc-action-button-background-color-hover: var(--swc-neutral-background-color-selected-hover);
+        --swc-action-button-background-color-down: var(--swc-neutral-background-color-selected-down);
+        --swc-action-button-background-color-focus: var(--swc-neutral-background-color-selected-key-focus);
+        --swc-action-button-content-color-default: var(--swc-gray-25);
+        --swc-action-button-content-color-hover: var(--swc-gray-25);
+        --swc-action-button-content-color-down: var(--swc-gray-25);
+        --swc-action-button-content-color-focus: var(--swc-gray-25);
+      }
+      @media (pointer: coarse), (hover: none) {
+        .hint {
+          display: none;
+        }
       }
       .popup {
         position: absolute;
         left: 0;
         right: 0;
-        bottom: calc(100% + 4px);
+        bottom: calc(100% + var(--swc-spacing-75));
         z-index: 3;
         max-height: 280px;
         overflow-y: auto;
-        background: var(--spectrum-background-elevated-color, var(--spectrum-background-layer-2-color));
-        border: 1px solid var(--spectrum-gray-300);
-        border-radius: var(--spectrum-corner-radius-100);
-        box-shadow: 0 6px 18px var(--spectrum-drop-shadow-color);
-        padding: 4px;
+        background: var(--swc-background-elevated-color);
+        border: var(--swc-border-width-100) solid var(--swc-popover-border-color);
+        border-radius: var(--swc-corner-radius-medium-default);
+        box-shadow: var(--swc-drop-shadow-elevated);
+        padding: var(--swc-spacing-75);
       }
       .item {
         display: flex;
-        gap: 8px;
+        gap: var(--swc-spacing-100);
         align-items: baseline;
-        padding: 4px 8px;
-        border-radius: var(--spectrum-corner-radius-75);
+        padding: var(--swc-spacing-75) var(--swc-spacing-100);
+        border-radius: var(--swc-corner-radius-small-default);
         cursor: pointer;
-        font-size: var(--spectrum-font-size-75);
       }
       .item[aria-selected='true'] {
-        background: color-mix(in srgb, var(--spectrum-accent-visual-color) 16%, transparent);
+        background: var(--swc-gray-200);
       }
       .item .label {
-        font-family: var(--spectrum-code-font-family-stack, monospace);
+        font-family: var(--swc-code-font-family-stack);
+      }
+      .item .detail,
+      .empty,
+      .secret .lead {
+        color: var(--swc-neutral-subdued-content-color-default);
       }
       .item .detail {
-        color: var(--spectrum-neutral-subdued-content-color-default);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
       .empty {
-        padding: 6px 8px;
-        color: var(--spectrum-neutral-subdued-content-color-default);
-        font-size: var(--spectrum-font-size-75);
+        padding: var(--swc-spacing-75) var(--swc-spacing-100);
       }
       .secret {
         display: grid;
-        gap: 6px;
-        padding: 6px;
-        font-size: var(--spectrum-font-size-75);
+        gap: var(--swc-spacing-100);
+        padding: var(--swc-spacing-100);
       }
       .secret input {
         font: inherit;
-        padding: 4px 8px;
-        border: 1px solid var(--spectrum-gray-400);
-        border-radius: var(--spectrum-corner-radius-75);
-        background: var(--spectrum-background-layer-2-color);
+        min-height: var(--swc-component-height-100);
+        padding: 0 var(--swc-spacing-100);
+        border: var(--swc-border-width-100) solid var(--swc-gray-400);
+        border-radius: var(--swc-corner-radius-small-default);
+        background: var(--swc-background-layer-2-color);
         color: inherit;
+      }
+      .secret input:focus-visible {
+        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+        outline-offset: var(--swc-focus-ring-gap);
+      }
+      .secret swc-button {
+        justify-self: start;
+      }
+      sp-menu {
+        min-width: 240px;
       }
       input[type='file'] {
         display: none;
@@ -357,6 +354,28 @@ export class SliccComposer extends ModelElement {
     if (changed.has('agent') && this.agent && this.model && this.agent !== this.#agent) {
       this.#switch(this.agent);
     }
+  }
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    if (this.hasUpdated) this.#wire();
+  }
+
+  protected firstUpdated(): void {
+    this.#wire();
+  }
+
+  #wire(): void {
+    const field = this.#field as Field;
+    void field.updateComplete.then(() => {
+      const popover = this.renderRoot.querySelector('swc-popover') as HTMLElement & {
+        triggerElement: HTMLElement | null;
+      };
+      popover.triggerElement = null;
+      popover.triggerElement = (field.shadowRoot as ShadowRoot).querySelector<HTMLElement>(
+        '.swc-PromptField-upload'
+      );
+    });
   }
 
   protected subscribe(model: SliccModel): Array<() => void> {
@@ -388,7 +407,9 @@ export class SliccComposer extends ModelElement {
   }
 
   focus(): void {
-    this.focusOn('textarea');
+    void this.updateComplete
+      .then(() => this.#field?.updateComplete)
+      .then(() => this.#textarea?.focus());
   }
 
   restore(message: Outgoing): void {
@@ -398,8 +419,12 @@ export class SliccComposer extends ModelElement {
     this.focus();
   }
 
+  get #field(): Field | null {
+    return this.renderRoot.querySelector<Field>('swc-prompt-field');
+  }
+
   get #textarea(): HTMLTextAreaElement | null {
-    return this.renderRoot.querySelector('textarea');
+    return this.#field?.shadowRoot?.querySelector('textarea') ?? null;
   }
 
   #busy(): boolean {
@@ -589,11 +614,13 @@ export class SliccComposer extends ModelElement {
     this.value = this.value.slice(0, popup.start) + insert + this.value.slice(caret);
     this.popup = null;
     const position = popup.start + insert.length;
-    void this.updateComplete.then(() => {
-      area.focus();
-      area.setSelectionRange(position, position);
-      this.#refresh();
-    });
+    void this.updateComplete
+      .then(() => this.#field?.updateComplete)
+      .then(() => {
+        area.focus();
+        area.setSelectionRange(position, position);
+        this.#refresh();
+      });
   }
 
   #recall(delta: number): boolean {
@@ -637,8 +664,8 @@ export class SliccComposer extends ModelElement {
   }
 
   #keydown(event: KeyboardEvent): void {
-    if (event.isComposing) return;
-    const area = event.currentTarget as HTMLTextAreaElement;
+    const area = this.#textarea;
+    if (event.isComposing || !area || event.composedPath()[0] !== area) return;
     const sendOnEnter = this.model?.settings.get().sendOnEnter ?? true;
     let handled = this.#popupKey(event) || this.#historyKey(event, area);
     if (!handled && event.key === 'Tab' && !event.shiftKey && !this.value) {
@@ -657,10 +684,11 @@ export class SliccComposer extends ModelElement {
       handled = modified || (!event.shiftKey && sendOnEnter);
     }
     if (handled) event.preventDefault();
+    if (handled || event.key === 'Enter') event.stopPropagation();
   }
 
-  #input(event: Event): void {
-    this.value = (event.target as HTMLTextAreaElement).value;
+  #input(event: CustomEvent<{ value: string }>): void {
+    this.value = event.detail.value;
     this.#history = -1;
     this.#refresh();
   }
@@ -672,18 +700,21 @@ export class SliccComposer extends ModelElement {
     await this.addFiles(files);
   }
 
-  async #drop(event: DragEvent): Promise<void> {
-    event.preventDefault();
-    this.removeAttribute('dropping');
-    await this.addFiles([...(event.dataTransfer?.files ?? [])]);
-  }
-
   #add(event: Event): void {
     const value = (event.target as HTMLElement & { value: string }).value;
+    const popover = this.renderRoot.querySelector('swc-popover') as HTMLElement & { open: boolean };
+    popover.open = false;
     if (value === 'upload')
       this.renderRoot.querySelector<HTMLInputElement>('input[type=file]')?.click();
     else if (value === 'screenshot') void this.screenshot();
-    else this.openPopup(value as 'file' | 'secret');
+    else {
+      this.openPopup(value as 'file' | 'secret');
+      void this.updateComplete.then(() =>
+        value === 'file'
+          ? this.#textarea?.focus()
+          : this.renderRoot.querySelector<HTMLInputElement>('.secret input')?.focus()
+      );
+    }
   }
 
   dictate(): void {
@@ -715,13 +746,36 @@ export class SliccComposer extends ModelElement {
     recognition.start();
   }
 
-  #chip(attachment: Attachment): TemplateResult {
-    return html`<span class="chip" data-kind=${attachment.kind} ?data-error=${!!attachment.error} title=${attachment.error ?? attachment.path ?? attachment.name}>
-      ${attachment.kind === 'image' && attachment.url ? html`<img src=${attachment.url} alt="" />` : nothing}
-      <span class="name">${attachment.kind === 'secret' ? `🔒 ${attachment.name}` : attachment.name}</span>
-      <span class="size">${attachment.error ? 'too large' : attachment.kind === 'secret' ? 'secret' : size(attachment.size)}</span>
-      <button class="x" aria-label=${`Remove ${attachment.name}`} @click=${() => this.detach(attachment.id)}>×</button>
-    </span>`;
+  #thumbnail(attachment: Attachment): TemplateResult {
+    if (attachment.kind === 'image' && attachment.url && !attachment.error)
+      return html`<img slot="thumbnail" src=${attachment.url} alt="" />`;
+    const icon = attachment.error
+      ? html`<swc-icon-alert-triangle></swc-icon-alert-triangle>`
+      : attachment.kind === 'secret'
+        ? html`<swc-icon-lock></swc-icon-lock>`
+        : attachment.kind === 'text'
+          ? html`<swc-icon-file-text></swc-icon-file-text>`
+          : html`<swc-icon-file></swc-icon-file>`;
+    return html`<span slot="thumbnail" class="thumb" ?data-error=${!!attachment.error} aria-hidden="true">${icon}</span>`;
+  }
+
+  #attachment(attachment: Attachment): TemplateResult {
+    const detail =
+      attachment.error ?? (attachment.kind === 'secret' ? 'Secret' : size(attachment.size));
+    return html`<swc-upload-attachment
+      slot="attachment"
+      type="card"
+      dismissible
+      data-id=${attachment.id}
+      data-kind=${attachment.kind}
+      ?data-error=${!!attachment.error}
+      title=${attachment.path ?? attachment.name}
+      @swc-upload-attachment-dismiss=${() => this.detach(attachment.id)}
+    >
+      ${this.#thumbnail(attachment)}
+      <span slot="title">${attachment.name}</span>
+      <span slot="subtitle" class=${attachment.error ? 'failed' : ''}>${detail}</span>
+    </swc-upload-attachment>`;
   }
 
   #popup(): TemplateResult | typeof nothing {
@@ -735,10 +789,10 @@ export class SliccComposer extends ModelElement {
       };
       return html`<form class="popup secret" @submit=${submit} @keydown=${(event: KeyboardEvent) => event.key === 'Escape' && ((this.popup = null))}>
         <strong>Share a secret</strong>
-        <span>The value goes to the secret store; the agent only sees its name.</span>
+        <span class="lead">The value goes to the secret store; the agent only sees its name.</span>
         <input name="name" placeholder="Name, e.g. API_TOKEN" aria-label="Secret name" />
         <input name="value" type="password" placeholder="Value" aria-label="Secret value" autocomplete="off" />
-        <sp-button size="s" variant="accent" @click=${(event: Event) => (event.currentTarget as HTMLElement).closest('form')?.requestSubmit()}>Share</sp-button>
+        <swc-button size="s" variant="accent" @click=${(event: Event) => (event.currentTarget as HTMLElement).closest('form')?.requestSubmit()}>Share</swc-button>
       </form>`;
     }
     const title = {
@@ -773,22 +827,23 @@ export class SliccComposer extends ModelElement {
     const queued = this.model?.agent.queue(this.#agent) ?? [];
     if (queued.length === 0) return nothing;
     const model = this.model as SliccModel;
-    return html`<div class="queue" aria-label="Queued messages">
+    return html`<ul class="queue" aria-label="Queued messages">
       ${queued.map(
-        (message) => html`<div class="queued" data-id=${message.id}>
-          <span aria-hidden="true">⏱</span><span class="text">${message.text}</span>
-          <sp-action-button size="xs" quiet @click=${() => {
+        (message) => html`<li class="queued" data-id=${message.id}>
+          <swc-icon-clock size="s" aria-hidden="true"></swc-icon-clock>
+          <span class="text"><span class="sr">Queued: </span>${message.text}</span>
+          <swc-action-button size="s" quiet data-action="send-now" @click=${() => {
             model.agent.unqueue(this.#agent, message.id);
             void model.agent.send(this.#agent, {
               text: message.text,
               attachments: message.attachments,
               mode: 'steer',
             });
-          }}>Send now</sp-action-button>
-          <button class="x" aria-label="Remove from queue" @click=${() => model.agent.unqueue(this.#agent, message.id)}>×</button>
-        </div>`
+          }}>Send now</swc-action-button>
+          <swc-close-button size="s" data-action="unqueue" accessible-label="Remove from queue" @click=${() => model.agent.unqueue(this.#agent, message.id)}></swc-close-button>
+        </li>`
       )}
-    </div>`;
+    </ul>`;
   }
 
   render(): TemplateResult {
@@ -800,63 +855,61 @@ export class SliccComposer extends ModelElement {
     return html`<div class="column">
         ${this.#queue()}
         ${this.#popup()}
-        <div
-          class="card"
-          ?data-drop=${this.hasAttribute('dropping')}
-          @dragover=${(event: DragEvent) => {
-            event.preventDefault();
-            this.setAttribute('dropping', '');
-            this.requestUpdate();
+        <swc-prompt-field
+          label="Message"
+          upload-label="Add"
+          stop-label="Stop"
+          send-label=${busy ? 'Steer' : 'Send'}
+          max-rows="10"
+          animate-loader
+          ?generating=${busy && !canSend}
+          placeholder=${suggestion ? `${suggestion}  (Tab)` : `Message ${agent?.name ?? ''}`}
+          .value=${live(this.value)}
+          @keydown=${this.#keys}
+          @swc-prompt-field-input=${this.#input}
+          @swc-prompt-field-submit=${() => this.send()}
+          @swc-prompt-field-stop=${() => this.model?.agent.stop(this.#agent)}
+          @swc-prompt-field-drop=${(event: CustomEvent<{ files: File[] }>) => void this.addFiles(event.detail.files)}
+          @paste=${this.#paste}
+          @click=${() => this.#refresh()}
+          @focusout=${() => {
+            if (this.popup && this.popup.kind !== 'file' && this.popup.kind !== 'secret')
+              this.popup = null;
           }}
-          @dragleave=${() => {
-            this.removeAttribute('dropping');
-            this.requestUpdate();
-          }}
-          @drop=${this.#drop}
         >
-          ${this.attachments.length ? html`<div class="chips">${this.attachments.map((attachment) => this.#chip(attachment))}</div>` : nothing}
-          <textarea
-            rows="1"
-            aria-label="Message"
-            placeholder=${suggestion ? `${suggestion}  (Tab)` : `Message ${agent?.name ?? ''}`}
-            .value=${this.value}
-            @input=${this.#input}
-            @keydown=${this.#keydown}
-            @paste=${this.#paste}
-            @click=${() => this.#refresh()}
-            @blur=${() => {
-              if (this.popup && this.popup.kind !== 'file' && this.popup.kind !== 'secret')
-                this.popup = null;
-            }}
-          ></textarea>
-          <div class="toolbar">
-            <sp-action-menu size="s" quiet label="Add" @change=${this.#add}>
-              <swc-icon-add slot="icon"></swc-icon-add>
-              <sp-menu-item value="upload">Upload from this computer</sp-menu-item>
-              <sp-menu-item value="screenshot">Take a screenshot of the browser tab</sp-menu-item>
-              <sp-menu-item value="file">Attach a file from SLICC</sp-menu-item>
-              <sp-menu-item value="secret">Share a secret</sp-menu-item>
-            </sp-action-menu>
-            <span class="spacer"></span>
-            ${speech ? html`<sp-action-button size="s" quiet ?selected=${this.dictating} label="Dictate" @click=${() => this.dictate()}><swc-icon-microphone slot="icon"></swc-icon-microphone></sp-action-button>` : nothing}
-            ${
-              busy && !canSend
-                ? html`<sp-button size="s" variant="secondary" treatment="outline" @click=${() => this.model?.agent.stop(this.#agent)}>Stop</sp-button>`
-                : html`<sp-button size="s" variant="accent" ?disabled=${!canSend} @click=${() => this.send()}>
-                    <swc-icon-send slot="icon"></swc-icon-send>${busy ? 'Steer' : 'Send'}
-                  </sp-button>`
-            }
-          </div>
-        </div>
+          ${this.attachments.map((attachment) => this.#attachment(attachment))}
+        </swc-prompt-field>
+        <swc-popover placement="top-start" accessible-label="Add to the message" @swc-after-open=${() => this.renderRoot.querySelector<HTMLElement>('sp-menu')?.focus()}>
+          <sp-menu label="Add to the message" @change=${this.#add}>
+            <sp-menu-item value="upload">Upload from this computer</sp-menu-item>
+            <sp-menu-item value="screenshot">Take a screenshot of the browser tab</sp-menu-item>
+            <sp-menu-item value="file">Attach a file from SLICC</sp-menu-item>
+            <sp-menu-item value="secret">Share a secret</sp-menu-item>
+          </sp-menu>
+        </swc-popover>
         <input type="file" multiple @change=${(event: Event) => {
           const input = event.target as HTMLInputElement;
           void this.addFiles([...(input.files ?? [])]);
           input.value = '';
         }} />
       </div>
-      <div class="hint">
-        <kbd>Enter</kbd> ${busy ? 'steer' : 'send'} · <kbd>Ctrl+Enter</kbd> queue · <kbd>Shift+Enter</kbd> new line · <kbd>/</kbd> commands ·
-        <kbd>@</kbd> mention · <kbd>↑</kbd> history${busy ? html` · <kbd>Esc</kbd> stop` : nothing}
+      <div class="below">
+        <div class="hint">
+          <kbd>Enter</kbd> ${busy ? 'steer' : 'send'} · <kbd>Ctrl+Enter</kbd> queue · <kbd>Shift+Enter</kbd> new line · <kbd>/</kbd> commands ·
+          <kbd>@</kbd> mention · <kbd>↑</kbd> history${busy ? html` · <kbd>Esc</kbd> stop` : nothing}
+        </div>
+        ${
+          speech
+            ? html`<swc-action-button
+                size="s"
+                quiet
+                class=${this.dictating ? 'selected' : ''}
+                accessible-label=${this.dictating ? 'Stop dictation' : 'Dictate'}
+                data-action="dictate"
+                @click=${() => this.dictate()}
+              ><swc-icon-microphone slot="icon"></swc-icon-microphone></swc-action-button>`
+            : nothing
+        }
       </div>`;
   }
 }
