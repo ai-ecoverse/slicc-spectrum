@@ -2234,3 +2234,34 @@ test('the agent picker lists cones and opens the agents panel for the rest', asy
   await page.until(() => window.$('slicc-app', 'header sp-picker').value === 'cone-harbor');
   assert.deepEqual(page.errors, []);
 });
+
+test('chat stays pinned to the bottom while content grows after render', async (t) => {
+  const page = await open(t);
+  const result = await page.evaluate(async () => {
+    const log = window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log');
+    const column = log.querySelector('.column');
+    const frame = () =>
+      new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const gap = () => log.scrollHeight - log.scrollTop - log.clientHeight;
+    const grow = async (px) => {
+      const block = document.createElement('div');
+      block.style.height = `${px}px`;
+      column.append(block);
+      await frame();
+      await frame();
+    };
+    await grow(log.clientHeight * 2);
+    const pinned = gap();
+    log.scrollTop = 0;
+    await frame();
+    await grow(300);
+    const reading = log.scrollTop;
+    log.scrollTop = log.scrollHeight;
+    await frame();
+    await grow(300);
+    return { pinned, reading, back: gap() };
+  });
+  assert.ok(result.pinned <= 1, JSON.stringify(result));
+  assert.equal(result.reading, 0);
+  assert.ok(result.back <= 1, JSON.stringify(result));
+});

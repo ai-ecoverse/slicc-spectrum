@@ -115,17 +115,38 @@ export class SliccChat extends ThemedElement {
     ];
   }
 
+  #stuck = true;
+  #last = 0;
+  #resize = new ResizeObserver(() => this.#pin());
+
+  #log(): HTMLElement {
+    return this.renderRoot.querySelector<HTMLElement>('.log') as HTMLElement;
+  }
+
+  #pin(): void {
+    if (!this.#stuck) return;
+    const log = this.#log();
+    log.scrollTop = log.scrollHeight;
+    this.#last = log.scrollTop;
+  }
+
+  #scroll = (): void => {
+    const log = this.#log();
+    if (log.scrollHeight - log.scrollTop - log.clientHeight < 48) this.#stuck = true;
+    else if (log.scrollTop < this.#last) this.#stuck = false;
+    this.#last = log.scrollTop;
+  };
+
   #refresh(jump: boolean): void {
-    const log = this.renderRoot.querySelector('.log');
-    const stuck = !log || log.scrollHeight - log.scrollTop - log.clientHeight < 48;
+    if (jump) this.#stuck = true;
     this.requestUpdate();
-    void this.updateComplete.then(() => {
-      const next = this.renderRoot.querySelector('.log');
-      if (next && (jump || stuck)) next.scrollTop = next.scrollHeight;
-    });
+    void this.updateComplete.then(() => this.#pin());
   }
 
   protected firstUpdated(): void {
+    const log = this.#log();
+    this.#resize.observe(log);
+    this.#resize.observe(log.firstElementChild as Element);
     this.#refresh(true);
   }
 
@@ -237,7 +258,7 @@ export class SliccChat extends ThemedElement {
       <header>
         ${agent ? this.#meta(agent) : html`<span>No agent</span>`}
       </header>
-      <div class="log" role="log" aria-live="polite" aria-label="Conversation">
+      <div class="log" role="log" aria-live="polite" aria-label="Conversation" @scroll=${this.#scroll}>
         <div class="column">
           ${
             agent && messages.length > 0
