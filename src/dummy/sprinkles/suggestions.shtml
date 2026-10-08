@@ -169,8 +169,8 @@
       var USE_CASE_CACHE_MS = 12 * 60 * 60 * 1000;
       var EMPTY_HEADLINE = 'Nothing here yet';
       var EMPTY_BODY =
-        'The gelatiere reads how you actually work — nightly, and after each chat ' +
-        'ends — and leaves what it finds here: a skill worth installing, a use ' +
+        'The gelatiere reads how you actually work, nightly and after each chat ' +
+        'ends, and leaves what it finds here: a skill worth installing, a use ' +
         'case worth trying, a habit worth changing. Check back after your next session.';
 
       function el(tag, className, text) {
@@ -240,13 +240,13 @@
           actions.appendChild(gelatierePrimaryButton(meta.action, function () {
             if (window.slicc) slicc.lick({ action: 'gelatiere-install',
               data: { id: s.id, skill: s.skill || null, install: s.install || null, title: s.title } });
-            markTaken('Installing — the cone is on it.');
+            markTaken('Installing. The cone is on it.');
           }));
         } else if (meta.action && s.prompt) {
           actions.appendChild(gelatierePrimaryButton(meta.action, function () {
             if (window.slicc) slicc.lick({ action: 'gelatiere-try',
               data: { id: s.id, prompt: s.prompt, title: s.title } });
-            markTaken('Sent to the cone — watch the chat.');
+            markTaken('Sent to the cone. Watch the chat.');
           }));
         } else if (s.url && /^https?:\/\//i.test(s.url)) {
 
