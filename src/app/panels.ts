@@ -1,5 +1,5 @@
 import type { PanelParams, SliccDock } from '../components/dock.ts';
-import type { SliccModel, Sprinkle } from '../model/types.ts';
+import type { SliccModel, Sprinkle, TerminalInfo } from '../model/types.ts';
 import type { ModelElement } from './base.ts';
 import { basename } from './files.ts';
 
@@ -64,7 +64,7 @@ export const surfaces: Surface[] = [
   {
     id: 'terminal',
     title: 'Terminal',
-    tag: 'slicc-terminals',
+    tag: 'slicc-terminal-panel',
     icon: 'swc-icon-code',
     side: 'right',
     open: [],
@@ -147,7 +147,7 @@ export function create(tag: string, model: SliccModel, params: PanelParams = {})
 }
 
 function sideOf(id: string): Side {
-  return surface(id)?.side ?? 'center';
+  return surface(terminalOf(id) === null ? id : 'terminal')?.side ?? 'center';
 }
 
 function first(dock: SliccDock, side: Side): string | undefined {
@@ -261,18 +261,54 @@ export function openDocument(
   return id;
 }
 
+export function terminalPanel(terminal: string): string {
+  return `terminal:${terminal}`;
+}
+
+export function terminalOf(id: string | null | undefined): string | null {
+  return id?.startsWith('terminal:') ? id.slice(9) : null;
+}
+
+export function terminalPanels(dock: SliccDock): string[] {
+  return dock.api.panels.map((panel) => panel.id).filter((id) => terminalOf(id) !== null);
+}
+
+export function terminalTitle(info: TerminalInfo): string {
+  return `${info.title} · ${basename(info.cwd) || '/'}`;
+}
+
+export function openTerminal(dock: SliccDock, info: TerminalInfo, screen: ScreenClass): string {
+  const id = terminalPanel(info.id);
+  if (!dock.has(id)) {
+    const sibling = terminalPanels(dock).at(-1);
+    dock.open({
+      id,
+      component: 'terminal',
+      title: terminalTitle(info),
+      params: { terminal: info.id },
+      inactive: true,
+      ...(sibling
+        ? { position: { referencePanel: sibling, direction: 'within' } }
+        : placement(dock, 'right', screen)),
+    });
+  }
+  return id;
+}
+
 export function defaultLayout(
   dock: SliccDock,
   screen: ScreenClass,
   agent: { id: string; name: string } | null,
-  items: readonly Surface[] = surfaces
+  items: readonly Surface[] = surfaces,
+  terminals: readonly TerminalInfo[] = []
 ): void {
   dock.clear();
   const order: Side[] = ['center', 'left', 'right'];
   for (const side of order) {
     for (const item of items) {
       if (item.side !== side || !item.open.includes(screen)) continue;
-      if (item.id !== 'chat') openSurface(dock, item, screen);
+      if (item.id === 'terminal') for (const info of terminals) openTerminal(dock, info, screen);
+      else if (item.id !== 'chat') openSurface(dock, item, screen);
       else if (agent) openChat(dock, agent, screen, false);
     }
   }
@@ -281,8 +317,12 @@ export function defaultLayout(
 }
 
 export function closed(dock: SliccDock, items: readonly Surface[] = surfaces): Surface[] {
+  const grouped: Record<string, () => string[]> = {
+    chat: () => chats(dock),
+    terminal: () => terminalPanels(dock),
+  };
   return items.filter((item) =>
-    item.id === 'chat' ? chats(dock).length === 0 : !dock.has(item.id)
+    item.id in grouped ? grouped[item.id]().length === 0 : !dock.has(item.id)
   );
 }
 

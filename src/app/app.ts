@@ -28,6 +28,7 @@ import {
   surface,
   surfaces,
 } from './panels.ts';
+import { TerminalPanels } from './terminals.ts';
 import { theme } from './theme.ts';
 import { UpdateVisibility, updatesStatus } from './updates.ts';
 
@@ -49,6 +50,7 @@ export class SliccApp extends ThemedElement {
   storage: Storage | null = globalThis.localStorage ?? null;
   layoutKey = 'slicc-ui.layout.v2';
   readonly dips = new Dips();
+  readonly terminalPanels = new TerminalPanels();
   #fontBase: string | null = defaultFontBase;
   #variableFont: string | null = defaultVariableFont;
   #resize: ResizeObserver | null = null;
@@ -243,6 +245,10 @@ export class SliccApp extends ThemedElement {
         update();
       }),
       model.files.on('changes', update),
+      model.terminals.on('terminals', () => {
+        this.#prune();
+        update();
+      }),
       model.sprinkles.on('sprinkles', update),
       this.dips.on('change', update),
       ...(model.updates ? [model.updates.on('items', update)] : []),
@@ -336,7 +342,12 @@ export class SliccApp extends ThemedElement {
 
   #factories(model: SliccModel): SliccDock['factories'] {
     return {
-      ...Object.fromEntries(this.surfaces.map((item) => [item.id, () => create(item.tag, model)])),
+      ...Object.fromEntries(
+        this.surfaces.map((item) => [
+          item.id,
+          (params: PanelParams) => create(item.tag, model, params),
+        ])
+      ),
       ...Object.fromEntries(
         Object.entries(documents).map(([kind, document]) => [
           kind,
@@ -367,10 +378,17 @@ export class SliccApp extends ThemedElement {
     this.#saving = false;
     dock.factories = this.#factories(model);
     dock.accepts = [dipType];
+    this.terminalPanels.attach(
+      dock,
+      () => this.model?.terminals,
+      () => this.screen
+    );
     this.dips.load(this.storage);
     const saved = this.#saved();
     const restored = this.#offered(saved, dock.factories) && dock.restore(saved);
-    if (!restored) defaultLayout(dock, this.screen, this.#active(), this.surfaces);
+    if (!restored) {
+      defaultLayout(dock, this.screen, this.#active(), this.surfaces, model.terminals.list());
+    }
     this.#started = this.screen;
     this.#prune();
     this.#saving = true;
@@ -412,15 +430,20 @@ export class SliccApp extends ThemedElement {
     for (const id of chats(dock)) {
       if (!known.has(chatAgent(id) as string)) dock.close(id);
     }
+    if (this.model && this.#offers('terminal'))
+      this.terminalPanels.sync(dock, this.model.terminals, this.screen);
   }
 
   #activated(event: Event): void {
-    const agent = chatAgent((event as CustomEvent<{ id: string | null }>).detail.id);
+    const { id } = (event as CustomEvent<{ id: string | null }>).detail;
+    this.terminalPanels.activated(id);
+    const agent = chatAgent(id);
     if (agent && agent !== this.model?.agent.active()) this.model?.agent.select(agent);
   }
 
   resetLayout(): void {
-    defaultLayout(this.dock, this.screen, this.#active(), this.surfaces);
+    const terminals = this.model?.terminals.list();
+    defaultLayout(this.dock, this.screen, this.#active(), this.surfaces, terminals);
     this.#save();
   }
 
@@ -439,6 +462,10 @@ export class SliccApp extends ThemedElement {
     }
     const item = surface(id, this.surfaces);
     if (!item) return;
+    if (item.id === 'terminal') {
+      if (this.model) this.terminalPanels.show(this.dock, this.model.terminals, this.screen);
+      return;
+    }
     openSurface(this.dock, item, this.screen);
     if (id === 'updates') this.dock.api.getPanel(id)?.api.updateParameters({ boot: false });
     this.dock.focusPanel(id);
@@ -506,6 +533,11 @@ export class SliccApp extends ThemedElement {
     };
   }
 
+  newTerminal(): void {
+    if (!this.model || !this.#offers('terminal')) return;
+    this.terminalPanels.create(this.dock, this.model.terminals, this.screen);
+  }
+
   open(kind: DocumentKind, path: string): void {
     openDocument(this.dock, kind, path, this.screen);
   }
@@ -535,6 +567,7 @@ export class SliccApp extends ThemedElement {
   #view(event: Event): void {
     const value = (event.target as HTMLElement & { value: string }).value;
     if (value === 'reset') this.resetLayout();
+    else if (value === 'new-terminal') this.newTerminal();
     else this.show(value);
   }
 
@@ -611,6 +644,7 @@ export class SliccApp extends ThemedElement {
             <swc-icon-view-grid slot="icon"></swc-icon-view-grid>
             <span slot="label">View</span>
             ${this.surfaces.map((surface, index) => this.#menuItem(surface, index))}
+            ${this.#offers('terminal') ? html`<sp-menu-item value="new-terminal">New terminal</sp-menu-item>` : nothing}
             <sp-menu-divider></sp-menu-divider>
             <sp-menu-item value="reset">Reset layout</sp-menu-item>
           </sp-action-menu>
@@ -638,6 +672,7 @@ export class SliccApp extends ThemedElement {
             @detach-sprinkle=${(event: Event) => this.#detach((event as CustomEvent<{ id: string }>).detail.id, null, true)}
             @open-file=${(event: Event) => this.#request('file', event)}
             @open-diff=${(event: Event) => this.#request('diff', event)}
+            @new-terminal=${() => this.newTerminal()}
             @show-surface=${(event: Event) => this.show((event as CustomEvent<{ id: string }>).detail.id)}
           ></slicc-dock>
           ${rails.right}
