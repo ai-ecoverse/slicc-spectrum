@@ -850,7 +850,7 @@ export class SliccComposer extends ModelElement {
               busy && !canSend
                 ? html`<sp-button size="s" variant="secondary" treatment="outline" @click=${() => this.model?.agent.stop(this.#agent)}>Stop</sp-button>`
                 : html`<sp-button size="s" variant="accent" ?disabled=${!canSend} @click=${() => this.send()}>
-                    <sp-icon-send slot="icon"></sp-icon-send>${busy ? 'Queue' : 'Send'}
+                    <sp-icon-send slot="icon"></sp-icon-send>${busy ? 'Steer' : 'Send'}
                   </sp-button>`
             }
           </div>

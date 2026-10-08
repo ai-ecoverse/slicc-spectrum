@@ -265,14 +265,17 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     this.#post(agentId, this.#user(message, delivered));
     let reply = this.#reply(agent.model);
     this.#post(agentId, reply);
-    const { steps, suggestion } = script(prompt, message.attachments ?? []);
-    for (const [index, step] of steps.entries()) {
-      if (run.stopped) break;
-      await this.#step(agentId, reply, step, run);
-      if (run.steers.length && !run.stopped && index < steps.length - 1) {
+    let { steps, suggestion } = script(prompt, message.attachments ?? []);
+    while (steps.length && !run.stopped) {
+      await this.#step(agentId, reply, steps[0] as Step, run);
+      steps = steps.slice(1);
+      if (run.steers.length && !run.stopped && steps.length) {
         reply.status = 'done';
         this.emit('message', { agentId, message: reply });
-        for (const steer of run.steers.splice(0)) this.#post(agentId, this.#user(steer, 'steer'));
+        const steers = run.steers.splice(0);
+        for (const steer of steers) this.#post(agentId, this.#user(steer, 'steer'));
+        const latest = steers.at(-1) as Outgoing;
+        ({ steps, suggestion } = script(latest.text.trim(), latest.attachments ?? []));
         reply = this.#reply(agent.model);
         this.#post(agentId, reply);
       }
