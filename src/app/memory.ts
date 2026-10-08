@@ -26,10 +26,10 @@ export function visible(
   );
 }
 
-export const tagBadges: Record<MemoryTag, { label: string; variant: string }> = {
-  user: { label: 'User', variant: 'fuchsia' },
-  feedback: { label: 'Feedback', variant: 'seafoam' },
-  project: { label: 'Project', variant: 'indigo' },
+export const tagLabels: Record<MemoryTag, string> = {
+  user: 'User',
+  feedback: 'Feedback',
+  project: 'Project',
 };
 
 export function sections(memories: readonly Memory[]): Array<[string, Memory[]]> {
@@ -222,7 +222,7 @@ export class SliccMemory extends ModelElement {
     return html`<div class="row" data-id=${memory.id}>
       <button class="head" aria-expanded=${open ? 'true' : 'false'} @click=${() => (this.open = open ? null : memory.id)}>
         <span class="title">${memory.title}</span>
-        ${memory.tag ? html`<swc-badge size="s" variant=${tagBadges[memory.tag].variant}>${tagBadges[memory.tag].label}</swc-badge>` : nothing}
+        ${memory.tag ? html`<swc-badge size="s" variant="neutral" subtle>${tagLabels[memory.tag]}</swc-badge>` : nothing}
         ${open ? nothing : html`<span class="summary">${memory.body}</span>`}
       </button>
       ${

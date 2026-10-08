@@ -70,7 +70,7 @@ export class SliccMonitor extends ModelElement {
         flex: 1;
         min-height: 0;
         overflow-y: auto;
-        padding: var(--swc-spacing-200);
+        padding: var(--swc-spacing-100);
         display: grid;
         grid-template-columns: minmax(0, 1fr);
         align-content: start;
@@ -78,7 +78,7 @@ export class SliccMonitor extends ModelElement {
       }
       .vitals {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--swc-card-default-width-extra-small)), 1fr));
         gap: var(--swc-spacing-100);
       }
       .vital {
