@@ -500,18 +500,7 @@ test('the theme switches between light and dark and survives a reload', async (t
 
 async function pointer(t, fine) {
   const page = await chrome.page(t);
-  await page.init(
-    new Function(`
-      const real = window.matchMedia.bind(window);
-      window.matchMedia = (query) => {
-        const list = real(query);
-        const kind = query.match(/\\(pointer: (fine|coarse)\\)/)?.[1];
-        if (kind) Object.defineProperty(list, 'matches', { value: kind === ${JSON.stringify(fine ? 'fine' : 'coarse')} });
-        return list;
-      };
-    `)
-  );
-  const url = '/ui/?delay=5&color=light';
+  const url = `/ui/?delay=5&color=light&pointer=${fine ? 'fine' : 'coarse'}`;
   await page.goto(url);
   if (!(await settled(page))) await page.goto(url);
   await page.until(() => window.dock()?.api.panels.length > 0);
@@ -529,8 +518,7 @@ test('with a coarse pointer, activating a panel never focuses a text field', asy
         5000,
         (want) => {
           const state = window.activated();
-          return (state.focused || want.startsWith('sprinkle:')) &&
-            (state.id === want || state.id.startsWith(`${want}:`))
+          return state.focused && (state.id === want || state.id.startsWith(`${want}:`))
             ? state
             : null;
         },
@@ -564,6 +552,10 @@ test('with a coarse pointer, activating a panel never focuses a text field', asy
   t.diagnostic(seen.join('\n'));
   assert.ok(
     seen.some((line) => /^chat:.*slicc-chat > div$/.test(line)),
+    seen.join('\n')
+  );
+  assert.ok(
+    seen.some((line) => /^sprinkle:.*slicc-sprinkle > iframe$/.test(line)),
     seen.join('\n')
   );
   assert.deepEqual(page.errors, []);
