@@ -280,7 +280,11 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
         this.#post(agentId, reply);
       }
     }
-    reply.status = run.stopped ? 'stopped' : 'done';
+    reply.status = run.stopped
+      ? 'stopped'
+      : reply.parts.some((item) => item.type === 'error')
+        ? 'error'
+        : 'done';
     reply.usage = {
       input: 1200 + prompt.length * 4,
       output: 180 + reply.parts.length * 60,
@@ -371,6 +375,26 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
       this.emit('message', { agentId, message });
       this.#changed();
     });
+  }
+
+  async rewind(agentId: string, messageId: string): Promise<Outgoing | null> {
+    const messages = this.#messages.get(agentId);
+    const at = messages?.findIndex((message) => message.id === messageId) ?? -1;
+    if (!messages || at < 0) return null;
+    const turn = messages.slice(0, at).findLastIndex((message) => message.role === 'user');
+    if (turn < 0) return null;
+    const user = messages[turn] as UserMessage;
+    messages.splice(turn);
+    messages.push({
+      id: `rewound-${Date.now()}`,
+      role: 'system',
+      kind: 'notice',
+      title: 'Rewound 1 turn',
+      text: 'Its prompt is back in the composer.',
+      createdAt: Date.now(),
+    });
+    this.emit('messages', agentId);
+    return { text: user.text, ...(user.attachments ? { attachments: user.attachments } : {}) };
   }
 
   clear(agentId: string): void {

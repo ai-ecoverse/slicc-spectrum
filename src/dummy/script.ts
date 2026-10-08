@@ -28,6 +28,20 @@ export function toKelvin(celsius: number): number {
 }
 `;
 
+function filtered(): Step[] {
+  return [
+    {
+      type: 'part',
+      part: {
+        type: 'error',
+        message: "The model's content filter stopped this reply.",
+        detail: 'Provider stopped with: content_filtered',
+        action: 'drop-turn',
+      },
+    },
+  ];
+}
+
 function test(): Step[] {
   return [
     { type: 'thinking', text: 'Run the whole suite first, then look at anything that fails.' },
@@ -219,6 +233,7 @@ export function script(
   const text = prompt.toLowerCase();
   const suggestion = suggestions.find(([pattern]) => pattern.test(text))?.[1] ?? 'Run the tests';
   if (attachments.length > 0) return { steps: look(attachments), suggestion };
+  if (/\bforbidden\b/.test(text)) return { steps: filtered(), suggestion };
   if (/\b(ask|choose|decide)\b/.test(text)) return { steps: ask(), suggestion };
   if (/\btests?\b/.test(text)) return { steps: test(), suggestion };
   if (/\b(fix|edit|add|change)\b/.test(text)) return { steps: edit(), suggestion };

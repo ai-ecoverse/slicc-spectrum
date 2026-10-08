@@ -253,6 +253,112 @@ test('sending a message streams a reply with a tool call', async (t) => {
   await shot(page, 'chat-light');
 });
 
+test('a content-filter stop drops the last turn and puts its prompt back in the composer', async (t) => {
+  const page = await open(t);
+  const send = (text) =>
+    page.evaluate((text) => window.model.agent.send('cone-sliccy', text), text);
+  const composed = (text) =>
+    page.until(
+      (text) =>
+        window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'textarea').value ===
+        text,
+      text
+    );
+  const failures = (count) =>
+    page.until(
+      (count) =>
+        window.model.agent
+          .messages('cone-sliccy')
+          .filter((message) => message.role === 'assistant' && message.status === 'error')
+          .length === count,
+      count
+    );
+  const drop = () =>
+    page.evaluate(() =>
+      [
+        ...window
+          .$('slicc-app', 'slicc-dock', 'slicc-chat')
+          .shadowRoot.querySelectorAll('sp-button'),
+      ]
+        .filter((button) => button.textContent.trim() === 'Drop the last turn')
+        .at(-1)
+        .click()
+    );
+  const users = () =>
+    page.evaluate(() =>
+      window.model.agent
+        .messages('cone-sliccy')
+        .filter((message) => message.role === 'user')
+        .map((message) => message.text)
+    );
+
+  await send('Summarize the forbidden notes');
+  await failures(1);
+  const card = await page.evaluate(() => {
+    const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot;
+    const error = [...root.querySelectorAll('.error-card')].at(-1);
+    error.scrollIntoView({ block: 'center' });
+    return [
+      error.querySelector('.lead').textContent,
+      error.querySelector('.detail').textContent,
+      error.querySelector('sp-button').textContent.trim(),
+    ];
+  });
+  assert.deepEqual(card, [
+    "The model's content filter stopped this reply.",
+    'Provider stopped with: content_filtered',
+    'Drop the last turn',
+  ]);
+  await shot(page, 'filtered-before');
+
+  await drop();
+  await composed('Summarize the forbidden notes');
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const last = window.model.agent.messages('cone-sliccy').at(-1);
+      return [last.role, last.title];
+    }),
+    ['system', 'Rewound 1 turn']
+  );
+  assert.ok(!(await users()).includes('Summarize the forbidden notes'));
+  await shot(page, 'filtered-after');
+
+  await page.evaluate(() =>
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'textarea').select()
+  );
+  await page.insert('Summarize the notes');
+  await page.press('Enter');
+  await page.until(() => {
+    const last = window.model.agent.messages('cone-sliccy').at(-1);
+    return last.role === 'assistant' && last.status === 'done';
+  });
+  assert.ok((await users()).includes('Summarize the notes'));
+
+  await send('First forbidden question');
+  await failures(1);
+  await send('Second forbidden question');
+  await failures(2);
+  await drop();
+  await composed('Second forbidden question');
+  await drop();
+  await composed('First forbidden question');
+  const left = await users();
+  assert.ok(
+    !left.includes('First forbidden question') && !left.includes('Second forbidden question')
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.model.agent
+          .messages('cone-sliccy')
+          .filter((message) => message.role === 'system' && message.title === 'Rewound 1 turn')
+          .length
+    ),
+    2
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a running reply stops with Escape', async (t) => {
   const page = await open(t, { delay: '40' });
   await page.press('2', 'alt');

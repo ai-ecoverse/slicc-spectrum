@@ -24,7 +24,7 @@ export interface Handlers {
   model: SliccModel | null;
   answer(questionId: string, answer: string): void;
   resolve(messageId: string, state: Exclude<LickState, 'pending'>): void;
-  action(action: ErrorAction): void;
+  action(action: ErrorAction, messageId?: string): void;
   open(path: string): void;
 }
 
@@ -55,6 +55,7 @@ const actionLabels: Record<ErrorAction, string> = {
   settings: 'Open settings',
   'change-model': 'Change model',
   login: 'Log in',
+  'drop-turn': 'Drop the last turn',
 };
 
 export function time(at: number): string {
@@ -295,7 +296,12 @@ export function assistant(
       ${message.status === 'stopped' ? html`<span class="tag">stopped</span>` : nothing}
       ${message.status === 'error' ? html`<span class="tag negative">failed</span>` : nothing}
     </div>
-    ${parts(message.parts, handlers, showThinking, message.status === 'streaming')}
+    ${parts(
+      message.parts,
+      { ...handlers, action: (action) => handlers.action(action, message.id) },
+      showThinking,
+      message.status === 'streaming'
+    )}
     ${message.status === 'streaming' ? html`<span class="caret" aria-hidden="true"></span>` : nothing}
   </article>`;
 }
@@ -320,7 +326,7 @@ export function system(message: SystemMessage, handlers: Handlers): TemplateResu
   }
   return html`<div class="error-card system-error" role="alert" data-id=${message.id}>
     <div class="error-text"><strong>${message.title}</strong><span>${message.text}</span></div>
-    ${message.action ? html`<sp-button size="s" variant="secondary" treatment="outline" @click=${() => handlers.action(message.action as ErrorAction)}>${actionLabels[message.action]}</sp-button>` : nothing}
+    ${message.action ? html`<sp-button size="s" variant="secondary" treatment="outline" @click=${() => handlers.action(message.action as ErrorAction, message.id)}>${actionLabels[message.action]}</sp-button>` : nothing}
   </div>`;
 }
 

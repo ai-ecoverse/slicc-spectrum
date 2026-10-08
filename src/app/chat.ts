@@ -1,6 +1,7 @@
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Agent, ErrorAction, Message, SliccModel, UserMessage } from '../model/types.ts';
 import { dot, shared, ThemedElement } from './base.ts';
+import type { SliccComposer } from './composer.ts';
 import {
   assistant,
   day,
@@ -76,7 +77,7 @@ export class SliccChat extends ThemedElement {
     model: null,
     answer: (questionId, answer) => this.model?.agent.answer(this.#id(), questionId, answer),
     resolve: (messageId, state) => this.model?.agent.resolveLick(this.#id(), messageId, state),
-    action: (action) => this.#action(action),
+    action: (action, messageId) => this.#action(action, messageId),
     open: (path) =>
       this.dispatchEvent(
         new CustomEvent('open-file', { detail: { path }, bubbles: true, composed: true })
@@ -126,10 +127,20 @@ export class SliccChat extends ThemedElement {
     return this.model?.agent.list().find((agent) => agent.id === id);
   }
 
-  #action(action: ErrorAction): void {
+  async #rewind(id: string, messageId: string): Promise<void> {
+    const restored = await this.model?.agent.rewind?.(id, messageId);
+    if (!restored) return;
+    this.renderRoot.querySelector<SliccComposer>('slicc-composer')?.restore(restored);
+  }
+
+  #action(action: ErrorAction, messageId = ''): void {
     const model = this.model;
     if (!model) return;
     const id = this.#id();
+    if (action === 'drop-turn') {
+      void this.#rewind(id, messageId);
+      return;
+    }
     if (action === 'retry') {
       const last = model.agent
         .messages(id)

@@ -1,5 +1,12 @@
 import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
-import type { Attachment, SendMode, SliccModel, Thinking, UserMessage } from '../model/types.ts';
+import type {
+  Attachment,
+  Outgoing,
+  SendMode,
+  SliccModel,
+  Thinking,
+  UserMessage,
+} from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
 import { size } from './messages.ts';
 
@@ -386,6 +393,13 @@ export class SliccComposer extends ModelElement {
 
   focus(): void {
     this.focusOn('textarea');
+  }
+
+  restore(message: Outgoing): void {
+    this.value = message.text;
+    this.attachments = [...(message.attachments ?? [])];
+    this.#history = -1;
+    this.focus();
   }
 
   get #textarea(): HTMLTextAreaElement | null {
