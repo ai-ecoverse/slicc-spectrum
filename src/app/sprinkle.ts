@@ -334,8 +334,11 @@ export class SliccSprinkle extends ThemedElement {
 
   #dips = new Dips();
 
+  #focusLater = false;
+
   focus(): void {
-    this.focusOn('iframe');
+    if (this.model?.sprinkles.call && !this.#held.ready) this.#focusLater = true;
+    else this.focusOn('iframe');
   }
 
   protected subscribe(model: SliccModel): Array<() => void> {
@@ -375,9 +378,12 @@ export class SliccSprinkle extends ThemedElement {
 
   protected updated(changed: PropertyValues): void {
     super.updated(changed);
-    this.renderRoot
-      .querySelector('iframe')
-      ?.contentWindow?.postMessage({ type: 'slicc-theme', color: this.color }, '*');
+    const frame = this.renderRoot.querySelector('iframe');
+    frame?.contentWindow?.postMessage({ type: 'slicc-theme', color: this.color }, '*');
+    if (frame && this.#focusLater) {
+      this.#focusLater = false;
+      frame.focus();
+    }
   }
 
   render(): TemplateResult {
