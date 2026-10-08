@@ -1,11 +1,19 @@
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Change, SliccModel } from '../model/types.ts';
 import { ModelElement, shared, ThemedElement } from './base.ts';
+import { confirm } from './confirm.ts';
 import { agentName, basename, letters, panelCss, request } from './files.ts';
 
 function folder(path: string): string {
   return path.slice(0, path.lastIndexOf('/')) || '/';
 }
+
+const confirmRevert = (path: string): Promise<boolean> =>
+  confirm({
+    title: `Revert ${basename(path)}?`,
+    body: `This discards the agent’s edits to ${path}. You can’t undo this.`,
+    action: 'Revert',
+  });
 
 export class SliccChanges extends ModelElement {
   static styles = [
@@ -73,14 +81,19 @@ export class SliccChanges extends ModelElement {
     this.model?.files.accept(path);
   }
 
-  #revert(event: Event, path: string): void {
+  async #revert(event: Event, path: string): Promise<void> {
     event.stopPropagation();
-    void this.model?.files.revert(path);
+    if (await confirmRevert(path)) await this.model?.files.revert(path);
   }
 
-  #all(action: 'accept' | 'revert'): void {
+  async #all(action: 'accept' | 'revert'): Promise<void> {
     const files = this.model?.files;
-    for (const change of files?.changes() ?? []) {
+    const changes = files?.changes() ?? [];
+    const count = changes.length;
+    const title = `Revert ${count} ${count === 1 ? 'change' : 'changes'}?`;
+    const body = 'This discards the agents’ edits and puts every file back. You can’t undo this.';
+    if (action === 'revert' && !(await confirm({ title, body, action: 'Revert all' }))) return;
+    for (const change of changes) {
       if (action === 'accept') files?.accept(change.path);
       else void files?.revert(change.path);
     }
@@ -173,6 +186,10 @@ export class SliccDiffPanel extends ThemedElement {
     return [...super.subscribe(model), model.files.on('changes', () => this.requestUpdate())];
   }
 
+  async #revert(): Promise<void> {
+    if (await confirmRevert(this.path)) await this.model?.files.revert(this.path);
+  }
+
   #style(style: 'unified' | 'split'): void {
     this.model?.settings.update({ diffStyle: style });
   }
@@ -200,7 +217,7 @@ export class SliccDiffPanel extends ThemedElement {
         <sp-action-button size="s" quiet @click=${() => model?.files.accept(this.path)}>
           <swc-icon-checkmark slot="icon"></swc-icon-checkmark>Accept
         </sp-action-button>
-        <sp-action-button size="s" quiet @click=${() => model?.files.revert(this.path)}>
+        <sp-action-button size="s" quiet @click=${() => this.#revert()}>
           <swc-icon-revert slot="icon"></swc-icon-revert>Revert
         </sp-action-button>
       </div>

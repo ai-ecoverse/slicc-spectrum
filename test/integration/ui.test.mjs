@@ -793,6 +793,8 @@ test('a diff opens from the changes list, switches layout, and accepting or reve
       )
       .click()
   );
+  await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
+  await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
   await page.until(() => window.model.files.changes().length === 2);
   await page.until(() => window.row('workspace/harbor/src/lib/retry.ts') === null);
   assert.match(await page.evaluate(() => window.$('slicc-app', 'footer').textContent), /2 changes/);
@@ -1029,6 +1031,8 @@ test('settings change the theme and the composer, and connect accounts', async (
       )
       .click()
   );
+  await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
+  await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
   await page.until(
     () =>
       window.model.settings.accounts().find((account) => account.id === 'github').status ===
@@ -1583,6 +1587,8 @@ test('SLICC sprinkles run sandboxed with Lucide icons and lick their cone, and t
       .find((button) => button.textContent.trim() === 'Disconnect')
       .click()
   );
+  await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
+  await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
   await page.until(
     () => window.$('slicc-app', 'slicc-tray', '.chip .dot').dataset.variant === 'neutral'
   );

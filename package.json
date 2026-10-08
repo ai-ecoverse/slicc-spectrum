@@ -84,6 +84,7 @@
     "@spectrum-web-components/action-button": "1.12.4",
     "@spectrum-web-components/action-group": "1.12.4",
     "@spectrum-web-components/action-menu": "1.12.4",
+    "@spectrum-web-components/alert-dialog": "1.12.4",
     "@spectrum-web-components/badge": "1.12.4",
     "@spectrum-web-components/button": "1.12.4",
     "@spectrum-web-components/menu": "1.12.4",

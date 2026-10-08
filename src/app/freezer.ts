@@ -1,6 +1,7 @@
 import { css, html, type TemplateResult } from 'lit';
 import type { FrozenCone, SliccModel } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
+import { confirm } from './confirm.ts';
 import { panelCss } from './files.ts';
 
 export function ago(at: number, now = Date.now()): string {
@@ -65,6 +66,12 @@ export class SliccFreezer extends ModelElement {
     this.focusOn('sp-action-button');
   }
 
+  async #delete(cone: FrozenCone): Promise<void> {
+    const body = `${cone.name}, its scoops and its ${cone.messages} messages are deleted. You can’t undo this.`;
+    if (await confirm({ title: `Delete ${cone.name}?`, body, action: 'Delete' }))
+      this.model?.agent.discard(cone.id);
+  }
+
   #card(cone: FrozenCone): TemplateResult {
     const model = this.model as SliccModel;
     const label =
@@ -75,7 +82,7 @@ export class SliccFreezer extends ModelElement {
       <div class="meta">${cone.messages} messages · ${label} · frozen ${ago(cone.frozenAt)}</div>
       <div class="actions">
         <sp-action-button size="s" quiet @click=${() => model.agent.thaw(cone.id)}>Thaw</sp-action-button>
-        <sp-action-button size="s" quiet @click=${() => model.agent.discard(cone.id)}>Delete</sp-action-button>
+        <sp-action-button size="s" quiet @click=${() => this.#delete(cone)}>Delete</sp-action-button>
       </div>
     </div>`;
   }

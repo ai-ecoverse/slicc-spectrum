@@ -149,6 +149,7 @@ Text is Adobe Clean Spectrum VF, falling back to Adobe Clean, and code is Spectr
 | `<slicc-freezer>` | Frozen cones, archived with their scoops: thaw to bring one back, delete, or freeze the active cone (also `/freeze`). |
 | `<slicc-sprinkle>` | A SLICC sprinkle (`.shtml`), as a panel or, with `inline`, as a dip in the chat that grows to fit. A dip has a tab-like handle: drag it into the dock (or onto a rail, or use its open-as-panel button) and it lives on as a sprinkle panel, with a note in the chat where it was; which dips are out is saved in `slicc-ui.dips`. It runs in a sandboxed frame (`allow-scripts` only) with SLICC's sprinkle theme (the `--s2-*` tokens and `.sprinkle-*` classes), the app's fonts, and Lucide icons (`<i data-lucide>`, `LucideIcons.render()`). Its only way back is `slicc.lick({ action, data })`, which reaches the owning cone as a `sprinkle` lick. Panel sprinkles sit at the top of the right rail with their Lucide icon. |
 | `<slicc-tray>` | The tray indicator in the header: connection, the float's name, followers and budget; its panel adds role, runtime, spend, the follower list, the join link, and disconnect or reconnect. |
+| `<slicc-confirm>` | The confirmation dialog `confirm()` opens. Not for direct use. |
 | `<slicc-file-tree>` | Generic. [`@pierre/trees`](https://www.npmjs.com/package/@pierre/trees) through its `web-components` entry: `paths` (folders end in `/`), `gitStatus`, `expanded`, `reveal(path, focus)`. Fires `file-open` on click and on <kbd>Enter</kbd>. |
 | `<slicc-code-view>` | Generic. A highlighted file through [`@pierre/diffs`](https://www.npmjs.com/package/@pierre/diffs): `path`, `contents`, `color`. |
 | `<slicc-diff-view>` | Generic. A diff through `@pierre/diffs`: `path`, `oldText`, `newText` (`null` for an added or deleted file), `color`, `diff-style` (`unified` or `split`). |
@@ -156,6 +157,16 @@ Text is Adobe Clean Spectrum VF, falling back to Adobe Clean, and code is Spectr
 Files and diffs open in one editor group next to the chat. Panels ask for them with `open-file` and `open-diff` events (`{ path }`), which `<slicc-app>` handles, or call `app.open('file' | 'diff', path)`.
 
 Keys: <kbd>Alt</kbd>+<kbd>1</kbd>… opens and focuses a panel, <kbd>F6</kbd> and <kbd>Shift</kbd>+<kbd>F6</kbd> move between groups, <kbd>Ctrl</kbd>+<kbd>]</kbd> and <kbd>Ctrl</kbd>+<kbd>[</kbd> between tabs, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> switches the theme. In terminal and browser tab strips, <kbd>←</kbd> and <kbd>→</kbd> switch tabs. In the agents and changes lists, arrows, <kbd>Home</kbd>, <kbd>End</kbd> and <kbd>Enter</kbd>; in the file tree, its own arrow keys and <kbd>Enter</kbd> to open. In the composer, <kbd>Enter</kbd> sends, <kbd>Shift</kbd>+<kbd>Enter</kbd> adds a line and <kbd>Esc</kbd> stops a reply.
+
+### Confirmations
+
+Destructive actions ask first: reverting one change or all, deleting a frozen cone, forgetting a memory, disconnecting an account or the tray, and closing a terminal. `confirm({ title, body, action, variant, trigger })`, exported from `dist/slicc-ui.js`, opens a modal alert dialog (1.12 `sp-alert-dialog`, as Gen2 has no dialog yet) inside `<slicc-app>`'s themed shadow root and resolves `true` on the action and `false` on Cancel or <kbd>Esc</kbd>. Focus starts on Cancel and goes back to `trigger` (default: the focused element) when it closes. `variant` is `destructive` (default, a negative action button) for actions that lose data for good, or `confirmation` (accent) for ones you can take back, like disconnecting. Title the dialog with a question, say what can’t be undone in `body`, and name the action with a verb.
+
+```js
+import { confirm } from './dist/slicc-ui.js';
+
+if (await confirm({ title: 'Delete harbor?', body: 'Its scoops and messages are deleted. You can’t undo this.', action: 'Delete' })) remove();
+```
 
 ### Model
 
