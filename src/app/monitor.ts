@@ -194,7 +194,7 @@ export class SliccMonitor extends ModelElement {
     return html`<div class="bar">
         <strong>Live monitor</strong><span>${snapshot ? `Updated ${new Date(snapshot.updatedAt).toISOString().slice(11, 19)} UTC` : 'No data'}</span>
         <span class="spacer"></span>
-        <sp-action-button size="s" quiet @click=${() => this.model?.monitor.resync()}><sp-icon-refresh slot="icon"></sp-icon-refresh>Re-sync</sp-action-button>
+        <sp-action-button size="s" quiet @click=${() => this.model?.monitor.resync()}><swc-icon-refresh slot="icon"></swc-icon-refresh>Re-sync</sp-action-button>
       </div>
       <div class="body">
         ${

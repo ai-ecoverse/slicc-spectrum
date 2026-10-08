@@ -51,6 +51,20 @@ test('the shell renders the default layout from the dummy model', async (t) => {
     'spectrum-two'
   );
   assert.equal(
+    await page.evaluate(() => window.$('slicc-app', '.swc-theme').className),
+    'swc-theme swc-theme--sizeM swc-theme--light'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.$('slicc-app', '.rail.left [data-surface=files] [slot=icon]').localName,
+      window.$('slicc-app', 'header sp-action-button[label^=Switch] [slot=icon]').localName,
+      [...window.$('slicc-app').shadowRoot.querySelectorAll('[slot=icon]')].filter((icon) =>
+        icon.localName.startsWith('sp-icon-')
+      ).length,
+    ]),
+    ['swc-icon-folder', 'swc-icon-contrast', 0]
+  );
+  assert.equal(
     await page.evaluate(
       () => window.$('slicc-app', 'slicc-dock', '[data-panel=agents] > *').localName
     ),
@@ -384,9 +398,11 @@ test('the theme switches between light and dark and survives a reload', async (t
   const surface = () => [
     window.$('slicc-app', 'sp-theme').getAttribute('color'),
     getComputedStyle(window.$('slicc-app', 'slicc-dock', 'slicc-chat')).backgroundColor,
+    getComputedStyle(window.$('slicc-app', '.swc-theme')).colorScheme,
   ];
   const light = await page.evaluate(surface);
   assert.equal(light[0], 'light');
+  assert.equal(light[2], 'light');
 
   await page.evaluate(() =>
     window.$('slicc-app', 'header sp-action-button[label^=Switch]').click()
@@ -394,6 +410,7 @@ test('the theme switches between light and dark and survives a reload', async (t
   await page.until(() => window.$('slicc-app', 'sp-theme').getAttribute('color') === 'dark');
   const dark = await page.evaluate(surface);
   assert.notEqual(dark[1], light[1]);
+  assert.equal(dark[2], 'dark');
   await shot(page, 'shell-dark');
 
   await page.evaluate(() => window.model.agent.select('cone-harbor'));
@@ -600,6 +617,24 @@ test('code uses the bundled Source Code Pro, and the phone layout works in dark'
     'fallback'
   );
   assert.ok(chrome.requests.includes('/fonts/AdobeClean-Regular.otf'), chrome.requests.join());
+  assert.deepEqual(
+    await page.evaluate(() => [
+      [...document.fonts]
+        .filter((face) => face.family === 'adobe-clean-spectrum-vf')
+        .map((face) => face.weight),
+      getComputedStyle(window.$('slicc-app', '.brand')).fontFamily.split(',').slice(0, 4).join(','),
+    ]),
+    [['100 900'], 'adobe-clean-spectrum-vf, "Adobe Clean Spectrum VF", adobe-clean, "Adobe Clean"']
+  );
+  await page.evaluate(() => {
+    window.app.variableFont = null;
+  });
+  assert.equal(
+    await page.evaluate(
+      () => [...document.fonts].filter((face) => face.family === 'adobe-clean-spectrum-vf').length
+    ),
+    0
+  );
   await page.evaluate(() => {
     document.querySelector('slicc-app').style.width = '390px';
   });

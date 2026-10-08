@@ -70,6 +70,8 @@
     }
   },
   "devDependencies": {
+    "@adobe/spectrum-wc": "2.0.0-beta.4",
+    "@adobe/spectrum-wc-icons": "2.0.0-beta.4",
     "@ai-ecoverse/slicc-kernel": "1.14.0",
     "@ai-ecoverse/slicc-shared-web": "1.5.1",
     "@ai-ecoverse/wasm-bash": "5.3.0-7",
@@ -84,7 +86,6 @@
     "@spectrum-web-components/action-menu": "1.12.4",
     "@spectrum-web-components/badge": "1.12.4",
     "@spectrum-web-components/button": "1.12.4",
-    "@spectrum-web-components/icons-workflow": "1.12.4",
     "@spectrum-web-components/menu": "1.12.4",
     "@spectrum-web-components/picker": "1.12.4",
     "@spectrum-web-components/progress-circle": "1.12.4",

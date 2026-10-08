@@ -245,7 +245,7 @@ export class SliccSprinkle extends ThemedElement {
     if (!data) return html`<div class="note">This sprinkle is gone.</div>`;
     if (this.inline && this.#dips.has(data.id)) {
       return html`<div class="moved">
-        <sp-icon-open-in size="s"></sp-icon-open-in>
+        <swc-icon-open-in size="s"></swc-icon-open-in>
         <span>${data.title} is open as a panel.</span>
         <sp-action-button size="s" quiet @click=${() => this.#send('show-surface', `sprinkle:${data.id}`)}>Show</sp-action-button>
       </div>`;
@@ -257,7 +257,7 @@ export class SliccSprinkle extends ThemedElement {
         ${grip}
         <span class="name">${data.title}</span>
         <sp-action-button size="xs" quiet label=${`Open ${data.title} as a panel`} title="Open as a panel" @click=${() => this.#send('detach-sprinkle', data.id)}>
-          <sp-icon-open-in slot="icon"></sp-icon-open-in>
+          <swc-icon-open-in slot="icon"></swc-icon-open-in>
         </sp-action-button>
       </div>
       ${frame}`;

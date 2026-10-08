@@ -207,7 +207,7 @@ export class SliccTerminals extends ThemedElement {
           ${terminals.map((info) => this.#tab(info))}
         </div>
         <sp-action-button size="s" quiet label="New terminal" title="New terminal" @click=${() => this.add()}>
-          <sp-icon-add slot="icon"></sp-icon-add>
+          <swc-icon-add slot="icon"></swc-icon-add>
         </sp-action-button>
       </div>
       <div class="screens">

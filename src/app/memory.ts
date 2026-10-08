@@ -218,7 +218,7 @@ export class SliccMemory extends ModelElement {
     const shown = visible(all, this.scope, this.tag, this.query);
     const cones = (model?.agent.list() ?? []).filter((agent) => agent.kind === 'cone');
     return html`<div class="bar"><span>${shown.length} of ${all.filter((memory) => memory.scope === this.scope).length} memories</span><span class="spacer"></span>
-        <sp-action-button size="s" quiet @click=${() => (this.editing = 'new')}><sp-icon-add slot="icon"></sp-icon-add>Remember</sp-action-button>
+        <sp-action-button size="s" quiet @click=${() => (this.editing = 'new')}><swc-icon-add slot="icon"></swc-icon-add>Remember</sp-action-button>
       </div>
       <div class="tools">
         <sp-search size="s" label="Search memories" placeholder="Search memories" .value=${this.query} @input=${(event: Event) => (this.query = (event.target as HTMLInputElement).value)} @submit=${(event: Event) => event.preventDefault()}></sp-search>

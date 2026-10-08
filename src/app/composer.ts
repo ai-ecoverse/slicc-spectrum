@@ -851,7 +851,7 @@ export class SliccComposer extends ModelElement {
           ></textarea>
           <div class="toolbar">
             <sp-action-menu size="s" quiet label="Add" @change=${this.#add}>
-              <sp-icon-add slot="icon"></sp-icon-add>
+              <swc-icon-add slot="icon"></swc-icon-add>
               <sp-menu-item value="upload">Upload from this computer</sp-menu-item>
               <sp-menu-item value="screenshot">Take a screenshot of the browser tab</sp-menu-item>
               <sp-menu-item value="file">Attach a file from SLICC</sp-menu-item>
@@ -859,12 +859,12 @@ export class SliccComposer extends ModelElement {
             </sp-action-menu>
             ${this.#meta()}
             <span class="spacer"></span>
-            ${speech ? html`<sp-action-button size="s" quiet ?selected=${this.dictating} label="Dictate" @click=${() => this.dictate()}><sp-icon-microphone slot="icon"></sp-icon-microphone></sp-action-button>` : nothing}
+            ${speech ? html`<sp-action-button size="s" quiet ?selected=${this.dictating} label="Dictate" @click=${() => this.dictate()}><swc-icon-microphone slot="icon"></swc-icon-microphone></sp-action-button>` : nothing}
             ${
               busy && !canSend
                 ? html`<sp-button size="s" variant="secondary" treatment="outline" @click=${() => this.model?.agent.stop(this.#agent)}>Stop</sp-button>`
                 : html`<sp-button size="s" variant="accent" ?disabled=${!canSend} @click=${() => this.send()}>
-                    <sp-icon-send slot="icon"></sp-icon-send>${busy ? 'Steer' : 'Send'}
+                    <swc-icon-send slot="icon"></swc-icon-send>${busy ? 'Steer' : 'Send'}
                   </sp-button>`
             }
           </div>

@@ -103,7 +103,7 @@ Things found while building this against wterm 0.5.4, recorded here, not pushed 
 
 ## UI
 
-`dist/slicc-ui.js` is SLICC's app shell on Spectrum Web Components 1.12 with the Spectrum 2 theme (`<sp-theme system="spectrum-two">`), in light and dark. It runs against a typed model, not against the kernel, the agent or the browser directly. `dist/slicc-dummy.js` provides a dummy model that streams replies and tool calls with timers, and `dist/slicc-kernel-model.js` a real one for files and terminals on slicc-kernel (see [Kernel model](#kernel-model)).
+`dist/slicc-ui.js` is SLICC's app shell on Spectrum 2, in light and dark. It is moving from Spectrum Web Components 1.12 to Gen2 ([`@adobe/spectrum-wc`](https://www.npmjs.com/package/@adobe/spectrum-wc)): the Gen2 theme classes (`swc-theme swc-theme--sizeM swc-theme--light|dark`) and `--swc-*` tokens apply inside `<slicc-app>`, and icons are Spectrum 2 workflow icons from `@adobe/spectrum-wc-icons`. Components Gen2 doesn't ship yet stay on 1.12 inside a scoped `<sp-theme system="spectrum-two">` ([#60](https://github.com/ai-ecoverse/slicc-spectrum/issues/60)). It runs against a typed model, not against the kernel, the agent or the browser directly. `dist/slicc-dummy.js` provides a dummy model that streams replies and tool calls with timers, and `dist/slicc-kernel-model.js` a real one for files and terminals on slicc-kernel (see [Kernel model](#kernel-model)).
 
 ```html
 <slicc-app></slicc-app>
@@ -115,7 +115,7 @@ Things found while building this against wterm 0.5.4, recorded here, not pushed 
 </script>
 ```
 
-`npm start` serves it at `/ui/`. `?fonts=<url>` loads Adobe Clean from another folder (see [Fonts](#fonts)).
+`npm start` serves it at `/ui/`. `?fonts=<url>` loads Adobe Clean from another folder, `?vf=<url>` Adobe Clean Spectrum VF from another file, and `?vf=` turns it off (see [Fonts](#fonts)).
 
 ### Layouts and rails
 
@@ -125,7 +125,7 @@ The layout follows the width of `<slicc-app>`, which it reflects as its `screen`
 
 ### Fonts
 
-Text is Adobe Clean and code Spectrum's Source Code Pro. Source Code Pro (OFL) is in `dist/fonts/`, same origin. Adobe Clean can't ship in a public package, so `<slicc-app>` loads it from `fontBase` (`AdobeClean-{Regular,Medium,Bold,ExtraBold}.otf`), which defaults to `/fonts/` on the current origin. Every `*.sliccy.ai` host passes it through to v6, and `npm start` proxies it from `seven.sliccy.ai`. Where it 404s, text falls back to the system font stack. `?delay=` sets the dummy's tick in milliseconds (default 30) , `?color=light|dark|system` the theme, and `?grammars=` the grammar base.
+Text is Adobe Clean Spectrum VF, falling back to Adobe Clean, and code is Spectrum's Source Code Pro. Source Code Pro (OFL) is in `dist/fonts/`, same origin. Neither Adobe Clean can ship in a public package. `<slicc-app>` registers the variable face (`adobe-clean-spectrum-vf`, weights 100–900) from `variableFont`, a woff2 URL that defaults to the Adobe Fonts file React Spectrum S2 uses; a host can point it at its own copy, or set it to `null` to leave it out. The legacy faces come from `fontBase` (`AdobeClean-{Regular,Medium,Bold,ExtraBold}.otf`), which defaults to `/fonts/` on the current origin. Every `*.sliccy.ai` host passes it through to v6, and `npm start` proxies it from `seven.sliccy.ai`. The sans stack (`--swc-sans-font-family-stack`, also used by the 1.12 components) is the variable face, then Adobe Clean, then the system font stack, so text falls back face by face wherever a file doesn't load. `?delay=` sets the dummy's tick in milliseconds (default 30) , `?color=light|dark|system` the theme, and `?grammars=` the grammar base.
 
 ### Elements
 
