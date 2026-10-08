@@ -113,6 +113,10 @@ export class SliccUpdates extends ModelElement {
         padding: var(--swc-spacing-400);
         margin: 0 auto;
       }
+      .page:focus-visible {
+        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+        outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
+      }
       .hint {
         margin: 0 0 var(--swc-spacing-300);
         color: var(--swc-neutral-subdued-content-color-default);
@@ -231,7 +235,7 @@ export class SliccUpdates extends ModelElement {
   }
 
   focus(): void {
-    this.focusOn('swc-button, summary');
+    this.focusOn('swc-button, summary', '.page');
   }
 
   async act(id: string, action: UpdateAction): Promise<void> {
@@ -327,7 +331,7 @@ export class SliccUpdates extends ModelElement {
 
   render(): TemplateResult {
     const port = this.model?.updates;
-    return html`<div class="page">
+    return html`<div class="page" tabindex="-1">
       <p class="hint">${hint(port)}</p>
       ${repeat(
         port?.list() ?? [],

@@ -174,6 +174,10 @@ export class SliccMonitor extends ModelElement {
     return [model.monitor.on('snapshot', () => this.requestUpdate())];
   }
 
+  focus(): void {
+    this.focusOn('.bar swc-action-button');
+  }
+
   #vital(vital: MonitorVital): TemplateResult {
     if (vital.ratio !== undefined) {
       return html`<div class="vital" data-id=${vital.id}>

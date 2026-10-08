@@ -151,6 +151,10 @@ export class SliccSprinkle extends ThemedElement {
       height: 100%;
       border: 0;
     }
+    iframe:focus-visible {
+      outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+      outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
+    }
     .frame {
       border: 1px solid var(--spectrum-gray-200);
       background: var(--spectrum-background-layer-1-color);
@@ -221,6 +225,10 @@ export class SliccSprinkle extends ThemedElement {
   };
 
   #dips = new Dips();
+
+  focus(): void {
+    this.focusOn('iframe');
+  }
 
   protected subscribe(model: SliccModel): Array<() => void> {
     this.#dips = dipsOf(this) ?? this.#dips;

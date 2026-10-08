@@ -19,8 +19,12 @@ export class ModelElement extends LitElement {
     return [];
   }
 
-  protected focusOn(selector: string): void {
-    const focus = () => this.renderRoot.querySelector<HTMLElement>(selector)?.focus();
+  protected focusOn(...selectors: string[]): void {
+    const focus = () =>
+      selectors
+        .map((selector) => this.renderRoot.querySelector<HTMLElement>(selector))
+        .find(Boolean)
+        ?.focus();
     if (this.hasUpdated) focus();
     else void this.updateComplete.then(focus);
   }

@@ -20,6 +20,22 @@ import {
   user,
 } from './messages.ts';
 
+let touched = false;
+document.addEventListener(
+  'pointerdown',
+  (event) => {
+    touched = event.pointerType !== 'mouse';
+  },
+  true
+);
+document.addEventListener(
+  'keydown',
+  () => {
+    touched = false;
+  },
+  true
+);
+
 export class SliccChat extends ThemedElement {
   static properties = { ...ThemedElement.properties, agent: {} };
   declare agent: string;
@@ -73,6 +89,10 @@ export class SliccChat extends ThemedElement {
         min-height: 0;
         overflow-y: auto;
         padding: 12px 16px 24px;
+      }
+      .log:focus-visible {
+        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+        outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
       }
       .column {
         max-width: 860px;
@@ -165,7 +185,9 @@ export class SliccChat extends ThemedElement {
   }
 
   focus(): void {
-    this.focusOn('slicc-composer');
+    if (!touched && globalThis.matchMedia('(pointer: fine)').matches)
+      this.focusOn('slicc-composer');
+    else this.focusOn('.log');
   }
 
   #id(): string {
@@ -272,7 +294,14 @@ export class SliccChat extends ThemedElement {
       <header>
         ${agent ? this.#meta(agent) : html`<span>No agent</span>`}
       </header>
-      <div class="log" role="log" aria-live="polite" aria-label="Conversation" @scroll=${this.#scroll}>
+      <div
+        class="log"
+        role="log"
+        aria-live="polite"
+        aria-label="Conversation"
+        tabindex="-1"
+        @scroll=${this.#scroll}
+      >
         <div class="column">
           ${
             agent && messages.length > 0
