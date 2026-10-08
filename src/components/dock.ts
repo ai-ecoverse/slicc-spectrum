@@ -9,6 +9,7 @@ import {
 import dockview from 'dockview-core/css';
 import css from './dock.css';
 import { adoptStyles } from './sheets.ts';
+import { SliccTab } from './tab.ts';
 
 export type PanelParams = Record<string, unknown>;
 export type PanelFactory = (params: PanelParams) => HTMLElement;
@@ -65,6 +66,8 @@ export class SliccDock extends HTMLElement {
     const api = createDockview(container, {
       theme,
       createComponent: ({ id, name }) => this.#create(id, name),
+      defaultTabComponent: 'spectrum',
+      createTabComponent: () => new SliccTab(),
       getTabContextMenuItems: () => ['close', 'closeOthers', 'separator', 'float', 'maximize'],
       createWatermarkComponent: () => {
         const element = document.createElement('div');

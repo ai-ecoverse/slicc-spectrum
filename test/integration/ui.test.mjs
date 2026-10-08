@@ -88,6 +88,48 @@ test('the shell renders the default layout from the dummy model', async (t) => {
   );
   assert.deepEqual(page.errors, []);
   await shot(page, 'shell-light');
+
+  await page.evaluate(() => window.app.show('files'));
+  const tabs = await page.evaluate(() =>
+    [
+      ...window
+        .$('slicc-app', 'slicc-dock')
+        .shadowRoot.querySelectorAll('.dv-tabs-container .dv-tab'),
+    ].map((tab) => {
+      const inner = tab.querySelector('.slicc-tab');
+      const close = inner.querySelector('.slicc-tab-close');
+      return [
+        tab.getAttribute('role'),
+        tab.getAttribute('aria-selected'),
+        getComputedStyle(tab).backgroundColor,
+        getComputedStyle(inner).fontSize,
+        getComputedStyle(inner, '::after').height,
+        getComputedStyle(close).display,
+        close.getAttribute('role'),
+        close.tabIndex,
+        close.getAttribute('aria-label') === `Close ${inner.textContent.trim()}`,
+      ];
+    })
+  );
+  assert.equal(tabs.filter((tab) => tab[1] === 'false').length, 1, JSON.stringify(tabs));
+  for (const tab of tabs) {
+    const selected = tab[1] === 'true';
+    assert.deepEqual(
+      tab,
+      [
+        'tab',
+        String(selected),
+        'rgba(0, 0, 0, 0)',
+        '14px',
+        selected ? '2px' : 'auto',
+        selected ? 'grid' : 'none',
+        'button',
+        -1,
+        true,
+      ],
+      JSON.stringify(tabs)
+    );
+  }
 });
 
 test('panels move, close, float and come back, and a reload keeps the layout', async (t) => {
@@ -112,9 +154,9 @@ test('panels move, close, float and come back, and a reload keeps the layout', a
       (el) => el.textContent.trim() === 'sliccy'
     );
     tab
-      .querySelector('.dv-default-tab-action')
+      .querySelector('.slicc-tab-close')
       .dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-    tab.querySelector('.dv-default-tab-action').click();
+    tab.querySelector('.slicc-tab-close').click();
   });
   await page.until(() => !window.$('slicc-app', 'slicc-dock').has('chat:cone-sliccy'));
 
