@@ -3,7 +3,11 @@ import '/dist/slicc-ui.js';
 
 const params = new URLSearchParams(location.search);
 const delay = Number(params.get('delay') ?? 30);
-const model = createDummyModel({ delay, storage: localStorage });
+const model = createDummyModel({
+  delay,
+  storage: localStorage,
+  updates: params.get('updates') ?? 'current',
+});
 if (params.has('color')) model.settings.update({ color: params.get('color') });
 const app = document.querySelector('slicc-app');
 if (params.has('fonts')) app.fontBase = params.get('fonts') || null;

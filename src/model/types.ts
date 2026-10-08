@@ -529,6 +529,38 @@ export interface TrayPort extends Subscribable<TrayEvents> {
   disconnect(): void;
 }
 
+export type UpdateKind = 'bios' | 'kernel' | 'agent' | 'grammars' | 'global' | 'skills' | 'ui';
+export type UpdateState =
+  | 'current'
+  | 'checking'
+  | 'downloading'
+  | 'linking'
+  | 'installed'
+  | 'available'
+  | 'ready'
+  | 'failed';
+export type UpdateAction = 'retry' | 'restart-agent' | 'reload' | 'update-now';
+
+export interface UpdateItem {
+  id: string;
+  label: string;
+  kind: UpdateKind;
+  state: UpdateState;
+  progress: { phase: 'download' | 'link'; done: number; total: number } | null;
+  from: string | null;
+  to: string | null;
+  checkedAt: number | null;
+  error: string | null;
+  actions: readonly UpdateAction[];
+  log?: string;
+}
+
+export interface UpdatesPort extends Subscribable<{ items: readonly UpdateItem[] }> {
+  list(): readonly UpdateItem[];
+  ready(): boolean;
+  act(id: string, action: UpdateAction): Promise<void>;
+}
+
 export interface SliccModel {
   agent: AgentPort;
   files: FilePort;
@@ -539,4 +571,5 @@ export interface SliccModel {
   monitor: MonitorPort;
   sprinkles: SprinklePort;
   tray: TrayPort;
+  updates?: UpdatesPort;
 }

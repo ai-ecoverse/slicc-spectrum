@@ -44,7 +44,7 @@ test('the shell renders the default layout from the dummy model', async (t) => {
         (b) => b.dataset.surface
       )
     ),
-    ['files', 'memory', 'freezer', 'settings']
+    ['files', 'memory', 'freezer', 'settings', 'updates']
   );
   assert.equal(
     await page.evaluate(() => window.$('slicc-app', 'sp-theme').getAttribute('system')),
@@ -484,6 +484,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
       'memory',
       'freezer',
       'settings',
+      'updates',
       'sprinkle:suggestions',
       'terminal',
       'browser',
@@ -515,6 +516,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
       'freezer',
       'monitor',
       'settings',
+      'updates',
     ],
   });
   await shot(page, 'phone-light');
@@ -531,6 +533,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
       'memory',
       'freezer',
       'settings',
+      'updates',
       'sprinkle:suggestions',
       'changes',
       'terminal',
@@ -563,6 +566,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
       'memory',
       'freezer',
       'settings',
+      'updates',
       'sprinkle:suggestions',
       'changes',
       'terminal',
