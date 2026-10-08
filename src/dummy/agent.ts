@@ -5,6 +5,7 @@ import type {
   AgentPort,
   AgentStatus,
   AssistantMessage,
+  DeliveredAs,
   FrozenCone,
   LickChannel,
   LickState,
@@ -20,6 +21,7 @@ import { type Effects, type Step, script } from './script.ts';
 
 interface Run {
   stopped: boolean;
+  steers: Outgoing[];
 }
 
 function chunks(text: string): string[] {
@@ -216,40 +218,64 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     this.emit('messages', agentId);
   }
 
-  async send(agentId: string, input: string | Outgoing): Promise<void> {
-    const agent = this.#agent(agentId);
-    const message = outgoing(input);
-    const prompt = message.text.trim();
-    if (!agent || (!prompt && !message.attachments?.length)) return;
-    if (this.busy(agentId) && message.mode !== 'steer') {
-      this.#enqueue(agentId, message);
-      return;
-    }
-    this.stop(agentId);
-    this.#suggestions.delete(agentId);
-    const run: Run = { stopped: false };
-    this.#runs.set(agentId, run);
-    this.#post(agentId, {
+  #user(message: Outgoing, delivered: DeliveredAs): UserMessage {
+    return {
       id: this.#id('m'),
       role: 'user',
-      text: prompt,
+      text: message.text.trim(),
       createdAt: Date.now(),
-      ...(message.mode === 'steer' ? { mode: 'steer' as const } : {}),
+      delivered,
+      ...(delivered === 'steer' ? { mode: 'steer' as const } : {}),
       ...(message.attachments?.length ? { attachments: message.attachments } : {}),
-    });
-    const reply: AssistantMessage = {
+    };
+  }
+
+  #reply(model: string): AssistantMessage {
+    return {
       id: this.#id('m'),
       role: 'assistant',
       parts: [],
       status: 'streaming',
       createdAt: Date.now(),
-      model: agent.model,
+      model,
     };
+  }
+
+  async send(agentId: string, input: string | Outgoing): Promise<void> {
+    const message = outgoing(input);
+    if (!this.#agent(agentId) || (!message.text.trim() && !message.attachments?.length)) return;
+    const run = this.#runs.get(agentId);
+    if (run && message.mode === 'queue') {
+      this.#enqueue(agentId, message);
+      return;
+    }
+    if (run) {
+      run.steers.push(message);
+      return;
+    }
+    await this.#run(agentId, message, 'run');
+  }
+
+  async #run(agentId: string, message: Outgoing, delivered: DeliveredAs): Promise<void> {
+    const agent = this.#agent(agentId) as Agent;
+    const prompt = message.text.trim();
+    this.#suggestions.delete(agentId);
+    const run: Run = { stopped: false, steers: [] };
+    this.#runs.set(agentId, run);
+    this.#post(agentId, this.#user(message, delivered));
+    let reply = this.#reply(agent.model);
     this.#post(agentId, reply);
     const { steps, suggestion } = script(prompt, message.attachments ?? []);
-    for (const step of steps) {
+    for (const [index, step] of steps.entries()) {
       if (run.stopped) break;
       await this.#step(agentId, reply, step, run);
+      if (run.steers.length && !run.stopped && index < steps.length - 1) {
+        reply.status = 'done';
+        this.emit('message', { agentId, message: reply });
+        for (const steer of run.steers.splice(0)) this.#post(agentId, this.#user(steer, 'steer'));
+        reply = this.#reply(agent.model);
+        this.#post(agentId, reply);
+      }
     }
     reply.status = run.stopped ? 'stopped' : 'done';
     reply.usage = {
@@ -264,6 +290,15 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     this.emit('message', { agentId, message: reply });
     agent.status = 'idle';
     this.#changed();
+    const late = run.steers.splice(0);
+    if (run.stopped) {
+      for (const steer of late) this.#enqueue(agentId, steer);
+    } else if (late.length) {
+      const last = late.pop() as Outgoing;
+      for (const steer of late) this.#post(agentId, this.#user(steer, 'steer'));
+      await this.#run(agentId, last, 'steer');
+      return;
+    }
     await this.#drain(agentId);
   }
 
@@ -273,7 +308,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     if (!next) return;
     this.#queues.set(agentId, rest);
     this.emit('messages', agentId);
-    await this.send(agentId, { text: next.text, attachments: next.attachments });
+    await this.#run(agentId, { text: next.text, attachments: next.attachments }, 'follow-up');
   }
 
   stop(agentId: string): void {

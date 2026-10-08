@@ -263,11 +263,15 @@ function attachment(item: Attachment): TemplateResult {
   </div>`;
 }
 
+const deliveries = { steer: 'steered', 'follow-up': 'follow-up' } as const;
+
 export function user(message: UserMessage): TemplateResult {
-  return html`<article class="message user" data-id=${message.id} data-mode=${message.mode ?? 'send'}>
+  const delivered = message.delivered ?? (message.mode === 'steer' ? 'steer' : undefined);
+  const tag = delivered === 'steer' || delivered === 'follow-up' ? deliveries[delivered] : null;
+  return html`<article class="message user" data-id=${message.id} data-mode=${message.mode ?? 'send'} data-delivered=${delivered ?? 'run'}>
     <div class="meta">
       <span class="who">${message.from ? `From ${message.from}` : 'You'}</span><span>${time(message.createdAt)}</span>
-      ${message.mode === 'steer' ? html`<span class="tag">steered</span>` : nothing}
+      ${tag ? html`<span class="tag">${tag}</span>` : nothing}
     </div>
     ${message.text ? html`<div class="body">${message.text}</div>` : nothing}
     ${message.attachments?.length ? html`<div class="attachments">${message.attachments.map(attachment)}</div>` : nothing}
@@ -383,8 +387,11 @@ export const messageCss = css`
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  .user[data-mode='steer'] .body {
+  .user[data-delivered='steer'] .body {
     border-left: 3px solid var(--spectrum-notice-visual-color);
+  }
+  .user[data-delivered='follow-up'] .body {
+    border-left: 3px solid var(--spectrum-informative-visual-color);
   }
   .attachments {
     display: flex;

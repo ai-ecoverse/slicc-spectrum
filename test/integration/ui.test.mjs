@@ -1072,24 +1072,39 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
   await page.insert('Run the tests');
   await page.press('Enter');
   await page.until(() => window.model.agent.busy('cone-sliccy'));
+  assert.match(
+    await page.evaluate(
+      () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.hint').textContent
+    ),
+    /Enter\s*steer\s*·\s*Ctrl\+Enter\s*queue/
+  );
   await page.insert('Then open the docs');
-  await page.press('Enter');
+  await page.press('Enter', 'ctrl');
   await page.until(
     () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.queued')
   );
   await shot(page, 'composer-queued');
-  await page.insert('Stop, show me the files instead');
-  await page.press('Enter', 'ctrl');
+  await page.insert('Show me the files too');
+  await page.press('Enter');
   await page.until(() =>
     window.model.agent
       .messages('cone-sliccy')
-      .some((message) => message.role === 'user' && message.mode === 'steer')
+      .some((message) => message.role === 'user' && message.delivered === 'steer')
   );
   await page.until(
     () =>
       window.model.agent.busy('cone-sliccy') === false &&
       window.model.agent.queue('cone-sliccy').length === 0
   );
+  const tags = await page.evaluate(() =>
+    [
+      ...window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat')
+        .shadowRoot.querySelectorAll('article.user[data-delivered] .tag'),
+    ].map((tag) => tag.textContent)
+  );
+  assert.deepEqual([...new Set(tags)].sort(), ['follow-up', 'steered']);
+  await shot(page, 'composer-delivered');
 
   await page.press('ArrowUp');
   await page.until(
