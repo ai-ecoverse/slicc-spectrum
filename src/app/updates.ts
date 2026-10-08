@@ -282,7 +282,7 @@ export class SliccUpdates extends ModelElement {
       (action) =>
         html`<swc-button
           size="m"
-          variant="accent"
+          variant="secondary"
           data-action=${action}
           accessible-label=${`${actions[action]}: ${item.label}`}
           ?pending=${busy}
