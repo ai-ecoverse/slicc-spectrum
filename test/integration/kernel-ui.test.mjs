@@ -133,6 +133,7 @@ test('moving or floating a terminal panel keeps its bash session', async (t) => 
       window.$('slicc-app', 'slicc-dock').api.getPanel('terminal:term-1').api.location.type ===
       'floating'
   );
+  await page.until(() => window.screen().split('\n').includes('slicc:/tmp$ echo "x=$X"'));
   await page.evaluate(() => window.terminal().focus());
   await page.type('echo "still $X in $(pwd)"');
   await page.press('Enter');
