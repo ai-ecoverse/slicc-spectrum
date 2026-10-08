@@ -3,6 +3,7 @@ import { repeat } from 'lit/directives/repeat.js';
 import type { SliccModel, TerminalInfo } from '../model/types.ts';
 import type { SliccTerminal } from '../slicc-terminal.ts';
 import { shared, ThemedElement } from './base.ts';
+import { confirm } from './confirm.ts';
 import { panelCss } from './files.ts';
 
 export function deepActive(root: Document | ShadowRoot): HTMLElement | null {
@@ -159,6 +160,12 @@ export class SliccTerminals extends ThemedElement {
     this.model?.terminals.close(id);
   }
 
+  async #ask(info: TerminalInfo): Promise<void> {
+    const body = "The shell and anything running in it stop. You can't undo this.";
+    if (await confirm({ title: `Close ${info.title}?`, body, action: 'Close' }))
+      this.close(info.id);
+  }
+
   #keydown(event: KeyboardEvent): void {
     const ids = (this.model?.terminals.list() ?? []).map((terminal) => terminal.id);
     const index = ids.indexOf(this.active);
@@ -189,7 +196,7 @@ export class SliccTerminals extends ThemedElement {
         aria-label=${`Close ${info.title}`}
         @click=${(event: Event) => {
           event.stopPropagation();
-          this.close(info.id);
+          void this.#ask(info);
         }}
         >×</span
       >

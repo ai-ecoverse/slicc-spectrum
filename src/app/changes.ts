@@ -1,6 +1,7 @@
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Change, SliccModel } from '../model/types.ts';
 import { ModelElement, shared, ThemedElement } from './base.ts';
+import { confirm } from './confirm.ts';
 import { agentName, basename, letters, panelCss, request } from './files.ts';
 
 function folder(path: string): string {
@@ -73,13 +74,19 @@ export class SliccChanges extends ModelElement {
     this.model?.files.accept(path);
   }
 
-  #revert(event: Event, path: string): void {
+  async #revert(event: Event, path: string): Promise<void> {
     event.stopPropagation();
-    void this.model?.files.revert(path);
+    const body = `This discards the agent's edits to ${path}. You can't undo this.`;
+    if (await confirm({ title: `Revert ${basename(path)}?`, body, action: 'Revert' }))
+      await this.model?.files.revert(path);
   }
 
-  #all(action: 'accept' | 'revert'): void {
+  async #all(action: 'accept' | 'revert'): Promise<void> {
     const files = this.model?.files;
+    const count = files?.changes().length;
+    const title = `Revert ${count} ${count === 1 ? 'change' : 'changes'}?`;
+    const body = "This discards the agents' edits and puts every file back. You can't undo this.";
+    if (action === 'revert' && !(await confirm({ title, body, action: 'Revert all' }))) return;
     for (const change of files?.changes() ?? []) {
       if (action === 'accept') files?.accept(change.path);
       else void files?.revert(change.path);

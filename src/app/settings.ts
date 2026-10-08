@@ -4,6 +4,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Account, Settings, SliccModel } from '../model/types.ts';
 import { ModelElement } from './base.ts';
+import { confirm } from './confirm.ts';
 
 const accountStatus = {
   connected: ['positive', 'Connected'],
@@ -243,6 +244,12 @@ export class SliccSettings extends ModelElement {
       </form>`;
   }
 
+  async #disconnect(account: Account): Promise<void> {
+    const body = `Agents can't use ${account.provider} until you connect it again.`;
+    if (await confirm({ title: `Disconnect ${account.provider}?`, body, action: 'Disconnect' }))
+      this.model?.settings.disconnect(account.id);
+  }
+
   #action(account: Account): TemplateResult {
     if (account.status === 'connected') {
       return html`<swc-button
@@ -250,7 +257,7 @@ export class SliccSettings extends ModelElement {
         variant="secondary"
         data-action="disconnect"
         accessible-label=${`Disconnect ${account.provider}`}
-        @click=${() => this.model?.settings.disconnect(account.id)}
+        @click=${() => this.#disconnect(account)}
       >Disconnect</swc-button>`;
     }
     const label = account.status === 'expired' ? 'Reconnect' : 'Connect';

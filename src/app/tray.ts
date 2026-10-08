@@ -1,6 +1,7 @@
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { SliccModel, TrayConnection } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
+import { confirm } from './confirm.ts';
 
 export const connectionVariant: Record<TrayConnection, string> = {
   live: 'positive',
@@ -127,6 +128,12 @@ export class SliccTray extends ModelElement {
     }
   };
 
+  async #disconnect(name: string): Promise<void> {
+    const body = 'This SLICC stops syncing with the tray until you reconnect.';
+    if (await confirm({ title: `Disconnect from ${name}?`, body, action: 'Disconnect' }))
+      this.model?.tray.disconnect();
+  }
+
   async copy(): Promise<void> {
     const url = this.model?.tray.status().joinUrl ?? '';
     await globalThis.navigator?.clipboard?.writeText(url).catch(() => {});
@@ -175,7 +182,7 @@ export class SliccTray extends ModelElement {
                 ${
                   status.connection === 'offline'
                     ? html`<sp-action-button size="s" quiet @click=${() => model.tray.reconnect()}>Reconnect</sp-action-button>`
-                    : html`<sp-action-button size="s" quiet @click=${() => model.tray.disconnect()}>Disconnect</sp-action-button>`
+                    : html`<sp-action-button size="s" quiet @click=${() => this.#disconnect(status.name)}>Disconnect</sp-action-button>`
                 }
               </div>
             </div>`

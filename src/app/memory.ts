@@ -1,6 +1,7 @@
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Memory, MemoryTag, SliccModel } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
+import { confirm } from './confirm.ts';
 import { panelCss } from './files.ts';
 import { markdown } from './markdown.ts';
 
@@ -190,6 +191,12 @@ export class SliccMemory extends ModelElement {
     </div>`;
   }
 
+  async #forget(memory: Memory): Promise<void> {
+    const body = "Agents won't remember this anymore. You can't undo this.";
+    if (await confirm({ title: `Forget “${memory.title}”?`, body, action: 'Forget' }))
+      this.model?.memory.remove(memory.id);
+  }
+
   #row(memory: Memory): TemplateResult {
     if (this.editing === memory.id)
       return html`<div class="row" data-id=${memory.id}>${this.#form(memory)}</div>`;
@@ -205,7 +212,7 @@ export class SliccMemory extends ModelElement {
           ? html`<div class="body">${markdown(memory.body)}</div>
             <div class="actions">
               <sp-action-button size="s" quiet @click=${() => (this.editing = memory.id)}>Edit</sp-action-button>
-              <sp-action-button size="s" quiet @click=${() => this.model?.memory.remove(memory.id)}>Forget</sp-action-button>
+              <sp-action-button size="s" quiet @click=${() => this.#forget(memory)}>Forget</sp-action-button>
             </div>`
           : nothing
       }
