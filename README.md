@@ -188,7 +188,7 @@ app.surfaces = surfaces.filter((item) => item.id === 'files' || item.id === 'ter
 app.model = createKernelModel({ kernel, root, storage: localStorage, files: { skip: ['/node_modules'] } });
 ```
 
-- **`KernelFiles`** lists the OPFS root as the tree, reads and writes files through the OPFS API, and removes them recursively. Directories in `skip` show up but aren't scanned. `start()` rescans on every `FileSystemObserver` record, or every `interval` ms (default 2000) where the browser can't observe OPFS, and emits `files` and a `file` per changed file, so open tabs follow what the terminal writes. Without an agent there are no pending changes.
+- **`KernelFiles`** lists the OPFS root as the tree, reads and writes files through the OPFS API, and removes them recursively. Directories in `skip` show up but aren't scanned; paths in `hide` (and everything under them) don't show up at all. `start()` rescans on every `FileSystemObserver` record, or every `interval` ms (default 2000) where the browser can't observe OPFS, and emits `files` and a `file` per changed file, so open tabs follow what the terminal writes. Without an agent there are no pending changes.
 - **`KernelTerminals`** opens `bash -i` (or `argv`) in `cwd` (default `/home`) through `kernelBackend`, one session per terminal, as many as the user opens. `open` (default 1) is how many it starts with.
 - Everything else is idle (`IdleAgent`, `IdleBrowser`, `IdleMemory`, `IdleMonitor`, `IdleSprinkles`, `IdleTray`, from `idleModel(storage)`): empty lists, and actions that need a backend throw. Settings are kept in `storage`. Leave their surfaces out of `surfaces`.
 
