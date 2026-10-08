@@ -516,7 +516,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
 
   freeze(agentId: string): void {
     const agent = this.#agent(agentId);
-    if (agent?.kind !== 'cone') return;
+    if (agent?.kind !== 'cone' || agent.frozen) return;
     this.stop(agentId);
     const family = this.#agents.filter(
       (candidate) => candidate.id === agentId || candidate.parentId === agentId

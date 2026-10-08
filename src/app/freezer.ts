@@ -103,7 +103,7 @@ export class SliccFreezer extends ModelElement {
     return html`<div class="bar">
         <span>${cones.length} frozen ${cones.length === 1 ? 'cone' : 'cones'}</span><span class="spacer"></span>
         ${
-          active?.kind === 'cone'
+          active?.kind === 'cone' && !active.frozen
             ? html`<swc-action-button size="s" quiet @click=${() => model?.agent.freeze(active.id)}>Freeze ${active.name}</swc-action-button>`
             : ''
         }
