@@ -2152,6 +2152,10 @@ test('status notices show under the header and collapse when hidden', async (t) 
   const page = await open(t);
   const height = () => window.$('slicc-app', '.notices').getBoundingClientRect().height;
   assert.equal(await page.evaluate(height), 0);
+  assert.equal(
+    await page.evaluate(() => window.$('slicc-app', '.notices').getAttribute('role')),
+    'status'
+  );
   await page.evaluate(() => {
     const style = document.createElement('style');
     style.textContent = 'slicc-app > [slot="status"] { color: rgb(1, 2, 3); }';

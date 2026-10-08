@@ -689,7 +689,7 @@ export class SliccApp extends ThemedElement {
           }
           ${this.#headerButton('theme', color === 'dark' ? 'Switch to light theme' : 'Switch to dark theme', html`<swc-icon-contrast slot="icon"></swc-icon-contrast>`, () => this.toggleColor())}
         </header>
-        <div class="notices"><slot name="status"></slot></div>
+        <div class="notices" role="status"><slot name="status"></slot></div>
         <main>
           ${rails.left}
           <slicc-dock empty-text="All panels are closed. Open one from a rail or View." @layout-change=${this.#save}
