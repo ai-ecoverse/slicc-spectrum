@@ -843,6 +843,22 @@ test('settings change the theme and the composer, and connect accounts', async (
       'disconnected'
   );
   await shot(page, 'settings-dark');
+
+  for (const width of [640, 420]) {
+    await page.evaluate((px) => {
+      window.settingsPart('.page').getRootNode().host.style.width = `${px}px`;
+    }, width);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const overflow = await page.evaluate(() => {
+      const host = window.settingsPart('.page').getRootNode().host;
+      const edge = host.getBoundingClientRect().right;
+      return [...host.shadowRoot.querySelectorAll('sp-picker, sp-switch, .account sp-button')]
+        .filter((element) => element.getBoundingClientRect().right > edge + 0.5)
+        .map((element) => element.getAttribute('label') ?? element.textContent.trim());
+    });
+    assert.deepEqual(overflow, [], `at ${width}px`);
+  }
+  await shot(page, 'settings-narrow');
   assert.deepEqual(page.errors, []);
 });
 
