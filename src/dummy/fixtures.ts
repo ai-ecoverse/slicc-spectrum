@@ -490,6 +490,7 @@ export const conversations: Record<string, Message[]> = {
             output: 'Replaced 1 block (4 lines → 7 lines), added dayOf()',
             status: 'done',
             paths: ['/workspace/harbor/src/lib/cache.ts'],
+            diff: { before: cacheBefore, after: cacheAfter },
           },
         },
         {
@@ -499,6 +500,7 @@ export const conversations: Record<string, Message[]> = {
             name: 'bash',
             title: 'Run the tests',
             input: 'npm test',
+            meta: 'timeout 120s',
             output:
               '> harbor@0.0.0 test\n> node --test test/\n\n✔ converts both ways (0.6ms)\n✔ expires entries from the previous day (0.4ms)\nℹ tests 2\nℹ pass 2\nℹ fail 0',
             status: 'done',

@@ -77,7 +77,14 @@ export function size(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function tool(call: ToolCall): TemplateResult {
+function body(call: ToolCall, color: 'light' | 'dark'): TemplateResult {
+  if (call.diff) {
+    return html`<slicc-diff-view class="input" path=${call.paths[0] ?? call.title} color=${color} .oldText=${call.diff.before} .newText=${call.diff.after}></slicc-diff-view>`;
+  }
+  return html`<pre class="input">${call.name === 'bash' ? `$ ${call.input}` : call.input}</pre>`;
+}
+
+export function tool(call: ToolCall, color: 'light' | 'dark' = 'light'): TemplateResult {
   const state =
     call.status === 'running'
       ? html`<sp-progress-circle size="s" indeterminate label="Running"></sp-progress-circle>`
@@ -87,15 +94,16 @@ export function tool(call: ToolCall): TemplateResult {
       <span class="chevron" aria-hidden="true">▸</span>
       <span class="name">${call.name}</span>
       <span class="title">${call.title}</span>
+      ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
       ${state}
     </summary>
-    <pre class="input">${call.name === 'bash' ? `$ ${call.input}` : call.input}</pre>
+    ${body(call, color)}
     ${call.output ? html`<pre class="output">${call.output}</pre>` : nothing}
     ${call.image ? html`<img class="shot" src=${call.image} alt=${call.title} />` : nothing}
   </details>`;
 }
 
-function cluster(calls: ToolCall[], open: boolean): TemplateResult {
+function cluster(calls: ToolCall[], open: boolean, color: 'light' | 'dark'): TemplateResult {
   const failed = calls.filter((call) => call.status === 'error').length;
   const running = calls.some((call) => call.status === 'running');
   return html`<details class="cluster" ?open=${open || running}>
@@ -105,7 +113,7 @@ function cluster(calls: ToolCall[], open: boolean): TemplateResult {
       <span class="names">${[...new Set(calls.map((call) => call.name))].join(' · ')}</span>
       ${failed ? html`<span class="state failed">${failed} failed</span>` : nothing}
     </summary>
-    ${calls.map(tool)}
+    ${calls.map((call) => tool(call, color))}
   </details>`;
 }
 
@@ -195,7 +203,7 @@ function part(
     case 'thinking':
       return showThinking ? html`<div class="thinking">${entry.text}</div>` : nothing;
     case 'tool':
-      return tool(entry.tool);
+      return tool(entry.tool, handlers.color);
     case 'media':
       return media(entry.items);
     case 'card':
@@ -242,7 +250,7 @@ export function parts(
       const calls = entries
         .slice(i, end)
         .map((entry) => (entry as Extract<MessagePart, { type: 'tool' }>).tool);
-      out.push(cluster(calls, streaming && end === entries.length));
+      out.push(cluster(calls, streaming && end === entries.length, handlers.color));
       i = end;
     } else {
       out.push(part(entries[i], handlers, showThinking));
@@ -306,10 +314,13 @@ export function assistant(
   </article>`;
 }
 
-export function toolMessage(message: ToolMessage): TemplateResult {
+export function toolMessage(
+  message: ToolMessage,
+  color: 'light' | 'dark' = 'light'
+): TemplateResult {
   return html`<article class="message tool-message" data-id=${message.id}>
     <div class="meta"><span class="who">Tool</span><span>${time(message.createdAt)}</span></div>
-    ${tool(message.tool)}
+    ${tool(message.tool, color)}
   </article>`;
 }
 
@@ -607,6 +618,17 @@ export const messageCss = css`
   .tool[data-status='error'] > summary .state,
   .state.failed {
     color: var(--spectrum-negative-visual-color);
+  }
+  .tool-meta {
+    flex: none;
+    color: var(--spectrum-neutral-subdued-content-color-default);
+    font-size: var(--spectrum-font-size-50);
+  }
+  .tool > slicc-diff-view {
+    display: block;
+    margin: 0 8px 8px;
+    max-height: 240px;
+    overflow: auto;
   }
   .tool pre,
   .lick pre {

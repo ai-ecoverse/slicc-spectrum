@@ -30,6 +30,8 @@ export interface ToolCall {
   image?: string;
   agentId?: string;
   pid?: number;
+  meta?: string;
+  diff?: { before: string; after: string };
 }
 
 export type AttachmentKind = 'image' | 'text' | 'file' | 'secret';
