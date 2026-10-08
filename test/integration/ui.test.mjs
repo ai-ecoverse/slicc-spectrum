@@ -2265,3 +2265,32 @@ test('chat stays pinned to the bottom while content grows after render', async (
   assert.equal(result.reading, 0);
   assert.ok(result.back <= 1, JSON.stringify(result));
 });
+
+test('the file tree follows the app theme, not the system one', async (t) => {
+  const page = await open(t, { color: 'dark' });
+  await page.evaluate(() => window.$('slicc-app', '.rail.left [data-surface=files]').click());
+  await page.until(() => !!window.row('workspace/harbor/src/lib/units.ts'));
+  const theme = () => {
+    const tree = window.row('workspace/harbor/src/lib/units.ts').getRootNode().host;
+    const light = (color) => {
+      const [r, g, b] = color.match(/\d+/g).map(Number);
+      return (r + g + b) / 3 > 128;
+    };
+    const search = tree.shadowRoot.querySelector('input');
+    return [
+      matchMedia('(prefers-color-scheme: dark)').matches,
+      getComputedStyle(tree).colorScheme,
+      light(getComputedStyle(window.row('workspace/harbor/src/lib/units.ts')).color),
+      light(getComputedStyle(search).backgroundColor),
+    ];
+  };
+  assert.deepEqual(await page.evaluate(theme), [false, 'dark', true, false]);
+  await shot(page, 'tree-dark');
+  await page.evaluate(() => window.$('slicc-app', 'header swc-action-button#theme').click());
+  await page.until(
+    () =>
+      getComputedStyle(window.row('workspace/harbor/src/lib/units.ts').getRootNode().host)
+        .colorScheme === 'light'
+  );
+  assert.deepEqual(page.errors, []);
+});
