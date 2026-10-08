@@ -95,7 +95,7 @@ export interface Question {
 
 export type DelegationKind = 'feed' | 'scoop' | 'drop' | 'sprinkle';
 
-export type ErrorAction = 'retry' | 'settings' | 'change-model' | 'login';
+export type ErrorAction = 'retry' | 'settings' | 'change-model' | 'login' | 'drop-turn';
 
 export interface CheckItem {
   text: string;
@@ -250,6 +250,7 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   freeze(agentId: string): void;
   thaw(id: string): Agent | null;
   discard(id: string): void;
+  rewind?(agentId: string, messageId: string): Promise<Outgoing | null>;
 }
 
 export interface SlashCommand {
