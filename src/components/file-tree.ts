@@ -10,19 +10,19 @@ const css = `
   height: 100%;
   min-height: 0;
   --trees-bg-override: transparent;
-  --trees-fg-override: var(--spectrum-neutral-content-color-default, #292929);
-  --trees-fg-muted-override: var(--spectrum-neutral-subdued-content-color-default, #505050);
-  --trees-accent-override: var(--spectrum-accent-visual-color, #4b75ff);
-  --trees-border-color-override: var(--spectrum-gray-200, #e1e1e1);
-  --trees-selected-bg-override: color-mix(in srgb, var(--spectrum-accent-visual-color, #4b75ff) 14%, transparent);
-  --trees-selected-fg-override: var(--spectrum-neutral-content-color-default, #292929);
-  --trees-focus-ring-color-override: var(--spectrum-focus-indicator-color, #4b75ff);
-  --trees-font-family-override: var(--spectrum-sans-font-family-stack, system-ui, sans-serif);
-  --trees-font-size-override: var(--spectrum-font-size-75, 12px);
-  --trees-search-bg-override: var(--spectrum-background-layer-2-color, #fff);
-  --trees-git-added-color-override: var(--spectrum-positive-visual-color, #079355);
-  --trees-git-modified-color-override: var(--spectrum-notice-visual-color, #d45b00);
-  --trees-git-deleted-color-override: var(--spectrum-negative-visual-color, #f03823);
+  --trees-fg-override: var(--swc-neutral-content-color-default);
+  --trees-fg-muted-override: var(--swc-neutral-subdued-content-color-default);
+  --trees-accent-override: var(--swc-accent-visual-color);
+  --trees-border-color-override: var(--swc-gray-200);
+  --trees-selected-bg-override: var(--swc-accent-subtle-background-color-default);
+  --trees-selected-fg-override: var(--swc-neutral-content-color-default);
+  --trees-focus-ring-color-override: var(--swc-focus-indicator-color);
+  --trees-font-family-override: var(--swc-sans-font-family-stack);
+  --trees-font-size-override: var(--swc-font-size-75);
+  --trees-search-bg-override: var(--swc-background-layer-2-color);
+  --trees-git-added-color-override: var(--swc-positive-color-1000);
+  --trees-git-modified-color-override: var(--swc-notice-color-1000);
+  --trees-git-deleted-color-override: var(--swc-negative-color-1000);
 }
 
 .mount {

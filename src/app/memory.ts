@@ -1,3 +1,7 @@
+import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
+import '@adobe/spectrum-wc/components/badge/swc-badge.js';
+import '@adobe/spectrum-wc/components/button/swc-button.js';
+import '@adobe/spectrum-wc-icons/swc-icon-delete.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Memory, MemoryTag, SliccModel } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
@@ -21,6 +25,12 @@ export function visible(
       (!needle || `${memory.title} ${memory.body} ${memory.section}`.toLowerCase().includes(needle))
   );
 }
+
+export const tagBadges: Record<MemoryTag, { label: string; variant: string }> = {
+  user: { label: 'User', variant: 'fuchsia' },
+  feedback: { label: 'Feedback', variant: 'seafoam' },
+  project: { label: 'Project', variant: 'indigo' },
+};
 
 export function sections(memories: readonly Memory[]): Array<[string, Memory[]]> {
   const groups = new Map<string, Memory[]>();
@@ -60,10 +70,10 @@ export class SliccMemory extends ModelElement {
       .tools {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
+        gap: var(--swc-spacing-100);
         align-items: center;
-        padding: 6px 8px;
-        border-bottom: 1px solid var(--spectrum-gray-200);
+        padding: var(--swc-spacing-100);
+        border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
       }
       sp-search {
         flex: 1;
@@ -73,75 +83,83 @@ export class SliccMemory extends ModelElement {
         flex: 1;
         min-height: 0;
         overflow-y: auto;
-        padding: 4px 8px 12px;
+        padding: var(--swc-spacing-75) var(--swc-spacing-100) var(--swc-spacing-200);
       }
       h3 {
-        font-size: var(--spectrum-font-size-50);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--spectrum-neutral-subdued-content-color-default);
-        margin: 10px 4px 4px;
+        font-size: var(--swc-font-size-100);
+        font-weight: var(--swc-bold-font-weight);
+        color: var(--swc-neutral-content-color-default);
+        margin: var(--swc-spacing-200) var(--swc-spacing-75) var(--swc-spacing-75);
       }
       .row {
-        border: 1px solid var(--spectrum-gray-200);
-        border-radius: var(--spectrum-corner-radius-75);
-        margin: 4px 0;
-        background: var(--spectrum-background-layer-1-color);
+        border-radius: var(--swc-corner-radius-medium-default);
+        margin: var(--swc-spacing-75) 0;
+        background: var(--swc-background-layer-1-color);
       }
       .head {
         all: unset;
         box-sizing: border-box;
-        display: flex;
-        gap: 8px;
-        align-items: baseline;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: var(--swc-spacing-50) var(--swc-spacing-100);
+        align-items: start;
         width: 100%;
-        padding: 5px 8px;
+        padding: var(--swc-spacing-100) var(--swc-spacing-200);
+        border-radius: var(--swc-corner-radius-medium-default);
         cursor: pointer;
       }
-      .head:focus-visible {
-        outline: 2px solid var(--spectrum-focus-indicator-color);
-        outline-offset: -2px;
+      .head:hover {
+        background: var(--swc-gray-100);
       }
-      .head strong {
-        flex: none;
+      .head:focus-visible {
+        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+        outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
+      }
+      .title,
+      .summary {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+      }
+      .title {
+        font-weight: var(--swc-bold-font-weight);
+        line-height: var(--swc-line-height-100);
       }
       .summary {
-        flex: 1;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        color: var(--spectrum-neutral-subdued-content-color-default);
+        grid-column: 1 / -1;
+        color: var(--swc-neutral-subdued-content-color-default);
+        line-height: var(--swc-line-height-100);
       }
-      .tag {
-        flex: none;
-        font-size: var(--spectrum-font-size-50);
-        border-radius: 3px;
-        padding: 0 5px;
-        background: var(--spectrum-gray-200);
+      swc-badge {
+        justify-self: end;
       }
       .body {
-        padding: 0 10px 8px;
+        padding: 0 var(--swc-spacing-200) var(--swc-spacing-100);
       }
       .body p {
-        margin: 4px 0;
+        margin: var(--swc-spacing-75) 0;
       }
       .actions {
         display: flex;
-        gap: 4px;
-        padding: 0 6px 6px;
+        gap: var(--swc-spacing-75);
+        padding: 0 var(--swc-spacing-100) var(--swc-spacing-100);
       }
       .editor {
         display: grid;
-        gap: 6px;
-        padding: 8px;
+        gap: var(--swc-spacing-100);
+        padding: var(--swc-spacing-100);
       }
       .editor sp-textfield {
         width: 100%;
       }
+      .editor .actions {
+        padding: 0;
+      }
       code {
-        font-family: var(--spectrum-code-font-family-stack, monospace);
-        font-size: var(--spectrum-font-size-75);
+        font-family: var(--swc-code-font-family-stack);
+        font-size: var(--swc-code-size-xs);
       }
     `,
   ];
@@ -185,8 +203,8 @@ export class SliccMemory extends ModelElement {
       </sp-picker>
       <sp-textfield size="s" name="body" multiline grows label="Memory" placeholder="What to remember" .value=${memory.body ?? ''}></sp-textfield>
       <div class="actions">
-        <sp-button size="s" variant="accent" @click=${() => this.#save(memory)}>Save</sp-button>
-        <sp-button size="s" variant="secondary" treatment="outline" @click=${() => (this.editing = null)}>Cancel</sp-button>
+        <swc-button size="s" variant="accent" @click=${() => this.#save(memory)}>Save</swc-button>
+        <swc-button size="s" variant="secondary" fill-style="outline" @click=${() => (this.editing = null)}>Cancel</swc-button>
       </div>
     </div>`;
   }
@@ -203,16 +221,20 @@ export class SliccMemory extends ModelElement {
     const open = this.open === memory.id;
     return html`<div class="row" data-id=${memory.id}>
       <button class="head" aria-expanded=${open ? 'true' : 'false'} @click=${() => (this.open = open ? null : memory.id)}>
-        <strong>${memory.title}</strong>
-        <span class="summary">${memory.body}</span>
-        ${memory.tag ? html`<span class="tag">${memory.tag}</span>` : nothing}
+        <span class="title">${memory.title}</span>
+        ${memory.tag ? html`<swc-badge size="s" variant=${tagBadges[memory.tag].variant}>${tagBadges[memory.tag].label}</swc-badge>` : nothing}
+        ${open ? nothing : html`<span class="summary">${memory.body}</span>`}
       </button>
       ${
         open
           ? html`<div class="body">${markdown(memory.body)}</div>
             <div class="actions">
-              <sp-action-button size="s" quiet @click=${() => (this.editing = memory.id)}>Edit</sp-action-button>
-              <sp-action-button size="s" quiet @click=${() => this.#forget(memory)}>Forget</sp-action-button>
+              <swc-action-button size="s" quiet @click=${() => (this.editing = memory.id)}>
+                <swc-icon-edit slot="icon"></swc-icon-edit>Edit
+              </swc-action-button>
+              <swc-action-button size="s" quiet @click=${() => this.#forget(memory)}>
+                <swc-icon-delete slot="icon"></swc-icon-delete>Forget
+              </swc-action-button>
             </div>`
           : nothing
       }
@@ -225,7 +247,7 @@ export class SliccMemory extends ModelElement {
     const shown = visible(all, this.scope, this.tag, this.query);
     const cones = (model?.agent.list() ?? []).filter((agent) => agent.kind === 'cone');
     return html`<div class="bar"><span>${shown.length} of ${all.filter((memory) => memory.scope === this.scope).length} memories</span><span class="spacer"></span>
-        <sp-action-button size="s" quiet @click=${() => (this.editing = 'new')}><swc-icon-add slot="icon"></swc-icon-add>Remember</sp-action-button>
+        <swc-action-button size="s" quiet @click=${() => (this.editing = 'new')}><swc-icon-add slot="icon"></swc-icon-add>Remember</swc-action-button>
       </div>
       <div class="tools">
         <sp-search size="s" label="Search memories" placeholder="Search memories" .value=${this.query} @input=${(event: Event) => (this.query = (event.target as HTMLInputElement).value)} @submit=${(event: Event) => event.preventDefault()}></sp-search>
