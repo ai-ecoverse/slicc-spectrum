@@ -173,7 +173,7 @@ export class SliccChat extends ThemedElement {
       case 'user':
         return user(message);
       case 'tool':
-        return toolMessage(message);
+        return toolMessage(message, this.#handlers.color);
       case 'system':
         return system(message, this.#handlers);
       default:

@@ -984,6 +984,61 @@ test('terminal and browser in dark', async (t) => {
 
 const chat = (...path) => window.$('slicc-app', 'slicc-dock', 'slicc-chat', ...path);
 
+test('tool cards show the command, its timeout, and an edit as a diff', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.model.agent.select('cone-harbor'));
+  await page.until(() =>
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat')?.shadowRoot?.querySelector('details.cluster')
+  );
+  const cards = await page.evaluate(async () => {
+    const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot;
+    const cluster = root.querySelector('details.cluster');
+    cluster.open = true;
+    const all = [...cluster.querySelectorAll('details.tool')];
+    for (const card of all) card.open = true;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    for (const card of all) card.open = card.dataset.tool !== 'read_file';
+    return [...cluster.querySelectorAll('details.tool')].map((card) => ({
+      name: card.dataset.tool,
+      meta: card.querySelector('.tool-meta')?.textContent ?? null,
+      input: card.querySelector('pre.input')?.textContent ?? null,
+      diff: card.querySelector('slicc-diff-view')?.getAttribute('path') ?? null,
+    }));
+  });
+  assert.deepEqual(
+    cards.find((card) => card.input === '$ npm test'),
+    { name: 'bash', meta: 'timeout 120s', input: '$ npm test', diff: null }
+  );
+  assert.deepEqual(
+    cards.find((card) => card.name === 'edit_file'),
+    { name: 'edit_file', meta: null, input: null, diff: '/workspace/harbor/src/lib/cache.ts' }
+  );
+  await page.until(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat')
+      .shadowRoot.querySelector('details.tool slicc-diff-view')
+      ?.shadowRoot?.querySelector('diffs-container')
+      ?.shadowRoot?.textContent.includes('dayOf')
+  );
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat')
+      .shadowRoot.querySelector('details.tool[data-tool="edit_file"]')
+      .scrollIntoView({ block: 'start' })
+  );
+  await shot(page, 'tool-cards-light');
+  await page.evaluate(() => window.model.settings.update({ color: 'dark' }));
+  await page.until(
+    () =>
+      window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat')
+        .shadowRoot.querySelector('details.tool slicc-diff-view')
+        ?.getAttribute('color') === 'dark'
+  );
+  await shot(page, 'tool-cards-dark');
+  assert.deepEqual(page.errors, []);
+});
+
 test('the kitchen sink shows every kind of message, content and lick', async (t) => {
   const page = await open(t);
   await page.evaluate(() => window.model.agent.select('cone-kitchen'));
