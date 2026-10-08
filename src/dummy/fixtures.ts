@@ -228,6 +228,35 @@ const bashrc = `export PS1='\\u@slicc:\\w\\$ '
 alias ll='ls -la'
 `;
 
+const suggestions = `${JSON.stringify(
+  [
+    {
+      id: 'sug-units',
+      kind: 'skill',
+      title: 'Unit conversions',
+      body: 'You converted Fahrenheit to Celsius by hand in three chats this week. A skill can do it for you.',
+      skill: 'unit-converter',
+      install: 'skill install unit-converter',
+    },
+    {
+      id: 'sug-notes',
+      kind: 'use-case',
+      title: 'Release notes from the week',
+      body: 'You write release notes for harbor every Friday. Let the cone draft them from the commits.',
+      prompt: 'Draft release notes for harbor from the commits since last Friday.',
+    },
+    {
+      id: 'sug-cache',
+      kind: 'tip',
+      title: 'Name your cache keys',
+      body: 'Forecast cache keys mix the city and the units. Splitting them makes stale entries easier to find.',
+    },
+  ],
+  null,
+  2
+)}
+`;
+
 export const files: Record<string, string> = {
   '/workspace/harbor/README.md': readme,
   '/workspace/harbor/package.json': pkg,
@@ -245,6 +274,7 @@ export const files: Record<string, string> = {
   '/shared/MEMORY.md': memory,
   '/shared/notes/2026-10-04-standup.md': standup,
   '/home/user/.bashrc': bashrc,
+  '/home/.gelatiere/suggestions.json': suggestions,
   '/tmp/forecast-sample.json': sample,
 };
 

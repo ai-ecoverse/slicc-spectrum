@@ -1,5 +1,5 @@
 import { css, html, type PropertyValues, svg, type TemplateResult } from 'lit';
-import type { SliccModel, Sprinkle } from '../model/types.ts';
+import type { SliccModel, Sprinkle, SprinkleMethod, SprinklePort } from '../model/types.ts';
 import { type Color, ThemedElement } from './base.ts';
 import { Dips, dipsOf, dipType } from './dips.ts';
 import { type FontFile, installedFonts } from './fonts.ts';
@@ -64,11 +64,62 @@ export const bridge = `(() => {
   post({ type: 'slicc-ready' });
 })();`;
 
-export function frameDocument(source: string, color: Color, name: string): string {
+export function literal(value: unknown): string {
+  try {
+    return JSON.stringify(value ?? null).replace(/</g, '\\u003c');
+  } catch {
+    return 'null';
+  }
+}
+
+export function store(state: unknown): string {
+  return `(() => {
+  let state = ${literal(state)};
+  const tag = Math.random().toString(36).slice(2);
+  const pending = new Map();
+  let next = 0;
+  const call = (method, args) => new Promise((resolve, reject) => {
+    const id = tag + ':' + ++next;
+    pending.set(id, { resolve, reject });
+    try {
+      parent.postMessage({ type: 'slicc-call', id, method, args }, '*');
+    } catch (error) {
+      pending.delete(id);
+      reject(error);
+    }
+  });
+  addEventListener('message', (event) => {
+    if (event.source !== parent) return;
+    const message = event.data || {};
+    const waiting = message.type === 'slicc-result' && pending.get(message.id);
+    if (!waiting) return;
+    pending.delete(message.id);
+    if (typeof message.error === 'string') waiting.reject(new Error(message.error));
+    else waiting.resolve(message.value);
+  });
+  Object.assign(window.slicc, {
+    readFile: (path) => call('readFile', [path]),
+    exists: (path) => call('exists', [path]),
+    getState: () => state,
+    setState(value) {
+      state = value === undefined ? null : value;
+      return call('setState', [state]).then(() => undefined);
+    },
+  });
+})();`;
+}
+
+export function frameDocument(
+  source: string,
+  color: Color,
+  name: string,
+  state?: { value: unknown }
+): string {
   const scheme = `<style>${sprinkleTokens}${theme}</style>`;
   const light = `<script>document.documentElement.classList.toggle('theme-light', ${color === 'light'});</script>`;
   const script = `<script data-name="${name.replace(/"/g, '&quot;')}">${bridge}</script>`;
-  const injection = light + scheme + script;
+  const injection =
+    light + scheme + script + (state ? `<script>${store(state.value)}</script>` : '');
   const head = source.match(/<head\b[^>]*>/i);
   if (!head || head.index === undefined) return injection + source;
   const at = head.index + head[0].length;
@@ -113,7 +164,17 @@ interface FrameMessage {
   target?: string | null;
   names?: unknown;
   height?: unknown;
+  id?: unknown;
+  method?: unknown;
+  args?: unknown;
 }
+
+export const sprinkleMethods: ReadonlySet<string> = new Set<SprinkleMethod>([
+  'readFile',
+  'exists',
+  'getState',
+  'setState',
+]);
 
 const grip = svg`<svg class="grip" viewBox="0 0 8 14" width="8" height="14" aria-hidden="true">${[2, 7, 12].flatMap((y) => [2, 6].map((x) => svg`<circle cx=${x} cy=${y} r="1.25"></circle>`))}</svg>`;
 
@@ -221,8 +282,51 @@ export class SliccSprinkle extends ThemedElement {
       source.postMessage({ type: 'slicc-fonts', fonts }, '*');
     } else if (data.type === 'slicc-size' && typeof data.height === 'number') {
       this.height = data.height;
+    } else if (data.type === 'slicc-call') {
+      await this.#call(source, data);
     }
   };
+
+  async #call(source: Window, data: FrameMessage): Promise<void> {
+    const port = this.model?.sprinkles;
+    if (!port?.call || typeof data.method !== 'string' || !sprinkleMethods.has(data.method)) return;
+    const method = data.method as SprinkleMethod;
+    const args = Array.isArray(data.args) ? data.args : [];
+    if (method === 'setState') this.#held.value = args[0] ?? null;
+    try {
+      const value = await port.call(this.sprinkle, method, args);
+      source.postMessage({ type: 'slicc-result', id: data.id, value }, '*');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      source.postMessage({ type: 'slicc-result', id: data.id, error: message }, '*');
+    }
+  }
+
+  #held: { port: SprinklePort | null; id: string; ready: boolean; value: unknown } = {
+    port: null,
+    id: '',
+    ready: false,
+    value: null,
+  };
+
+  #hold(port: SprinklePort, ask: NonNullable<SprinklePort['call']>, id: string): void {
+    const held = { port, id, ready: false, value: null as unknown };
+    this.#held = held;
+    this.#frame = { key: '', doc: '' };
+    const settle = (value: unknown) => {
+      held.value = value ?? null;
+      held.ready = true;
+      if (this.#held === held) this.requestUpdate();
+    };
+    ask.call(port, id, 'getState', []).then(settle, () => settle(null));
+  }
+
+  protected willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed);
+    const port = this.model?.sprinkles;
+    if (port?.call && (this.#held.port !== port || this.#held.id !== this.sprinkle))
+      this.#hold(port, port.call, this.sprinkle);
+  }
 
   #dips = new Dips();
 
@@ -258,10 +362,10 @@ export class SliccSprinkle extends ThemedElement {
 
   #frame = { key: '', doc: '' };
 
-  #document(data: Sprinkle): string {
-    const key = `${data.name}\n${data.html}`;
+  #document(data: Sprinkle, state?: { value: unknown }): string {
+    const key = `${!!state}\n${data.name}\n${data.html}`;
     if (this.#frame.key !== key)
-      this.#frame = { key, doc: frameDocument(data.html, this.color, data.name) };
+      this.#frame = { key, doc: frameDocument(data.html, this.color, data.name, state) };
     return this.#frame.doc;
   }
 
@@ -282,8 +386,11 @@ export class SliccSprinkle extends ThemedElement {
         <sp-action-button size="s" quiet @click=${() => this.#send('show-surface', `sprinkle:${data.id}`)}>Show</sp-action-button>
       </div>`;
     }
+    const bridged = !!this.model?.sprinkles.call;
+    if (bridged && !this.#held.ready) return html``;
+    const state = bridged ? this.#held : undefined;
     const style = `color-scheme:${this.color};${this.inline ? `height:${this.height}px;` : ''}`;
-    const frame = html`<iframe title=${data.title} sandbox="allow-scripts" style=${style} .srcdoc=${this.#document(data)}></iframe>`;
+    const frame = html`<iframe title=${data.title} sandbox="allow-scripts" style=${style} .srcdoc=${this.#document(data, state)}></iframe>`;
     if (!this.inline) return frame;
     return html`<div class="handle" draggable="true" title="Drag into the dock or a rail to open as a panel" @dragstart=${this.#drag}>
         ${grip}

@@ -481,9 +481,12 @@ export interface SprinkleEvents {
   sprinkles: readonly Sprinkle[];
 }
 
+export type SprinkleMethod = 'readFile' | 'exists' | 'getState' | 'setState';
+
 export interface SprinklePort extends Subscribable<SprinkleEvents> {
   list(): readonly Sprinkle[];
   send(id: string, payload: unknown): void;
+  call?(id: string, method: SprinkleMethod, args: readonly unknown[]): Promise<unknown>;
 }
 
 export type TrayConnection =

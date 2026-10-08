@@ -1993,6 +1993,129 @@ test('sprinkle frames resolve the host Gen2 tokens and follow the theme without 
   assert.deepEqual(page.errors, []);
 });
 
+test('the Suggestions sprinkle reads its stream through the bridge, and the welcome still starts', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const probe = `<script>addEventListener('message', (event) => {
+      if (event.source !== parent || event.data?.type !== 'probe-text') return;
+      parent.postMessage({ type: 'probe-text', text: document.body.innerText }, '*');
+    });</script>`;
+    const list = window.model.sprinkles.list.bind(window.model.sprinkles);
+    window.model.sprinkles.list = () =>
+      list().map((item) => ({ ...item, html: item.html.replace('</body>', `${probe}</body>`) }));
+    window.model.sprinkles.emit('sprinkles', window.model.sprinkles.list());
+    window.frameText = (element) =>
+      new Promise((resolve) => {
+        const frame = element?.shadowRoot.querySelector('iframe');
+        if (!frame) return resolve('');
+        const listen = (event) => {
+          if (event.source !== frame.contentWindow || event.data?.type !== 'probe-text') return;
+          removeEventListener('message', listen);
+          resolve(event.data.text);
+        };
+        addEventListener('message', listen);
+        frame.contentWindow.postMessage({ type: 'probe-text' }, '*');
+        setTimeout(() => resolve(''), 200);
+      });
+    window.app.show('sprinkle:suggestions');
+    return true;
+  });
+  await page.until(async () => {
+    const text = await window.frameText(
+      window.$('slicc-app', 'slicc-dock').content('sprinkle:suggestions')
+    );
+    return /Unit conversions/.test(text) && /Release notes from the week/.test(text);
+  });
+  const text = await page.evaluate(() =>
+    window.frameText(window.$('slicc-app', 'slicc-dock').content('sprinkle:suggestions'))
+  );
+  assert.match(text, /Name your cache keys/);
+  assert.match(text, /Installs with skill install unit-converter/);
+  assert.doesNotMatch(text, /Nothing here yet/);
+  await shot(page, 'sprinkle-suggestions-light');
+  await page.until(async () =>
+    /What brings you here\?/.test(
+      await window.frameText(
+        window
+          .$('slicc-app', 'slicc-dock')
+          .content('chat:cone-sliccy')
+          .shadowRoot.querySelector('slicc-sprinkle[inline]')
+      )
+    )
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('state a sprinkle saves survives closing and reopening its panel', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const keeper = `<!DOCTYPE html><html><head></head><body><script>
+      addEventListener('message', (event) => {
+        if (event.source !== parent) return;
+        const message = event.data || {};
+        if (message.type === 'keep') slicc.setState(message.value).then(() => parent.postMessage({ type: 'kept' }, '*'));
+        if (message.type === 'kept?') parent.postMessage({ type: 'kept-state', state: slicc.getState(), exec: typeof slicc.exec }, '*');
+      });
+    </script></body></html>`;
+    const list = window.model.sprinkles.list.bind(window.model.sprinkles);
+    window.model.sprinkles.list = () => [
+      ...list(),
+      {
+        id: 'keeper',
+        name: 'keeper',
+        title: 'Keeper',
+        icon: 'archive',
+        agentId: 'cone-sliccy',
+        html: keeper,
+      },
+    ];
+    window.model.sprinkles.emit('sprinkles', window.model.sprinkles.list());
+    window.ask = (type, value, answer) =>
+      new Promise((resolve) => {
+        const frame = window
+          .$('slicc-app', 'slicc-dock')
+          .content('sprinkle:keeper')
+          .shadowRoot.querySelector('iframe');
+        const timer = setInterval(() => frame.contentWindow.postMessage({ type, value }, '*'), 50);
+        const listen = (event) => {
+          if (event.source !== frame.contentWindow || event.data?.type !== answer) return;
+          clearInterval(timer);
+          removeEventListener('message', listen);
+          resolve(event.data);
+        };
+        addEventListener('message', listen);
+      });
+    window.app.show('sprinkle:keeper');
+    return true;
+  });
+  const frame = () =>
+    !!window
+      .$('slicc-app', 'slicc-dock')
+      .content('sprinkle:keeper')
+      ?.shadowRoot.querySelector('iframe');
+  await page.until(frame);
+  assert.deepEqual(await page.evaluate(() => window.ask('kept?', null, 'kept-state')), {
+    type: 'kept-state',
+    state: null,
+    exec: 'undefined',
+  });
+  const value = { count: 3, note: '</script><b>kept</b>' };
+  await page.evaluate((value) => window.ask('keep', value, 'kept'), value);
+  assert.deepEqual(
+    await page.evaluate(() => window.model.sprinkles.call('keeper', 'getState', [])),
+    value
+  );
+  await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('sprinkle:keeper'));
+  await page.until(() => !window.$('slicc-app', 'slicc-dock').has('sprinkle:keeper'));
+  await page.evaluate(() => window.app.show('sprinkle:keeper'));
+  await page.until(frame);
+  assert.deepEqual(
+    (await page.evaluate(() => window.ask('kept?', null, 'kept-state'))).state,
+    value
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('new surfaces in dark', async (t) => {
   const page = await open(t, { color: 'dark' });
   for (const id of ['memory', 'freezer', 'monitor', 'sprinkle:suggestions']) {
