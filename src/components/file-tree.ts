@@ -28,6 +28,10 @@ const css = `
 .mount {
   height: 100%;
 }
+
+file-tree-container {
+  color-scheme: inherit;
+}
 `;
 
 export class SliccFileTree extends HTMLElement {
