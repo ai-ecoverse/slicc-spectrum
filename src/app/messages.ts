@@ -220,7 +220,7 @@ function part(
       </a>`;
     default:
       return html`<div class="error-card" role="alert">
-        <span>${entry.message}</span>
+        <div class="error-text"><span class="lead">${entry.message}</span>${entry.detail ? html`<span class="detail">${entry.detail}</span>` : nothing}</div>
         ${entry.action ? html`<sp-button size="s" variant="secondary" treatment="outline" @click=${() => handlers.action(entry.action as ErrorAction)}>${actionLabels[entry.action]}</sp-button>` : nothing}
       </div>`;
   }
@@ -319,7 +319,7 @@ export function system(message: SystemMessage, handlers: Handlers): TemplateResu
     return html`<div class="notice" role="note" data-id=${message.id}><strong>${message.title}</strong> ${message.text}</div>`;
   }
   return html`<div class="error-card system-error" role="alert" data-id=${message.id}>
-    <div><strong>${message.title}</strong><span>${message.text}</span></div>
+    <div class="error-text"><strong>${message.title}</strong><span>${message.text}</span></div>
     ${message.action ? html`<sp-button size="s" variant="secondary" treatment="outline" @click=${() => handlers.action(message.action as ErrorAction)}>${actionLabels[message.action]}</sp-button>` : nothing}
   </div>`;
 }
@@ -798,8 +798,20 @@ export const messageCss = css`
     margin: 6px 0;
     font-size: var(--spectrum-font-size-75);
   }
-  .error-card div {
+  .error-card .error-text {
     display: grid;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .error-card .detail {
+    font-size: var(--spectrum-font-size-50);
+    color: var(--spectrum-neutral-subdued-content-color-default);
+  }
+  .error-card sp-button {
+    flex: none;
+    white-space: nowrap;
   }
   .marker,
   .day {
