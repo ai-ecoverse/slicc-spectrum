@@ -64,16 +64,19 @@ export class SliccNetwork extends ModelElement {
     ...ModelElement.properties,
     checking: { state: true },
     copied: { state: true },
+    uncopied: { state: true },
     error: { state: true },
   };
   declare checking: boolean;
   declare copied: boolean;
+  declare uncopied: boolean;
   declare error: string;
 
   constructor() {
     super();
     this.checking = false;
     this.copied = false;
+    this.uncopied = false;
     this.error = '';
   }
 
@@ -165,6 +168,7 @@ export class SliccNetwork extends ModelElement {
         font-family: var(--swc-code-font-family-stack);
         font-size: var(--swc-font-size-75);
         color: var(--swc-code-color);
+        user-select: all;
       }
       .swc-Link {
         font-size: inherit;
@@ -254,8 +258,14 @@ export class SliccNetwork extends ModelElement {
   }
 
   async copy(): Promise<void> {
-    await globalThis.navigator?.clipboard?.writeText(command).catch(() => {});
-    this.copied = true;
+    try {
+      await globalThis.navigator.clipboard.writeText(command);
+      this.copied = true;
+      this.uncopied = false;
+    } catch {
+      this.copied = false;
+      this.uncopied = true;
+    }
   }
 
   #state(status: NetworkStatus): TemplateResult {
@@ -293,7 +303,12 @@ export class SliccNetwork extends ModelElement {
         <swc-action-button size="s" quiet data-action="copy-command" accessible-label=${this.copied ? 'Copied' : 'Copy command'} @click=${() => this.copy()}>
           <swc-icon-copy slot="icon"></swc-icon-copy>${this.copied ? 'Copied' : 'Copy'}
         </swc-action-button>
-      </div>`;
+      </div>
+      ${
+        this.uncopied
+          ? html`<div class="error" role="alert" data-error="copy"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>Couldn’t copy. Select the command and copy it.</span></div>`
+          : nothing
+      }`;
   }
 
   #whole(status: NetworkStatus): TemplateResult {
