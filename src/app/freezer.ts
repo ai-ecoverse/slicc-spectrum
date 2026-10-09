@@ -138,14 +138,14 @@ export class SliccFreezer extends ModelElement {
     const model = this.model as SliccModel;
     const label =
       model.settings.models().find((option) => option.id === cone.model)?.label ?? cone.model;
-    const kind = cone.kind ? frozenKinds[cone.kind] : null;
+    const kind = frozenKinds[cone.kind ?? 'cone'];
     const meta = [
       `${cone.messages} ${cone.messages === 1 ? 'message' : 'messages'}`,
       ...(cone.live ? [] : [`frozen ${ago(cone.frozenAt)}`]),
       ...(cone.thawedAs ? [`thawed as ${this.#thawedAs(cone.thawedAs)}`] : []),
     ];
     return html`<div class="card" data-id=${cone.id} data-kind=${cone.kind ?? 'cone'} ?data-live=${cone.live}>
-      <div class="name">${cone.name}${kind ? html`<swc-badge size="s" variant=${kind[0]} subtle data-badge="kind">${kind[1]}</swc-badge>` : nothing}<swc-badge size="s" variant="neutral" subtle>${label}</swc-badge>${cone.live ? html`<swc-status-light size="s" variant="positive" data-live>Live</swc-status-light>` : nothing}</div>
+      <div class="name">${cone.name}<swc-badge size="s" variant=${kind[0]} subtle data-badge="kind">${kind[1]}</swc-badge><swc-badge size="s" variant="neutral" subtle>${label}</swc-badge>${cone.live ? html`<swc-status-light size="s" variant="positive" data-live>Live</swc-status-light>` : nothing}</div>
       <div class="title" title=${cone.title}>${cone.title}</div>
       <div class="meta">${meta.join(' · ')}</div>
       <div class="actions">${this.#actions(cone)}</div>
