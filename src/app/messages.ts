@@ -252,12 +252,14 @@ export function tool(call: ToolCall, color: 'light' | 'dark' = 'light'): Templat
   const kind = toolKind(call.name);
   return html`<details class="tool" data-status=${call.status} data-tool=${call.name} data-kind=${kind.id}>
     <summary>
-      <swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right>
-      <span class="kind">${kind.icon}</span>
-      <span class="title">${call.title}</span>
-      <span class="name">${call.name}</span>
-      ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
-      ${state(call.status)}
+      <span class="head">
+        <swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right>
+        <span class="kind">${kind.icon}</span>
+        <span class="title">${call.title}</span>
+        <span class="name">${call.name}</span>
+        ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
+        ${state(call.status)}
+      </span>
       ${call.image ? html`<span class="thumb"><img src=${call.image} alt="" /></span>` : nothing}
     </summary>
     <div class="call">
@@ -880,6 +882,18 @@ export const messageCss = css`
   :is(details.tool, details.cluster) > summary {
     padding-inline: var(--swc-spacing-100);
   }
+  details.tool > summary {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 0;
+  }
+  details.tool > summary > .head {
+    display: flex;
+    align-items: center;
+    gap: var(--swc-spacing-100);
+    min-inline-size: 0;
+  }
   :is(details.tool, details.cluster) > summary:hover {
     background: var(--swc-gray-100);
   }
@@ -997,13 +1011,9 @@ export const messageCss = css`
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  details.tool > summary:has(.thumb) {
-    flex-wrap: wrap;
-  }
   .thumb {
-    flex-basis: 100%;
     padding-inline-start: calc(var(--swc-spacing-100) + var(--swc-spacing-300));
-    padding-block-end: var(--swc-spacing-75);
+    padding-block: var(--swc-spacing-75);
   }
   .thumb img {
     display: block;
