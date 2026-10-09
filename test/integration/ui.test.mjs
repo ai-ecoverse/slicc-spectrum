@@ -3141,6 +3141,16 @@ test('the chat header lists chat models with their provider and starts a new cha
   await shot(page, 'before-new-chat');
   const id = await page.evaluate(() => window.model.agent.active());
   assert.ok(await page.evaluate((id) => window.model.agent.messages(id).length > 0, id));
+  const frozen = await page.evaluate(() => window.model.agent.frozen().length);
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window
+          .$('slicc-app', 'slicc-dock', 'slicc-chat')
+          .shadowRoot.querySelector('header swc-tooltip[for=new-chat]').textContent
+    ),
+    'Freeze this chat and start a new one'
+  );
   await page.evaluate(() => {
     window
       .$('slicc-app', 'slicc-dock', 'slicc-chat')
@@ -3156,6 +3166,13 @@ test('the chat header lists chat models with their provider and starts a new cha
       .hasAttribute('disabled')
   );
   await shot(page, 'after-new-chat');
+  assert.deepEqual(
+    await page.evaluate((id) => {
+      const [entry] = window.model.agent.frozen();
+      return [window.model.agent.frozen().length, entry.id.startsWith(`${id}-chat-`)];
+    }, id),
+    [frozen + 1, true]
+  );
   assert.deepEqual(page.errors, []);
 });
 

@@ -45,6 +45,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   #effects: Omit<Effects, 'agentId'>;
   #next = 1;
   #cones = 1;
+  #chats = 1;
 
   constructor(
     agents: readonly Agent[],
@@ -405,10 +406,28 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     if (!this.#messages.has(agentId)) return;
     this.#runs.get(agentId)?.steers.splice(0);
     this.stop(agentId);
+    const agent = this.#agent(agentId) as Agent;
+    const messages = this.#messages.get(agentId) as Message[];
+    if (agent.kind === 'cone' && messages.length) this.#shelve(agent, messages);
     this.#messages.set(agentId, []);
     this.#queues.set(agentId, []);
     this.#suggestions.delete(agentId);
     this.emit('messages', agentId);
+  }
+
+  #shelve(agent: Agent, messages: Message[]): void {
+    const id = `${agent.id}-chat-${this.#chats++}`;
+    const first = messages.find((message) => message.role === 'user');
+    this.#frozen.unshift({
+      id,
+      name: agent.name,
+      title: first?.role === 'user' ? first.text.slice(0, 80) : agent.name,
+      model: agent.model,
+      messages: messages.length,
+      frozenAt: Date.now(),
+    });
+    this.#ice.set(id, [{ agent: { ...agent, id, status: 'idle', unread: 0 }, messages }]);
+    this.emit('frozen', this.frozen());
   }
 
   setModel(agentId: string, model: string): void {
@@ -563,6 +582,15 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     }
     this.#ice.delete(id);
     this.#frozen = this.#frozen.filter((cone) => cone.id !== id);
+    const cone = (ice[0] as { agent: Agent }).agent;
+    const taken = (name: string) =>
+      this.#agents.some((agent) => agent.kind === 'cone' && agent.name === name);
+    if (taken(cone.name)) {
+      const base = cone.name;
+      let n = 1;
+      cone.name = `${base} (earlier)`;
+      while (taken(cone.name)) cone.name = `${base} (earlier ${++n})`;
+    }
     for (const { agent, messages } of ice) {
       this.#agents.push(agent);
       this.#messages.set(agent.id, messages);
