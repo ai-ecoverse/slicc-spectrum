@@ -6,7 +6,7 @@ import type { Change, ChangesPort, SliccModel } from '../model/types.ts';
 import { changesOf, ModelElement, shared, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import {
-  agentName,
+  author,
   basename,
   errorCss,
   failure,
@@ -30,10 +30,6 @@ function where(change: Change): string {
   if (!change.repo) return at;
   if (at === change.repo) return '';
   return at.startsWith(`${change.repo}/`) ? at.slice(change.repo.length + 1) : at;
-}
-
-export function author(model: SliccModel | null, change: Change): string | null {
-  return change.agentId === null && change.repo ? null : agentName(model, change.agentId);
 }
 
 function lost(changes: readonly Change[]): string {

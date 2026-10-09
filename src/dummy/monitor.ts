@@ -1,5 +1,6 @@
 import { Emitter } from '../model/emitter.ts';
 import type {
+  ChangesPort,
   MonitorEvents,
   MonitorPort,
   MonitorRow,
@@ -33,12 +34,14 @@ export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort 
     model.agent.on('agents', update);
     model.terminals.on('terminals', update);
     model.browser.on('tabs', update);
-    model.files.on('changes', update);
+    const changes: ChangesPort = model.changes ?? model.files;
+    changes.on('changes', update);
     model.tray.on('status', update);
   }
 
   snapshot(): MonitorSnapshot {
     const { agent, terminals, browser, files, sprinkles, tray } = this.#model;
+    const changes: ChangesPort = this.#model.changes ?? files;
     const listed = agent.list();
     const agents = listed
       .filter((candidate) => candidate.kind === 'cone')
@@ -129,9 +132,11 @@ export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort 
         {
           id: 'changes',
           label: 'Pending changes',
-          rows: files
-            .changes()
-            .map((change) => ({ name: change.path, meta: change.status, status: 'warn' as const })),
+          rows: (changes.unavailable?.() ? [] : changes.changes()).map((change) => ({
+            name: change.path,
+            meta: change.status,
+            status: 'warn' as const,
+          })),
         },
         {
           id: 'sprinkles',

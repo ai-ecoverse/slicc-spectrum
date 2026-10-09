@@ -601,7 +601,8 @@ export class SliccApp extends ThemedElement {
   }
 
   #changes(): number {
-    return this.model ? changesOf(this.model).changes().length : 0;
+    const port = this.model ? changesOf(this.model) : null;
+    return port && !port.unavailable?.() ? port.changes().length : 0;
   }
 
   #more(items: readonly Surface[]): TemplateResult | typeof nothing {

@@ -39,6 +39,10 @@ export function agentName(model: SliccModel | null, id: string | null): string {
   return model?.agent.list().find((agent) => agent.id === id)?.name ?? id;
 }
 
+export function author(model: SliccModel | null, change: Change): string | null {
+  return change.agentId === null && change.repo ? null : agentName(model, change.agentId);
+}
+
 export function request(target: EventTarget, type: 'open-file' | 'open-diff', path: string): void {
   target.dispatchEvent(new CustomEvent(type, { detail: { path }, bubbles: true, composed: true }));
 }
@@ -594,18 +598,19 @@ export class SliccFileView extends ThemedElement {
   }
 
   render(): TemplateResult {
-    const change = this.model
-      ? changesOf(this.model)
-          .changes()
-          .find((candidate) => candidate.path === this.path)
-      : undefined;
+    const port = this.model ? changesOf(this.model) : null;
+    const change =
+      port && !port.unavailable?.()
+        ? port.changes().find((candidate) => candidate.path === this.path)
+        : undefined;
+    const by = change && author(this.model, change);
     return html`<div class="bar">
         <span class="path" title=${this.path}>${this.path}</span>
         <span class="spacer"></span>
         ${
           change
             ? html`${statusMark(change.status, false)}
-              <span>${statusLabels[change.status]} by ${agentName(this.model, change.agentId)}</span>
+              <span>${by ? `${statusLabels[change.status]} by ${by}` : statusLabels[change.status]}</span>
               <swc-action-button size="s" quiet @click=${() => request(this, 'open-diff', this.path)}>
                 <swc-icon-compare slot="icon"></swc-icon-compare>Diff
               </swc-action-button>`
