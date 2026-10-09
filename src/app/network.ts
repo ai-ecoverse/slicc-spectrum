@@ -399,8 +399,13 @@ export class SliccNetwork extends ModelElement {
     }
   }
 
+  #waiting(action: string): boolean {
+    return this.busy !== '' && this.busy !== action;
+  }
+
   #submitKey(event: Event, port: NetworkPort): void {
     event.preventDefault();
+    if (this.busy) return;
     const field = (event.currentTarget as HTMLElement).querySelector(
       'sp-textfield'
     ) as HTMLElement & { value: string };
@@ -450,7 +455,7 @@ export class SliccNetwork extends ModelElement {
           ? html`<p class="muted" id="tailnet-key">Or paste an auth key:</p>
             <form class="key" data-form="auth-key" @submit=${(event: Event) => this.#submitKey(event, port)}>
               <sp-textfield size="m" type="password" autocomplete="off" label="Tailscale auth key" aria-labelledby="tailnet-key" placeholder="tskey-…" @keydown=${(event: KeyboardEvent) => this.#enterKey(event)}></sp-textfield>
-              <swc-button size="m" variant="secondary" data-action="submit-auth-key" ?pending=${this.busy === 'key'} @click=${(event: Event) => this.#sendKey(event)}>Connect</swc-button>
+              <swc-button size="m" variant="secondary" data-action="submit-auth-key" ?pending=${this.busy === 'key'} ?disabled=${this.#waiting('key')} @click=${(event: Event) => this.#sendKey(event)}>Connect</swc-button>
             </form>`
           : nothing
       }`;
@@ -472,7 +477,7 @@ export class SliccNetwork extends ModelElement {
         port.setExitNode && tailnet.exitNodes
           ? html`<div class="exit">
             <span id="exit-node">Exit node</span>
-            <sp-picker size="m" label="Exit node" aria-labelledby="exit-node" data-action="exit-node" .value=${live(exitNodeValue(tailnet))} ?pending=${this.busy === 'exit'} @change=${(event: Event) => this.#exit(event, port)}>
+            <sp-picker size="m" label="Exit node" aria-labelledby="exit-node" data-action="exit-node" .value=${live(exitNodeValue(tailnet))} ?pending=${this.busy === 'exit'} ?disabled=${this.#waiting('exit')} @change=${(event: Event) => this.#exit(event, port)}>
               <sp-menu-item value="none">None</sp-menu-item>
               <sp-menu-item value="auto">Automatic</sp-menu-item>
               ${tailnet.exitNodes.map((node) => html`<sp-menu-item value=${node.id} ?disabled=${!node.online}>${node.name}${node.online ? nothing : html`<span slot="description">Offline</span>`}</sp-menu-item>`)}
@@ -490,7 +495,7 @@ export class SliccNetwork extends ModelElement {
       }
       ${
         port.logoutTailnet
-          ? html`<div class="actions"><swc-button size="m" variant="secondary" data-action="tailnet-sign-out" ?pending=${this.busy === 'sign-out'} @click=${() => this.#signOut(port)}>Sign out</swc-button></div>`
+          ? html`<div class="actions"><swc-button size="m" variant="secondary" data-action="tailnet-sign-out" ?pending=${this.busy === 'sign-out'} ?disabled=${this.#waiting('sign-out')} @click=${() => this.#signOut(port)}>Sign out</swc-button></div>`
           : nothing
       }`;
   }
@@ -504,7 +509,7 @@ export class SliccNetwork extends ModelElement {
     return html`<div class="error" data-error="tailnet"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${tailnet.detail ?? 'Tailscale stopped.'}</span></div>
       ${
         port.check
-          ? html`<div class="actions"><swc-button size="m" variant="secondary" data-action="tailnet-retry" ?pending=${this.busy === 'retry'} @click=${() => this.#tailnet('retry', () => port.check?.())}>Retry</swc-button></div>`
+          ? html`<div class="actions"><swc-button size="m" variant="secondary" data-action="tailnet-retry" ?pending=${this.busy === 'retry'} ?disabled=${this.#waiting('retry')} @click=${() => this.#tailnet('retry', () => port.check?.())}>Retry</swc-button></div>`
           : nothing
       }`;
   }
