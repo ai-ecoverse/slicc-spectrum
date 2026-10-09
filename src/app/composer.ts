@@ -33,7 +33,12 @@ export interface Command {
   name: string;
   detail: string;
   args?(model: SliccModel): Choice[];
+  available?(model: SliccModel): boolean;
   run(model: SliccModel, agentId: string, arg: string): void;
+}
+
+export function available(model: SliccModel): Command[] {
+  return commands.filter((command) => command.available?.(model) ?? true);
 }
 
 export const commands: Command[] = [
@@ -80,7 +85,8 @@ export const commands: Command[] = [
   {
     name: 'freeze',
     detail: 'Archive this cone and its scoops in the freezer',
-    run: (model, id) => model.agent.freeze(id),
+    available: (model) => typeof model.agent.freeze === 'function',
+    run: (model, id) => model.agent.freeze?.(id),
   },
   {
     name: 'theme',
@@ -451,7 +457,7 @@ export class SliccComposer extends ModelElement {
     const attachments = this.attachments.filter((attachment) => !attachment.error);
     if (!model || (!text && attachments.length === 0)) return;
     const command = text.match(/^\/(\w+)(?:\s+(.*))?$/);
-    const known = command && commands.find((candidate) => candidate.name === command[1]);
+    const known = command && available(model).find((candidate) => candidate.name === command[1]);
     this.value = '';
     this.attachments = [];
     this.popup = null;
@@ -561,14 +567,15 @@ export class SliccComposer extends ModelElement {
   #choices(kind: PopupKind, query: string): Choice[] {
     const model = this.model as SliccModel;
     if (kind === 'command') {
-      const builtins = commands.map((command) => ({
+      const usable = available(model);
+      const builtins = usable.map((command) => ({
         value: command.name,
         label: `/${command.name}`,
         detail: command.detail,
       }));
       const own = model.agent
         .commands(this.#agent)
-        .filter((command) => !commands.some((builtin) => builtin.name === command.name))
+        .filter((command) => !usable.some((builtin) => builtin.name === command.name))
         .map((command) => ({
           value: command.name,
           label: `/${command.name}`,

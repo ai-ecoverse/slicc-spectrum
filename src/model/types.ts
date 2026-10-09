@@ -250,7 +250,7 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   ready(): Promise<void>;
   createScoop(parentId: string, name: string): Agent;
   frozen(): readonly FrozenCone[];
-  freeze(agentId: string): void;
+  freeze?(agentId: string): void;
   thaw(id: string): Agent | null;
   discard(id: string): void;
   rewind?(agentId: string, messageId: string): Promise<Outgoing | null>;
