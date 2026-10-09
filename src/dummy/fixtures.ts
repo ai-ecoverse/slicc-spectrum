@@ -323,10 +323,12 @@ export const pending: Change[] = [
 ];
 
 export const models: ModelOption[] = [
-  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', provider: 'Anthropic' },
-  { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', provider: 'Anthropic' },
-  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', provider: 'Anthropic' },
-  { id: 'local-small', label: 'Local (ort-llama)', provider: 'This browser' },
+  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', provider: 'Anthropic', images: true },
+  { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', provider: 'Anthropic', images: true },
+  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', provider: 'Anthropic', images: true },
+  { id: 'local-small', label: 'Local (ort-llama)', provider: 'This browser', images: false },
+  { id: 'local-guard', label: 'Local guard', provider: 'This browser', kind: 'classifier' },
+  { id: 'local-tiny', label: 'Local tiny (no tools)', provider: 'This browser', tools: false },
 ];
 
 export const defaults: Settings = {

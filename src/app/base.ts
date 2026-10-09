@@ -1,5 +1,5 @@
 import { css, html, LitElement, type PropertyValues, type TemplateResult } from 'lit';
-import type { AgentStatus, ColorScheme, SliccModel } from '../model/types.ts';
+import type { AgentStatus, ColorScheme, ModelOption, SliccModel } from '../model/types.ts';
 
 export class ModelElement extends LitElement {
   static properties = { model: { attribute: false } };
@@ -106,6 +106,10 @@ export function meterVariant(value: number): 'informative' | 'notice' | 'negativ
   if (value >= 90) return 'negative';
   if (value >= 75) return 'notice';
   return 'informative';
+}
+
+export function chatModels(options: readonly ModelOption[]): ModelOption[] {
+  return options.filter((option) => option.kind !== 'classifier' && option.tools !== false);
 }
 
 export function statusLight(status: AgentStatus): TemplateResult {

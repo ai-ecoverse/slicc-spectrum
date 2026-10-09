@@ -3,7 +3,7 @@ import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Account, Settings, SliccModel } from '../model/types.ts';
-import { ModelElement } from './base.ts';
+import { chatModels, ModelElement } from './base.ts';
 import { confirm } from './confirm.ts';
 
 const accountStatus = {
@@ -314,7 +314,7 @@ export class SliccSettings extends ModelElement {
       <div class="row">
         <span class="label" id="model">Model for new cones</span>
         <sp-picker size="m" label="Model" aria-labelledby="model" value=${value.model} @change=${(e: Event) => this.#update({ model: this.#value(e) })}>
-          ${settings.models().map((option) => html`<sp-menu-item value=${option.id}>${option.label}<span slot="description">${option.provider}</span></sp-menu-item>`)}
+          ${chatModels(settings.models()).map((option) => html`<sp-menu-item value=${option.id}>${option.label}<span slot="description">${option.provider}</span></sp-menu-item>`)}
         </sp-picker>
       </div>
       <div class="row">

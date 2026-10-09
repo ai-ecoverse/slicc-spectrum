@@ -385,6 +385,8 @@ export interface ModelOption {
   provider: string;
   kind?: 'chat' | 'classifier';
   reasoning?: boolean;
+  tools?: boolean;
+  images?: boolean;
 }
 
 export interface SettingsEvents {

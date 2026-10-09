@@ -3068,6 +3068,63 @@ test('the agent picker lists cones and opens the agents panel for the rest', asy
   assert.deepEqual(page.errors, []);
 });
 
+test('the chat header lists chat models with their provider and starts a new chat', async (t) => {
+  const page = await open(t);
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [
+        ...window
+          .$('slicc-app', 'slicc-dock', 'slicc-chat')
+          .shadowRoot.querySelectorAll('header sp-picker[label=Model] sp-menu-item'),
+      ].map((item) => [item.value, item.querySelector('[slot=description]').textContent])
+    ),
+    [
+      ['claude-opus-5-5', 'Anthropic'],
+      ['claude-sonnet-5-5', 'Anthropic'],
+      ['claude-haiku-4-5', 'Anthropic'],
+      ['local-small', 'This browser'],
+    ]
+  );
+  await page.evaluate(() => {
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat')
+      .shadowRoot.querySelector('header sp-picker[label=Model]').open = true;
+    return true;
+  });
+  await page.until(
+    () =>
+      window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat')
+        .shadowRoot.querySelector('header sp-picker[label=Model]').open === true
+  );
+  await shot(page, 'model-picker');
+  await page.evaluate(() => {
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat')
+      .shadowRoot.querySelector('header sp-picker[label=Model]').open = false;
+    return true;
+  });
+  await shot(page, 'before-new-chat');
+  const id = await page.evaluate(() => window.model.agent.active());
+  assert.ok(await page.evaluate((id) => window.model.agent.messages(id).length > 0, id));
+  await page.evaluate(() => {
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat')
+      .shadowRoot.querySelector('header [data-action=new-chat]')
+      .click();
+    return true;
+  });
+  await page.until((id) => window.model.agent.messages(id).length === 0, id);
+  await page.until(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat')
+      .shadowRoot.querySelector('header [data-action=new-chat]')
+      .hasAttribute('disabled')
+  );
+  await shot(page, 'after-new-chat');
+  assert.deepEqual(page.errors, []);
+});
+
 test('chat stays pinned to the bottom while content grows after render', async (t) => {
   const page = await open(t);
   const result = await page.evaluate(async () => {
