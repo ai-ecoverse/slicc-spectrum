@@ -46,6 +46,7 @@ export interface Handlers {
   answer(questionId: string, answer: string): void;
   resolve(messageId: string, state: Exclude<LickState, 'pending'>): void;
   action(action: ErrorAction, messageId?: string): void;
+  dropping(messageId: string): number;
   open(path: string): void;
   show(surfaceId: string): void;
   suggest(text: string): void;
@@ -97,6 +98,11 @@ const actionLabels: Record<ErrorAction, string> = {
   login: 'Log in',
   'drop-turn': 'Drop the last turn',
 };
+
+function actionLabel(action: ErrorAction, handlers: Handlers, messageId: string): string {
+  const count = action === 'drop-turn' ? handlers.dropping(messageId) : 1;
+  return count > 1 ? `Drop ${count} failed turns` : actionLabels[action];
+}
 
 export function time(at: number): string {
   return new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
@@ -303,7 +309,7 @@ function part(
     default:
       return html`<div class="error-card" role="alert">
         <div class="error-text"><span class="lead">${entry.message}</span>${entry.detail ? html`<span class="detail">${entry.detail}</span>` : nothing}</div>
-        ${entry.action ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${entry.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(entry.action as ErrorAction)}>${actionLabels[entry.action]}</swc-button>` : nothing}
+        ${entry.action ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${entry.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(entry.action as ErrorAction)}>${actionLabel(entry.action, handlers, '')}</swc-button>` : nothing}
       </div>`;
   }
 }
@@ -428,7 +434,11 @@ export function assistant(
         ${status(message)}
         ${parts(
           message.parts,
-          { ...handlers, action: (action) => handlers.action(action, message.id) },
+          {
+            ...handlers,
+            action: (action) => handlers.action(action, message.id),
+            dropping: () => handlers.dropping(message.id),
+          },
           showThinking,
           message.status === 'streaming'
         )}
@@ -477,7 +487,7 @@ export function system(message: SystemMessage, handlers: Handlers): TemplateResu
     'Error',
     html`<div class="error-card system-error" role="alert" data-id=${message.id}>
       <div class="error-text"><strong>${message.title}</strong><span>${message.text}</span></div>
-      ${message.action ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${message.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(message.action as ErrorAction, message.id)}>${actionLabels[message.action]}</swc-button>` : nothing}
+      ${message.action ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${message.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(message.action as ErrorAction, message.id)}>${actionLabel(message.action, handlers, message.id)}</swc-button>` : nothing}
     </div>`
   );
 }
