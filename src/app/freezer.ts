@@ -76,7 +76,7 @@ export class SliccFreezer extends ModelElement {
   }
 
   async #delete(cone: FrozenCone): Promise<void> {
-    const body = `${cone.name}, its scoops and its ${cone.messages} messages are deleted. You can’t undo this.`;
+    const body = `Removes ${cone.name} and its scoops’ working folders from SLICC. You can’t undo this. Its history stays in the session database.`;
     if (await confirm({ title: `Delete ${cone.name}?`, body, action: 'Delete' }))
       this.model?.agent.discard(cone.id);
   }
