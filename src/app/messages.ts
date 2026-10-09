@@ -252,12 +252,15 @@ export function tool(call: ToolCall, color: 'light' | 'dark' = 'light'): Templat
   const kind = toolKind(call.name);
   return html`<details class="tool" data-status=${call.status} data-tool=${call.name} data-kind=${kind.id}>
     <summary>
-      <swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right>
-      <span class="kind">${kind.icon}</span>
-      <span class="title">${call.title}</span>
-      <span class="name">${call.name}</span>
-      ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
-      ${state(call.status)}
+      <span class="head">
+        <swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right>
+        <span class="kind">${kind.icon}</span>
+        <span class="title">${call.title}</span>
+        <span class="name">${call.name}</span>
+        ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
+        ${state(call.status)}
+      </span>
+      ${call.image ? html`<span class="thumb"><img src=${call.image} alt="" /></span>` : nothing}
     </summary>
     <div class="call">
       ${body(call, color)}
@@ -879,6 +882,18 @@ export const messageCss = css`
   :is(details.tool, details.cluster) > summary {
     padding-inline: var(--swc-spacing-100);
   }
+  details.tool > summary {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 0;
+  }
+  details.tool > summary > .head {
+    display: flex;
+    align-items: center;
+    gap: var(--swc-spacing-100);
+    min-inline-size: 0;
+  }
   :is(details.tool, details.cluster) > summary:hover {
     background: var(--swc-gray-100);
   }
@@ -995,6 +1010,19 @@ export const messageCss = css`
     overflow: auto;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+  .thumb {
+    padding-inline-start: calc(var(--swc-spacing-100) + var(--swc-spacing-300));
+    padding-block: var(--swc-spacing-75);
+  }
+  .thumb img {
+    display: block;
+    max-inline-size: min(100%, calc(var(--swc-spacing-1000) * 2));
+    max-block-size: calc(var(--swc-spacing-1000) * 1.25);
+    border-radius: var(--swc-corner-radius-75);
+  }
+  details[open] > summary .thumb {
+    display: none;
   }
   .shot {
     display: block;
