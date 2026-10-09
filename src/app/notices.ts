@@ -34,7 +34,7 @@ export class SliccNotices extends ModelElement {
       display: flex;
       flex-direction: column;
       gap: var(--swc-spacing-100);
-      padding: var(--swc-spacing-100) var(--swc-spacing-200) 0;
+      padding: var(--swc-spacing-100) var(--swc-spacing-200);
     }
     .notice {
       display: grid;
@@ -51,15 +51,16 @@ export class SliccNotices extends ModelElement {
     }
     .notice[data-tone='info'] {
       background: var(--swc-informative-subtle-background-color-default);
-      --swc-icon-color: var(--swc-informative-visual-color);
+      --tone: var(--swc-informative-visual-color);
     }
     .notice[data-tone='warning'] {
       background: var(--swc-notice-subtle-background-color-default);
-      --swc-icon-color: var(--swc-notice-visual-color);
+      --tone: var(--swc-notice-visual-color);
     }
     .notice > swc-icon-info-circle,
     .notice > swc-icon-alert-triangle {
       margin-block-start: var(--swc-spacing-100);
+      --swc-icon-color: var(--tone);
     }
     .text {
       display: flex;
