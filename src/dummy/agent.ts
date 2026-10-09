@@ -405,6 +405,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     if (!this.#messages.has(agentId)) return;
     this.stop(agentId);
     this.#messages.set(agentId, []);
+    this.#queues.set(agentId, []);
     this.#suggestions.delete(agentId);
     this.emit('messages', agentId);
   }
