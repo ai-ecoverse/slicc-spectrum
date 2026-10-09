@@ -125,21 +125,28 @@ export class SliccChat extends ThemedElement {
         flex: 1;
         min-height: 0;
         overflow-y: auto;
-        padding: var(--swc-spacing-200) var(--swc-spacing-300) var(--swc-spacing-400);
+        container-type: inline-size;
+        padding: var(--swc-spacing-400) var(--swc-spacing-300) var(--swc-spacing-500);
+        font-size: var(--swc-font-size-200);
+      }
+      @container (min-width: 600px) {
+        .column {
+          padding-inline: var(--swc-spacing-300);
+        }
       }
       .log:focus-visible {
         outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
         outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
       }
       .column {
-        max-inline-size: 860px;
+        max-inline-size: calc(var(--swc-spacing-1000) * 10);
         margin: 0 auto;
       }
       .empty {
         color: var(--swc-neutral-subdued-content-color-default);
         text-align: center;
         padding: var(--swc-spacing-700) 0;
-        font-size: var(--swc-font-size-75);
+        font-size: var(--swc-font-size-100);
       }
     `,
   ];
@@ -341,7 +348,9 @@ export class SliccChat extends ThemedElement {
       if (label !== previous) {
         out.push([
           `day:${message.id}`,
-          html`<div class="day" role="separator" data-day=${label}><span class="line"></span><span>${label}</span><span class="line"></span></div>`,
+          html`<div class="day" role="separator" aria-label=${label} data-day=${label}>
+            <span class="line"></span><span>${label}</span><span class="line"></span>
+          </div>`,
         ]);
         previous = label;
       }
