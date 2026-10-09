@@ -403,6 +403,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
 
   clear(agentId: string): void {
     if (!this.#messages.has(agentId)) return;
+    this.#runs.get(agentId)?.steers.splice(0);
     this.stop(agentId);
     this.#messages.set(agentId, []);
     this.#queues.set(agentId, []);
