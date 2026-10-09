@@ -46,6 +46,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   #next = 1;
   #cones = 1;
   #chats = 1;
+  #thaws = 1;
 
   constructor(
     agents: readonly Agent[],
@@ -420,6 +421,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     const first = messages.find((message) => message.role === 'user');
     this.#frozen.unshift({
       id,
+      kind: 'cone',
       name: agent.name,
       title: first?.role === 'user' ? first.text.slice(0, 80) : agent.name,
       model: agent.model,
@@ -535,7 +537,23 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   }
 
   frozen(): readonly FrozenCone[] {
-    return this.#frozen.map((cone) => ({ ...cone }));
+    const live = this.#agents
+      .filter((agent) => !agent.frozen)
+      .map((agent): FrozenCone => {
+        const messages = this.#messages.get(agent.id) as Message[];
+        const first = messages.find((message) => message.role === 'user');
+        return {
+          id: agent.id,
+          kind: agent.kind,
+          live: true,
+          name: agent.name,
+          title: first?.role === 'user' ? first.text.slice(0, 80) : agent.name,
+          model: agent.model,
+          messages: messages.length,
+          frozenAt: messages.at(-1)?.createdAt ?? 0,
+        };
+      });
+    return [...live, ...this.#frozen.map((cone) => ({ ...cone }))];
   }
 
   freeze(agentId: string): void {
@@ -549,6 +567,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     const first = messages.find((message) => message.role === 'user');
     this.#frozen.unshift({
       id: agentId,
+      kind: 'cone',
       name: agent.name,
       title: first?.role === 'user' ? first.text.slice(0, 80) : agent.name,
       model: agent.model,
@@ -580,17 +599,25 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
       this.#changed();
       return { ...agent };
     }
+    const row = this.#frozen.find((cone) => cone.id === id) as FrozenCone;
+    if (row.kind === 'scoop' || row.kind === 'agent') {
+      const [{ agent, messages }] = ice as [{ agent: Agent; messages: Message[] }];
+      const fork: Agent = {
+        ...agent,
+        id: `${id}-thaw-${this.#thaws++}`,
+        kind: 'cone',
+        parentId: null,
+      };
+      this.#agents.push(fork);
+      this.#messages.set(fork.id, structuredClone(messages));
+      this.#queues.set(fork.id, []);
+      row.thawedAs = fork.id;
+      this.emit('frozen', this.frozen());
+      this.select(fork.id);
+      return { ...fork };
+    }
     this.#ice.delete(id);
     this.#frozen = this.#frozen.filter((cone) => cone.id !== id);
-    const cone = (ice[0] as { agent: Agent }).agent;
-    const taken = (name: string) =>
-      this.#agents.some((agent) => agent.kind === 'cone' && agent.name === name);
-    if (taken(cone.name)) {
-      const base = cone.name;
-      let n = 1;
-      cone.name = `${base} (earlier)`;
-      while (taken(cone.name)) cone.name = `${base} (earlier ${++n})`;
-    }
     for (const { agent, messages } of ice) {
       this.#agents.push(agent);
       this.#messages.set(agent.id, messages);

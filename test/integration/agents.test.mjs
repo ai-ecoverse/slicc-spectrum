@@ -256,10 +256,16 @@ test('New cone opens a name dialog: empty disables Create, Escape cancels, a rej
   assert.deepEqual(
     await page.evaluate(() =>
       [...window.$('slicc-app', 'header sp-picker').children]
-        .slice(-4)
+        .slice(-5)
         .map((item) => item.getAttribute('value') ?? item.localName)
     ),
-    ['sp-menu-divider', 'slicc:new-cone', 'sp-menu-divider', 'slicc:all-agents']
+    [
+      'sp-menu-divider',
+      'slicc:new-cone',
+      'slicc:delete-cone',
+      'sp-menu-divider',
+      'slicc:all-agents',
+    ]
   );
 
   await page.evaluate(() => window.pick('slicc:new-cone'));
@@ -338,7 +344,11 @@ test('New cone is hidden when the port has no createCone', async (t) => {
     await page.evaluate(
       () => window.$('slicc-app', 'header sp-picker').querySelectorAll('sp-menu-divider').length
     ),
-    1
+    2
+  );
+  assert.equal(
+    await page.evaluate(() => !!window.$('slicc-app', 'header [data-action=delete-cone]')),
+    true
   );
   assert.deepEqual(page.errors, []);
 });

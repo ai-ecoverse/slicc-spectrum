@@ -1,7 +1,8 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/badge/swc-badge.js';
-import { css, html, type TemplateResult } from 'lit';
-import type { FrozenCone, SliccModel } from '../model/types.ts';
+import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
+import { css, html, nothing, type TemplateResult } from 'lit';
+import type { Agent, FrozenCone, FrozenKind, SliccModel } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
 import { confirm } from './confirm.ts';
 import { panelCss } from './files.ts';
@@ -12,6 +13,32 @@ export function ago(at: number, now = Date.now()): string {
   if (days === 1) return 'yesterday';
   if (days < 14) return `${days} days ago`;
   return `${Math.floor(days / 7)} weeks ago`;
+}
+
+export async function deleteCone(
+  model: SliccModel,
+  agent: Agent,
+  trigger?: HTMLElement | null
+): Promise<boolean> {
+  const ok = await confirm({
+    title: `Delete cone ${agent.name}?`,
+    body: 'It stops, with its scoops. Its conversation stays in the Freezer, where you can thaw it.',
+    action: 'Delete cone',
+    variant: 'confirmation',
+    trigger,
+  });
+  if (ok) model.agent.freeze?.(agent.id);
+  return ok;
+}
+
+export const frozenKinds: Record<FrozenKind, readonly ['indigo' | 'seafoam' | 'purple', string]> = {
+  cone: ['indigo', 'Cone'],
+  scoop: ['seafoam', 'Scoop'],
+  agent: ['purple', 'Agent run'],
+};
+
+export function freezerOrder(rows: readonly FrozenCone[]): FrozenCone[] {
+  return [...rows].sort((a, b) => Number(!!b.live) - Number(!!a.live) || b.frozenAt - a.frozenAt);
 }
 
 export class SliccFreezer extends ModelElement {
@@ -54,6 +81,9 @@ export class SliccFreezer extends ModelElement {
       .meta {
         color: var(--swc-neutral-subdued-content-color-default);
       }
+      .name swc-status-light {
+        font-weight: normal;
+      }
       .actions {
         display: flex;
         gap: var(--swc-spacing-75);
@@ -75,41 +105,60 @@ export class SliccFreezer extends ModelElement {
     this.focusOn('swc-action-button');
   }
 
-  async #delete(cone: FrozenCone): Promise<void> {
-    const body = `Removes ${cone.name} and its scoops’ working folders from SLICC. You can’t undo this. Its history stays in the session database.`;
-    if (await confirm({ title: `Delete ${cone.name}?`, body, action: 'Delete' }))
-      this.model?.agent.discard(cone.id);
+  async #remove(cone: FrozenCone, trigger: HTMLElement): Promise<void> {
+    const ok = await confirm({
+      title: `Remove ${cone.name} from the Freezer?`,
+      body: 'Its working folders are deleted. The conversation stays in the session database. You can’t undo this.',
+      action: 'Remove',
+      variant: 'destructive',
+      trigger,
+    });
+    if (ok) this.model?.agent.discard(cone.id);
+  }
+
+  #thawedAs(id: string): string {
+    const model = this.model as SliccModel;
+    return (
+      model.agent.list().find((agent) => agent.id === id)?.name ??
+      model.agent.frozen().find((row) => row.id === id)?.name ??
+      id
+    );
+  }
+
+  #actions(cone: FrozenCone): TemplateResult {
+    const model = this.model as SliccModel;
+    if (cone.live) {
+      return html`<swc-action-button size="s" quiet data-action="open" accessible-label=${`Open ${cone.name}`} @click=${() => model.agent.select(cone.id)}>Open</swc-action-button>`;
+    }
+    return html`<swc-action-button size="s" quiet data-action="thaw" accessible-label=${`Thaw ${cone.name}`} @click=${() => model.agent.thaw(cone.id)}>Thaw</swc-action-button>
+      <swc-action-button size="s" quiet data-action="remove" accessible-label=${`Remove ${cone.name}`} @click=${(event: Event) => this.#remove(cone, event.currentTarget as HTMLElement)}>Remove</swc-action-button>`;
   }
 
   #card(cone: FrozenCone): TemplateResult {
     const model = this.model as SliccModel;
     const label =
       model.settings.models().find((option) => option.id === cone.model)?.label ?? cone.model;
-    return html`<div class="card" data-id=${cone.id}>
-      <div class="name">${cone.name}<swc-badge size="s" variant="neutral" subtle>${label}</swc-badge></div>
+    const kind = cone.kind ? frozenKinds[cone.kind] : null;
+    const meta = [
+      `${cone.messages} ${cone.messages === 1 ? 'message' : 'messages'}`,
+      ...(cone.live ? [] : [`frozen ${ago(cone.frozenAt)}`]),
+      ...(cone.thawedAs ? [`thawed as ${this.#thawedAs(cone.thawedAs)}`] : []),
+    ];
+    return html`<div class="card" data-id=${cone.id} data-kind=${cone.kind ?? 'cone'} ?data-live=${cone.live}>
+      <div class="name">${cone.name}${kind ? html`<swc-badge size="s" variant=${kind[0]} subtle data-badge="kind">${kind[1]}</swc-badge>` : nothing}<swc-badge size="s" variant="neutral" subtle>${label}</swc-badge>${cone.live ? html`<swc-status-light size="s" variant="positive" data-live>Live</swc-status-light>` : nothing}</div>
       <div class="title" title=${cone.title}>${cone.title}</div>
-      <div class="meta">${cone.messages} messages · frozen ${ago(cone.frozenAt)}</div>
-      <div class="actions">
-        <swc-action-button size="s" quiet accessible-label=${`Thaw ${cone.name}`} @click=${() => model.agent.thaw(cone.id)}>Thaw</swc-action-button>
-        <swc-action-button size="s" quiet accessible-label=${`Delete ${cone.name}`} @click=${() => this.#delete(cone)}>Delete</swc-action-button>
-      </div>
+      <div class="meta">${meta.join(' · ')}</div>
+      <div class="actions">${this.#actions(cone)}</div>
     </div>`;
   }
 
   render(): TemplateResult {
-    const model = this.model;
-    const cones = model?.agent.frozen() ?? [];
-    const active = model?.agent.list().find((agent) => agent.id === model.agent.active());
+    const rows = freezerOrder(this.model?.agent.frozen() ?? []);
     return html`<div class="bar">
-        <span>${cones.length} frozen ${cones.length === 1 ? 'cone' : 'cones'}</span><span class="spacer"></span>
-        ${
-          active?.kind === 'cone' && !active.frozen && model?.agent.freeze
-            ? html`<swc-action-button size="s" quiet @click=${() => model.agent.freeze?.(active.id)}>Freeze ${active.name}</swc-action-button>`
-            : ''
-        }
+        <span>${rows.length} ${rows.length === 1 ? 'conversation' : 'conversations'}</span>
       </div>
       <div class="list">
-        ${cones.length ? cones.map((cone) => this.#card(cone)) : html`<div class="note">Nothing frozen. Freeze a cone to archive it with its scoops.</div>`}
+        ${rows.length ? rows.map((cone) => this.#card(cone)) : html`<div class="note">No conversations yet. A new conversation or a deleted cone leaves the old one here.</div>`}
       </div>`;
   }
 }

@@ -7,6 +7,7 @@ import { changesOf, shared, ThemedElement } from './base.ts';
 import { prompt } from './confirm.ts';
 import { Dips, dipType } from './dips.ts';
 import { defaultFontBase, defaultVariableFont, installFonts } from './fonts.ts';
+import { deleteCone } from './freezer.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
 import { networkHealth, networkIcon, networkLabel } from './network.ts';
 import {
@@ -49,6 +50,7 @@ export function changeCount(count: number): string {
 export const allAgents = 'slicc:all-agents';
 
 export const newCone = 'slicc:new-cone';
+export const deleteActiveCone = 'slicc:delete-cone';
 
 export const railPitch = 52;
 
@@ -694,6 +696,11 @@ export class SliccApp extends ThemedElement {
     else this.show(value);
   }
 
+  #deletable(): boolean {
+    const cone = this.model?.agent.list().find((agent) => agent.id === this.#cone());
+    return Boolean(cone && !cone.frozen && this.model?.agent.freeze);
+  }
+
   #cone(): string {
     const agent = this.#active() as Agent | null;
     return agent?.kind === 'scoop' ? (agent.parentId ?? '') : (agent?.id ?? '');
@@ -711,7 +718,20 @@ export class SliccApp extends ThemedElement {
       void this.#newCone(picker);
       return;
     }
+    if (picker.value === deleteActiveCone) {
+      picker.value = this.#cone();
+      void this.#deleteCone(picker);
+      return;
+    }
     this.model?.agent.select(picker.value);
+  }
+
+  async #deleteCone(trigger: HTMLElement): Promise<void> {
+    const model = this.model as SliccModel;
+    const cone = model.agent.list().find((agent) => agent.id === this.#cone()) as Agent;
+    if (!(await deleteCone(model, cone, trigger))) return;
+    await this.updateComplete;
+    this.renderRoot.querySelector<HTMLElement>('header sp-picker')?.focus();
   }
 
   async #newCone(trigger: HTMLElement): Promise<void> {
@@ -801,6 +821,11 @@ export class SliccApp extends ThemedElement {
             ${
               this.model?.agent.createCone
                 ? html`<sp-menu-divider></sp-menu-divider><sp-menu-item value=${newCone} data-action="new-cone"><swc-icon-add slot="icon"></swc-icon-add>New cone</sp-menu-item>`
+                : nothing
+            }
+            ${
+              this.#deletable()
+                ? html`${this.model?.agent.createCone ? nothing : html`<sp-menu-divider></sp-menu-divider>`}<sp-menu-item value=${deleteActiveCone} data-action="delete-cone"><swc-icon-delete slot="icon"></swc-icon-delete>Delete cone</sp-menu-item>`
                 : nothing
             }
             ${

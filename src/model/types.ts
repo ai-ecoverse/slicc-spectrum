@@ -264,6 +264,8 @@ export interface SlashCommand {
   kind?: 'prompt' | 'skill';
 }
 
+export type FrozenKind = 'cone' | 'scoop' | 'agent';
+
 export interface FrozenCone {
   id: string;
   name: string;
@@ -271,6 +273,9 @@ export interface FrozenCone {
   model: string;
   messages: number;
   frozenAt: number;
+  kind?: FrozenKind;
+  live?: boolean;
+  thawedAs?: string;
 }
 
 export type FileKind = 'file' | 'directory';

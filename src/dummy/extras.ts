@@ -22,6 +22,7 @@ export const frozen: Array<{ cone: FrozenCone; messages: Message[] }> = [
   {
     cone: {
       id: 'cone-onboarding',
+      kind: 'cone',
       name: 'onboarding',
       title: 'Write the onboarding guide for new contributors',
       model: 'claude-sonnet-5-5',
@@ -36,6 +37,7 @@ export const frozen: Array<{ cone: FrozenCone; messages: Message[] }> = [
   {
     cone: {
       id: 'cone-kv-spike',
+      kind: 'cone',
       name: 'kv-spike',
       title: 'Spike: can the cache move to KV without a cold start?',
       model: 'claude-opus-5-5',
@@ -50,6 +52,7 @@ export const frozen: Array<{ cone: FrozenCone; messages: Message[] }> = [
   {
     cone: {
       id: 'cone-q3-report',
+      kind: 'cone',
       name: 'q3-report',
       title: 'Summarize Q3 uptime and incidents',
       model: 'claude-haiku-4-5',
@@ -59,6 +62,36 @@ export const frozen: Array<{ cone: FrozenCone; messages: Message[] }> = [
     messages: frozenConversation(
       'Summarize Q3 uptime and incidents',
       'Uptime 99.96%. Two incidents: an expired certificate and an upstream outage.'
+    ),
+  },
+  {
+    cone: {
+      id: 'scoop-tide-check',
+      kind: 'scoop',
+      name: 'tide-check',
+      title: 'Check the tide tables against the harbor feed',
+      model: 'claude-haiku-4-5',
+      messages: 9,
+      frozenAt: now - 1 * day,
+    },
+    messages: frozenConversation(
+      'Check the tide tables against the harbor feed',
+      'They match, except the 3 October low tide, which the feed lists 4 minutes later.'
+    ),
+  },
+  {
+    cone: {
+      id: 'run-nightly-digest',
+      kind: 'agent',
+      name: 'nightly-digest',
+      title: 'Write the nightly digest of merged pull requests',
+      model: 'claude-sonnet-5-5',
+      messages: 6,
+      frozenAt: now - 3 * day,
+    },
+    messages: frozenConversation(
+      'Write the nightly digest of merged pull requests',
+      'Four pull requests merged: two fixes, a docs change and a dependency bump.'
     ),
   },
 ];
