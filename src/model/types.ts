@@ -593,12 +593,18 @@ export interface NetworkFailure {
   at: number;
 }
 
+export interface BrowserAutomation {
+  via: 'extension' | 'proxy' | null;
+  detail?: string;
+}
+
 export interface NetworkStatus {
   route: NetworkRoute | null;
   health: 'ok' | 'limited' | 'failing';
   detail: string | null;
   failures: readonly NetworkFailure[];
   extensionUrl?: string;
+  browser?: BrowserAutomation;
 }
 
 export interface NetworkPort extends Subscribable<{ network: NetworkStatus }> {

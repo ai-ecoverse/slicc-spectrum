@@ -2970,9 +2970,18 @@ test('the network indicator shows the health and opens the Network panel', async
         root.querySelectorAll('li[data-url]').length,
         !!root.querySelector('[data-action=check]'),
         /\u2014/.test(root.textContent),
+        root.querySelector('[data-browser]').dataset.browser,
       ];
     }),
-    ['page', 'https://extensions.example/slicc', 'npx @ai-ecoverse/slicc-node', 2, true, false]
+    [
+      'page',
+      'https://extensions.example/slicc',
+      'npx @ai-ecoverse/slicc-node',
+      2,
+      true,
+      false,
+      'none',
+    ]
   );
   await shot(page, 'network-light');
   await page.evaluate(() => {
@@ -3002,6 +3011,17 @@ test('the network indicator shows the health and opens the Network panel', async
     ),
     'Network'
   );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window
+          .$('slicc-app', 'slicc-dock')
+          .content('network')
+          .shadowRoot.querySelector('[data-browser]').dataset.browser
+    ),
+    'proxy'
+  );
+  await shot(page, 'network-ok');
   await page.evaluate(() => {
     document.querySelector('slicc-app').style.width = '390px';
     return true;
