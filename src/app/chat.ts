@@ -164,16 +164,23 @@ export class SliccChat extends ThemedElement {
       }),
       model.agent.on('agents', () => this.requestUpdate()),
       model.agent.on('messages', (agentId) => {
-        if (agentId === this.#id()) this.#refresh(true);
+        if (agentId === this.#id()) this.#refresh(this.#sent(agentId));
       }),
       model.agent.on('message', ({ agentId }) => {
-        if (agentId === this.#id()) this.#refresh(false);
+        if (agentId === this.#id()) this.#refresh(this.#sent(agentId));
       }),
     ];
   }
 
   #stuck = true;
   #last = 0;
+  #tail = '';
+
+  #sent(agentId: string): boolean {
+    const last = this.model?.agent.messages(agentId).at(-1);
+    return last?.role === 'user' && last.id !== this.#tail && (last.origin ?? 'user') === 'user';
+  }
+
   #resize = new ResizeObserver(() => this.#pin());
 
   #log(): HTMLElement {
@@ -343,6 +350,7 @@ export class SliccChat extends ThemedElement {
     const agent = this.#agent();
     this.#handlers.readOnly = !!agent?.frozen;
     const messages = agent ? (this.model?.agent.messages(agent.id) ?? []) : [];
+    this.#tail = messages.at(-1)?.id ?? '';
     return html`
       <header>
         ${agent ? this.#meta(agent) : html`<span>No agent</span>`}
