@@ -1932,7 +1932,7 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
     await page.evaluate(
       () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.hint').textContent
     ),
-    /Enter\s*steer\s*·\s*Ctrl\+Enter\s*queue/
+    /Enter\s*steer\s*Ctrl\+Enter\s*queue\s*Esc\s*stop/
   );
   await page.insert('Then open the docs');
   await page.press('Enter', 'ctrl');

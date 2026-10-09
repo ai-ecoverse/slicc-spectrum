@@ -564,6 +564,7 @@ export type UpdateKind = 'bios' | 'kernel' | 'agent' | 'grammars' | 'global' | '
 export type UpdateState =
   | 'current'
   | 'queued'
+  | 'starting'
   | 'checking'
   | 'downloading'
   | 'linking'

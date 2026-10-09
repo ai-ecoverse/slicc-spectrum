@@ -261,13 +261,26 @@ export class SliccComposer extends ModelElement {
         min-height: var(--swc-component-height-75);
       }
       .hint {
+        display: flex;
         flex: 1;
+        flex-wrap: wrap;
+        align-items: center;
         min-width: 0;
-        white-space: nowrap;
+        max-block-size: var(--swc-component-height-75);
         overflow: hidden;
-        text-overflow: ellipsis;
         font-size: var(--swc-font-size-75);
         color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .hint > span {
+        display: flex;
+        align-items: center;
+        block-size: var(--swc-component-height-75);
+        gap: var(--swc-spacing-50);
+        white-space: nowrap;
+      }
+      .hint > span + span::before {
+        content: '·';
+        padding-inline-start: var(--swc-spacing-75);
       }
       .below swc-action-button {
         margin-inline-start: auto;
@@ -941,8 +954,12 @@ export class SliccComposer extends ModelElement {
       </div>
       <div class="below">
         <div class="hint">
-          <kbd>Enter</kbd> ${busy ? 'steer' : 'send'} · <kbd>Ctrl+Enter</kbd> queue · <kbd>Shift+Enter</kbd> new line · <kbd>/</kbd> commands ·
-          <kbd>@</kbd> mention · <kbd>↑</kbd> history${busy ? html` · <kbd>Esc</kbd> stop` : nothing}
+          <span><kbd>Enter</kbd> ${busy ? 'steer' : 'send'}</span>
+          ${busy ? html`<span><kbd>Ctrl+Enter</kbd> queue</span><span><kbd>Esc</kbd> stop</span>` : nothing}
+          <span><kbd>/</kbd> commands</span>
+          <span><kbd>@</kbd> mention</span>
+          <span><kbd>Shift+Enter</kbd> new line</span>
+          <span><kbd>↑</kbd> history</span>
         </div>
         ${
           speech

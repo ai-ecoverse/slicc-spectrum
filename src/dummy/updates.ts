@@ -2,7 +2,7 @@ import { Emitter } from '../model/emitter.ts';
 import type { UpdateAction, UpdateItem, UpdateKind, UpdatesPort } from '../model/types.ts';
 import type { Clock } from './clock.ts';
 
-export type UpdateScenario = 'current' | 'boot' | 'available' | 'restart' | 'failure';
+export type UpdateScenario = 'current' | 'boot' | 'starting' | 'available' | 'restart' | 'failure';
 
 const checkedAt = Date.UTC(2026, 9, 8, 8, 42);
 
@@ -42,6 +42,8 @@ export function updateFixtures(scenario: UpdateScenario): readonly UpdateItem[] 
     });
     items[4].state = 'checking';
     Object.assign(items[5], { state: 'queued', from: null });
+  } else if (scenario === 'starting') {
+    agent.state = 'starting';
   } else if (scenario === 'available' || scenario === 'restart') {
     Object.assign(agent, {
       state: scenario === 'available' ? 'available' : 'ready',
@@ -73,7 +75,7 @@ export class DummyUpdates extends Emitter<{ items: readonly UpdateItem[] }> impl
   constructor(scenario: UpdateScenario, clock: Clock) {
     super();
     this.#items = updateFixtures(scenario);
-    this.#ready = scenario !== 'boot';
+    this.#ready = scenario !== 'boot' && scenario !== 'starting';
     this.#clock = clock;
   }
 
@@ -87,7 +89,7 @@ export class DummyUpdates extends Emitter<{ items: readonly UpdateItem[] }> impl
 
   setScenario(scenario: UpdateScenario): void {
     this.#items = updateFixtures(scenario);
-    this.#ready = scenario !== 'boot';
+    this.#ready = scenario !== 'boot' && scenario !== 'starting';
     this.emit('items', this.#items);
   }
 
