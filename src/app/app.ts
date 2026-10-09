@@ -8,6 +8,7 @@ import { prompt } from './confirm.ts';
 import { Dips, dipType } from './dips.ts';
 import { defaultFontBase, defaultVariableFont, installFonts } from './fonts.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
+import { networkHealth, networkIcon, networkLabel } from './network.ts';
 import {
   chatAgent,
   chats,
@@ -152,18 +153,6 @@ export class SliccApp extends ThemedElement {
       flex: 1;
       min-height: 0;
     }
-    .notices {
-      display: flex;
-      flex-direction: column;
-      flex: none;
-      font-size: var(--swc-font-size-75);
-      color: var(--swc-neutral-content-color-default);
-    }
-    .notices ::slotted(:not([hidden])) {
-      padding: var(--swc-spacing-75) var(--swc-spacing-200);
-      border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
-      background: var(--swc-background-layer-2-color);
-    }
     .rail {
       display: flex;
       flex-direction: column;
@@ -228,6 +217,31 @@ export class SliccApp extends ThemedElement {
     }
     header swc-status-light {
       align-self: center;
+    }
+    header .status {
+      display: flex;
+      align-items: center;
+      flex: 0 1 auto;
+      min-width: 0;
+      margin-inline-start: calc(-1 * var(--swc-spacing-100));
+      overflow: hidden;
+      font-size: var(--swc-font-size-75);
+      color: var(--swc-neutral-subdued-content-color-default);
+    }
+    header .status ::slotted(*) {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-inline-size: calc(var(--swc-spacing-1000) * 4);
+      margin-inline-start: var(--swc-spacing-100);
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    header .status ::slotted([hidden]) {
+      display: none;
+    }
+    :host([screen='phone']) header .status {
+      display: none;
     }
     header slicc-tray {
       margin-inline-end: var(--swc-spacing-200);
@@ -295,6 +309,7 @@ export class SliccApp extends ThemedElement {
       model.sprinkles.on('sprinkles', update),
       this.dips.on('change', update),
       ...(model.updates ? [model.updates.on('items', update)] : []),
+      ...(model.network ? [model.network.on('network', update)] : []),
     ];
   }
 
@@ -395,7 +410,7 @@ export class SliccApp extends ThemedElement {
   #factories(model: SliccModel): SliccDock['factories'] {
     return {
       ...Object.fromEntries(
-        this.surfaces.map((item) => [
+        this.#available(model).map((item) => [
           item.id,
           (params: PanelParams) => create(item.tag, model, params),
         ])
@@ -420,6 +435,7 @@ export class SliccApp extends ThemedElement {
       const element = dock.content(panel.id) as (HTMLElement & { model?: SliccModel }) | undefined;
       if (element && 'model' in element) element.model = model;
     }
+    if (!model.network && dock.has('network')) dock.close('network');
     this.#prune();
     const agent = this.#active();
     if (agent && this.#offers('chat')) openChat(dock, agent, this.screen, false, false);
@@ -439,7 +455,7 @@ export class SliccApp extends ThemedElement {
     const saved = this.#saved();
     const restored = this.#offered(saved, dock.factories) && dock.restore(saved);
     if (!restored) {
-      defaultLayout(dock, this.screen, this.#active(), this.surfaces, model.terminals.list());
+      defaultLayout(dock, this.screen, this.#active(), this.#available(), model.terminals.list());
     }
     this.#started = this.screen;
     this.#prune();
@@ -495,7 +511,7 @@ export class SliccApp extends ThemedElement {
 
   resetLayout(): void {
     const terminals = this.model?.terminals.list();
-    defaultLayout(this.dock, this.screen, this.#active(), this.surfaces, terminals);
+    defaultLayout(this.dock, this.screen, this.#active(), this.#available(), terminals);
     this.#save();
   }
 
@@ -512,7 +528,7 @@ export class SliccApp extends ThemedElement {
       openSprinkle(this.dock, sprinkle, this.screen);
       return;
     }
-    const item = surface(id, this.surfaces);
+    const item = surface(id, this.#available());
     if (!item) return;
     if (item.id === 'terminal') {
       if (this.model) this.terminalPanels.show(this.dock, this.model.terminals, this.screen);
@@ -608,7 +624,7 @@ export class SliccApp extends ThemedElement {
       .filter((sprinkle) => !sprinkle.inline || this.dips.has(sprinkle.id))
       .map(sprinkleSurface)
       .filter((item) => !dock?.has(item.id));
-    const shut = dock && this.#started ? [...sprinkles, ...closed(dock, this.surfaces)] : [];
+    const shut = dock && this.#started ? [...sprinkles, ...closed(dock, this.#available())] : [];
     const phone = this.screen === 'phone';
     return {
       left: this.#rail(phone ? [] : shut.filter((item) => item.side !== 'right'), 'left'),
@@ -638,7 +654,7 @@ export class SliccApp extends ThemedElement {
   #keydown = (event: KeyboardEvent) => {
     if (!event.altKey || event.ctrlKey || event.metaKey) return;
     const digit = event.code.match(/^Digit([1-9])$/)?.[1] ?? event.key.match(/^[1-9]$/)?.[0];
-    const surface = digit ? this.surfaces[Number(digit) - 1] : undefined;
+    const surface = digit ? this.#available()[Number(digit) - 1] : undefined;
     if (surface) {
       event.preventDefault();
       this.show(surface.id);
@@ -704,7 +720,11 @@ export class SliccApp extends ThemedElement {
   }
 
   #offers(id: string): boolean {
-    return this.surfaces.some((item) => item.id === id);
+    return this.#available().some((item) => item.id === id);
+  }
+
+  #available(model = this.model): readonly Surface[] {
+    return this.surfaces.filter((item) => item.id !== 'network' || model?.network);
   }
 
   #updatesIndicator(): TemplateResult | typeof nothing {
@@ -716,6 +736,20 @@ export class SliccApp extends ThemedElement {
     return html`<swc-action-button id="updates" quiet size="s" data-updates accessible-label=${`Install / Update: ${updates}`} @click=${() => this.show('updates')}>
         <swc-status-light size="s" variant=${updatesVariant(updates)}>${text}</swc-status-light>
       </swc-action-button>`;
+  }
+
+  #networkIndicator(): TemplateResult | typeof nothing {
+    const port = this.model?.network;
+    if (!port || !this.#offers('network')) return nothing;
+    const status = port.status();
+    const [variant, state] = networkHealth[status.health];
+    const label = networkLabel(status);
+    const content =
+      this.screen === 'phone'
+        ? networkIcon[status.health]
+        : html`<swc-status-light size="s" variant=${variant}>Network${status.health === 'ok' ? nothing : html`<span class="state"> ${state.toLowerCase()}</span>`}</swc-status-light>`;
+    return html`<swc-action-button id="network" quiet size="s" data-network data-health=${status.health} accessible-label=${label} @click=${() => this.show('network')}>${content}</swc-action-button>
+      <swc-tooltip for="network" placement="bottom">${status.detail ?? label}</swc-tooltip>`;
   }
 
   #headerButton(
@@ -757,12 +791,14 @@ export class SliccApp extends ThemedElement {
               : nothing
           }
           <span class="spacer"></span>
+          <div class="status" role="status"><slot name="status"></slot></div>
           ${this.#updatesIndicator()}
+          ${this.#networkIndicator()}
           ${this.#offers('chat') ? html`<slicc-tray .model=${this.model} ?compact=${this.screen === 'phone'}></slicc-tray>` : nothing}
           <sp-action-menu size="s" quiet label="View" @change=${this.#view}>
             <swc-icon-view-grid slot="icon"></swc-icon-view-grid>
             <span slot="label" class="view-label">View</span>
-            ${this.surfaces.map((surface, index) => this.#menuItem(surface, index))}
+            ${this.#available().map((surface, index) => this.#menuItem(surface, index))}
             ${this.#offers('terminal') ? html`<sp-menu-item value="new-terminal">New terminal</sp-menu-item>` : nothing}
             <sp-menu-divider></sp-menu-divider>
             <sp-menu-item value="reset">Reset layout</sp-menu-item>
@@ -785,7 +821,6 @@ export class SliccApp extends ThemedElement {
           }
           ${this.#headerButton('theme', color === 'dark' ? 'Switch to light theme' : 'Switch to dark theme', html`<swc-icon-contrast slot="icon"></swc-icon-contrast>`, () => this.toggleColor())}
         </header>
-        <div class="notices" role="status"><slot name="status"></slot></div>
         <main>
           ${rails.left}
           <slicc-dock empty-text="All panels are closed. Open one from a rail or View." @layout-change=${this.#save}

@@ -307,9 +307,10 @@ export interface FilePort extends Subscribable<FileEvents> {
   changes(): readonly Change[];
   accept(path: string): void;
   revert(path: string): Promise<void>;
-  mountFolder?(): Promise<string | null>;
+  mountFolder?(path?: string): Promise<string | null>;
   mounts?(): readonly string[];
   eject?(path: string): Promise<void>;
+  needsFolder?(): readonly string[];
 }
 
 export interface TerminalInfo {
@@ -581,6 +582,27 @@ export interface UpdatesPort extends Subscribable<{ items: readonly UpdateItem[]
   act(id: string, action: UpdateAction): Promise<void>;
 }
 
+export type NetworkRoute = 'proxy' | 'extension' | 'page';
+
+export interface NetworkFailure {
+  url: string;
+  error: string;
+  at: number;
+}
+
+export interface NetworkStatus {
+  route: NetworkRoute | null;
+  health: 'ok' | 'limited' | 'failing';
+  detail: string | null;
+  failures: readonly NetworkFailure[];
+  extensionUrl?: string;
+}
+
+export interface NetworkPort extends Subscribable<{ network: NetworkStatus }> {
+  status(): NetworkStatus;
+  check?(): Promise<void>;
+}
+
 export interface SliccModel {
   agent: AgentPort;
   files: FilePort;
@@ -592,4 +614,5 @@ export interface SliccModel {
   sprinkles: SprinklePort;
   tray: TrayPort;
   updates?: UpdatesPort;
+  network?: NetworkPort;
 }
