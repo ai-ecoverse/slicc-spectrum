@@ -143,11 +143,14 @@ export class DummyFiles extends Emitter<FileEvents> implements FilePort {
     await this.#clock.sleep();
     if (mount.scenario === 'cancel') return null;
     if (mount.scenario === 'fail') throw new Error('The folder couldn’t be mounted.');
+    const files: string[] = [];
     for (const [path, text] of Object.entries(mount.files)) {
-      this.#put(`${mount.point}/${path}`, text, Date.now());
+      const file = `${mount.point}/${path}`;
+      this.#put(file, text, Date.now());
+      files.push(file);
     }
     this.#mounted.add(mount.point);
-    this.#remount();
+    this.#remount(files);
     return mount.point;
   }
 
@@ -155,17 +158,19 @@ export class DummyFiles extends Emitter<FileEvents> implements FilePort {
     await this.#clock.sleep();
     if (!this.#mounted.delete(path)) throw new Error(`Nothing is mounted at ${path}.`);
     const inside = (candidate: string) => candidate === path || candidate.startsWith(`${path}/`);
-    for (const file of [...this.#contents.keys()].filter(inside)) {
+    const files = [...this.#contents.keys()].filter(inside);
+    for (const file of files) {
       this.#contents.delete(file);
       this.#modified.delete(file);
     }
     for (const directory of [...this.#directories].filter(inside))
       this.#directories.delete(directory);
-    this.#remount();
+    this.#remount(files);
   }
 
-  #remount(): void {
+  #remount(files: readonly string[]): void {
     this.emit('mounts', [...this.#mounted]);
     this.emit('files', this.#entries());
+    for (const file of files) this.emit('file', file);
   }
 }
