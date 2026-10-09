@@ -1154,7 +1154,17 @@ test('git changes group by repository, without authors, and Revert says it canâ€
   await page.until(
     () =>
       window.$('slicc-app', 'slicc-dock', 'slicc-changes').shadowRoot.querySelectorAll('.repo')
-        .length === 0
+        .length === 1
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window
+        .$('slicc-app', 'slicc-dock', 'slicc-changes')
+        .shadowRoot.querySelector('.repo')
+        .textContent.trim()
+        .replace(/\s+/g, ' ')
+    ),
+    '/workspace/harbor 5'
   );
   assert.equal(await page.evaluate(() => window.model.changes.changes().length), 5);
 
