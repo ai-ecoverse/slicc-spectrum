@@ -91,6 +91,13 @@ function lockOverscroll(document: Document): () => void {
   };
 }
 
+export function finishTransitions(root: ShadowRoot): void {
+  for (const animation of root.getAnimations())
+    if ('transitionProperty' in animation) animation.finish();
+  for (const element of root.querySelectorAll('*'))
+    if (element.shadowRoot) finishTransitions(element.shadowRoot);
+}
+
 export class SliccApp extends ThemedElement {
   static properties = {
     ...ThemedElement.properties,
@@ -108,6 +115,7 @@ export class SliccApp extends ThemedElement {
   #resize: ResizeObserver | null = null;
   #width = 0;
   #started: ScreenClass | null = null;
+  #painted = '';
   #saving = false;
   #updatesPort: UpdatesPort | undefined;
   #unlock!: () => void;
@@ -377,6 +385,13 @@ export class SliccApp extends ThemedElement {
   }
 
   protected updated(changed: PropertyValues<this>): void {
+    const color = this.color;
+    if (this.#painted && this.#painted !== color) {
+      const root = this.renderRoot as ShadowRoot;
+      finishTransitions(root);
+      requestAnimationFrame(() => finishTransitions(root));
+    }
+    this.#painted = color;
     if (!this.model) return;
     const layout = this.#started !== this.screen;
     if (layout) this.#start(this.model);
