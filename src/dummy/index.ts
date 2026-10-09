@@ -7,6 +7,7 @@ import { DummyFiles, type MountScenario } from './files.ts';
 import * as fixtures from './fixtures.ts';
 import { DummyMemory } from './memory.ts';
 import { DummyMonitor } from './monitor.ts';
+import { DummyNetwork, type NetworkScenario } from './network.ts';
 import { DummySettings } from './settings.ts';
 import { DummySprinkles } from './sprinkles.ts';
 import { DummyTerminals } from './terminals.ts';
@@ -18,10 +19,12 @@ export interface DummyOptions {
   storage?: Storage | null;
   updates?: UpdateScenario;
   mounts?: MountScenario | 'off';
+  network?: NetworkScenario | 'off';
 }
 
 export interface DummyModel extends SliccModel {
   updates: DummyUpdates;
+  network?: DummyNetwork;
 }
 
 export function createDummyModel({
@@ -29,6 +32,7 @@ export function createDummyModel({
   storage = null,
   updates = 'current',
   mounts = 'off',
+  network = 'limited',
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
   const mount =
@@ -68,6 +72,7 @@ export function createDummyModel({
     sprinkles: new DummySprinkles(extras.sprinkles, agent, files),
     tray: new DummyTray(extras.tray, time),
     updates: new DummyUpdates(updates, time),
+    ...(network === 'off' ? {} : { network: new DummyNetwork(network, time) }),
   };
   return { ...base, monitor: new DummyMonitor(base) };
 }

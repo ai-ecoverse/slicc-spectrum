@@ -711,6 +711,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
       'terminal',
       'browser',
       'monitor',
+      'network',
     ],
   });
 
@@ -742,6 +743,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
       ['monitor', 'Monitor'],
       ['settings', 'Settings'],
       ['updates', 'Install / Update'],
+      ['network', 'Network'],
     ]
   );
   assert.ok(
@@ -776,6 +778,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
       'terminal',
       'browser',
       'monitor',
+      'network',
     ],
   });
   await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('agents'));
@@ -809,6 +812,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
       'terminal',
       'browser',
       'monitor',
+      'network',
     ],
   });
   assert.deepEqual(page.errors, []);
@@ -2830,14 +2834,19 @@ test('a dip dropped on a rail waits there, and its button opens it as a panel', 
   assert.deepEqual(page.errors, []);
 });
 
-test('status notices show under the header and collapse when hidden', async (t) => {
+test('status items sit in the header on one line, and nothing sits under it', async (t) => {
   const page = await open(t);
-  const height = () => window.$('slicc-app', '.notices').getBoundingClientRect().height;
-  assert.equal(await page.evaluate(height), 0);
+  const width = () => window.$('slicc-app', 'header .status').getBoundingClientRect().width;
+  assert.equal(await page.evaluate(() => window.$('slicc-app', '.notices')), null);
+  assert.equal(await page.evaluate(width), 0);
   assert.equal(
-    await page.evaluate(() => window.$('slicc-app', '.notices').getAttribute('role')),
+    await page.evaluate(() => window.$('slicc-app', 'header .status').getAttribute('role')),
     'status'
   );
+  const below = () =>
+    Math.round(window.$('slicc-app', 'header').getBoundingClientRect().bottom) ===
+    Math.round(window.$('slicc-app', 'main').getBoundingClientRect().top);
+  assert.equal(await page.evaluate(below), true);
   await page.evaluate(() => {
     const style = document.createElement('style');
     style.textContent = 'slicc-app > [slot="status"] { color: rgb(1, 2, 3); }';
@@ -2845,28 +2854,178 @@ test('status notices show under the header and collapse when hidden', async (t) 
     const note = document.createElement('span');
     note.slot = 'status';
     note.id = 'note';
-    note.textContent = 'Network offline';
+    note.textContent =
+      'installing the agent, downloading 38 of 97 files from the mirror on the far side of the harbor';
     window.app.append(note);
     return true;
   });
-  await page.until(() => window.$('slicc-app', '.notices').getBoundingClientRect().height > 0);
+  await page.until(() => window.$('slicc-app', 'header .status').getBoundingClientRect().width > 0);
   assert.deepEqual(
     await page.evaluate(() => {
       const note = document.getElementById('note');
       const header = window.$('slicc-app', 'header').getBoundingClientRect();
+      const box = note.getBoundingClientRect();
+      const network = window.$('slicc-app', 'header [data-network]').getBoundingClientRect();
+      const style = getComputedStyle(note);
       return [
-        getComputedStyle(note).color,
-        Math.round(note.getBoundingClientRect().top) === Math.round(header.bottom),
+        style.color,
+        box.top >= header.top && box.bottom <= header.bottom,
+        box.right <= network.left,
+        style.whiteSpace,
+        style.textOverflow,
+        note.scrollWidth > note.clientWidth,
       ];
     }),
-    ['rgb(1, 2, 3)', true]
+    ['rgb(1, 2, 3)', true, true, 'nowrap', 'ellipsis', true]
   );
+  assert.equal(await page.evaluate(below), true);
   await shot(page, 'notice-light');
   await page.evaluate(() => {
     document.getElementById('note').hidden = true;
     return true;
   });
-  await page.until(() => window.$('slicc-app', '.notices').getBoundingClientRect().height === 0);
+  await page.until(
+    () => window.$('slicc-app', 'header .status').getBoundingClientRect().width === 0
+  );
+  await page.evaluate(() => {
+    document.getElementById('note').hidden = false;
+    document.querySelector('slicc-app').style.width = '390px';
+    return true;
+  });
+  await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+  assert.equal(
+    await page.evaluate(() => getComputedStyle(window.$('slicc-app', 'header .status')).display),
+    'none'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('the network indicator shows the health and opens the Network panel', async (t) => {
+  const page = await open(t);
+  const indicator = () => {
+    const button = window.$('slicc-app', 'header [data-network]');
+    return [
+      button.dataset.health,
+      button.getAttribute('accessible-label'),
+      button.querySelector('swc-status-light')?.getAttribute('variant') ?? null,
+      button.textContent.replace(/\s+/g, ' ').trim(),
+    ];
+  };
+  assert.deepEqual(await page.evaluate(indicator), [
+    'limited',
+    'Network: limited',
+    'notice',
+    'Network limited',
+  ]);
+  await page.evaluate(() => window.$('slicc-app', 'header [data-network]').click());
+  await page.until(() => window.$('slicc-app', 'slicc-dock').api.activePanel?.id === 'network');
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('network')
+        ?.shadowRoot?.querySelector('[data-route]')
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.$('slicc-app', 'slicc-dock').content('network').shadowRoot;
+      return [
+        root.querySelector('[data-route]').dataset.route,
+        root.querySelector('[data-action=install-extension]').getAttribute('href'),
+        root.querySelector('code').textContent.trim(),
+        root.querySelectorAll('li[data-url]').length,
+        !!root.querySelector('[data-action=check]'),
+        /\u2014/.test(root.textContent),
+      ];
+    }),
+    ['page', 'https://extensions.example/slicc', 'npx @ai-ecoverse/slicc-node', 2, true, false]
+  );
+  await shot(page, 'network-light');
+  await page.evaluate(() => {
+    window.app.model.network.setScenario('failing');
+    return true;
+  });
+  await page.until(
+    () => window.$('slicc-app', 'header [data-network]').dataset.health === 'failing'
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window.$('slicc-app', 'header [data-network] swc-status-light').getAttribute('variant')
+    ),
+    'negative'
+  );
+  await page.evaluate(() => {
+    window.app.model.network.setScenario('ok');
+    return true;
+  });
+  await page.until(
+    () =>
+      !!window.$('slicc-app', 'slicc-dock').content('network')?.shadowRoot?.querySelector('details')
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window.$('slicc-app', 'header [data-network]').textContent.replace(/\s+/g, ' ').trim()
+    ),
+    'Network'
+  );
+  await page.evaluate(() => {
+    document.querySelector('slicc-app').style.width = '390px';
+    return true;
+  });
+  await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+  await page.until(
+    () => !!window.$('slicc-app', 'header [data-network] swc-icon-cloud-state-online')
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('without a network port there is no indicator and no Network panel', async (t) => {
+  const page = await open(t, { network: 'off' });
+  assert.deepEqual(
+    await page.evaluate(() => [
+      !!window.$('slicc-app', '[data-network]'),
+      !!window.$('slicc-app', '[data-surface=network]'),
+    ]),
+    [false, false]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a mount point that needs a folder gets one through Insert folder', async (t) => {
+  const page = await open(t, { mounts: 'needs' });
+  await page.evaluate(() => window.app.show('files'));
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('files')
+        ?.shadowRoot?.querySelector('[data-action=insert-folder]')
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const button = window
+        .$('slicc-app', 'slicc-dock')
+        .content('files')
+        .shadowRoot.querySelector('[data-action=insert-folder]');
+      return [button.dataset.id, button.getAttribute('accessible-label')];
+    }),
+    ['/mnt/photos', 'Insert folder at /mnt/photos']
+  );
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock')
+      .content('files')
+      .shadowRoot.querySelector('[data-action=insert-folder]')
+      .click()
+  );
+  await page.until(
+    () =>
+      !window
+        .$('slicc-app', 'slicc-dock')
+        .content('files')
+        ?.shadowRoot?.querySelector('[data-action=insert-folder]')
+  );
+  assert.deepEqual(await page.evaluate(() => window.app.model.files.mounts()), ['/mnt/photos']);
   assert.deepEqual(page.errors, []);
 });
 

@@ -11,6 +11,7 @@ import { SliccFreezer } from './app/freezer.ts';
 import { SliccLucide } from './app/lucide.ts';
 import { SliccMemory } from './app/memory.ts';
 import { SliccMonitor } from './app/monitor.ts';
+import { SliccNetwork } from './app/network.ts';
 import { SliccSettings } from './app/settings.ts';
 import { SliccSprinkle } from './app/sprinkle.ts';
 import { SliccTerminalPanel } from './app/terminals.ts';
@@ -50,6 +51,7 @@ export {
   SliccFiles,
   SliccFileTree,
   SliccFileView,
+  SliccNetwork,
   SliccPrompt,
   SliccUpdates,
 };
@@ -72,6 +74,7 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-lucide': SliccLucide,
   'slicc-tray': SliccTray,
   'slicc-updates': SliccUpdates,
+  'slicc-network': SliccNetwork,
   'slicc-confirm': SliccConfirm,
   'slicc-prompt': SliccPrompt,
   'slicc-app': SliccApp,

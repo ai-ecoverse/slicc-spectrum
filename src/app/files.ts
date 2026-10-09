@@ -136,12 +136,16 @@ export class SliccFiles extends ModelElement {
     mounted: { state: true },
     mounting: { state: true },
     ejecting: { state: true },
+    waiting: { state: true },
+    inserting: { state: true },
     error: { state: true },
   };
   declare count: number;
   declare mounted: readonly string[];
   declare mounting: boolean;
   declare ejecting: ReadonlySet<string>;
+  declare waiting: readonly string[];
+  declare inserting: ReadonlySet<string>;
   declare error: string;
   #entries: readonly FileEntry[] = [];
   #pending = false;
@@ -153,6 +157,8 @@ export class SliccFiles extends ModelElement {
     this.mounted = [];
     this.mounting = false;
     this.ejecting = new Set();
+    this.waiting = [];
+    this.inserting = new Set();
     this.error = '';
   }
 
@@ -279,6 +285,7 @@ export class SliccFiles extends ModelElement {
 
   #mounts(files: FilePort): void {
     this.mounted = files.mounts?.() ?? [];
+    this.waiting = files.needsFolder?.() ?? [];
   }
 
   #sync(): void {
@@ -306,10 +313,21 @@ export class SliccFiles extends ModelElement {
     tree.reveal(path, false);
   }
 
-  #mount(mountFolder: () => Promise<string | null>): void {
-    const result = mountFolder();
+  #busy(at: string | undefined, on: boolean): void {
+    if (at === undefined) {
+      this.mounting = on;
+      return;
+    }
+    const inserting = new Set(this.inserting);
+    if (on) inserting.add(at);
+    else inserting.delete(at);
+    this.inserting = inserting;
+  }
+
+  #mount(mountFolder: (path?: string) => Promise<string | null>, at?: string): void {
+    const result = at === undefined ? mountFolder() : mountFolder(at);
     this.error = '';
-    this.mounting = true;
+    this.#busy(at, true);
     result
       .then(
         (path) => {
@@ -321,9 +339,7 @@ export class SliccFiles extends ModelElement {
           this.error = failure(error);
         }
       )
-      .finally(() => {
-        this.mounting = false;
-      });
+      .finally(() => this.#busy(at, false));
   }
 
   #eject(eject: (path: string) => Promise<void>, path: string): void {
@@ -363,6 +379,35 @@ export class SliccFiles extends ModelElement {
       ><swc-tooltip for="mount" placement="bottom">${label}</swc-tooltip>`;
   }
 
+  #waiting(files: FilePort | undefined): TemplateResult | typeof nothing {
+    if (this.waiting.length === 0) return nothing;
+    const mountFolder = files?.mountFolder?.bind(files);
+    return html`<section class="mounts" aria-labelledby="waiting">
+      <span class="heading" id="waiting">Needs a folder</span>
+      <ul aria-labelledby="waiting">
+        ${this.waiting.map(
+          (path) => html`<li>
+            <span class="path" title=${`${path} needs a folder`}>${path}</span>
+            ${
+              mountFolder
+                ? html`<swc-action-button
+                    size="s"
+                    quiet
+                    data-action="insert-folder"
+                    data-id=${path}
+                    accessible-label=${`Insert folder at ${path}`}
+                    ?pending=${this.inserting.has(path)}
+                    @click=${() => this.#mount(mountFolder, path)}
+                    >Insert folder…</swc-action-button
+                  >`
+                : nothing
+            }
+          </li>`
+        )}
+      </ul>
+    </section>`;
+  }
+
   #strip(files: FilePort | undefined): TemplateResult | typeof nothing {
     if (this.mounted.length === 0) return nothing;
     const eject = files?.eject?.bind(files);
@@ -400,6 +445,7 @@ export class SliccFiles extends ModelElement {
           ? html`<swc-icon-alert-diamond size="s" aria-hidden="true"></swc-icon-alert-diamond><span>${this.error}</span>`
           : nothing
       }</div>
+      ${this.#waiting(files)}
       ${this.#strip(files)}
       <slicc-file-tree @file-open=${this.#open}></slicc-file-tree>`;
   }
