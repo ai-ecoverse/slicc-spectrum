@@ -385,13 +385,16 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     const turn = messages.slice(0, at).findLastIndex((message) => message.role === 'user');
     if (turn < 0) return null;
     const user = messages[turn] as UserMessage;
-    messages.splice(turn);
+    const turns = messages.splice(turn).filter((message) => message.role === 'user').length;
     messages.push({
       id: `rewound-${Date.now()}`,
       role: 'system',
       kind: 'notice',
-      title: 'Rewound 1 turn',
-      text: 'Its prompt is back in the composer.',
+      title: turns === 1 ? 'Rewound 1 turn' : `Rewound ${turns} turns`,
+      text:
+        turns === 1
+          ? 'Its prompt is back in the composer.'
+          : 'The latest prompt is back in the composer.',
       createdAt: Date.now(),
     });
     this.emit('messages', agentId);

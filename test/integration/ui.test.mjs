@@ -453,24 +453,44 @@ test('a content-filter stop drops the last turn and puts its prompt back in the 
   await failures(1);
   await send('Second forbidden question');
   await failures(2);
-  await drop();
-  await composed('Second forbidden question');
-  await drop();
-  await composed('First forbidden question');
+  await send('Third forbidden question');
+  await failures(3);
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [
+        ...window
+          .$('slicc-app', 'slicc-dock', 'slicc-chat')
+          .shadowRoot.querySelectorAll('swc-button[data-action=drop-turn]'),
+      ].map((button) => button.textContent.trim())
+    ),
+    ['Drop the last turn', 'Drop 2 failed turns', 'Drop 3 failed turns']
+  );
+  await shot(page, 'filtered-run');
+  await page.evaluate(() =>
+    [
+      ...window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat')
+        .shadowRoot.querySelectorAll('swc-button[data-action=drop-turn]'),
+    ]
+      .at(-1)
+      .click()
+  );
+  await composed('Third forbidden question');
   const left = await users();
   assert.ok(
-    !left.includes('First forbidden question') && !left.includes('Second forbidden question')
+    !left.includes('First forbidden question') &&
+      !left.includes('Second forbidden question') &&
+      !left.includes('Third forbidden question')
   );
-  assert.equal(
-    await page.evaluate(
-      () =>
-        window.model.agent
-          .messages('cone-sliccy')
-          .filter((message) => message.role === 'system' && message.title === 'Rewound 1 turn')
-          .length
-    ),
-    2
+  assert.ok(left.includes('Summarize the notes'));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const last = window.model.agent.messages('cone-sliccy').at(-1);
+      return [last.role, last.title];
+    }),
+    ['system', 'Rewound 3 turns']
   );
+  await shot(page, 'filtered-run-after');
   assert.deepEqual(page.errors, []);
 });
 

@@ -35,6 +35,25 @@ const navigation = new Set([
   'PageDown',
 ]);
 
+const failed = (message: Message): boolean =>
+  message.role === 'assistant'
+    ? message.status === 'error'
+    : message.role === 'system' && message.kind === 'error';
+
+export function failedTurns(messages: readonly Message[], messageId: string): string[] {
+  const at = messages.findIndex((message) => message.id === messageId);
+  const turns = messages.flatMap((message, index) =>
+    message.role === 'user' && index < at ? [index] : []
+  );
+  const ids = [messageId];
+  for (let turn = turns.length - 1; turn > 0; turn--) {
+    const error = messages.slice(turns[turn - 1], turns[turn]).find(failed);
+    if (!error) break;
+    ids.push(error.id);
+  }
+  return ids;
+}
+
 let touched = false;
 document.addEventListener(
   'pointerdown',
@@ -132,6 +151,8 @@ export class SliccChat extends ThemedElement {
     answer: (questionId, answer) => this.model?.agent.answer(this.#id(), questionId, answer),
     resolve: (messageId, state) => this.model?.agent.resolveLick(this.#id(), messageId, state),
     action: (action, messageId) => this.#action(action, messageId),
+    dropping: (messageId) =>
+      failedTurns((this.model as SliccModel).agent.messages(this.#id()), messageId).length,
     open: (path) =>
       this.dispatchEvent(
         new CustomEvent('open-file', { detail: { path }, bubbles: true, composed: true })
@@ -244,9 +265,17 @@ export class SliccChat extends ThemedElement {
   }
 
   async #rewind(id: string, messageId: string): Promise<void> {
-    const restored = await this.model?.agent.rewind?.(id, messageId);
+    const messages = this.model?.agent.messages(id) ?? [];
+    const at = messages.findIndex((message) => message.id === messageId);
+    const latest = messages.findLast(
+      (message, index): message is UserMessage => index < at && message.role === 'user'
+    );
+    const first = failedTurns(messages, messageId).at(-1) as string;
+    const restored = await this.model?.agent.rewind?.(id, first);
     if (!restored) return;
-    this.renderRoot.querySelector<SliccComposer>('slicc-composer')?.restore(restored);
+    this.renderRoot
+      .querySelector<SliccComposer>('slicc-composer')
+      ?.restore(latest ? { text: latest.text, attachments: latest.attachments } : restored);
   }
 
   #action(action: ErrorAction, messageId = ''): void {
