@@ -60,9 +60,10 @@ export function railCapacity(width: number, count: number): number {
   return count <= slots ? count : Math.max(0, slots - 1);
 }
 
-export function updatesVariant(status: string): 'negative' | 'info' | 'notice' {
+export function updatesVariant(status: string): 'negative' | 'info' | 'notice' | 'neutral' {
   if (status.endsWith('failed')) return 'negative';
   if (status.startsWith('updating')) return 'info';
+  if (status === 'starting') return 'neutral';
   return 'notice';
 }
 

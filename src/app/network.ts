@@ -121,9 +121,8 @@ export class SliccNetwork extends ModelElement {
         margin: 0 auto;
         box-sizing: border-box;
       }
-      .page:focus-visible {
-        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
-        outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
+      .page:focus {
+        outline: none;
       }
       section {
         display: grid;

@@ -17,6 +17,7 @@ import { ModelElement } from './base.ts';
 const states = {
   current: ['neutral', 'Up to date'],
   queued: ['neutral', 'Waiting'],
+  starting: ['info', 'Starting'],
   checking: ['info', 'Checking'],
   downloading: ['info', 'Downloading'],
   linking: ['info', 'Linking'],
@@ -51,7 +52,7 @@ export function updatesStatus(items: readonly UpdateItem[]): string | null {
   if (items.some((item) => item.state === 'ready' || item.state === 'available')) {
     return 'update ready';
   }
-  return null;
+  return items.some((item) => item.state === 'starting') ? 'starting' : null;
 }
 
 export class UpdateVisibility {
@@ -114,9 +115,8 @@ export class SliccUpdates extends ModelElement {
         padding: var(--swc-spacing-400);
         margin: 0 auto;
       }
-      .page:focus-visible {
-        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
-        outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
+      .page:focus {
+        outline: none;
       }
       .hint {
         margin: 0 0 var(--swc-spacing-300);
@@ -272,7 +272,7 @@ export class SliccUpdates extends ModelElement {
         accessible-label=${`${item.label}: ${progress.phase === 'download' ? 'downloading' : 'linking'}`}
       ></swc-progress-bar>`;
     }
-    if (!running.has(item.state)) return nothing;
+    if (!running.has(item.state) && item.state !== 'starting') return nothing;
     return html`<swc-progress-bar
       size="s"
       indeterminate
@@ -315,7 +315,7 @@ export class SliccUpdates extends ModelElement {
       </div>
       <div class="meta">
         <span class="version">${item.from ?? 'Not installed'}${item.to && item.to !== item.from ? html` → ${item.to}` : nothing}</span>
-        ${this.#checked(item.checkedAt)}
+        ${item.state === 'starting' ? nothing : this.#checked(item.checkedAt)}
       </div>
       ${this.#progress(item)}
       ${
