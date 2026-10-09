@@ -280,6 +280,16 @@ export const files: Record<string, string> = {
 
 export const directories = ['/sessions', '/home/user/downloads'];
 
+export const mountPoint = '/mnt/photos';
+
+export const mounted: Record<string, string> = {
+  'README.md': '# Photos\n\nHarbor shots for the forecast pages, one album per season.\n',
+  'albums/autumn.json': '{ "title": "Autumn", "shots": ["breakwater-fog", "pier-at-dusk"] }\n',
+  'albums/winter.json': '{ "title": "Winter", "shots": ["ice-on-the-buoys"] }\n',
+  'captions.txt':
+    'breakwater-fog: low cloud over the outer wall\npier-at-dusk: lamps on, tide out\n',
+};
+
 export const pending: Change[] = [
   {
     path: '/workspace/harbor/src/lib/cache.ts',

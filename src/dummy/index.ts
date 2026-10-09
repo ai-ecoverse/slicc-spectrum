@@ -3,7 +3,7 @@ import { DummyAgent } from './agent.ts';
 import { DummyBrowser } from './browser.ts';
 import { clock } from './clock.ts';
 import * as extras from './extras.ts';
-import { DummyFiles } from './files.ts';
+import { DummyFiles, type MountScenario } from './files.ts';
 import * as fixtures from './fixtures.ts';
 import { DummyMemory } from './memory.ts';
 import { DummyMonitor } from './monitor.ts';
@@ -17,6 +17,7 @@ export interface DummyOptions {
   delay?: number;
   storage?: Storage | null;
   updates?: UpdateScenario;
+  mounts?: MountScenario | 'off';
 }
 
 export interface DummyModel extends SliccModel {
@@ -27,9 +28,14 @@ export function createDummyModel({
   delay = 30,
   storage = null,
   updates = 'current',
+  mounts = 'off',
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
-  const files = new DummyFiles(fixtures.files, fixtures.directories, fixtures.pending, time);
+  const mount =
+    mounts === 'off'
+      ? null
+      : { scenario: mounts, point: fixtures.mountPoint, files: fixtures.mounted };
+  const files = new DummyFiles(fixtures.files, fixtures.directories, fixtures.pending, time, mount);
   const browser = new DummyBrowser(fixtures.tabs, time);
   const agent = new DummyAgent(
     fixtures.agents,

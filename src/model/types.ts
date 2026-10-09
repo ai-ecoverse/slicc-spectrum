@@ -296,6 +296,7 @@ export interface FileEvents {
   files: readonly FileEntry[];
   file: string;
   changes: readonly Change[];
+  mounts: readonly string[];
 }
 
 export interface FilePort extends Subscribable<FileEvents> {
@@ -306,6 +307,9 @@ export interface FilePort extends Subscribable<FileEvents> {
   changes(): readonly Change[];
   accept(path: string): void;
   revert(path: string): Promise<void>;
+  mountFolder?(): Promise<string | null>;
+  mounts?(): readonly string[];
+  eject?(path: string): Promise<void>;
 }
 
 export interface TerminalInfo {
