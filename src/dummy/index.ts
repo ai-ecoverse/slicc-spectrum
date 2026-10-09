@@ -1,6 +1,7 @@
 import type { SliccModel } from '../model/types.ts';
 import { DummyAgent } from './agent.ts';
 import { DummyBrowser } from './browser.ts';
+import { type ChangesScenario, DummyChanges } from './changes.ts';
 import { clock } from './clock.ts';
 import * as extras from './extras.ts';
 import { DummyFiles, type MountScenario } from './files.ts';
@@ -20,6 +21,7 @@ export interface DummyOptions {
   updates?: UpdateScenario;
   mounts?: MountScenario | 'off';
   network?: NetworkScenario | 'off';
+  changes?: ChangesScenario;
 }
 
 export interface DummyModel extends SliccModel {
@@ -33,13 +35,15 @@ export function createDummyModel({
   updates = 'current',
   mounts = 'off',
   network = 'limited',
+  changes = 'files',
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
   const mount =
     mounts === 'off'
       ? null
       : { scenario: mounts, point: fixtures.mountPoint, files: fixtures.mounted };
-  const files = new DummyFiles(fixtures.files, fixtures.directories, fixtures.pending, time, mount);
+  const pending = changes === 'git' ? [...fixtures.pending, fixtures.skillEdit] : fixtures.pending;
+  const files = new DummyFiles(fixtures.files, fixtures.directories, pending, time, mount);
   const browser = new DummyBrowser(fixtures.tabs, time);
   const agent = new DummyAgent(
     fixtures.agents,
@@ -73,6 +77,7 @@ export function createDummyModel({
     tray: new DummyTray(extras.tray, time),
     updates: new DummyUpdates(updates, time),
     ...(network === 'off' ? {} : { network: new DummyNetwork(network, time) }),
+    ...(changes === 'files' ? {} : { changes: new DummyChanges(files, changes === 'git') }),
   };
   return { ...base, monitor: new DummyMonitor(base) };
 }

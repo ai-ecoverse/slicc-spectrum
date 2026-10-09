@@ -3,7 +3,7 @@ import { keyed } from 'lit/directives/keyed.js';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import type { PanelParams, SerializedDockview, SliccDock } from '../components/dock.ts';
 import type { Agent, SliccModel, Sprinkle, UpdatesPort } from '../model/types.ts';
-import { shared, ThemedElement } from './base.ts';
+import { changesOf, shared, ThemedElement } from './base.ts';
 import { prompt } from './confirm.ts';
 import { Dips, dipType } from './dips.ts';
 import { defaultFontBase, defaultVariableFont, installFonts } from './fonts.ts';
@@ -309,7 +309,7 @@ export class SliccApp extends ThemedElement {
         }
         update();
       }),
-      model.files.on('changes', update),
+      changesOf(model).on('changes', update),
       model.terminals.on('terminals', () => {
         this.#prune();
         update();
@@ -601,7 +601,8 @@ export class SliccApp extends ThemedElement {
   }
 
   #changes(): number {
-    return this.model?.files.changes().length ?? 0;
+    const port = this.model ? changesOf(this.model) : null;
+    return port && !port.unavailable?.() ? port.changes().length : 0;
   }
 
   #more(items: readonly Surface[]): TemplateResult | typeof nothing {

@@ -64,7 +64,7 @@ const revertAll = () =>
 
 test('Revert all asks first: cancel keeps the changes, confirm reverts them', async (t) => {
   const page = await open(t);
-  await page.until(() => window.model.files.changes().length === 4);
+  await page.until(() => window.model.files.changes().length === 5);
 
   await page.evaluate(revertAll);
   await page.until(dialog);
@@ -73,8 +73,8 @@ test('Revert all asks first: cancel keeps the changes, confirm reverts them', as
     root: 'slicc-app',
     role: 'alertdialog',
     modal: true,
-    title: 'Revert 4 changes?',
-    body: 'This discards the agents’ edits and puts every file back. You can’t undo this.',
+    title: 'Revert 5 changes?',
+    body: 'Their pending changes are discarded and can’t be undone.',
     variant: 'destructive',
     buttons: [
       ['Cancel', 'secondary'],
@@ -85,7 +85,7 @@ test('Revert all asks first: cancel keeps the changes, confirm reverts them', as
 
   await page.evaluate(answer, false);
   await page.until(closed);
-  assert.equal(await page.evaluate(() => window.model.files.changes().length), 4);
+  assert.equal(await page.evaluate(() => window.model.files.changes().length), 5);
 
   await page.evaluate(revertAll);
   await page.until(dialog);
@@ -97,7 +97,7 @@ test('Revert all asks first: cancel keeps the changes, confirm reverts them', as
 
 test('the dialog takes focus on Cancel, Escape cancels, and focus goes back to the trigger', async (t) => {
   const page = await open(t);
-  await page.until(() => window.model.files.changes().length === 4);
+  await page.until(() => window.model.files.changes().length === 5);
   const trigger = () =>
     [
       ...window
@@ -120,7 +120,7 @@ test('the dialog takes focus on Cancel, Escape cancels, and focus goes back to t
 
   await page.press('Escape');
   await page.until(closed);
-  assert.equal(await page.evaluate(() => window.model.files.changes().length), 4);
+  assert.equal(await page.evaluate(() => window.model.files.changes().length), 5);
   await page.until(() => /slicc-changes > swc-action-button > button$/.test(window.focused()));
 
   await page.press('Enter');
@@ -128,7 +128,7 @@ test('the dialog takes focus on Cancel, Escape cancels, and focus goes back to t
   await page.until(() => /slicc-confirm > swc-button > button$/.test(window.focused()));
   await page.press('Enter');
   await page.until(closed);
-  assert.equal(await page.evaluate(() => window.model.files.changes().length), 4);
+  assert.equal(await page.evaluate(() => window.model.files.changes().length), 5);
   await page.until(() => /slicc-changes > swc-action-button > button$/.test(window.focused()));
 
   await page.press(' ');
@@ -151,7 +151,7 @@ test('every destructive action asks first and acts only on confirm', async (t) =
     assert.equal((await page.evaluate(dialog)).title, title);
   };
 
-  await page.until(() => window.model.files.changes().length === 4);
+  await page.until(() => window.model.files.changes().length === 5);
   const revert = () =>
     window
       .$(
@@ -164,10 +164,10 @@ test('every destructive action asks first and acts only on confirm', async (t) =
   await ask(revert, 'Revert retry.ts?');
   await page.evaluate(answer, false);
   await page.until(closed);
-  assert.equal(await page.evaluate(() => window.model.files.changes().length), 4);
+  assert.equal(await page.evaluate(() => window.model.files.changes().length), 5);
   await ask(revert, 'Revert retry.ts?');
   await page.evaluate(answer, true);
-  await page.until(() => window.model.files.changes().length === 3);
+  await page.until(() => window.model.files.changes().length === 4);
 
   await page.evaluate(() => window.app.open('diff', '/workspace/harbor/src/lib/cache.ts'));
   await page.until(() => !!window.part('diff:/workspace/harbor/src/lib/cache.ts', '.bar'));
@@ -182,10 +182,10 @@ test('every destructive action asks first and acts only on confirm', async (t) =
   await ask(revertDiff, 'Revert cache.ts?');
   await page.evaluate(answer, false);
   await page.until(closed);
-  assert.equal(await page.evaluate(() => window.model.files.changes().length), 3);
+  assert.equal(await page.evaluate(() => window.model.files.changes().length), 4);
   await ask(revertDiff, 'Revert cache.ts?');
   await page.evaluate(answer, true);
-  await page.until(() => window.model.files.changes().length === 2);
+  await page.until(() => window.model.files.changes().length === 3);
 
   await page.evaluate(() => window.app.show('freezer'));
   await page.until(() => !!window.part('freezer', '.card'));

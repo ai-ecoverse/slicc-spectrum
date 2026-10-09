@@ -269,6 +269,7 @@ export const files: Record<string, string> = {
   '/workspace/harbor/src/lib/cache.ts': cacheBefore,
   '/workspace/harbor/src/lib/units.ts': units,
   '/workspace/harbor/src/legacy/xml.ts': legacyXml,
+  '/workspace/harbor/static/radar.png': '\u0089PNG\r\n\u001a\n',
   '/workspace/harbor/test/units.test.ts': unitsTest,
   '/workspace/skills/release-notes/SKILL.md': skill,
   '/workspace/skills/release-notes/scripts/collect.jsh': collect,
@@ -320,7 +321,22 @@ export const pending: Change[] = [
     after: null,
     agentId: 'cone-harbor',
   },
+  {
+    path: '/workspace/harbor/static/radar.png',
+    status: 'modified',
+    before: null,
+    after: null,
+    agentId: 'scoop-otter',
+  },
 ];
+
+export const skillEdit: Change = {
+  path: '/workspace/skills/release-notes/SKILL.md',
+  status: 'modified',
+  before: skill,
+  after: `${skill}4. Link each change to its pull request.\n`,
+  agentId: null,
+};
 
 export const models: ModelOption[] = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', provider: 'Anthropic', images: true },

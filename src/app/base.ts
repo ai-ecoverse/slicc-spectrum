@@ -1,5 +1,11 @@
 import { css, html, LitElement, type PropertyValues, type TemplateResult } from 'lit';
-import type { AgentStatus, ColorScheme, ModelOption, SliccModel } from '../model/types.ts';
+import type {
+  AgentStatus,
+  ChangesPort,
+  ColorScheme,
+  ModelOption,
+  SliccModel,
+} from '../model/types.ts';
 
 export class ModelElement extends LitElement {
   static properties = { model: { attribute: false } };
@@ -53,6 +59,10 @@ export class ModelElement extends LitElement {
     for (const off of this.#off) off();
     this.#off = [];
   }
+}
+
+export function changesOf(model: SliccModel): ChangesPort {
+  return model.changes ?? model.files;
 }
 
 export type Color = 'light' | 'dark';

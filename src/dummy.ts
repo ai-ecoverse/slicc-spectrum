@@ -1,3 +1,5 @@
+export type { ChangesScenario } from './dummy/changes.ts';
+export { DummyChanges } from './dummy/changes.ts';
 export type { DummyMount, MountScenario } from './dummy/files.ts';
 export type { DummyModel, DummyOptions } from './dummy/index.ts';
 export { createDummyModel } from './dummy/index.ts';
