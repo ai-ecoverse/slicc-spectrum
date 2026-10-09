@@ -366,8 +366,8 @@ export function user(message: UserMessage): TemplateResult {
   return html`<swc-conversation-turn type="user" class="message user" accessible-label=${label} data-id=${message.id} data-mode=${message.mode ?? 'send'} data-delivered=${delivered ?? 'run'} data-origin=${message.origin ?? 'user'}>
     <div class="bubble">
       <div class="meta">
-        ${agent ? html`<swc-badge class="origin" size="s" variant="indigo">Agent</swc-badge>` : nothing}
         <span class="who">${who}</span><span>${time(message.createdAt)}</span>
+        ${agent ? html`<swc-badge class="origin" size="s" variant="indigo">Agent</swc-badge>` : nothing}
         ${tag ? html`<swc-badge class="tag" size="s" variant=${delivered === 'steer' ? 'notice' : 'informative'} subtle>${tag}</swc-badge>` : nothing}
       </div>
       ${message.text ? html`<swc-user-message class="body"><span class="text">${message.text}</span></swc-user-message>` : nothing}

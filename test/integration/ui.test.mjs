@@ -2871,9 +2871,12 @@ test('agent requests, frozen cones and long lick bodies render as their own kind
       turn.querySelector('.who').textContent,
       turn.querySelector('.meta swc-badge')?.textContent.trim(),
       getComputedStyle(bubble).alignSelf,
+      [...turn.querySelector('.meta').children].map((child) =>
+        child.matches('.who') ? 'name' : child.matches('swc-badge') ? 'badge' : 'time'
+      ),
     ];
   });
-  assert.deepEqual(request, ['agent', 'harbor', 'Agent', 'flex-start']);
+  assert.deepEqual(request, ['agent', 'harbor', 'Agent', 'flex-start', ['name', 'time', 'badge']]);
   await shot(page, 'chat-agent-request');
 
   await page.evaluate(() => window.model.agent.select('cone-tides'));
