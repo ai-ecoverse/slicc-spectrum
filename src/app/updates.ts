@@ -6,6 +6,9 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import type {
+  PackageAction,
+  PackageItem,
+  PackageState,
   SliccModel,
   UpdateAction,
   UpdateItem,
@@ -13,6 +16,7 @@ import type {
   UpdatesPort,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
+import { size } from './messages.ts';
 
 const states = {
   current: ['neutral', 'Up to date'],
@@ -35,6 +39,65 @@ const actions: Record<UpdateAction, string> = {
 };
 
 const running: ReadonlySet<UpdateState> = new Set(['checking', 'downloading', 'linking']);
+
+const packageStates: Record<PackageState, readonly [string, string] | null> = {
+  available: null,
+  queued: ['neutral', 'Waiting'],
+  installing: ['info', 'Installing'],
+  installed: ['positive', 'Installed'],
+  outdated: ['notice', 'Update available'],
+  updating: ['info', 'Updating'],
+  removing: ['info', 'Removing'],
+  failed: ['negative', 'Failed'],
+};
+
+const packageActions: Record<PackageAction, string> = {
+  install: 'Install',
+  update: 'Update',
+  remove: 'Remove',
+  retry: 'Retry',
+};
+
+const packageRunning: ReadonlySet<PackageState> = new Set(['installing', 'updating', 'removing']);
+
+const list = (names: readonly string[]) =>
+  new Intl.ListFormat('en', { type: 'conjunction' }).format(names);
+
+export function requiresText(item: PackageItem, all: readonly PackageItem[]): string | null {
+  const needs = (item.requires ?? []).map((id) => {
+    const found = all.find((other) => other.id === id);
+    return { label: found?.label ?? id, missing: found?.version === null };
+  });
+  if (!needs.length) return null;
+  if (item.version === null) {
+    const present = needs.filter((need) => !need.missing).map((need) => need.label);
+    const missing = needs.filter((need) => need.missing).map((need) => need.label);
+    return [
+      present.length ? `Needs ${list(present)}` : '',
+      missing.length ? `Installs ${list(missing)} too` : '',
+    ]
+      .filter(Boolean)
+      .join('; ');
+  }
+  return `Needs ${list(needs.map((need) => (need.missing ? `${need.label} (not installed)` : need.label)))}`;
+}
+
+type Failures = ReadonlyMap<string, string>;
+type Snapshot = ReadonlyMap<string, { state: string; error: string | null }>;
+
+const snapshot = (
+  items: readonly { id: string; state: string; error: string | null }[]
+): Snapshot => new Map(items.map(({ id, state, error }) => [id, { state, error }]));
+
+function settled(failures: Failures, before: Snapshot, after: Snapshot): Failures {
+  return new Map(
+    [...failures].filter(([id]) => {
+      const was = before.get(id);
+      const is = after.get(id);
+      return was && is && was.state === is.state && was.error === is.error;
+    })
+  );
+}
 
 function hint(port: UpdatesPort | undefined): string {
   if (!port) return 'Update information is not connected.';
@@ -88,14 +151,20 @@ export class SliccUpdates extends ModelElement {
     ...ModelElement.properties,
     pending: { state: true },
     failures: { state: true },
+    busy: { state: true },
+    problems: { state: true },
   };
   declare pending: ReadonlySet<string>;
-  declare failures: ReadonlyMap<string, string>;
+  declare failures: Failures;
+  declare busy: ReadonlyMap<string, PackageAction>;
+  declare problems: Failures;
 
   constructor() {
     super();
     this.pending = new Set();
     this.failures = new Map();
+    this.busy = new Map();
+    this.problems = new Map();
   }
 
   static styles = [
@@ -200,14 +269,109 @@ export class SliccUpdates extends ModelElement {
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
+      section {
+        margin-block-start: var(--swc-spacing-300);
+      }
+      section > h2 {
+        margin-block: var(--swc-spacing-400) var(--swc-spacing-100);
+      }
+      section > .hint {
+        margin-block-end: var(--swc-spacing-100);
+      }
+      ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      li {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: 'name buttons' 'description buttons';
+        align-items: center;
+        gap: var(--swc-spacing-75) var(--swc-spacing-300);
+        padding: var(--swc-spacing-200) 0;
+        border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
+      }
+      li > :not(.name, .buttons, .description) {
+        grid-column: 1 / -1;
+        margin: 0;
+      }
+      .name {
+        grid-area: name;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--swc-spacing-50) var(--swc-spacing-200);
+        min-width: 0;
+      }
+      h3 {
+        margin: 0;
+        font-size: var(--swc-font-size-100);
+        font-weight: var(--swc-bold-font-weight);
+        color: var(--swc-heading-color);
+      }
+      .buttons {
+        grid-area: buttons;
+        align-self: start;
+        display: flex;
+        gap: var(--swc-spacing-100);
+      }
+      .description {
+        grid-area: description;
+        margin: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      li .meta {
+        justify-content: flex-start;
+        gap: 0;
+      }
+      li .meta > * + *::before {
+        content: '·';
+        margin-inline: var(--swc-spacing-100);
+      }
+      .commands {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--swc-spacing-75);
+      }
+      code {
+        padding: 0 var(--swc-spacing-75);
+        border-radius: var(--swc-corner-radius-small-default);
+        background: var(--swc-background-layer-1-color);
+        font-family: var(--swc-code-font-family-stack);
+        font-size: var(--swc-font-size-75);
+        color: var(--swc-code-color);
+      }
+      .hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+      .package {
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
       @container (max-width: 480px) {
         .page {
           padding: var(--swc-spacing-300);
         }
-        .meta {
+        article .meta {
           align-items: flex-start;
           flex-direction: column;
           gap: var(--swc-spacing-50);
+        }
+        li {
+          grid-template-areas: 'name buttons' 'description description';
+        }
+        .description {
+          display: -webkit-box;
+          -webkit-box-orient: vertical;
+          -webkit-line-clamp: 2;
+          white-space: normal;
         }
       }
     `,
@@ -216,20 +380,23 @@ export class SliccUpdates extends ModelElement {
   protected subscribe(model: SliccModel): Array<() => void> {
     this.pending = new Set();
     this.failures = new Map();
+    this.busy = new Map();
+    this.problems = new Map();
     const port = model.updates;
     if (!port) return [];
-    let previous = new Map(port.list().map(({ id, state, error }) => [id, { state, error }]));
+    let previous = snapshot(port.list());
+    let packages = snapshot(port.packages?.() ?? []);
     return [
       port.on('items', (items) => {
-        const next = new Map(items.map(({ id, state, error }) => [id, { state, error }]));
-        this.failures = new Map(
-          [...this.failures].filter(([id]) => {
-            const before = previous.get(id);
-            const after = next.get(id);
-            return before && after && before.state === after.state && before.error === after.error;
-          })
-        );
+        const next = snapshot(items);
+        this.failures = settled(this.failures, previous, next);
         previous = next;
+        this.requestUpdate();
+      }),
+      port.on('packages', (items) => {
+        const next = snapshot(items);
+        this.problems = settled(this.problems, packages, next);
+        packages = next;
         this.requestUpdate();
       }),
     ];
@@ -256,6 +423,33 @@ export class SliccUpdates extends ModelElement {
     } finally {
       if (this.model?.updates === port) {
         this.pending = new Set([...this.pending].filter((key) => key !== id));
+      }
+    }
+  }
+
+  async actPackage(id: string, action: PackageAction): Promise<void> {
+    const port = this.model?.updates;
+    if (!port?.actPackage || this.busy.has(id)) return;
+    this.busy = new Map([...this.busy, [id, action]]);
+    this.problems = new Map([...this.problems].filter(([key]) => key !== id));
+    try {
+      await port.actPackage(id, action);
+    } catch (error) {
+      if (this.model?.updates === port) {
+        this.problems = new Map([
+          ...this.problems,
+          [id, error instanceof Error ? error.message : String(error)],
+        ]);
+      }
+    } finally {
+      if (this.model?.updates === port) {
+        this.busy = new Map([...this.busy].filter(([key]) => key !== id));
+        await this.updateComplete;
+        const lost = !document.activeElement || document.activeElement === document.body;
+        const row = [...this.renderRoot.querySelectorAll<HTMLElement>('li[data-id]')].find(
+          (candidate) => candidate.dataset.id === id
+        );
+        if (lost) row?.querySelector<HTMLElement>('swc-button')?.focus();
       }
     }
   }
@@ -331,6 +525,107 @@ export class SliccUpdates extends ModelElement {
     </article>`;
   }
 
+  #packageMeta(item: PackageItem, all: readonly PackageItem[]): TemplateResult {
+    const version =
+      item.version === null
+        ? item.offered
+        : item.offered && item.offered !== item.version
+          ? `${item.version} → ${item.offered}`
+          : item.version;
+    const download =
+      item.size !== undefined && (item.version === null || item.offered !== item.version);
+    const requires = requiresText(item, all);
+    return html`<p class="meta">
+      ${version ? html`<span class="version">${version}</span>` : nothing}
+      ${download ? html`<span>${size(item.size as number)}</span>` : nothing}
+      ${requires ? html`<span data-requires>${requires}</span>` : nothing}
+    </p>`;
+  }
+
+  #packageProgress(item: PackageItem): TemplateResult | typeof nothing {
+    const progress = item.progress;
+    if (progress) {
+      return html`<swc-progress-bar
+        size="s"
+        min-value="0"
+        max-value=${progress.total}
+        value=${progress.done}
+        value-label=${`${progress.done} of ${progress.total} packages`}
+        accessible-label=${`${item.label}: ${progress.phase === 'download' ? 'downloading' : 'linking'}`}
+      ></swc-progress-bar>`;
+    }
+    if (!packageRunning.has(item.state)) return nothing;
+    return html`<swc-progress-bar
+      size="s"
+      indeterminate
+      accessible-label=${`${item.label}: ${packageStates[item.state]?.[1].toLowerCase()}`}
+    ></swc-progress-bar>`;
+  }
+
+  #package(item: PackageItem, all: readonly PackageItem[]): TemplateResult {
+    const light = packageStates[item.state];
+    const busy = this.busy.get(item.id);
+    const shown = busy ? [busy] : item.actions;
+    const error = this.problems.get(item.id) ?? item.error;
+    return html`<li data-id=${item.id} data-state=${item.state}>
+      <div class="name">
+        <h3 title=${item.package}>${item.label}</h3>
+        ${light ? html`<swc-status-light size="s" variant=${light[0]}>${light[1]}</swc-status-light>` : nothing}
+      </div>
+      <div class="buttons">${shown.map(
+        (action) =>
+          html`<swc-button
+            size="s"
+            variant="secondary"
+            data-action=${action}
+            accessible-label=${`${packageActions[action]} ${item.label}`}
+            ?pending=${busy === action}
+            @click=${() => void this.actPackage(item.id, action)}
+          >${packageActions[action]}</swc-button>`
+      )}</div>
+      <p class="description">${item.description}</p>
+      ${this.#packageMeta(item, all)}
+      ${
+        item.commands.length
+          ? html`<p class="commands"><span class="hidden">Commands: </span>${item.commands.map(
+              (command) => html`<code>${command}</code>`
+            )}</p>`
+          : nothing
+      }
+      ${this.#packageProgress(item)}
+      ${
+        error
+          ? html`<div class="error" role="alert" data-error>
+              <swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>
+              <span>${error}</span>
+            </div>`
+          : nothing
+      }
+      ${item.log ? html`<details><summary>Install log</summary><pre><span class="package">${item.package}</span>\n${item.log}</pre></details>` : nothing}
+    </li>`;
+  }
+
+  #packages(port: UpdatesPort | undefined): TemplateResult | typeof nothing {
+    if (!port?.packages) return nothing;
+    const all = port.packages();
+    return html`<section data-section="packages" aria-labelledby="packages">
+      <swc-divider size="m"></swc-divider>
+      <h2 id="packages">Optional packages</h2>
+      <p class="hint">
+        ${all.length ? 'Tools for the agent and the terminal. Install the ones you need; you can remove them later.' : 'No optional packages are offered right now.'}
+      </p>
+      ${
+        all.length
+          ? html`<ul>${repeat(
+              all,
+              (item) => item.id,
+              (item) => this.#package(item, all)
+            )}</ul>`
+          : nothing
+      }
+    </section>`;
+  }
+
   render(): TemplateResult {
     const port = this.model?.updates;
     return html`<div class="page" tabindex="-1">
@@ -340,6 +635,7 @@ export class SliccUpdates extends ModelElement {
         (item) => item.id,
         (item) => this.#item(item)
       )}
+      ${this.#packages(port)}
     </div>`;
   }
 }

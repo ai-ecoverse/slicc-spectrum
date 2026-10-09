@@ -355,3 +355,112 @@ for (const [name, color, browser] of [
     assert.deepEqual(page.errors, []);
   });
 }
+
+for (const [name, browser] of [
+  ['wide', chrome],
+  ['narrow', narrow],
+]) {
+  test(`optional packages install, ask before removing a requirement, and fit ${name}`, async (t) => {
+    const page = await browser.page(t);
+    await page.goto('/ui/?updates=current&packages=mixed&color=light&delay=20');
+    await page.until(() => window.ready && window.app.dock.api.panels.length > 0);
+    await page.evaluate(() => {
+      window.pkg = (id, selector = '') =>
+        window.$(
+          'slicc-app',
+          'slicc-dock',
+          'slicc-updates',
+          `li[data-id=${id}] ${selector}`.trim()
+        );
+      window.app.show('updates');
+    });
+    await page.until(() => window.pkg('git'));
+    const before = await page.evaluate(status);
+    const layout = await page.evaluate(() => {
+      const node = window.$('slicc-app', 'slicc-dock', 'slicc-updates');
+      const name = window.pkg('uv', 'h3').getBoundingClientRect();
+      const buttons = window.pkg('uv', '.buttons').getBoundingClientRect();
+      return {
+        fits: node.scrollWidth <= node.clientWidth,
+        beside: name.right <= buttons.left && name.top < buttons.bottom,
+        name: name.width,
+      };
+    });
+    assert.deepEqual([layout.fits, layout.beside, layout.name > 10], [true, true, true]);
+
+    await page.evaluate(() => {
+      const button = window.pkg('git', '[data-action=install]');
+      button.focus();
+      button.click();
+    });
+    await page.until(() => window.pkg('git', '[data-action=install]')?.hasAttribute('pending'));
+    await page.until(() => window.pkg('git')?.dataset.state === 'installed');
+    assert.equal(
+      await page.evaluate(() => window.pkg('git', 'swc-status-light').textContent.trim()),
+      'Installed'
+    );
+    await page.until(
+      () =>
+        window.$('slicc-app', 'slicc-dock', 'slicc-updates').shadowRoot.activeElement ===
+        window.pkg('git', '[data-action=remove]')
+    );
+
+    const ask = () => {
+      const button = window.pkg('python', '[data-action=remove]');
+      button.focus();
+      button.click();
+    };
+    const dialog = () => {
+      const root = window.$('slicc-app', 'slicc-confirm')?.shadowRoot;
+      if (!root?.querySelector('dialog')?.open) return null;
+      return [
+        root.querySelector('h2').textContent,
+        root.querySelector('p').textContent,
+        root.querySelector('[data-action]').textContent.trim(),
+        root.querySelector('[data-action]').getAttribute('variant'),
+      ];
+    };
+    await page.evaluate(ask);
+    await page.until(dialog);
+    assert.deepEqual(await page.evaluate(dialog), [
+      'Remove Python?',
+      'uv needs it and stops working until Python is back.',
+      'Remove',
+      'accent',
+    ]);
+    assert.equal(
+      await page.evaluate(() =>
+        window.pkg('python', '[data-action=remove]').hasAttribute('pending')
+      ),
+      true
+    );
+    await page.evaluate(() =>
+      window.$('slicc-app', 'slicc-confirm').shadowRoot.querySelector('[data-cancel]').click()
+    );
+    await page.until(() => !window.$('slicc-app', 'slicc-confirm'));
+    await page.until(() => !window.pkg('python', '[data-action=remove]').hasAttribute('pending'));
+    assert.equal(await page.evaluate(() => window.pkg('python').dataset.state), 'installed');
+    assert.equal(await page.evaluate(() => window.pkg('python', '[data-error]')), null);
+
+    await page.evaluate(ask);
+    await page.until(dialog);
+    await page.evaluate(() =>
+      window.$('slicc-app', 'slicc-confirm').shadowRoot.querySelector('[data-action]').click()
+    );
+    await page.until(() => window.pkg('python')?.dataset.state === 'available');
+    assert.equal(
+      await page.evaluate(() => window.pkg('uv', '[data-requires]').textContent),
+      'Needs Python (not installed)'
+    );
+    assert.equal(
+      await page.evaluate(() => window.pkg('ruff', '[data-requires]').textContent),
+      'Installs Python too'
+    );
+
+    await page.evaluate(() => window.pkg('pdf', '[data-action=retry]').click());
+    await page.until(() => window.pkg('pdf')?.dataset.state === 'installed');
+    assert.equal(await page.evaluate(() => window.pkg('pdf', '[data-error]')), null);
+    assert.equal(await page.evaluate(status), before);
+    assert.deepEqual(page.errors, []);
+  });
+}
