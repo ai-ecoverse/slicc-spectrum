@@ -409,10 +409,8 @@ export class SliccApp extends ThemedElement {
     const change = this.#updatesVisibility?.change(port, layout);
     if (change === 'open') {
       if (this.dock.has('updates')) this.dock.reveal('updates');
-      else {
-        this.show('updates');
-        if (!port.ready()) this.dock.api.getPanel('updates')?.api.updateParameters({ boot: true });
-      }
+      else this.show('updates');
+      if (!port.ready()) this.dock.api.getPanel('updates')?.api.updateParameters({ boot: true });
     } else if (
       this.dock.api.getPanel('updates')?.params?.boot &&
       port.ready() &&
