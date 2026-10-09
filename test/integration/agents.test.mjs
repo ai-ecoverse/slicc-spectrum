@@ -177,7 +177,12 @@ test('Drop asks first; cancel keeps the scoop, confirm removes it, closes its ch
         root.querySelector('[data-action]').getAttribute('variant'),
       ];
     }),
-    ['Drop scoop quiet-otter?', 'It stops working. Its files stay.', 'Drop', 'negative']
+    [
+      'Drop scoop quiet-otter?',
+      'It stops, and its working folder is deleted. Its conversation and reports are kept. You can’t undo this.',
+      'Drop',
+      'negative',
+    ]
   );
   await page.evaluate(() => window.answer(false));
   await page.until(() => !window.$('slicc-app', 'slicc-confirm'));
