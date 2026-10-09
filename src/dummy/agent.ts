@@ -424,8 +424,12 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     return [];
   }
 
-  commands(): readonly SlashCommand[] {
-    return [];
+  commands(agentId: string): readonly SlashCommand[] {
+    if (this.#agent(agentId)?.kind !== 'cone') return [];
+    return [
+      { name: 'review', description: 'Review the open changes for mistakes', kind: 'prompt' },
+      { name: 'skill:pdf', description: 'Read, fill and merge PDF files', kind: 'skill' },
+    ];
   }
 
   async ready(): Promise<void> {}

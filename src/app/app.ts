@@ -29,6 +29,7 @@ import {
   surface,
   surfaces,
 } from './panels.ts';
+import { installProperties } from './properties.ts';
 import { TerminalPanels } from './terminals.ts';
 import { theme } from './theme.ts';
 import { UpdateVisibility, updatesStatus } from './updates.ts';
@@ -275,6 +276,7 @@ export class SliccApp extends ThemedElement {
     super.connectedCallback();
     this.ownerDocument.addEventListener('keydown', this.#keydown, true);
     this.#fonts();
+    installProperties(this.ownerDocument);
     this.#resize = new ResizeObserver(() => this.#measure());
     this.#resize.observe(this);
   }
