@@ -385,14 +385,18 @@ export class SliccUpdates extends ModelElement {
     const port = model.updates;
     if (!port) return [];
     let previous = snapshot(port.list());
-    let packages = snapshot(port.packages?.() ?? []);
-    return [
+    const subscriptions = [
       port.on('items', (items) => {
         const next = snapshot(items);
         this.failures = settled(this.failures, previous, next);
         previous = next;
         this.requestUpdate();
       }),
+    ];
+    if (!port.packages) return subscriptions;
+    let packages = snapshot(port.packages());
+    return [
+      ...subscriptions,
       port.on('packages', (items) => {
         const next = snapshot(items);
         this.problems = settled(this.problems, packages, next);
@@ -562,10 +566,10 @@ export class SliccUpdates extends ModelElement {
     ></swc-progress-bar>`;
   }
 
-  #package(item: PackageItem, all: readonly PackageItem[]): TemplateResult {
+  #package(item: PackageItem, all: readonly PackageItem[], act: boolean): TemplateResult {
     const light = packageStates[item.state];
     const busy = this.busy.get(item.id);
-    const shown = busy ? [busy] : item.actions;
+    const shown = busy ? [busy] : act ? item.actions : [];
     const error = this.problems.get(item.id) ?? item.error;
     return html`<li data-id=${item.id} data-state=${item.state}>
       <div class="name">
@@ -619,7 +623,7 @@ export class SliccUpdates extends ModelElement {
           ? html`<ul>${repeat(
               all,
               (item) => item.id,
-              (item) => this.#package(item, all)
+              (item) => this.#package(item, all, Boolean(port.actPackage))
             )}</ul>`
           : nothing
       }
