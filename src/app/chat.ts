@@ -403,6 +403,7 @@ export class SliccChat extends ThemedElement {
       <header>
         ${agent ? this.#meta(agent, !messages.length) : html`<span>No agent</span>`}
       </header>
+      <slicc-notices .model=${this.model}></slicc-notices>
       <div
         class="log"
         role="log"

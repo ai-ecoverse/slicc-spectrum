@@ -9,6 +9,7 @@ import * as fixtures from './fixtures.ts';
 import { DummyMemory } from './memory.ts';
 import { DummyMonitor } from './monitor.ts';
 import { DummyNetwork, type NetworkScenario, type TailnetScenario } from './network.ts';
+import { DummyNotices, type NoticeScenario } from './notices.ts';
 import { DummySettings } from './settings.ts';
 import { DummySprinkles } from './sprinkles.ts';
 import { DummyTerminals } from './terminals.ts';
@@ -30,11 +31,13 @@ export interface DummyOptions {
   network?: NetworkScenario | 'off';
   tailnet?: TailnetScenario;
   changes?: ChangesScenario;
+  notices?: NoticeScenario | 'off';
 }
 
 export interface DummyModel extends SliccModel {
   updates: DummyUpdates;
   network?: DummyNetwork;
+  notices?: DummyNotices;
 }
 
 export function createDummyModel({
@@ -47,6 +50,7 @@ export function createDummyModel({
   network = 'limited',
   tailnet,
   changes = 'files',
+  notices = 'off',
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
   const mount =
@@ -92,6 +96,7 @@ export function createDummyModel({
     }),
     ...(network === 'off' ? {} : { network: new DummyNetwork(network, time, tailnet) }),
     ...(changes === 'files' ? {} : { changes: new DummyChanges(files, changes === 'git') }),
+    ...(notices === 'off' ? {} : { notices: new DummyNotices(notices, time) }),
   };
   return { ...base, monitor: new DummyMonitor(base) };
 }

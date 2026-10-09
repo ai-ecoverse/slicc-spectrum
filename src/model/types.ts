@@ -688,6 +688,25 @@ export interface NetworkPort extends Subscribable<{ network: NetworkStatus }> {
   logoutTailnet?(): Promise<void>;
 }
 
+export interface NoticeAction {
+  id: string;
+  label: string;
+}
+
+export interface Notice {
+  id: string;
+  tone: 'info' | 'warning';
+  title: string;
+  body: string;
+  actions: readonly NoticeAction[];
+}
+
+export interface NoticesPort extends Subscribable<{ notices: readonly Notice[] }> {
+  list(): readonly Notice[];
+  act(id: string, action: string): Promise<void>;
+  dismiss(id: string): void;
+}
+
 export interface SliccModel {
   agent: AgentPort;
   files: FilePort;
@@ -701,4 +720,5 @@ export interface SliccModel {
   updates?: UpdatesPort;
   network?: NetworkPort;
   changes?: ChangesPort;
+  notices?: NoticesPort;
 }

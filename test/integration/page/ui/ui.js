@@ -13,6 +13,7 @@ const model = createDummyModel({
   network: params.get('network') ?? 'limited',
   tailnet: params.get('tailnet') ?? undefined,
   changes: params.get('changes') ?? 'files',
+  notices: params.get('notices') ?? 'off',
 });
 if (params.has('color')) model.settings.update({ color: params.get('color') });
 const app = document.querySelector('slicc-app');
