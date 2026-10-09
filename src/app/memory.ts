@@ -2,7 +2,7 @@ import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc-icons/swc-icon-delete.js';
-import { css, html, nothing, type TemplateResult } from 'lit';
+import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import type { Memory, MemoryScope, MemoryTag, SliccModel } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
 import { confirm } from './confirm.ts';
@@ -250,16 +250,24 @@ export class SliccMemory extends ModelElement {
     </div>`;
   }
 
-  render(): TemplateResult {
+  #scopes: readonly MemoryScope[] = [];
+
+  protected willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed);
     const model = this.model;
-    const all = model?.memory.list() ?? [];
-    const scopes: readonly MemoryScope[] = model?.memory.scopes?.() ?? [
+    this.#scopes = model?.memory.scopes?.() ?? [
       { id: 'global', label: 'Everyone' },
       ...(model?.agent.list() ?? [])
         .filter((agent) => agent.kind === 'cone')
         .map((cone) => ({ id: cone.id, label: cone.name })),
     ];
-    const scope = scopes.some((item) => item.id === this.scope) ? this.scope : 'global';
+    if (!this.#scopes.some((item) => item.id === this.scope)) this.scope = 'global';
+  }
+
+  render(): TemplateResult {
+    const all = this.model?.memory.list() ?? [];
+    const scopes = this.#scopes;
+    const scope = this.scope;
     const option = (item: MemoryScope) =>
       html`<sp-menu-item value=${item.id}>${item.label}</sp-menu-item>`;
     const shown = visible(all, scope, this.tag, this.query);
