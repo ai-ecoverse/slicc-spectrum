@@ -412,16 +412,18 @@ export class SliccApp extends ThemedElement {
       const restored = this.dock.api.getPanel('updates');
       if (restored) this.dock.reveal('updates');
       else this.show('updates');
-      if (!port.ready() && restored?.params?.boot !== false) {
-        this.dock.api.getPanel('updates')?.api.updateParameters({ boot: true });
-        this.#save();
-      }
+      const panel = this.dock.api.getPanel('updates');
+      if (!port.ready() && restored?.params?.boot !== false)
+        panel?.api.updateParameters({ boot: true });
+      else if (!restored) panel?.api.updateParameters({ boot: undefined });
+      this.#save();
     } else if (
       this.dock.api.getPanel('updates')?.params?.boot &&
       port.ready() &&
       !port.list().some((item) => item.state === 'failed')
     ) {
       this.dock.close('updates');
+      this.#save();
     }
   }
 
