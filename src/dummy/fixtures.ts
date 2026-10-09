@@ -236,7 +236,8 @@ const suggestions = `${JSON.stringify(
       title: 'Unit conversions',
       body: 'You converted Fahrenheit to Celsius by hand in three chats this week. A skill can do it for you.',
       skill: 'unit-converter',
-      install: 'skill install unit-converter',
+      install:
+        'unit-converter from raw.githubusercontent.com/example/skills/main/unit-converter/SKILL.md',
     },
     {
       id: 'sug-notes',

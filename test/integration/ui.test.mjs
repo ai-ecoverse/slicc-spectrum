@@ -2360,7 +2360,10 @@ test('the Suggestions sprinkle reads its stream through the bridge, and the welc
     window.frameText(window.$('slicc-app', 'slicc-dock').content('sprinkle:suggestions'))
   );
   assert.match(text, /Name your cache keys/);
-  assert.match(text, /Installs with skill install unit-converter/);
+  assert.match(
+    text,
+    /Installs unit-converter from raw\.githubusercontent\.com\/example\/skills\/main\/unit-converter\/SKILL\.md/
+  );
   assert.doesNotMatch(text, /Nothing here yet/);
   await shot(page, 'sprinkle-suggestions-light');
   await page.until(async () =>
