@@ -2323,6 +2323,135 @@ test('the Suggestions sprinkle reads its stream through the bridge, and the welc
   assert.deepEqual(page.errors, []);
 });
 
+test('an inline sprinkle keeps its frame and its step while the chat updates around it', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const probe = `<script>
+      const loaded = Math.random();
+      addEventListener('message', (event) => {
+        if (event.source !== parent || event.data?.type !== 'probe-step') return;
+        if (event.data.click) document.querySelector(event.data.click)?.click();
+        if (event.data.save) slicc.setState(event.data.save);
+        parent.postMessage({ type: 'probe-step', loaded, step: document.querySelector('.step.active')?.id ?? null, state: slicc.getState() }, '*');
+      });
+    </script>`;
+    const list = window.model.sprinkles.list.bind(window.model.sprinkles);
+    window.model.sprinkles.list = () =>
+      list().map((item) =>
+        item.id === 'welcome'
+          ? { ...item, html: item.html.replace('</body>', `${probe}</body>`) }
+          : item
+      );
+    window.model.sprinkles.emit('sprinkles', window.model.sprinkles.list());
+    window.welcome = () =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:cone-sliccy')
+        ?.shadowRoot.querySelector('slicc-sprinkle[inline]')
+        ?.shadowRoot.querySelector('iframe') ?? null;
+    window.step = (message = {}) =>
+      new Promise((resolve) => {
+        const frame = window.welcome();
+        if (!frame) return resolve(null);
+        const listen = (event) => {
+          if (event.source !== frame.contentWindow || event.data?.type !== 'probe-step') return;
+          removeEventListener('message', listen);
+          const { loaded, step, state } = event.data;
+          resolve({ loaded, step, state });
+        };
+        addEventListener('message', listen);
+        frame.contentWindow.postMessage({ type: 'probe-step', ...message }, '*');
+        setTimeout(() => resolve(null), 200);
+      });
+    window.kept = async () => ({
+      same: window.welcome() === window.frame,
+      loads: window.loads,
+      ...(await window.step()),
+    });
+    return true;
+  });
+  await page.until(async () => (await window.step())?.step === 's1');
+  const first = await page.evaluate(async () => {
+    window.frame = window.welcome();
+    window.loads = 0;
+    window.frame.addEventListener('load', () => window.loads++);
+    return window.step({ save: { seen: 1 } });
+  });
+  await page.evaluate(() => window.step({ click: '#purposePills .pill' }));
+  await page.until(async () => (await window.step())?.step === 's2');
+  await page.until(async () => (await window.step({ click: '#skipBtn' }))?.step === 'sDone');
+  await page.until(() =>
+    window.model.agent
+      .messages('cone-sliccy')
+      .some((message) => message.channel === 'sprinkle' && message.text === 'onboarding-complete')
+  );
+  const done = { same: true, loads: 0, loaded: first.loaded, step: 'sDone', state: { seen: 1 } };
+  assert.deepEqual(await page.evaluate(() => window.kept()), done);
+
+  const before = await page.evaluate(() => window.model.agent.messages('cone-sliccy').length);
+  await page.evaluate(() => void window.model.agent.send('cone-sliccy', 'What comes next?'));
+  await page.until(
+    (count) =>
+      window.model.agent.messages('cone-sliccy').length > count + 1 &&
+      !window.model.agent.busy('cone-sliccy'),
+    before
+  );
+  assert.deepEqual(await page.evaluate(() => window.kept()), done);
+
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => {
+      const list = messages(id);
+      if (id !== 'cone-sliccy') return list;
+      const at = list[0].createdAt - 60_000;
+      return [
+        { id: 'm-older', role: 'user', text: 'Hello?', createdAt: at },
+        { id: 'm-yesterday', role: 'user', text: 'Anyone there?', createdAt: at - 86_400_000 },
+        ...list,
+      ];
+    };
+    agent.emit('messages', 'cone-sliccy');
+    window.model.sprinkles.emit('sprinkles', window.model.sprinkles.list());
+    window.model.settings.update({ showThinking: !window.model.settings.get().showThinking });
+    return true;
+  });
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:cone-sliccy')
+        .shadowRoot.querySelector('[data-id="m-yesterday"]')
+  );
+  assert.deepEqual(await page.evaluate(() => window.kept()), done);
+
+  await page.evaluate(() => window.model.agent.select('cone-harbor'));
+  await page.until(() => window.$('slicc-app', 'slicc-dock').has('chat:cone-harbor'));
+  await page.until(() => !window.welcome()?.isConnected);
+  await page.evaluate(() => window.model.agent.select('cone-sliccy'));
+  await page.until(async () => {
+    const now = await window.step();
+    return !!now?.step && now.state?.seen === 1;
+  });
+
+  await page.evaluate(() => {
+    const dock = window.$('slicc-app', 'slicc-dock');
+    window.frame = window.welcome();
+    dock.api.addFloatingGroup(dock.api.getPanel('chat:cone-sliccy'));
+    return true;
+  });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock').api.getPanel('chat:cone-sliccy').group.api.location
+        .type === 'floating'
+  );
+  await page.until(async () => {
+    const now = await window.step();
+    return window.welcome() !== window.frame && !!now?.step && now.state?.seen === 1;
+  });
+  assert.deepEqual(page.errors, []);
+});
+
 test('state a sprinkle saves survives closing and reopening its panel', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {

@@ -2,6 +2,7 @@ import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/patterns/ai-toolkit/conversation-thread/swc-conversation-thread.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
+import { repeat } from 'lit/directives/repeat.js';
 import type {
   Agent,
   ErrorAction,
@@ -290,8 +291,8 @@ export class SliccChat extends ThemedElement {
     }
   }
 
-  #items(messages: readonly Message[], agent: Agent): TemplateResult[] {
-    const out: TemplateResult[] = [];
+  #items(messages: readonly Message[], agent: Agent): Array<[string, TemplateResult]> {
+    const out: Array<[string, TemplateResult]> = [];
     let previous = '';
     const model = this.model as SliccModel;
     const last = messages.at(-1);
@@ -302,12 +303,13 @@ export class SliccChat extends ThemedElement {
     for (const message of messages) {
       const label = day(message.createdAt);
       if (label !== previous) {
-        out.push(
-          html`<div class="day" role="separator" data-day=${label}><span class="line"></span><span>${label}</span><span class="line"></span></div>`
-        );
+        out.push([
+          `day:${message.id}`,
+          html`<div class="day" role="separator" data-day=${label}><span class="line"></span><span>${label}</span><span class="line"></span></div>`,
+        ]);
         previous = label;
       }
-      out.push(this.#message(message, agent, message === last ? suggestion : null));
+      out.push([message.id, this.#message(message, agent, message === last ? suggestion : null)]);
     }
     return out;
   }
@@ -356,7 +358,11 @@ export class SliccChat extends ThemedElement {
         <div class="column" @keydown=${this.#keys}>
           ${
             agent && messages.length > 0
-              ? html`<swc-conversation-thread>${this.#items(messages, agent)}</swc-conversation-thread>`
+              ? html`<swc-conversation-thread>${repeat(
+                  this.#items(messages, agent),
+                  ([key]) => key,
+                  ([, item]) => item
+                )}</swc-conversation-thread>`
               : html`<div class="empty">No messages yet. Ask ${agent?.name ?? 'the agent'} something.</div>`
           }
         </div>
