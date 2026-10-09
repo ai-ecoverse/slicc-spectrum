@@ -10,6 +10,7 @@ const accountStatus = {
   connected: ['positive', 'Connected'],
   expired: ['notice', 'Expired'],
   disconnected: ['neutral', 'Not connected'],
+  'signing-in': ['info', 'Signing in…'],
 } as const;
 
 export class SliccSettings extends ModelElement {
@@ -179,15 +180,19 @@ export class SliccSettings extends ModelElement {
     return (event.target as HTMLElement & { checked: boolean }).checked;
   }
 
+  #cancelled = new Set<string>();
+
   async connect(id: string, secret?: string): Promise<void> {
     this.pending = new Set([...this.pending, id]);
     this.failure = null;
+    this.#cancelled.delete(id);
     try {
       await this.model?.settings.connect(id, secret);
       if (this.entering === id) this.entering = null;
     } catch (error) {
-      this.failure = { id, message: (error as Error).message };
+      if (!this.#cancelled.has(id)) this.failure = { id, message: (error as Error).message };
     } finally {
+      this.#cancelled.delete(id);
       this.pending = new Set([...this.pending].filter((candidate) => candidate !== id));
     }
   }
@@ -251,7 +256,28 @@ export class SliccSettings extends ModelElement {
       this.model?.settings.disconnect(account.id);
   }
 
+  #stopSigningIn(account: Account): void {
+    this.#cancelled.add(account.id);
+    this.model?.settings.cancel?.(account.id);
+  }
+
+  #signingIn(account: Account): boolean {
+    return (
+      account.status === 'signing-in' ||
+      (account.auth !== 'api-key' && account.status !== 'connected' && this.pending.has(account.id))
+    );
+  }
+
   #action(account: Account): TemplateResult {
+    if (this.#signingIn(account) && this.model?.settings.cancel) {
+      return html`<swc-button
+        size="m"
+        variant="secondary"
+        data-action="cancel-sign-in"
+        accessible-label=${`Cancel signing in to ${account.provider}`}
+        @click=${() => this.#stopSigningIn(account)}
+      >Cancel</swc-button>`;
+    }
     if (account.status === 'connected') {
       return html`<swc-button
         size="m"
@@ -263,19 +289,21 @@ export class SliccSettings extends ModelElement {
     }
     const label = account.status === 'expired' ? 'Reconnect' : 'Connect';
     const entering = this.entering === account.id;
+    const busy = this.#signingIn(account) || (!entering && this.pending.has(account.id));
     return html`<swc-button
       size="m"
       variant="secondary"
       data-action="connect"
       accessible-label=${`${label} ${account.provider}`}
-      ?pending=${!entering && this.pending.has(account.id)}
+      ?pending=${busy}
       ?disabled=${entering}
       @click=${() => this.#start(account)}
     >${label}</swc-button>`;
   }
 
   #account(account: Account): TemplateResult {
-    const [variant, label] = accountStatus[account.status];
+    const [variant, label] =
+      accountStatus[this.#signingIn(account) ? 'signing-in' : account.status];
     const failure =
       this.failure?.id === account.id
         ? html`<div class="failure" role="alert">

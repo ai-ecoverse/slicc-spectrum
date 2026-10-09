@@ -1291,6 +1291,40 @@ test('the browser lists its windows with thumbnails, and follows agents', async 
   assert.deepEqual(page.errors, []);
 });
 
+test('signing in to an account reads Signing in and can be cancelled', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.$('slicc-app', 'header swc-action-button#settings').click());
+  await page.until(
+    () => !!window.settingsPart('.account[data-id=adobe] swc-button[data-action=connect]')
+  );
+  await page.evaluate(() =>
+    window.settingsPart('.account[data-id=adobe] swc-button[data-action=connect]').click()
+  );
+  await page.until(
+    () => !!window.settingsPart('.account[data-id=adobe] swc-button[data-action=cancel-sign-in]')
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window.settingsPart('.account[data-id=adobe] swc-status-light').textContent.trim()
+    ),
+    'Signing in…'
+  );
+  await shot(page, 'signing-in');
+  await page.evaluate(() =>
+    window.settingsPart('.account[data-id=adobe] swc-button[data-action=cancel-sign-in]').click()
+  );
+  await page.until(
+    () =>
+      window.model.settings.accounts().find((account) => account.id === 'adobe').status ===
+      'expired'
+  );
+  await page.until(
+    () => !!window.settingsPart('.account[data-id=adobe] swc-button[data-action=connect]')
+  );
+  assert.equal(await page.evaluate(() => !!window.settingsPart('.failure')), false);
+  assert.deepEqual(page.errors, []);
+});
+
 test('settings change the theme and the composer, and connect accounts', async (t) => {
   const page = await open(t);
   await page.evaluate(() => window.$('slicc-app', 'header swc-action-button#settings').click());
