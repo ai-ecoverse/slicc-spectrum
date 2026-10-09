@@ -50,6 +50,14 @@ test('the shell renders the default layout from the dummy model', async (t) => {
     await page.evaluate(() => window.$('slicc-app', 'sp-theme').getAttribute('system')),
     'spectrum-two'
   );
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [document.documentElement, document.body].map(
+        (element) => getComputedStyle(element).overscrollBehaviorY
+      )
+    ),
+    ['none', 'none']
+  );
   assert.equal(
     await page.evaluate(() => window.$('slicc-app', '.swc-theme').className),
     'swc-theme swc-theme--sizeM swc-theme--light'

@@ -84,6 +84,7 @@ export class SliccApp extends ThemedElement {
   #started: ScreenClass | null = null;
   #saving = false;
   #updatesPort: UpdatesPort | undefined;
+  #overscroll: Array<() => void> = [];
   #updatesVisibility: UpdateVisibility | null = null;
 
   constructor() {
@@ -277,6 +278,14 @@ export class SliccApp extends ThemedElement {
     this.ownerDocument.addEventListener('keydown', this.#keydown, true);
     this.#fonts();
     installProperties(this.ownerDocument);
+    const { documentElement, body } = this.ownerDocument;
+    this.#overscroll = [documentElement, body].map((element) => {
+      const previous = element.style.overscrollBehavior;
+      element.style.overscrollBehavior = 'none';
+      return () => {
+        element.style.overscrollBehavior = previous;
+      };
+    });
     this.#resize = new ResizeObserver(() => this.#measure());
     this.#resize.observe(this);
   }
@@ -284,6 +293,7 @@ export class SliccApp extends ThemedElement {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.ownerDocument.removeEventListener('keydown', this.#keydown, true);
+    for (const restore of this.#overscroll.splice(0)) restore();
     this.#resize?.disconnect();
   }
 
