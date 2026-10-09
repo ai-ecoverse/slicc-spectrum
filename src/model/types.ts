@@ -596,6 +596,7 @@ export interface NetworkFailure {
 export interface BrowserAutomation {
   via: 'extension' | 'proxy' | null;
   detail?: string;
+  declined?: boolean;
 }
 
 export interface NetworkStatus {
