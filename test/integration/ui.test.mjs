@@ -2943,6 +2943,39 @@ test('chat stays pinned to the bottom while content grows after render', async (
   assert.ok(result.back <= 1, JSON.stringify(result));
 });
 
+test('the composer turns dark with the rest of the app when the theme switches', async (t) => {
+  const page = await open(t);
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
+        ?.shadowRoot?.querySelector('.swc-PromptField-box')
+  );
+  const probe = () => {
+    const box = window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
+      .shadowRoot.querySelector('.swc-PromptField-box');
+    const stop = getComputedStyle(box).getPropertyValue('--_swc-prompt-field-bg-stop-3');
+    const lightness = Number(stop.match(/oklch\(([\d.]+)/)?.[1] ?? Number.NaN);
+    return [lightness, box.getAnimations().length];
+  };
+  const [light] = await page.evaluate(probe);
+  assert.ok(light > 0.8, `light stop ${light}`);
+  await page.evaluate(() => {
+    document.querySelector('slicc-app').toggleColor();
+    return document
+      .querySelector('slicc-app')
+      .updateComplete.then(
+        () => new Promise((resolve) => requestAnimationFrame(() => resolve(true)))
+      );
+  });
+  const [dark, running] = await page.evaluate(probe);
+  assert.ok(dark < 0.4, `dark stop ${dark}`);
+  assert.equal(running, 0);
+  await shot(page, 'composer-after-toggle-dark');
+  assert.deepEqual(page.errors, []);
+});
+
 test('the file tree follows the app theme, not the system one', async (t) => {
   const page = await open(t);
   await page.evaluate(() => window.$('slicc-app', '.rail.left [data-surface=files]').click());
