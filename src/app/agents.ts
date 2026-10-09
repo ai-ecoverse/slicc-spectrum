@@ -7,6 +7,7 @@ import type { Agent, SliccModel } from '../model/types.ts';
 import { ModelElement, percent, shared, statusLabel, statusLight } from './base.ts';
 import { confirm } from './confirm.ts';
 import { deleteCone } from './freezer.ts';
+import { agentTitle, coneLabel, untitled, watchTitles } from './names.ts';
 
 export function ordered(agents: readonly Agent[]): Agent[] {
   const cones = agents.filter((agent) => agent.kind === 'cone');
@@ -41,7 +42,7 @@ export class SliccAgents extends ModelElement {
     li {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto auto auto;
-      grid-template-areas: 'name unread fill drop' 'status unread fill drop' 'error error error error';
+      grid-template-areas: 'name unread fill drop' 'title unread fill drop' 'status unread fill drop' 'error error error error';
       align-items: center;
       column-gap: var(--swc-spacing-100);
       padding: var(--swc-spacing-75) var(--swc-spacing-200);
@@ -69,6 +70,14 @@ export class SliccAgents extends ModelElement {
     }
     .cone .name {
       font-weight: var(--swc-bold-font-weight);
+    }
+    .title {
+      grid-area: title;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: var(--swc-font-size-75);
+      color: var(--swc-neutral-subdued-content-color-default);
     }
     .unread {
       --swc-badge-height: var(--swc-spacing-300);
@@ -125,6 +134,7 @@ export class SliccAgents extends ModelElement {
     return [
       model.agent.on('agents', () => this.requestUpdate()),
       model.agent.on('active', () => this.requestUpdate()),
+      watchTitles(model, () => this.requestUpdate()),
     ];
   }
 
@@ -233,7 +243,7 @@ export class SliccAgents extends ModelElement {
   #deleteButton(agent: Agent): TemplateResult | typeof nothing {
     if (!this.#deletable(agent)) return nothing;
     const id = `delete-${agent.id}`;
-    const label = `Delete cone ${agent.name}`;
+    const label = `Delete cone ${coneLabel(this.model as SliccModel, agent)}`;
     return html`<swc-action-button
         id=${id}
         class="drop"
@@ -253,7 +263,9 @@ export class SliccAgents extends ModelElement {
   #row(agent: Agent, active: string): TemplateResult {
     const selected = agent.id === active;
     const error = this.errors[agent.id];
-    const label = `${agent.name}: ${statusLabel[agent.status]}, ${percent(agent.contextFill)} context${
+    const model = this.model as SliccModel;
+    const title = agent.kind === 'cone' ? agentTitle(model, agent) : null;
+    const label = `${coneLabel(model, agent)}: ${statusLabel[agent.status]}, ${percent(agent.contextFill)} context${
       agent.unread ? `, ${agent.unread} unread` : ''
     }${error ? `. ${error}` : ''}`;
     return html`<li
@@ -268,6 +280,7 @@ export class SliccAgents extends ModelElement {
       @click=${() => this.#select(agent.id)}
     >
       <span class="name">${agent.name}</span>
+      ${title === null ? nothing : html`<span class="title">${title || untitled}</span>`}
       ${
         agent.unread
           ? html`<swc-badge class="unread" size="s" variant="accent">${agent.unread}</swc-badge>`

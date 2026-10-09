@@ -15,6 +15,7 @@ export interface Agent {
   unread: number;
   thinking?: Thinking;
   frozen?: boolean;
+  title?: string;
 }
 
 export type ToolStatus = 'running' | 'done' | 'error' | 'cancelled';
