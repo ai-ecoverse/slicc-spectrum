@@ -121,7 +121,7 @@ export type MessagePart =
 
 export type SendMode = 'send' | 'steer' | 'queue';
 export type DeliveredAs = 'run' | 'steer' | 'follow-up';
-export type MessageOrigin = 'user' | 'follower' | 'guest';
+export type MessageOrigin = 'user' | 'follower' | 'guest' | 'agent';
 
 export interface UserMessage {
   id: string;

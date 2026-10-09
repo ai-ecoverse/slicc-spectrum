@@ -406,6 +406,17 @@ export const agents: Agent[] = [
     contextFill: 0.02,
     unread: 0,
   },
+  {
+    id: 'cone-tides',
+    name: 'tide-tables',
+    kind: 'cone',
+    parentId: null,
+    status: 'idle',
+    model: 'claude-sonnet-5-5',
+    contextFill: 0.31,
+    unread: 0,
+    frozen: true,
+  },
 ];
 
 const start = Date.UTC(2026, 9, 5, 8, 30);
@@ -541,6 +552,12 @@ export const conversations: Record<string, Message[]> = {
           type: 'text',
           text: 'Found it. `ForecastCache.get` compared **local** calendar days, and when the day changed it returned the old entry instead of dropping it:\n\n```ts\nif (day !== new Date(now).getDate()) return entry.value;\n```\n\nI changed it to compare UTC dates and delete the entry, so the first request after midnight goes upstream. The tests pass.\n\n| | Before | After |\n| --- | --- | --- |\n| Day compared | local `getDate()` | UTC `toISOString()` |\n| On a new day | returns stale entry | deletes and refetches |\n\nquiet-otter is adding retries for upstream timeouts in a scoop.',
         },
+        {
+          type: 'delegation',
+          kind: 'scoop',
+          scoop: 'quiet-otter',
+          text: 'Started a scoop to add retries around the upstream fetch',
+        },
       ],
     },
     {
@@ -556,6 +573,8 @@ export const conversations: Record<string, Message[]> = {
     {
       id: 'm-o1',
       role: 'user',
+      origin: 'agent',
+      from: 'harbor',
       text: 'Wrap the upstream fetch in src/routes/forecast.ts with three retries and exponential backoff.',
       createdAt: at(9),
     },
@@ -595,6 +614,26 @@ export const conversations: Record<string, Message[]> = {
   ],
   'scoop-heron': [],
   'scoop-wren': [],
+  'cone-tides': [
+    {
+      id: 'm-f1',
+      role: 'user',
+      text: 'Add a tide table endpoint next to the forecast, with high and low water per day.',
+      createdAt: at(-2900),
+    },
+    {
+      id: 'm-f2',
+      role: 'assistant',
+      status: 'done',
+      createdAt: at(-2898),
+      parts: [
+        {
+          type: 'text',
+          text: 'Added `/v1/tides?city=` with the next seven days of high and low water. It reads from the same upstream as the forecast and shares its cache.',
+        },
+      ],
+    },
+  ],
   'cone-release': [
     {
       id: 'm-r1',
@@ -647,6 +686,15 @@ export const conversations: Record<string, Message[]> = {
       title: '/workspace/notes',
       text: 'File watch on /workspace/notes stopped; retrying',
       createdAt: at(-1429),
+    },
+    {
+      id: 'm-r5',
+      role: 'lick',
+      channel: 'workflow',
+      title: 'Release report',
+      text: 'The weekly release report is ready',
+      body: 'Summary: harbor 1.9.0 shipped three changes this week, the /health endpoint, a 400 for requests without a city and a wrangler update, with no failed deploys, no rollbacks and two flaky test runs in the forecast suite that passed on retry, so the next release can go out on Friday as planned once the docs pass lands.',
+      createdAt: at(-1428),
     },
   ],
   'cone-triage': [
