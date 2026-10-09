@@ -583,8 +583,14 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     this.#ice.delete(id);
     this.#frozen = this.#frozen.filter((cone) => cone.id !== id);
     const cone = (ice[0] as { agent: Agent }).agent;
-    if (this.#agents.some((agent) => agent.kind === 'cone' && agent.name === cone.name))
-      cone.name = `${cone.name} (earlier)`;
+    const taken = (name: string) =>
+      this.#agents.some((agent) => agent.kind === 'cone' && agent.name === name);
+    if (taken(cone.name)) {
+      const base = cone.name;
+      let n = 1;
+      cone.name = `${base} (earlier)`;
+      while (taken(cone.name)) cone.name = `${base} (earlier ${++n})`;
+    }
     for (const { agent, messages } of ice) {
       this.#agents.push(agent);
       this.#messages.set(agent.id, messages);
