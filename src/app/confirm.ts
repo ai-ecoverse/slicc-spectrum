@@ -12,6 +12,7 @@ export interface ConfirmOptions {
   body: string;
   action: string;
   variant?: ConfirmVariant;
+  cancel?: string;
   trigger?: HTMLElement | null;
 }
 
@@ -93,11 +94,12 @@ const dialogStyles = css`
 `;
 
 export class SliccConfirm extends LitElement {
-  static properties = { heading: {}, body: {}, action: {}, variant: {} };
+  static properties = { heading: {}, body: {}, action: {}, variant: {}, cancel: {} };
   declare heading: string;
   declare body: string;
   declare action: string;
   declare variant: ConfirmVariant;
+  declare cancel: string;
   trigger: HTMLElement | null = null;
   readonly #result = Promise.withResolvers<boolean>();
 
@@ -107,6 +109,7 @@ export class SliccConfirm extends LitElement {
     this.body = '';
     this.action = '';
     this.variant = 'destructive';
+    this.cancel = 'Cancel';
   }
 
   static styles = dialogStyles;
@@ -142,7 +145,7 @@ export class SliccConfirm extends LitElement {
       <sp-alert-dialog variant=${this.variant}>
         <h2 id="title" slot="heading">${this.heading}</h2>
         <p id="body">${this.body}</p>
-        <swc-button slot="button" variant="secondary" fill-style="outline" data-cancel @click=${() => this.#dialog.close()}>Cancel</swc-button>
+        <swc-button slot="button" variant="secondary" fill-style="outline" data-cancel @click=${() => this.#dialog.close()}>${this.cancel}</swc-button>
         <swc-button
           slot="button"
           variant=${this.variant === 'destructive' ? 'negative' : 'accent'}
@@ -162,6 +165,7 @@ export function confirm(options: ConfirmOptions): Promise<boolean> {
   element.body = options.body;
   element.action = options.action;
   element.variant = options.variant ?? 'destructive';
+  element.cancel = options.cancel ?? 'Cancel';
   element.trigger = trigger;
   themeOf(trigger).append(element);
   return element.result;

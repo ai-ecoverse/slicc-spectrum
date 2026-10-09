@@ -38,11 +38,19 @@ const routes: Record<NetworkRoute | 'none', string> = {
   none: 'No route to the network.',
 };
 
-export const automation: Record<NonNullable<BrowserAutomation['via']> | 'none', string> = {
+export const automation: Record<
+  NonNullable<BrowserAutomation['via']> | 'none' | 'declined',
+  string
+> = {
   extension: 'Browser automation: through the SLICC extension.',
   proxy: 'Browser automation: through slicc-node.',
   none: 'Browser automation: not available. Install the extension or run slicc-node.',
+  declined: 'Browser automation: off for this session. You declined it; reload to be asked again.',
 };
+
+export function automationOf(browser: BrowserAutomation): keyof typeof automation {
+  return browser.declined ? 'declined' : (browser.via ?? 'none');
+}
 
 export function networkLabel(status: NetworkStatus): string {
   return `Network: ${networkHealth[status.health][1].toLowerCase()}`;
@@ -291,7 +299,7 @@ export class SliccNetwork extends ModelElement {
       ${status.detail ? html`<p class="detail">${status.detail}</p>` : nothing}
       ${
         status.browser
-          ? html`<p data-browser=${status.browser.via ?? 'none'}>${automation[status.browser.via ?? 'none']}${status.browser.detail ? html` <span class="detail">${status.browser.detail}</span>` : nothing}</p>`
+          ? html`<p data-browser=${automationOf(status.browser)} class=${status.browser.declined ? 'muted' : ''}>${automation[automationOf(status.browser)]}${status.browser.detail ? html` <span class="detail">${status.browser.detail}</span>` : nothing}</p>`
           : nothing
       }
       ${
