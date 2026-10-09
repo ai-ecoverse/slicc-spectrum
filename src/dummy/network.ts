@@ -1,8 +1,9 @@
 import { Emitter } from '../model/emitter.ts';
-import type { NetworkPort, NetworkStatus } from '../model/types.ts';
+import type { NetworkPort, NetworkStatus, TailnetStatus } from '../model/types.ts';
 import type { Clock } from './clock.ts';
 
 export type NetworkScenario = 'ok' | 'limited' | 'failing';
+export type TailnetScenario = 'off' | 'needs-login' | 'running' | 'failed';
 
 const minute = 60_000;
 
@@ -65,16 +66,58 @@ export function networkFixtures(scenario: NetworkScenario, now = Date.now()): Ne
   };
 }
 
+const exitNodes = [
+  { id: 'nKeel1CNTRL', name: 'keel-router', online: true },
+  { id: 'nMast2CNTRL', name: 'mast-pi', online: true },
+  { id: 'nBuoy3CNTRL', name: 'buoy-laptop', online: false },
+];
+
+export function tailnetFixtures(scenario: TailnetScenario): TailnetStatus {
+  const base = { exitNode: null, exitNodes: [], autoExitNode: false, shieldsUp: true };
+  if (scenario === 'needs-login') {
+    return { ...base, state: 'needs-login', loginUrl: 'https://login.tailnet.example/a/7f3c2e' };
+  }
+  if (scenario === 'running') {
+    return {
+      ...base,
+      state: 'running',
+      node: { name: 'slicc-harbor', addresses: ['fd7a:115c:a1e0::7', '100.64.12.7'] },
+      exitNodes,
+      peers: 4,
+    };
+  }
+  if (scenario === 'failed') {
+    return {
+      ...base,
+      state: 'failed',
+      detail: 'The coordination server didn’t answer. Check the connection and try again.',
+    };
+  }
+  return { ...base, state: 'off' };
+}
+
 export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements NetworkPort {
   scenario: NetworkScenario;
   #status: NetworkStatus;
   #clock: Clock;
+  #tailnet: TailnetStatus | undefined;
 
-  constructor(scenario: NetworkScenario, clock: Clock) {
+  constructor(scenario: NetworkScenario, clock: Clock, tailnet?: TailnetScenario) {
     super();
     this.scenario = scenario;
-    this.#status = networkFixtures(scenario);
     this.#clock = clock;
+    this.#tailnet = tailnet ? tailnetFixtures(tailnet) : undefined;
+    this.#status = this.#with(networkFixtures(scenario));
+  }
+
+  #with(status: NetworkStatus): NetworkStatus {
+    return this.#tailnet ? { ...status, tailnet: this.#tailnet } : status;
+  }
+
+  #set(tailnet: TailnetStatus): void {
+    this.#tailnet = tailnet;
+    this.#status = this.#with(this.#status);
+    this.emit('network', this.#status);
   }
 
   status(): NetworkStatus {
@@ -83,13 +126,47 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
 
   setScenario(scenario: NetworkScenario): void {
     this.scenario = scenario;
-    this.#status = networkFixtures(scenario);
+    this.#status = this.#with(networkFixtures(scenario));
     this.emit('network', this.#status);
   }
 
   async check(): Promise<void> {
     await this.#clock.sleep(4);
-    this.#status = networkFixtures(this.scenario);
+    if (this.#tailnet?.state === 'failed') this.#tailnet = tailnetFixtures('running');
+    this.#status = this.#with(networkFixtures(this.scenario));
     this.emit('network', this.#status);
+  }
+
+  async setTailnet(on: boolean): Promise<void> {
+    await this.#clock.sleep(4);
+    this.#set(tailnetFixtures(on ? 'needs-login' : 'off'));
+  }
+
+  async submitAuthKey(key: string): Promise<void> {
+    if (!key.startsWith('tskey-')) {
+      throw new Error('That isn’t a Tailscale auth key. Auth keys start with tskey-.');
+    }
+    this.#set({ ...tailnetFixtures('off'), state: 'starting', detail: 'Joining your tailnet…' });
+    await this.#clock.sleep(8);
+    this.#set(tailnetFixtures('running'));
+  }
+
+  async setExitNode(id: string | null): Promise<void> {
+    await this.#clock.sleep(4);
+    const tailnet = this.#tailnet ?? tailnetFixtures('running');
+    const nodes = tailnet.exitNodes ?? [];
+    if (id === 'auto') {
+      const node = nodes.find((item) => item.online);
+      this.#set({ ...tailnet, autoExitNode: true, exitNode: node?.name ?? null });
+      return;
+    }
+    const node = nodes.find((item) => item.id === id);
+    if (id && !node?.online) throw new Error('That exit node is offline.');
+    this.#set({ ...tailnet, autoExitNode: false, exitNode: node?.name ?? null });
+  }
+
+  async logoutTailnet(): Promise<void> {
+    await this.#clock.sleep(4);
+    this.#set(tailnetFixtures('needs-login'));
   }
 }

@@ -771,7 +771,7 @@ export class SliccApp extends ThemedElement {
         ? networkIcon[status.health]
         : html`<swc-status-light size="s" variant=${variant}>Network${status.health === 'ok' ? nothing : html`<span class="state"> ${state.toLowerCase()}</span>`}</swc-status-light>`;
     return html`<swc-action-button id="network" quiet size="s" data-network data-health=${status.health} accessible-label=${label} @click=${() => this.show('network')}>${content}</swc-action-button>
-      <swc-tooltip for="network" placement="bottom">${status.detail ?? label}</swc-tooltip>`;
+      <swc-tooltip for="network" placement="bottom">${status.detail ?? label}${status.tailnet?.state === 'running' ? ' Tailscale is connected.' : ''}</swc-tooltip>`;
   }
 
   #headerButton(

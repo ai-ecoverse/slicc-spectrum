@@ -3221,6 +3221,113 @@ test('the network indicator shows the health and opens the Network panel', async
   assert.deepEqual(page.errors, []);
 });
 
+test('Tailscale signs in with an auth key, picks an exit node and signs out', async (t) => {
+  const page = await open(t, { network: 'ok', tailnet: 'needs-login' });
+  await page.evaluate(() => window.app.show('network'));
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('network')
+        ?.shadowRoot?.querySelector('[data-form=auth-key] sp-textfield')
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const shadow = window.$('slicc-app', 'slicc-dock').content('network').shadowRoot;
+      const input = shadow
+        .querySelector('[data-form=auth-key] sp-textfield')
+        .shadowRoot.querySelector('input');
+      return [
+        input.type,
+        input.hasAttribute('name'),
+        shadow.querySelector('[data-action=tailnet-sign-in]').getAttribute('target'),
+      ];
+    }),
+    ['password', false, '_blank']
+  );
+  await shot(page, 'tailnet-sign-in');
+  await page.evaluate(() => {
+    const shadow = window.$('slicc-app', 'slicc-dock').content('network').shadowRoot;
+    shadow.querySelector('[data-form=auth-key] sp-textfield').value = 'tskey-auth-k1';
+    shadow.querySelector('[data-action=submit-auth-key]').click();
+  });
+  await page.until(
+    () =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('network')
+        .shadowRoot.querySelector('section[data-tailnet]').dataset.tailnet === 'running'
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      /tskey-auth-k1/.test(
+        window
+          .$('slicc-app', 'slicc-dock')
+          .content('network')
+          .shadowRoot.querySelector('[data-form=auth-key]')?.innerHTML ?? ''
+      )
+    ),
+    false
+  );
+  await page.until(() =>
+    /Tailscale is connected/.test(
+      window.$('slicc-app', 'header swc-tooltip[for=network]').textContent
+    )
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const shadow = window.$('slicc-app', 'slicc-dock').content('network').shadowRoot;
+      return [
+        shadow.querySelector('[data-copy=name] code').textContent.trim(),
+        shadow.querySelector('[data-copy=address] code').textContent.trim(),
+        shadow.querySelector('sp-picker[data-action=exit-node]').value,
+      ];
+    }),
+    ['slicc-harbor', '100.64.12.7', 'none']
+  );
+  await page.evaluate(() => {
+    const picker = window
+      .$('slicc-app', 'slicc-dock')
+      .content('network')
+      .shadowRoot.querySelector('sp-picker[data-action=exit-node]');
+    picker.value = 'auto';
+    picker.dispatchEvent(new Event('change'));
+  });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock').content('network').shadowRoot.querySelector('[data-exit]')
+        .dataset.exit === 'node'
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('network')
+        .shadowRoot.querySelector('[data-exit]')
+        .textContent.trim()
+    ),
+    'Internet through the exit node keel-router.'
+  );
+  await shot(page, 'tailnet-running');
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock')
+      .content('network')
+      .shadowRoot.querySelector('[data-action=tailnet-sign-out]')
+      .click()
+  );
+  await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
+  await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
+  await page.until(
+    () =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('network')
+        .shadowRoot.querySelector('section[data-tailnet]').dataset.tailnet === 'needs-login'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('without a network port there is no indicator and no Network panel', async (t) => {
   const page = await open(t, { network: 'off' });
   assert.deepEqual(
