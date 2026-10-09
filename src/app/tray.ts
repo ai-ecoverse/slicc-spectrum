@@ -52,12 +52,8 @@ export class SliccTray extends ModelElement {
         align-items: center;
         gap: var(--swc-spacing-50);
       }
-      .chip .short,
       :host([compact]) .chip .detail {
         display: none;
-      }
-      :host([compact]) .chip .short {
-        display: inline;
       }
       .muted {
         color: var(--swc-neutral-subdued-content-color-default);
@@ -138,7 +134,7 @@ export class SliccTray extends ModelElement {
       >
         <span>
           <swc-status-light size="s" variant=${connectionVariant[status.connection]}>
-            <span class="detail">${light}</span><span class="short">${connection}</span>
+            <span class="detail">${light}</span>
           </swc-status-light>
           <span class="detail muted followers"><swc-icon-user-group size="s"></swc-icon-user-group>${status.followers.length}</span>
         </span>

@@ -255,7 +255,7 @@ export class SliccApp extends ThemedElement {
       margin-inline-end: var(--swc-spacing-200);
     }
     :host([screen='phone']) header sp-picker {
-      min-width: 0;
+      min-width: calc(var(--swc-spacing-400) * 4);
       width: 0;
       flex: 1;
     }
@@ -752,8 +752,9 @@ export class SliccApp extends ThemedElement {
     if (!updates) return nothing;
     const text = updates[0].toUpperCase() + updates.slice(1);
     return html`<swc-action-button id="updates" quiet size="s" data-updates accessible-label=${`Install / Update: ${updates}`} @click=${() => this.show('updates')}>
-        <swc-status-light size="s" variant=${updatesVariant(updates)}>${text}</swc-status-light>
-      </swc-action-button>`;
+        <swc-status-light size="s" variant=${updatesVariant(updates)}>${this.screen === 'phone' ? nothing : text}</swc-status-light>
+      </swc-action-button>
+      <swc-tooltip for="updates" placement="bottom">${text}</swc-tooltip>`;
   }
 
   #networkIndicator(): TemplateResult | typeof nothing {
