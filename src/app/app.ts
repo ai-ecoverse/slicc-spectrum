@@ -65,6 +65,31 @@ export function updatesVariant(status: string): 'negative' | 'info' | 'notice' {
   return 'notice';
 }
 
+const overscrollLocks = new WeakMap<Document, { count: number; restore: () => void }>();
+
+function lockOverscroll(document: Document): () => void {
+  const lock = overscrollLocks.get(document) ?? { count: 0, restore: () => {} };
+  overscrollLocks.set(document, lock);
+  if (lock.count === 0) {
+    const saved = [document.documentElement, document.body].flatMap(({ style }) =>
+      ['overscroll-behavior-x', 'overscroll-behavior-y'].map((name) => {
+        const value = style.getPropertyValue(name);
+        const priority = style.getPropertyPriority(name);
+        style.setProperty(name, 'none', 'important');
+        return () => style.setProperty(name, value, priority);
+      })
+    );
+    lock.restore = () => {
+      for (const restore of saved) restore();
+    };
+  }
+  lock.count += 1;
+  return () => {
+    lock.count -= 1;
+    if (lock.count === 0) lock.restore();
+  };
+}
+
 export class SliccApp extends ThemedElement {
   static properties = {
     ...ThemedElement.properties,
@@ -84,6 +109,7 @@ export class SliccApp extends ThemedElement {
   #started: ScreenClass | null = null;
   #saving = false;
   #updatesPort: UpdatesPort | undefined;
+  #unlock!: () => void;
   #updatesVisibility: UpdateVisibility | null = null;
 
   constructor() {
@@ -277,6 +303,7 @@ export class SliccApp extends ThemedElement {
     this.ownerDocument.addEventListener('keydown', this.#keydown, true);
     this.#fonts();
     installProperties(this.ownerDocument);
+    this.#unlock = lockOverscroll(this.ownerDocument);
     this.#resize = new ResizeObserver(() => this.#measure());
     this.#resize.observe(this);
   }
@@ -284,6 +311,7 @@ export class SliccApp extends ThemedElement {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.ownerDocument.removeEventListener('keydown', this.#keydown, true);
+    this.#unlock();
     this.#resize?.disconnect();
   }
 
