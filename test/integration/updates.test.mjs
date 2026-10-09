@@ -230,6 +230,22 @@ test('a boot panel restored by a reload still closes once the agent is ready', a
   assert.deepEqual(page.errors, []);
 });
 
+test('a panel a failure opened after boot still closes after a reload once the agent is ready', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.model.updates.setScenario('failure'));
+  await page.until(shown);
+  await page.goto('/ui/?updates=boot&color=light&delay=20');
+  await page.until(() => window.ready && window.app.dock.has('updates'));
+  await page.until(() => window.app.dock.api.getPanel('updates').params.boot === true);
+  await page.evaluate(() => window.model.updates.setScenario('current'));
+  await page.until(() => !window.app.dock.has('updates'));
+  assert.equal(
+    await page.evaluate(() => localStorage.getItem(window.app.storageKey).includes('"updates"')),
+    false
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a boot failure prevents auto-close until it is resolved', async (t) => {
   const page = await open(t, 'boot');
   await page.until(shown);
