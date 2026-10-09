@@ -1,13 +1,22 @@
 import { Emitter } from '../model/emitter.ts';
-import type { Memory, MemoryDraft, MemoryEvents, MemoryPort } from '../model/types.ts';
+import type { Memory, MemoryDraft, MemoryEvents, MemoryPort, MemoryScope } from '../model/types.ts';
 
 export class DummyMemory extends Emitter<MemoryEvents> implements MemoryPort {
   #memories: Memory[];
+  #scopes: () => readonly MemoryScope[];
   #next = 1;
 
-  constructor(memories: readonly Memory[]) {
+  constructor(
+    memories: readonly Memory[],
+    scopes: () => readonly MemoryScope[] = () => [{ id: 'global', label: 'Everyone' }]
+  ) {
     super();
     this.#memories = memories.map((memory) => ({ ...memory }));
+    this.#scopes = scopes;
+  }
+
+  scopes(): readonly MemoryScope[] {
+    return this.#scopes();
   }
 
   list(): readonly Memory[] {
