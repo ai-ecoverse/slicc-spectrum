@@ -1,4 +1,5 @@
 import { css, html, type PropertyValues, svg, type TemplateResult } from 'lit';
+import { keyed } from 'lit/directives/keyed.js';
 import type { SliccModel, Sprinkle, SprinkleMethod, SprinklePort } from '../model/types.ts';
 import { type Color, ThemedElement } from './base.ts';
 import { Dips, dipsOf, dipType } from './dips.ts';
@@ -332,6 +333,14 @@ export class SliccSprinkle extends ThemedElement {
       this.#hold(port, port.call, this.sprinkle);
   }
 
+  #mounts = 0;
+
+  connectedCallback(): void {
+    this.#frame = { key: '', doc: '' };
+    this.#mounts++;
+    super.connectedCallback();
+  }
+
   #dips = new Dips();
 
   #focusLater = false;
@@ -400,7 +409,10 @@ export class SliccSprinkle extends ThemedElement {
     if (bridged && !this.#held.ready) return html``;
     const state = bridged ? this.#held : undefined;
     const style = `color-scheme:${this.color};${this.inline ? `height:${this.height}px;` : ''}`;
-    const frame = html`<iframe title=${data.title} sandbox="allow-scripts" style=${style} .srcdoc=${this.#document(data, state)}></iframe>`;
+    const frame = html`${keyed(
+      this.#mounts,
+      html`<iframe title=${data.title} sandbox="allow-scripts" style=${style} .srcdoc=${this.#document(data, state)}></iframe>`
+    )}`;
     if (!this.inline) return frame;
     return html`<div class="handle" draggable="true" title="Drag into the dock or a rail to open as a panel" @dragstart=${this.#drag}>
         ${grip}
