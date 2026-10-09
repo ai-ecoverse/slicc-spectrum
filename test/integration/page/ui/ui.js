@@ -8,6 +8,7 @@ const model = createDummyModel({
   storage: localStorage,
   updates: params.get('updates') ?? 'current',
   mounts: params.get('mounts') ?? 'off',
+  network: params.get('network') ?? 'limited',
 });
 if (params.has('color')) model.settings.update({ color: params.get('color') });
 const app = document.querySelector('slicc-app');

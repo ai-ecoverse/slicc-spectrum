@@ -120,6 +120,15 @@ export const surfaces: Surface[] = [
     side: 'center',
     open: [],
   },
+  {
+    id: 'network',
+    title: 'Network',
+    tag: 'slicc-network',
+    icon: 'swc-icon-cloud',
+    side: 'right',
+    open: [],
+    width: 340,
+  },
 ];
 
 export type DocumentKind = 'file' | 'diff';

@@ -7,7 +7,7 @@ function parents(path: string): string[] {
   return parts.map((_, i) => `/${parts.slice(0, i + 1).join('/')}`);
 }
 
-export type MountScenario = 'mount' | 'cancel' | 'fail';
+export type MountScenario = 'mount' | 'cancel' | 'fail' | 'needs';
 
 export interface DummyMount {
   scenario: MountScenario;
@@ -17,10 +17,12 @@ export interface DummyMount {
 
 export class DummyFiles extends Emitter<FileEvents> implements FilePort {
   mount: DummyMount | null;
-  mountFolder?: () => Promise<string | null>;
+  mountFolder?: (path?: string) => Promise<string | null>;
   mounts?: () => readonly string[];
   eject?: (path: string) => Promise<void>;
+  needsFolder?: () => readonly string[];
   #mounted = new Set<string>();
+  #needs = new Set<string>();
   #contents = new Map<string, string>();
   #directories = new Set<string>();
   #modified = new Map<string, number>();
@@ -38,9 +40,11 @@ export class DummyFiles extends Emitter<FileEvents> implements FilePort {
     this.#clock = clock;
     this.mount = mount;
     if (mount) {
-      this.mountFolder = () => this.#mountFolder(mount);
+      this.mountFolder = (path) => this.#mountFolder(mount, path);
       this.mounts = () => [...this.#mounted];
       this.eject = (path) => this.#eject(path);
+      this.needsFolder = () => [...this.#needs];
+      if (mount.scenario === 'needs') this.#needs.add(mount.point);
     }
     for (const directory of directories) this.#mkdirs(`${directory}/`);
     for (const [path, text] of Object.entries(contents)) this.#put(path, text, 0);
@@ -139,19 +143,23 @@ export class DummyFiles extends Emitter<FileEvents> implements FilePort {
     this.#announce(path);
   }
 
-  async #mountFolder(mount: DummyMount): Promise<string | null> {
+  async #mountFolder(mount: DummyMount, point?: string): Promise<string | null> {
     await this.#clock.sleep();
     if (mount.scenario === 'cancel') return null;
     if (mount.scenario === 'fail') throw new Error('The folder couldn’t be mounted.');
+    if (point !== undefined && !this.#needs.has(point))
+      throw new Error(`Nothing is waiting for a folder at ${point}.`);
+    const at = point ?? mount.point;
     const files: string[] = [];
     for (const [path, text] of Object.entries(mount.files)) {
-      const file = `${mount.point}/${path}`;
+      const file = `${at}/${path}`;
       this.#put(file, text, Date.now());
       files.push(file);
     }
-    this.#mounted.add(mount.point);
+    this.#mounted.add(at);
+    this.#needs.delete(at);
     this.#remount(files);
-    return mount.point;
+    return at;
   }
 
   async #eject(path: string): Promise<void> {
