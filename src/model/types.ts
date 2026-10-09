@@ -368,7 +368,7 @@ export interface Settings {
   diffStyle: 'unified' | 'split';
 }
 
-export type AccountStatus = 'connected' | 'expired' | 'disconnected';
+export type AccountStatus = 'connected' | 'expired' | 'disconnected' | 'signing-in';
 
 export interface Account {
   id: string;
@@ -401,6 +401,7 @@ export interface SettingsPort extends Subscribable<SettingsEvents> {
   accounts(): readonly Account[];
   connect(id: string, secret?: string): Promise<void>;
   disconnect(id: string): void;
+  cancel?(id: string): void;
 }
 
 export type MemoryTag = 'user' | 'feedback' | 'project';
