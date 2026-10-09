@@ -52,7 +52,7 @@ export function createDummyModel({
       time
     ),
     memory: new DummyMemory(extras.memories),
-    sprinkles: new DummySprinkles(extras.sprinkles, agent),
+    sprinkles: new DummySprinkles(extras.sprinkles, agent, files),
     tray: new DummyTray(extras.tray, time),
     updates: new DummyUpdates(updates, time),
   };

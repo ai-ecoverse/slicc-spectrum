@@ -147,7 +147,7 @@ Text is Adobe Clean Spectrum VF, falling back to Adobe Clean, and code is Spectr
 | `<slicc-memory>` | What agents remember, globally or per cone, grouped by section: search, filter by tag, expand, edit, add and forget. |
 | `<slicc-monitor>` | The live monitor: vitals with sparklines (active agents, spend, budget, fullest context), alerts, and the topology (cones and scoops, terminals, tabs, pending changes, sprinkles, tray followers). |
 | `<slicc-freezer>` | Frozen cones, archived with their scoops: thaw to bring one back, delete, or freeze the active cone (also `/freeze`). |
-| `<slicc-sprinkle>` | A SLICC sprinkle (`.shtml`), as a panel or, with `inline`, as a dip in the chat that grows to fit. A dip has a tab-like handle: drag it into the dock (or onto a rail, or use its open-as-panel button) and it lives on as a sprinkle panel, with a note in the chat where it was; which dips are out is saved in `slicc-ui.dips`. It runs in a sandboxed frame (`allow-scripts` only) with SLICC's sprinkle theme (the `--s2-*` tokens and `.sprinkle-*` classes), the app's fonts, and Lucide icons (`<i data-lucide>`, `LucideIcons.render()`). Its only way back is `slicc.lick({ action, data })`, which reaches the owning cone as a `sprinkle` lick. Panel sprinkles sit at the top of the right rail with their Lucide icon. |
+| `<slicc-sprinkle>` | A SLICC sprinkle (`.shtml`), as a panel or, with `inline`, as a dip in the chat that grows to fit. A dip has a tab-like handle: drag it into the dock (or onto a rail, or use its open-as-panel button) and it lives on as a sprinkle panel, with a note in the chat where it was; which dips are out is saved in `slicc-ui.dips`. It runs in a sandboxed frame (`allow-scripts` only) with SLICC's sprinkle theme (the `--s2-*` tokens and `.sprinkle-*` classes), the app's fonts, and Lucide icons (`<i data-lucide>`, `LucideIcons.render()`). It talks back through `slicc.lick({ action, data })`, which reaches the owning cone as a `sprinkle` lick, and, when the port has `call`, reads files and keeps state (see [Sprinkle bridge](#sprinkle-bridge)). Panel sprinkles sit at the top of the right rail with their Lucide icon. |
 | `<slicc-tray>` | The tray indicator in the header: connection, the float's name, followers and budget; its panel adds role, runtime, spend, the follower list, the join link, and disconnect or reconnect. |
 | `<slicc-confirm>` | The confirmation dialog `confirm()` opens. Not for direct use. |
 | `<slicc-prompt>` | The name dialog `prompt()` opens. Not for direct use. |
@@ -177,6 +177,17 @@ import { prompt } from './dist/slicc-ui.js';
 const name = await prompt({ title: 'New cone', label: 'Name', action: 'Create', submit: (name) => model.agent.createCone(name).then(() => {}) });
 ```
 
+### Sprinkle bridge
+
+A sprinkle's frame gets `window.slicc` with `name` and `lick(event)`. When the model's `sprinkles` port has `call`, it also gets:
+
+- `slicc.readFile(path)` resolves with the file's text.
+- `slicc.exists(path)` resolves with a boolean.
+- `slicc.getState()` returns the sprinkle's saved value, or `null`, synchronously: the frame is built with it, so `var saved = slicc.getState()` works on load.
+- `slicc.setState(value)` updates that value at once and resolves when it is saved. State is JSON: what `JSON.stringify` drops or changes is gone (a `Map` becomes `{}`, `NaN` becomes `null`), and a value it can't serialize, like a cycle or a function, rejects and leaves state as it was. It outlives the frame: reopening the panel or rebuilding the sprinkle starts with it.
+
+Paths are the agent's: `/shared/…` and `/home/…`, nothing else. A refusal or a missing file rejects with an `Error`. There is no `exec`: a sprinkle that needs a command asks its cone with `slicc.lick()`. Without `call`, none of the four exist, so guard them (`typeof slicc.readFile === 'function'`) and fall back.
+
 ### Model
 
 `SliccModel` (`src/model/types.ts`) has one port per future backend, so adapters can replace the dummy without UI changes. Every port is subscribable with `on(type, listener)`, which returns an unsubscribe function.
@@ -190,7 +201,7 @@ const name = await prompt({ title: 'New cone', label: 'Name', action: 'Create', 
 | `settings` | local storage | Theme, model, thinking level, composer and diff preferences, the models on offer, and accounts. |
 | `memory` | `@ai-ecoverse/slicc-agent` | Memories with scope, section, tag and body; `save` and `remove`. |
 | `monitor` | all of them | A snapshot of vitals, alerts and sections, re-emitted as the system changes, and `resync`. |
-| `sprinkles` | `@ai-ecoverse/slicc-agent` | Sprinkles (`inline` ones show as dips in the chat, not in the rail) and `send`, which turns a sprinkle's lick into a lick on its cone. |
+| `sprinkles` | `@ai-ecoverse/slicc-agent` | Sprinkles (`inline` ones show as dips in the chat, not in the rail) and `send`, which turns a sprinkle's lick into a lick on its cone. The optional `call(id, method, args)` serves the [sprinkle bridge](#sprinkle-bridge) for sprinkle `id`: `readFile` and `exists` (`[path]`) resolve with a string and a boolean, `getState` (`[]`) with the saved value or `null`, and `setState` (`[value]`) once it is saved. The adapter owns path policy and keeps state per sprinkle; `<slicc-sprinkle>` awaits `getState` before it builds a frame, mirrors what the frame saves, and forwards only these four methods from its own frame. The dummy keeps state in memory and maps `/shared/x` to `/home/x` in its files, refusing anything outside `/home`. |
 | `tray` | the tray protocol | Connection, role, float kind, followers, spend and budget; `reconnect` and `disconnect`. |
 | `updates` (optional) | BIOS installers | `list()` returns `UpdateItem` rows for BIOS, kernel, agent, grammars, global pnpm packages, skills and UI. `ready()` explicitly reports agent readiness, independently of agent activity. Emit `items` whenever rows or readiness change. `act(id, action)` resolves when dispatched or rejects with a displayed error; actions are `retry`, `update-now`, `restart-agent` and `reload`. Missing ports preserve existing adapters and report disconnected information in the panel. Real installer wiring belongs to ai-ecoverse/slicc-bios#70. |
 
@@ -222,7 +233,7 @@ Each section is its own port, so an embedder can mix real and dummy per section,
 
 `<slicc-file-view>` has **Edit**: the file opens in a plain text area, and **Save** or `Mod+S` writes it through `files.write`; `Escape` cancels.
 
-The `kitchen-sink` cone holds every kind of message, content and lick in one conversation, for design work and screenshots. The dummy's fixtures are invented: a small forecast API called harbor, with cones, scoops, a conversation per agent, pending changes, browser tabs and accounts. Its only sprinkles are SLICC's own: `welcome` (the onboarding wizard, as a dip in the sliccy cone) and `suggestions`, copied from `slicc` (`packages/vfs-root/shared/sprinkles/`, commit `aa29784`) with their comments stripped, as is the sprinkle theme in `src/app/sprinkle-theme.css`. Without file access, `suggestions` shows its empty state. Its replies are scripted by keyword (tests, fix or add, open or docs, files, anything else), and their tool calls act on the other ports: an edit writes a file and shows up as a change, a browse opens a tab.
+The `kitchen-sink` cone holds every kind of message, content and lick in one conversation, for design work and screenshots. The dummy's fixtures are invented: a small forecast API called harbor, with cones, scoops, a conversation per agent, pending changes, browser tabs and accounts. Its only sprinkles are SLICC's own: `welcome` (the onboarding wizard, as a dip in the sliccy cone) and `suggestions`, copied from `slicc` (`packages/vfs-root/shared/sprinkles/`, commit `aa29784`) with their comments stripped, as is the sprinkle theme in `src/app/sprinkle-theme.css`. `suggestions` reads its stream from the invented `/home/.gelatiere/suggestions.json` through the bridge; there is no `/home/.welcomed`, so `welcome` starts its wizard. Its replies are scripted by keyword (tests, fix or add, open or docs, files, anything else), and their tool calls act on the other ports: an edit writes a file and shows up as a change, a browse opens a tab.
 
 ### Distribution
 
