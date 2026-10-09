@@ -190,13 +190,10 @@ test('every destructive action asks first and acts only on confirm', async (t) =
   await page.evaluate(() => window.app.show('freezer'));
   await page.until(() => !!window.part('freezer', '.card'));
   const frozen = await page.evaluate(() => window.model.agent.frozen().length);
-  const discard = () =>
-    [...window.part('freezer', '.card').querySelectorAll('swc-action-button')]
-      .find((button) => button.textContent.trim() === 'Delete')
-      .click();
+  const discard = () => window.part('freezer', '[data-action=remove]').click();
   await page.evaluate(discard);
   await page.until(dialog);
-  assert.match((await page.evaluate(dialog)).title, /^Delete .+\?$/);
+  assert.match((await page.evaluate(dialog)).title, /^Remove .+ from the Freezer\?$/);
   await page.evaluate(answer, false);
   await page.until(closed);
   assert.equal(await page.evaluate(() => window.model.agent.frozen().length), frozen);

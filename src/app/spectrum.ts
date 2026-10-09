@@ -24,6 +24,7 @@ import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chat.js';
 import '@adobe/spectrum-wc-icons/swc-icon-add.js';
+import '@adobe/spectrum-wc-icons/swc-icon-delete.js';
 import '@adobe/spectrum-wc-icons/swc-icon-checkmark.js';
 import '@adobe/spectrum-wc-icons/swc-icon-compare.js';
 import '@adobe/spectrum-wc-icons/swc-icon-contrast.js';

@@ -388,8 +388,8 @@ export class SliccChat extends ThemedElement {
         <sp-menu-item value="high">Think hard</sp-menu-item>
       </sp-picker>
       ${meter}
-      <swc-action-button id="new-chat" size="s" quiet data-action="new-chat" ?disabled=${empty} @click=${() => this.#newChat(agent)}><swc-icon-new slot="icon"></swc-icon-new>New chat</swc-action-button>
-      <swc-tooltip for="new-chat" placement="bottom">${agent.kind === 'cone' && model.agent.freeze ? 'Freeze this chat and start a new one' : 'Start a new chat'}</swc-tooltip>`;
+      <swc-action-button id="new-chat" size="s" quiet data-action="new-chat" ?disabled=${empty} @click=${() => this.#newChat(agent)}><swc-icon-new slot="icon"></swc-icon-new>New conversation</swc-action-button>
+      <swc-tooltip for="new-chat" placement="bottom">${agent.kind === 'cone' && model.agent.freeze ? 'Start a new conversation. This one stays in the Freezer.' : 'Start a new conversation'}</swc-tooltip>`;
   }
 
   render(): TemplateResult {

@@ -44,7 +44,7 @@ export function available(model: SliccModel): Command[] {
 export const commands: Command[] = [
   {
     name: 'clear',
-    detail: 'Start a new chat',
+    detail: 'Start a new conversation',
     run: (model, id) => model.agent.clear(id),
   },
   {
@@ -86,7 +86,7 @@ export const commands: Command[] = [
   { name: 'stop', detail: 'Stop the running reply', run: (model, id) => model.agent.stop(id) },
   {
     name: 'freeze',
-    detail: 'Archive this cone and its scoops in the freezer',
+    detail: 'Delete this cone; its conversation stays in the Freezer',
     available: (model) => typeof model.agent.freeze === 'function',
     run: (model, id) => model.agent.freeze?.(id),
   },

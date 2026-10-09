@@ -113,6 +113,7 @@ test('the shell renders the default layout from the dummy model', async (t) => {
       'inbox-triage',
       'tide-tables',
       'New cone',
+      'Delete cone',
       'Show all agents',
     ]
   );
@@ -2333,7 +2334,24 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
   await page.until(
     () =>
       window.$('slicc-app', 'slicc-dock').content('freezer')?.shadowRoot.querySelectorAll('.card')
-        .length === 3
+        .length === window.model.agent.frozen().length
+  );
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [
+        ...window
+          .$('slicc-app', 'slicc-dock')
+          .content('freezer')
+          .shadowRoot.querySelectorAll('.card:not([data-live])'),
+      ].map((card) => [card.dataset.kind, card.querySelector('[data-badge=kind]').textContent])
+    ),
+    [
+      ['scoop', 'Scoop'],
+      ['cone', 'Cone'],
+      ['agent', 'Agent run'],
+      ['cone', 'Cone'],
+      ['cone', 'Cone'],
+    ]
   );
   await shot(page, 'freezer-light');
   await page.evaluate(() =>
@@ -2348,22 +2366,57 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
   );
   await page.until(() => window.model.agent.active() === 'cone-kv-spike');
   await page.until(() => window.model.agent.list().some((agent) => agent.id === 'cone-kv-spike'));
-  await page.evaluate(() =>
-    [
-      ...window
+  await page.until(
+    () =>
+      !!window
         .$('slicc-app', 'slicc-dock')
         .content('freezer')
-        .shadowRoot.querySelectorAll('.bar swc-action-button'),
-    ]
-      .find((button) => /Freeze kv-spike/.test(button.textContent))
+        .shadowRoot.querySelector('.card[data-id=cone-kv-spike][data-live] [data-action=open]')
+  );
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock')
+      .content('freezer')
+      .shadowRoot.querySelector('.card[data-id=scoop-tide-check] [data-action=thaw]')
       .click()
   );
+  await page.until(() => window.model.agent.active() === 'scoop-tide-check-thaw-1');
+  await page.until(() =>
+    /thawed as tide-check$/.test(
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('freezer')
+        .shadowRoot.querySelector('.card[data-id=scoop-tide-check] .meta').textContent
+    )
+  );
+  await page.evaluate(() => window.app.show('agents'));
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('agents')
+        ?.shadowRoot.querySelector('li[data-id=cone-kv-spike] [data-action=delete-cone]')
+  );
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock')
+      .content('agents')
+      .shadowRoot.querySelector('li[data-id=cone-kv-spike] [data-action=delete-cone]')
+      .click()
+  );
+  await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
+  await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
   await page.until(() => !window.model.agent.list().some((agent) => agent.id === 'cone-kv-spike'));
+  const stored = () => window.model.agent.frozen().filter((cone) => !cone.live).length;
+  const before = await page.evaluate(stored);
   await page.press('2', 'alt');
   await page.insert('/freeze');
   await page.press('Escape');
   await page.press('Enter');
-  await page.until(() => window.model.agent.frozen().length === 4);
+  await page.until(
+    (count) => window.model.agent.frozen().filter((cone) => !cone.live).length === count + 1,
+    before
+  );
   assert.deepEqual(page.errors, []);
 });
 
@@ -3389,12 +3442,19 @@ test('the agent picker lists cones and opens the agents panel for the rest', asy
         )
       )
       .then((items) => [
-        items.slice(0, -2).every(([value]) => value.startsWith('cone-')),
-        items.length > 3,
+        items.slice(0, -3).every(([value]) => value.startsWith('cone-')),
+        items.length > 4,
+        items.at(-3),
         items.at(-2),
         items.at(-1),
       ]),
-    [true, true, ['slicc:new-cone', 'New cone'], ['slicc:all-agents', 'Show all agents']]
+    [
+      true,
+      true,
+      ['slicc:new-cone', 'New cone'],
+      ['slicc:delete-cone', 'Delete cone'],
+      ['slicc:all-agents', 'Show all agents'],
+    ]
   );
   await page.evaluate(() => {
     const picker = window.$('slicc-app', 'header sp-picker');
@@ -3464,7 +3524,7 @@ test('the chat header lists chat models with their provider and starts a new cha
           .$('slicc-app', 'slicc-dock', 'slicc-chat')
           .shadowRoot.querySelector('header swc-tooltip[for=new-chat]').textContent
     ),
-    'Freeze this chat and start a new one'
+    'Start a new conversation. This one stays in the Freezer.'
   );
   await page.evaluate(() => {
     window
@@ -3483,7 +3543,7 @@ test('the chat header lists chat models with their provider and starts a new cha
   await shot(page, 'after-new-chat');
   assert.deepEqual(
     await page.evaluate((id) => {
-      const [entry] = window.model.agent.frozen();
+      const [entry] = window.model.agent.frozen().filter((cone) => !cone.live);
       return [window.model.agent.frozen().length, entry.id.startsWith(`${id}-chat-`)];
     }, id),
     [frozen + 1, true]

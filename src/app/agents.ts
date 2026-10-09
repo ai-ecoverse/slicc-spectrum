@@ -1,10 +1,12 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc-icons/swc-icon-close.js';
+import '@adobe/spectrum-wc-icons/swc-icon-delete.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Agent, SliccModel } from '../model/types.ts';
 import { ModelElement, percent, shared, statusLabel, statusLight } from './base.ts';
 import { confirm } from './confirm.ts';
+import { deleteCone } from './freezer.ts';
 
 export function ordered(agents: readonly Agent[]): Agent[] {
   const cones = agents.filter((agent) => agent.kind === 'cone');
@@ -159,12 +161,25 @@ export class SliccAgents extends ModelElement {
       if (agent && this.#droppable(agent)) {
         event.preventDefault();
         void this.#drop(agent, items[index]);
+      } else if (agent && this.#deletable(agent)) {
+        event.preventDefault();
+        void this.#deleteCone(agent, items[index]);
       }
     }
   }
 
   #droppable(agent: Agent): boolean {
     return agent.kind === 'scoop' && Boolean(this.model?.agent.drop);
+  }
+
+  #deletable(agent: Agent): boolean {
+    return agent.kind === 'cone' && !agent.frozen && Boolean(this.model?.agent.freeze);
+  }
+
+  async #deleteCone(agent: Agent, trigger: HTMLElement): Promise<void> {
+    if (!(await deleteCone(this.model as SliccModel, agent, trigger))) return;
+    await this.updateComplete;
+    this.focus();
   }
 
   async #drop(agent: Agent, trigger: HTMLElement): Promise<void> {
@@ -215,6 +230,26 @@ export class SliccAgents extends ModelElement {
       ><swc-tooltip for=${id} placement="start">${label}</swc-tooltip>`;
   }
 
+  #deleteButton(agent: Agent): TemplateResult | typeof nothing {
+    if (!this.#deletable(agent)) return nothing;
+    const id = `delete-${agent.id}`;
+    const label = `Delete cone ${agent.name}`;
+    return html`<swc-action-button
+        id=${id}
+        class="drop"
+        size="l"
+        quiet
+        tabindex="-1"
+        data-action="delete-cone"
+        accessible-label=${label}
+        @click=${(event: Event) => {
+          event.stopPropagation();
+          void this.#deleteCone(agent, event.currentTarget as HTMLElement);
+        }}
+        ><swc-icon-delete slot="icon"></swc-icon-delete></swc-action-button
+      ><swc-tooltip for=${id} placement="start">${label}</swc-tooltip>`;
+  }
+
   #row(agent: Agent, active: string): TemplateResult {
     const selected = agent.id === active;
     const error = this.errors[agent.id];
@@ -228,7 +263,7 @@ export class SliccAgents extends ModelElement {
       aria-selected=${selected ? 'true' : 'false'}
       aria-label=${label}
       tabindex=${selected ? '0' : '-1'}
-      aria-keyshortcuts=${this.#droppable(agent) ? 'Delete' : nothing}
+      aria-keyshortcuts=${this.#droppable(agent) || this.#deletable(agent) ? 'Delete' : nothing}
       title=${label}
       @click=${() => this.#select(agent.id)}
     >
@@ -241,6 +276,7 @@ export class SliccAgents extends ModelElement {
       <span class="fill">${percent(agent.contextFill)}</span>
       ${statusLight(agent.status)}
       ${this.#dropButton(agent)}
+      ${this.#deleteButton(agent)}
       ${error ? html`<span class="error">${error}</span>` : nothing}
     </li>`;
   }
