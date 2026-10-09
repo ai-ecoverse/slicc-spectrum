@@ -44,7 +44,7 @@ export function available(model: SliccModel): Command[] {
 export const commands: Command[] = [
   {
     name: 'clear',
-    detail: 'Start the conversation over',
+    detail: 'Start a new chat',
     run: (model, id) => model.agent.clear(id),
   },
   {

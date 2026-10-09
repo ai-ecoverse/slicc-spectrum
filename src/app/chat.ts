@@ -1,6 +1,7 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
+import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc/patterns/ai-toolkit/conversation-thread/swc-conversation-thread.js';
 import '@adobe/spectrum-wc-icons/swc-icon-new.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
@@ -387,7 +388,8 @@ export class SliccChat extends ThemedElement {
         <sp-menu-item value="high">Think hard</sp-menu-item>
       </sp-picker>
       ${meter}
-      <swc-action-button size="s" quiet data-action="new-chat" ?disabled=${empty} @click=${() => this.#newChat(agent)}><swc-icon-new slot="icon"></swc-icon-new>New chat</swc-action-button>`;
+      <swc-action-button id="new-chat" size="s" quiet data-action="new-chat" ?disabled=${empty} @click=${() => this.#newChat(agent)}><swc-icon-new slot="icon"></swc-icon-new>New chat</swc-action-button>
+      <swc-tooltip for="new-chat" placement="bottom">${agent.kind === 'cone' && model.agent.freeze ? 'Freeze this chat and start a new one' : 'Start a new chat'}</swc-tooltip>`;
   }
 
   render(): TemplateResult {
