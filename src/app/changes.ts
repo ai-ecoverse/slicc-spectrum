@@ -1,10 +1,20 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/action-group/swc-action-group.js';
+import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
-import type { Change, SliccModel } from '../model/types.ts';
-import { ModelElement, shared, ThemedElement } from './base.ts';
+import type { Change, ChangesPort, SliccModel } from '../model/types.ts';
+import { changesOf, ModelElement, shared, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
-import { agentName, basename, panelCss, request, statusLabels, statusMark } from './files.ts';
+import {
+  agentName,
+  basename,
+  errorCss,
+  failure,
+  panelCss,
+  request,
+  statusLabels,
+  statusMark,
+} from './files.ts';
 
 const layouts = [
   ['unified', 'Unified'],
@@ -15,17 +25,68 @@ function folder(path: string): string {
   return path.slice(0, path.lastIndexOf('/')) || '/';
 }
 
-const confirmRevert = (path: string): Promise<boolean> =>
-  confirm({
-    title: `Revert ${basename(path)}?`,
-    body: `This discards the agent’s edits to ${path}. You can’t undo this.`,
-    action: 'Revert',
-  });
+function where(change: Change): string {
+  const at = folder(change.path);
+  if (!change.repo) return at;
+  if (at === change.repo) return '';
+  return at.startsWith(`${change.repo}/`) ? at.slice(change.repo.length + 1) : at;
+}
+
+export function author(model: SliccModel | null, change: Change): string | null {
+  return change.agentId === null && change.repo ? null : agentName(model, change.agentId);
+}
+
+function lost(changes: readonly Change[]): string {
+  const kind = changes.every((change) => change.repo) ? 'uncommitted' : 'pending';
+  return `${changes.length === 1 ? 'Its' : 'Their'} ${kind} changes are discarded and can’t be undone.`;
+}
+
+const confirmRevert = (change: Change): Promise<boolean> =>
+  confirm({ title: `Revert ${basename(change.path)}?`, body: lost([change]), action: 'Revert' });
+
+export async function revertPaths(port: ChangesPort, paths: readonly string[]): Promise<string> {
+  const errors: string[] = [];
+  for (const path of paths) {
+    try {
+      await port.revert(path);
+    } catch (error) {
+      errors.push(failure(error));
+    }
+  }
+  if (errors.length > 1) return `Couldn’t revert ${errors.length} files. ${errors[0]}`;
+  return errors[0] ?? '';
+}
+
+export function groups(changes: readonly Change[]): Array<[string, Change[]]> {
+  const byRepo = new Map<string, Change[]>();
+  for (const change of changes) {
+    const key = change.repo ?? '';
+    byRepo.set(key, [...(byRepo.get(key) ?? []), change]);
+  }
+  return [...byRepo];
+}
+
+function errorLine(error: string): TemplateResult {
+  return html`<div class="error" role="status" aria-live="polite">${
+    error
+      ? html`<swc-icon-alert-diamond size="s" aria-hidden="true"></swc-icon-alert-diamond><span>${error}</span>`
+      : nothing
+  }</div>`;
+}
 
 export class SliccChanges extends ModelElement {
+  static properties = { ...ModelElement.properties, error: { state: true } };
+  declare error: string;
+
+  constructor() {
+    super();
+    this.error = '';
+  }
+
   static styles = [
     shared,
     panelCss,
+    errorCss,
     css`
       ul {
         list-style: none;
@@ -35,7 +96,24 @@ export class SliccChanges extends ModelElement {
         flex: 1;
         min-height: 0;
       }
-      li {
+      ul ul {
+        padding: 0;
+        overflow: visible;
+      }
+      .repo {
+        display: flex;
+        gap: var(--swc-spacing-100);
+        padding: var(--swc-spacing-100) var(--swc-spacing-200) var(--swc-spacing-50);
+        font-size: var(--swc-font-size-75);
+        font-weight: var(--swc-bold-font-weight);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .repo span:first-child {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      li[data-path] {
         display: grid;
         grid-template-columns: auto minmax(0, auto) minmax(0, 1fr) auto;
         align-items: center;
@@ -44,11 +122,11 @@ export class SliccChanges extends ModelElement {
         padding: 0 var(--swc-spacing-75) 0 var(--swc-spacing-200);
         cursor: pointer;
       }
-      li:hover,
-      li:focus-within {
+      li[data-path]:hover,
+      li[data-path]:focus-within {
         background: var(--swc-gray-100);
       }
-      li:focus-visible {
+      li[data-path]:focus-visible {
         outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
         outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
       }
@@ -68,12 +146,12 @@ export class SliccChanges extends ModelElement {
         display: flex;
         visibility: hidden;
       }
-      li:hover .actions,
-      li:focus-within .actions {
+      li[data-path]:hover .actions,
+      li[data-path]:focus-within .actions {
         visibility: visible;
       }
       @media (hover: none), (pointer: coarse) {
-        li {
+        li[data-path] {
           min-height: var(--swc-component-height-200);
         }
         .actions {
@@ -84,38 +162,47 @@ export class SliccChanges extends ModelElement {
   ];
 
   protected subscribe(model: SliccModel): Array<() => void> {
-    return [model.files.on('changes', () => this.requestUpdate())];
+    return [changesOf(model).on('changes', () => this.requestUpdate())];
   }
 
   focus(): void {
-    this.focusOn('li');
+    this.focusOn('li[data-path]');
+  }
+
+  #port(): ChangesPort {
+    return changesOf(this.model as SliccModel);
   }
 
   #accept(event: Event, path: string): void {
     event.stopPropagation();
-    this.model?.files.accept(path);
+    this.#port().accept(path);
   }
 
-  async #revert(event: Event, path: string): Promise<void> {
+  async #revert(event: Event, change: Change): Promise<void> {
     event.stopPropagation();
-    if (await confirmRevert(path)) await this.model?.files.revert(path);
+    this.error = '';
+    if (await confirmRevert(change)) this.error = await revertPaths(this.#port(), [change.path]);
   }
 
   async #all(action: 'accept' | 'revert'): Promise<void> {
-    const files = this.model?.files;
-    const changes = files?.changes() ?? [];
+    const port = this.#port();
+    const changes = port.changes();
+    this.error = '';
+    if (action === 'accept') {
+      for (const change of changes) port.accept(change.path);
+      return;
+    }
     const count = changes.length;
     const title = `Revert ${count} ${count === 1 ? 'change' : 'changes'}?`;
-    const body = 'This discards the agents’ edits and puts every file back. You can’t undo this.';
-    if (action === 'revert' && !(await confirm({ title, body, action: 'Revert all' }))) return;
-    for (const change of changes) {
-      if (action === 'accept') files?.accept(change.path);
-      else void files?.revert(change.path);
-    }
+    if (await confirm({ title, body: lost(changes), action: 'Revert all' }))
+      this.error = await revertPaths(
+        port,
+        changes.map((change) => change.path)
+      );
   }
 
   #keydown(event: KeyboardEvent): void {
-    const items = [...this.renderRoot.querySelectorAll<HTMLElement>('li')];
+    const items = [...this.renderRoot.querySelectorAll<HTMLElement>('li[data-path]')];
     const index = items.indexOf((this.renderRoot as ShadowRoot).activeElement as HTMLElement);
     if (index < 0) return;
     const moves: Record<string, number> = {
@@ -134,15 +221,17 @@ export class SliccChanges extends ModelElement {
   }
 
   #row(change: Change): TemplateResult {
+    const by = author(this.model, change);
+    const at = where(change);
     return html`<li
       tabindex="0"
       data-path=${change.path}
-      title=${`${change.path}, ${change.status} by ${agentName(this.model, change.agentId)}`}
+      title=${`${change.path}, ${change.status}${by ? ` by ${by}` : ''}`}
       @click=${() => request(this, 'open-diff', change.path)}
     >
       ${statusMark(change.status)}
       <span class="name">${basename(change.path)}</span>
-      <span class="where"><bdi>${folder(change.path)} · ${agentName(this.model, change.agentId)}</bdi></span>
+      <span class="where"><bdi>${[at, by].filter(Boolean).join(' · ')}</bdi></span>
       <span class="actions">
         <swc-action-button
           size="xs"
@@ -158,7 +247,7 @@ export class SliccChanges extends ModelElement {
           quiet
           accessible-label=${`Revert ${basename(change.path)}`}
           title="Revert"
-          @click=${(event: Event) => this.#revert(event, change.path)}
+          @click=${(event: Event) => this.#revert(event, change)}
         >
           <swc-icon-revert slot="icon"></swc-icon-revert>
         </swc-action-button>
@@ -166,8 +255,26 @@ export class SliccChanges extends ModelElement {
     </li>`;
   }
 
+  #list(changes: readonly Change[]): TemplateResult {
+    const grouped = groups(changes);
+    if (grouped.length < 2)
+      return html`<ul aria-label="Pending changes" @keydown=${this.#keydown}>${changes.map((change) => this.#row(change))}</ul>`;
+    return html`<ul aria-label="Pending changes" @keydown=${this.#keydown}>${grouped.map(
+      ([repo, items]) => html`<li data-repo=${repo}>
+        <div class="repo" title=${repo}>
+          <span>${repo || 'Outside a repository'}</span>
+          <span>${items.length}</span>
+        </div>
+        <ul aria-label=${repo || 'Outside a repository'}>${items.map((change) => this.#row(change))}</ul>
+      </li>`
+    )}</ul>`;
+  }
+
   render(): TemplateResult {
-    const changes = this.model?.files.changes() ?? [];
+    const port = this.model ? changesOf(this.model) : null;
+    const unavailable = port?.unavailable?.() ?? null;
+    if (unavailable) return html`<div class="note" data-unavailable>${unavailable}</div>`;
+    const changes = port?.changes() ?? [];
     return html`<div class="bar">
         <span>${changes.length} pending ${changes.length === 1 ? 'change' : 'changes'}</span>
         <span class="spacer"></span>
@@ -178,26 +285,26 @@ export class SliccChanges extends ModelElement {
             : nothing
         }
       </div>
-      ${
-        changes.length
-          ? html`<ul aria-label="Pending changes" @keydown=${this.#keydown}>${changes.map((change) => this.#row(change))}</ul>`
-          : html`<div class="note">No pending changes. Edits by agents show up here for review.</div>`
-      }`;
+      ${errorLine(this.error)}
+      ${changes.length ? this.#list(changes) : html`<div class="note">No pending changes. Edits by agents show up here for review.</div>`}`;
   }
 }
 
 export class SliccDiffPanel extends ThemedElement {
-  static properties = { ...ThemedElement.properties, path: {} };
+  static properties = { ...ThemedElement.properties, path: {}, error: { state: true } };
   declare path: string;
+  declare error: string;
 
   constructor() {
     super();
     this.path = '';
+    this.error = '';
   }
 
   static styles = [
     shared,
     panelCss,
+    errorCss,
     css`
       slicc-diff-view {
         flex: 1;
@@ -220,11 +327,32 @@ export class SliccDiffPanel extends ThemedElement {
   ];
 
   protected subscribe(model: SliccModel): Array<() => void> {
-    return [...super.subscribe(model), model.files.on('changes', () => this.requestUpdate())];
+    return [...super.subscribe(model), changesOf(model).on('changes', () => this.requestUpdate())];
   }
 
-  async #revert(): Promise<void> {
-    if (await confirmRevert(this.path)) await this.model?.files.revert(this.path);
+  async #revert(port: ChangesPort, change: Change): Promise<void> {
+    this.error = '';
+    if (await confirmRevert(change)) this.error = await revertPaths(port, [this.path]);
+  }
+
+  #body(change: Change, style: 'unified' | 'split'): TemplateResult {
+    if (change.before === null && change.after === null) {
+      return html`<div class="note" data-diff="none">
+        No diff for this file: it’s binary or over 1 MB.
+        ${
+          change.status === 'deleted'
+            ? nothing
+            : html`<swc-action-button size="s" quiet @click=${() => request(this, 'open-file', this.path)}>Open the file</swc-action-button>`
+        }
+      </div>`;
+    }
+    return html`<slicc-diff-view
+      path=${this.path}
+      color=${this.color}
+      diff-style=${style}
+      .oldText=${change.before}
+      .newText=${change.after}
+    ></slicc-diff-view>`;
   }
 
   #style(style: 'unified' | 'split'): void {
@@ -233,7 +361,8 @@ export class SliccDiffPanel extends ThemedElement {
 
   render(): TemplateResult {
     const model = this.model;
-    const change = model?.files.changes().find((candidate) => candidate.path === this.path);
+    const port = model ? changesOf(model) : null;
+    const change = port?.changes().find((candidate) => candidate.path === this.path);
     const style = model?.settings.get().diffStyle ?? 'unified';
     if (!change) {
       return html`<div class="bar"><span class="path" title=${this.path}>${this.path}</span></div>
@@ -242,12 +371,16 @@ export class SliccDiffPanel extends ThemedElement {
           <swc-action-button size="s" quiet @click=${() => request(this, 'open-file', this.path)}>Open the file</swc-action-button>
         </div>`;
     }
+    const by = author(model, change);
     return html`<div class="bar">
         ${statusMark(change.status, false)}
         <span class="path" title=${this.path}>${this.path}</span>
-        <span>${statusLabels[change.status]} by ${agentName(model, change.agentId)}</span>
+        <span>${statusLabels[change.status]}${by ? ` by ${by}` : ''}</span>
         <span class="spacer"></span>
-        <swc-action-group size="s" compact accessible-label="Diff layout">
+        ${
+          change.before === null && change.after === null
+            ? nothing
+            : html`<swc-action-group size="s" compact accessible-label="Diff layout">
           ${layouts.map(
             ([value, label]) =>
               html`<swc-action-button
@@ -258,20 +391,16 @@ export class SliccDiffPanel extends ThemedElement {
                 >${label}</swc-action-button
               >`
           )}
-        </swc-action-group>
-        <swc-action-button size="s" quiet @click=${() => model?.files.accept(this.path)}>
+        </swc-action-group>`
+        }
+        <swc-action-button size="s" quiet @click=${() => port?.accept(this.path)}>
           <swc-icon-checkmark slot="icon"></swc-icon-checkmark>Accept
         </swc-action-button>
-        <swc-action-button size="s" quiet @click=${() => this.#revert()}>
+        <swc-action-button size="s" quiet @click=${() => this.#revert(port as ChangesPort, change)}>
           <swc-icon-revert slot="icon"></swc-icon-revert>Revert
         </swc-action-button>
       </div>
-      <slicc-diff-view
-        path=${this.path}
-        color=${this.color}
-        diff-style=${style}
-        .oldText=${change.before}
-        .newText=${change.after}
-      ></slicc-diff-view>`;
+      ${errorLine(this.error)}
+      ${this.#body(change, style)}`;
   }
 }

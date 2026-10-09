@@ -290,6 +290,14 @@ export interface Change {
   before: string | null;
   after: string | null;
   agentId: string | null;
+  repo?: string;
+}
+
+export interface ChangesPort extends Subscribable<{ changes: readonly Change[] }> {
+  changes(): readonly Change[];
+  accept(path: string): void;
+  revert(path: string): Promise<void>;
+  unavailable?(): string | null;
 }
 
 export interface FileEvents {
@@ -624,4 +632,5 @@ export interface SliccModel {
   tray: TrayPort;
   updates?: UpdatesPort;
   network?: NetworkPort;
+  changes?: ChangesPort;
 }

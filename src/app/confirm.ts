@@ -74,6 +74,11 @@ const dialogStyles = css`
     --mod-alert-dialog-description-to-buttons: var(--swc-spacing-500);
     --system-alert-dialog-divider-background-color: transparent;
   }
+  @media (max-width: 512px) {
+    sp-alert-dialog {
+      --mod-alert-dialog-min-width: calc(100vw - 2 * var(--swc-spacing-300));
+    }
+  }
   p {
     margin: 0;
   }

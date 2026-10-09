@@ -946,7 +946,7 @@ test('a diff opens from the changes list, switches layout, and accepting or reve
   await shot(page, 'diff-split');
 
   await page.evaluate((id) => window.button(id, 'Accept'), id);
-  await page.until(() => window.model.files.changes().length === 3);
+  await page.until(() => window.model.files.changes().length === 4);
   await page.until(
     (id) =>
       window
@@ -977,13 +977,13 @@ test('a diff opens from the changes list, switches layout, and accepting or reve
   );
   await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
   await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
-  await page.until(() => window.model.files.changes().length === 2);
+  await page.until(() => window.model.files.changes().length === 3);
   await page.until(() => window.row('workspace/harbor/src/lib/retry.ts') === null);
   await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('changes'));
   await page.until(
     () =>
       window.$('slicc-app', '.rail [data-surface=changes]')?.getAttribute('accessible-label') ===
-        'Open Changes, 2 changes' && window.$('slicc-app', '.badged swc-badge').textContent === '2'
+        'Open Changes, 3 changes' && window.$('slicc-app', '.badged swc-badge').textContent === '3'
   );
   assert.deepEqual(page.errors, []);
 });
@@ -995,7 +995,7 @@ test('an agent edit shows up in changes, in the tree and in the open file', asyn
   await page.evaluate(() => window.app.open('file', '/workspace/harbor/src/lib/units.ts'));
   await page.until((id) => window.code(id).includes('toFahrenheit'), id);
   await page.evaluate(() => window.model.agent.send('cone-sliccy', 'Add a Kelvin helper'));
-  await page.until(() => window.model.files.changes().length === 5);
+  await page.until(() => window.model.files.changes().length === 6);
   await page.until((id) => window.code(id).includes('toKelvin'), id);
   await page.until(() =>
     /M/.test(window.row('workspace/harbor/src/lib/units.ts')?.textContent ?? '')
@@ -1039,6 +1039,174 @@ test('files, changes and diffs in dark', async (t) => {
     window.code('diff:/workspace/harbor/src/routes/forecast.ts').includes('retry')
   );
   await shot(page, 'diff-dark');
+  assert.deepEqual(page.errors, []);
+});
+
+test('a binary change has no diff, and can still be accepted or reverted', async (t) => {
+  const page = await open(t);
+  const binary = 'diff:/workspace/harbor/static/radar.png';
+  await page.evaluate(() => window.app.open('diff', '/workspace/harbor/static/radar.png'));
+  await page.until(
+    (id) =>
+      /No diff for this file/.test(
+        window.$('slicc-app', 'slicc-dock').content(id)?.shadowRoot.textContent ?? ''
+      ),
+    binary
+  );
+  const buttons = (id) =>
+    [
+      ...window
+        .$('slicc-app', 'slicc-dock')
+        .content(id)
+        .shadowRoot.querySelectorAll('swc-action-button'),
+    ].map((button) => button.textContent.trim());
+  assert.deepEqual(await page.evaluate(buttons, binary), ['Accept', 'Revert', 'Open the file']);
+  await shot(page, 'diff-binary');
+
+  await page.evaluate(
+    (id) =>
+      [
+        ...window
+          .$('slicc-app', 'slicc-dock')
+          .content(id)
+          .shadowRoot.querySelectorAll('swc-action-button'),
+      ]
+        .find((button) => button.textContent.trim() === 'Revert')
+        .click(),
+    binary
+  );
+  await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
+  await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
+  await page.until(() => window.model.files.changes().length === 4);
+  assert.equal(
+    await page.evaluate(() =>
+      window.model.files.read('/workspace/harbor/static/radar.png').then(() => true)
+    ),
+    true
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('git changes group by repository, without authors, and Revert says it can’t be undone', async (t) => {
+  const page = await open(t, { changes: 'git' });
+  await page.evaluate(() => window.app.show('changes'));
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-changes')?.shadowRoot.querySelectorAll('.repo')
+        .length === 2
+  );
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [
+        ...window
+          .$('slicc-app', 'slicc-dock', 'slicc-changes')
+          .shadowRoot.querySelectorAll('.repo'),
+      ].map((header) => header.textContent.trim().replace(/\s+/g, ' '))
+    ),
+    ['/workspace/harbor 5', '/workspace/skills 1']
+  );
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [
+        ...window
+          .$('slicc-app', 'slicc-dock', 'slicc-changes')
+          .shadowRoot.querySelectorAll('li[data-path]'),
+      ]
+        .slice(0, 2)
+        .map((row) => [row.title, row.querySelector('.where').textContent.trim()])
+    ),
+    [
+      ['/workspace/harbor/src/legacy/xml.ts, deleted', 'src/legacy'],
+      ['/workspace/harbor/src/lib/cache.ts, modified', 'src/lib'],
+    ]
+  );
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-changes')
+      .shadowRoot.querySelector('li[data-path]')
+      .focus()
+  );
+  await page.press('End');
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-changes').shadowRoot.activeElement?.dataset
+        .path === '/workspace/skills/release-notes/SKILL.md'
+  );
+  await shot(page, 'changes-git');
+
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-changes')
+      .shadowRoot.querySelector(
+        'li[data-path="/workspace/skills/release-notes/SKILL.md"] swc-action-button[accessible-label^="Revert"]'
+      )
+      .click()
+  );
+  await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
+  assert.equal(
+    await page.evaluate(
+      () => window.$('slicc-app', 'slicc-confirm').shadowRoot.querySelector('p').textContent
+    ),
+    'Its uncommitted changes are discarded and can’t be undone.'
+  );
+  await shot(page, 'changes-git-revert');
+  await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-changes').shadowRoot.querySelectorAll('.repo')
+        .length === 0
+  );
+  assert.equal(await page.evaluate(() => window.model.changes.changes().length), 5);
+
+  await page.evaluate(() => window.app.open('diff', '/workspace/harbor/src/lib/cache.ts'));
+  await page.until(
+    () =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('diff:/workspace/harbor/src/lib/cache.ts')
+        ?.shadowRoot.querySelector('.bar')
+        ?.textContent.includes('Modified') === true
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('diff:/workspace/harbor/src/lib/cache.ts')
+        .shadowRoot.querySelector('.bar')
+        .textContent.includes(' by ')
+    ),
+    false
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('without git, Changes says what it needs and the rail has no count', async (t) => {
+  const page = await open(t, { changes: 'nogit' });
+  await page.evaluate(() => window.app.show('changes'));
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock', 'slicc-changes')
+        ?.shadowRoot.querySelector('[data-unavailable]')
+  );
+  assert.match(
+    await page.evaluate(
+      () =>
+        window
+          .$('slicc-app', 'slicc-dock', 'slicc-changes')
+          .shadowRoot.querySelector('[data-unavailable]').textContent
+    ),
+    /^Changes needs git and a git repository\./
+  );
+  await shot(page, 'changes-no-git');
+  await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('changes'));
+  await page.until(() => !!window.$('slicc-app', '.rail [data-surface=changes]'));
+  assert.equal(
+    await page.evaluate(() =>
+      window.$('slicc-app', '.rail [data-surface=changes]').getAttribute('accessible-label')
+    ),
+    'Open Changes'
+  );
   assert.deepEqual(page.errors, []);
 });
 

@@ -50,8 +50,8 @@ export class DummyFiles extends Emitter<FileEvents> implements FilePort {
     for (const [path, text] of Object.entries(contents)) this.#put(path, text, 0);
     for (const change of changes) this.#changes.set(change.path, { ...change });
     for (const change of changes) {
-      if (change.after === null) this.#contents.delete(change.path);
-      else this.#put(change.path, change.after, 0);
+      if (change.status === 'deleted') this.#contents.delete(change.path);
+      else if (change.after !== null) this.#put(change.path, change.after, 0);
     }
   }
 
@@ -138,8 +138,8 @@ export class DummyFiles extends Emitter<FileEvents> implements FilePort {
     if (!change) return;
     await this.#clock.sleep();
     this.#changes.delete(path);
-    if (change.before === null) this.#contents.delete(path);
-    else this.#put(path, change.before, Date.now());
+    if (change.before !== null) this.#put(path, change.before, Date.now());
+    else if (change.status === 'added') this.#contents.delete(path);
     this.#announce(path);
   }
 

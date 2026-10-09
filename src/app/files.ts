@@ -7,7 +7,7 @@ import type { FileTree } from '@pierre/trees';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { GitStatusEntry } from '../components/file-tree.ts';
 import type { Change, FileEntry, FilePort, SliccModel } from '../model/types.ts';
-import { ModelElement, shared, ThemedElement } from './base.ts';
+import { changesOf, ModelElement, shared, ThemedElement } from './base.ts';
 
 export function relative(path: string): string {
   return path.replace(/^\//, '');
@@ -129,6 +129,26 @@ export function failure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+export const errorCss = css`
+  .error {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--swc-spacing-75);
+    flex: none;
+    color: var(--swc-negative-content-color-default);
+    background: var(--swc-background-layer-1-color);
+    white-space: normal;
+  }
+  .error:not(:empty) {
+    padding: var(--swc-spacing-75) var(--swc-spacing-100) var(--swc-spacing-75) var(--swc-spacing-200);
+    border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
+  }
+  .error swc-icon-alert-diamond {
+    flex: none;
+    color: var(--swc-negative-content-color-default);
+  }
+`;
+
 export class SliccFiles extends ModelElement {
   static properties = {
     ...ModelElement.properties,
@@ -165,6 +185,7 @@ export class SliccFiles extends ModelElement {
   static styles = [
     shared,
     panelCss,
+    errorCss,
     css`
       :host {
         container-type: inline-size;
@@ -180,23 +201,6 @@ export class SliccFiles extends ModelElement {
       }
       .mount {
         flex: none;
-      }
-      .error {
-        display: flex;
-        align-items: flex-start;
-        gap: var(--swc-spacing-75);
-        flex: none;
-        color: var(--swc-negative-content-color-default);
-        background: var(--swc-background-layer-1-color);
-        white-space: normal;
-      }
-      .error:not(:empty) {
-        padding: var(--swc-spacing-75) var(--swc-spacing-100) var(--swc-spacing-75) var(--swc-spacing-200);
-        border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
-      }
-      .error swc-icon-alert-diamond {
-        flex: none;
-        color: var(--swc-negative-content-color-default);
       }
       .mounts {
         flex: none;
@@ -255,7 +259,7 @@ export class SliccFiles extends ModelElement {
     this.#mounts(model.files);
     return [
       model.files.on('files', (entries) => this.#load(entries)),
-      model.files.on('changes', () => this.#sync()),
+      changesOf(model).on('changes', () => this.#sync()),
       model.files.on('mounts', () => this.#mounts(model.files)),
     ];
   }
@@ -290,7 +294,7 @@ export class SliccFiles extends ModelElement {
 
   #sync(): void {
     const tree = this.#tree();
-    const changes = this.model?.files.changes() ?? [];
+    const changes = this.model ? changesOf(this.model).changes() : [];
     if (!tree) return;
     if (tree.paths.length === 0) tree.expanded = ancestors(changes.map((change) => change.path));
     tree.paths = treePaths(this.#entries);
@@ -575,7 +579,7 @@ export class SliccFileView extends ThemedElement {
       model.files.on('file', (path) => {
         if (path === this.path) void this.#read(model);
       }),
-      model.files.on('changes', () => this.requestUpdate()),
+      changesOf(model).on('changes', () => this.requestUpdate()),
     ];
   }
 
@@ -590,7 +594,11 @@ export class SliccFileView extends ThemedElement {
   }
 
   render(): TemplateResult {
-    const change = this.model?.files.changes().find((candidate) => candidate.path === this.path);
+    const change = this.model
+      ? changesOf(this.model)
+          .changes()
+          .find((candidate) => candidate.path === this.path)
+      : undefined;
     return html`<div class="bar">
         <span class="path" title=${this.path}>${this.path}</span>
         <span class="spacer"></span>
