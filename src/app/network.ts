@@ -39,6 +39,7 @@ export const networkHealth: Record<
 const routes: Record<NetworkRoute | 'none', string> = {
   proxy: 'Through slicc-node, which reaches every site.',
   extension: 'Through the SLICC Chrome extension, which reaches every site.',
+  tailnet: 'Through a Tailscale exit node, which reaches every site.',
   page: 'Through this page’s own fetch. Sites that block cross-origin requests are out of reach.',
   none: 'No route to the network.',
 };
@@ -72,6 +73,7 @@ export const tailnetStates: Record<
 const tailnetOnly: Record<NetworkRoute | 'none', string> = {
   proxy: 'Tailnet hosts only. Everything else goes through slicc-node.',
   extension: 'Tailnet hosts only. Everything else goes through the SLICC extension.',
+  tailnet: 'Everything goes through your tailnet.',
   page: 'Tailnet hosts only. Everything else goes through this page’s fetch.',
   none: 'Tailnet hosts only. Nothing else is reachable.',
 };
@@ -83,6 +85,19 @@ export function tailnetAddress(addresses: readonly string[]): string | undefined
 export function exitNodeValue(tailnet: TailnetStatus): string {
   if (tailnet.autoExitNode) return 'auto';
   return tailnet.exitNodes?.find((node) => node.name === tailnet.exitNode)?.id ?? 'none';
+}
+
+export const wholeWeb: ReadonlySet<NetworkRoute | null> = new Set([
+  'proxy',
+  'extension',
+  'tailnet',
+]);
+
+export function routeLine(status: NetworkStatus): string {
+  const node = status.route === 'tailnet' ? status.tailnet?.exitNode : null;
+  return node
+    ? `Through the Tailscale exit node ${node}, which reaches every site.`
+    : routes[status.route ?? 'none'];
 }
 
 export function networkLabel(status: NetworkStatus): string {
@@ -559,7 +574,7 @@ export class SliccNetwork extends ModelElement {
         <h2 id="state">Connection</h2>
         <swc-status-light variant=${variant} data-health=${status.health}>${label}</swc-status-light>
       </div>
-      <p data-route=${status.route ?? 'none'}>${routes[status.route ?? 'none']}</p>
+      <p data-route=${status.route ?? 'none'}>${routeLine(status)}</p>
       ${status.detail ? html`<p class="detail">${status.detail}</p>` : nothing}
       ${
         status.browser
@@ -601,7 +616,7 @@ export class SliccNetwork extends ModelElement {
   }
 
   #whole(status: NetworkStatus): TemplateResult {
-    if (status.route === 'proxy' || status.route === 'extension') {
+    if (wholeWeb.has(status.route)) {
       return html`<details><summary>Other ways to reach the whole web</summary><div>${this.#ways(status)}</div></details>`;
     }
     return html`<section aria-labelledby="whole">

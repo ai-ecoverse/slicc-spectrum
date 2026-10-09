@@ -3365,6 +3365,17 @@ test('Tailscale signs in with an auth key, picks an exit node and signs out', as
     ),
     'Internet through the exit node keel-router.'
   );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const shadow = window.$('slicc-app', 'slicc-dock').content('network').shadowRoot;
+      return [
+        shadow.querySelector('[data-route]').dataset.route,
+        shadow.querySelector('[data-route]').textContent.trim(),
+        window.$('slicc-app', 'header [data-network]').dataset.health,
+      ];
+    }),
+    ['tailnet', 'Through the Tailscale exit node keel-router, which reaches every site.', 'ok']
+  );
   await shot(page, 'tailnet-running');
   await page.evaluate(() =>
     window

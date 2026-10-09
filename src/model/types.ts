@@ -600,7 +600,7 @@ export interface UpdatesPort extends Subscribable<{ items: readonly UpdateItem[]
   act(id: string, action: UpdateAction): Promise<void>;
 }
 
-export type NetworkRoute = 'proxy' | 'extension' | 'page';
+export type NetworkRoute = 'proxy' | 'extension' | 'tailnet' | 'page';
 
 export interface NetworkFailure {
   url: string;

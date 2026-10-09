@@ -98,6 +98,7 @@ export function tailnetFixtures(scenario: TailnetScenario): TailnetStatus {
 
 export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements NetworkPort {
   scenario: NetworkScenario;
+  #base: NetworkStatus;
   #status: NetworkStatus;
   #clock: Clock;
   #tailnet: TailnetStatus | undefined;
@@ -107,16 +108,27 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
     this.scenario = scenario;
     this.#clock = clock;
     this.#tailnet = tailnet ? tailnetFixtures(tailnet) : undefined;
-    this.#status = this.#with(networkFixtures(scenario));
+    this.#base = networkFixtures(scenario);
+    this.#status = this.#with(this.#base);
   }
 
   #with(status: NetworkStatus): NetworkStatus {
-    return this.#tailnet ? { ...status, tailnet: this.#tailnet } : status;
+    const tailnet = this.#tailnet;
+    if (!tailnet) return status;
+    const exit = tailnet.state === 'running' ? tailnet.exitNode : null;
+    if (!exit) return { ...status, tailnet };
+    return {
+      ...status,
+      route: 'tailnet',
+      health: 'ok',
+      detail: `${exit} carries everything except this computer’s own services.`,
+      tailnet,
+    };
   }
 
   #set(tailnet: TailnetStatus): void {
     this.#tailnet = tailnet;
-    this.#status = this.#with(this.#status);
+    this.#status = this.#with(this.#base);
     this.emit('network', this.#status);
   }
 
@@ -126,14 +138,16 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
 
   setScenario(scenario: NetworkScenario): void {
     this.scenario = scenario;
-    this.#status = this.#with(networkFixtures(scenario));
+    this.#base = networkFixtures(scenario);
+    this.#status = this.#with(this.#base);
     this.emit('network', this.#status);
   }
 
   async check(): Promise<void> {
     await this.#clock.sleep(4);
     if (this.#tailnet?.state === 'failed') this.#tailnet = tailnetFixtures('running');
-    this.#status = this.#with(networkFixtures(this.scenario));
+    this.#base = networkFixtures(this.scenario);
+    this.#status = this.#with(this.#base);
     this.emit('network', this.#status);
   }
 
