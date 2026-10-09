@@ -136,6 +136,26 @@ export const memories: Memory[] = [
     tag: 'feedback',
     updatedAt: now - 7 * day,
   },
+  {
+    id: 'mem-9',
+    scope: 'role:reviewer',
+    section: 'Checks',
+    title: 'Read the tests first',
+    body: 'Start a review from the tests, then read the change they cover.',
+    tag: 'feedback',
+    updatedAt: now - 3 * day,
+    source: 'entry',
+  },
+  {
+    id: 'mem-10',
+    scope: 'role:reviewer',
+    section: 'Checks',
+    title: 'Checks',
+    body: 'Flag any change to cache keys. Ask for a test when a retry count changes.',
+    tag: null,
+    updatedAt: now - 3 * day,
+    source: 'notes',
+  },
 ];
 
 export const sprinkles: Sprinkle[] = [

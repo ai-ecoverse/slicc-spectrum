@@ -410,9 +410,16 @@ export interface Memory {
   body: string;
   tag: MemoryTag | null;
   updatedAt: number;
+  source?: 'entry' | 'notes';
 }
 
-export type MemoryDraft = Omit<Memory, 'id' | 'updatedAt'> & { id?: string };
+export interface MemoryScope {
+  id: string;
+  label: string;
+  group?: 'cones' | 'roles';
+}
+
+export type MemoryDraft = Omit<Memory, 'id' | 'updatedAt' | 'source'> & { id?: string };
 
 export interface MemoryEvents {
   memories: readonly Memory[];
@@ -422,6 +429,7 @@ export interface MemoryPort extends Subscribable<MemoryEvents> {
   list(): readonly Memory[];
   save(memory: MemoryDraft): Memory;
   remove(id: string): void;
+  scopes?(): readonly MemoryScope[];
 }
 
 export type MonitorStatus = 'active' | 'idle' | 'warn' | 'error';

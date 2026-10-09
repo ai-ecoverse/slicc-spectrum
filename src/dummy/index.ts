@@ -57,7 +57,14 @@ export function createDummyModel({
       storage,
       time
     ),
-    memory: new DummyMemory(extras.memories),
+    memory: new DummyMemory(extras.memories, () => [
+      { id: 'global', label: 'Everyone' },
+      ...agent
+        .list()
+        .filter((cone) => cone.kind === 'cone')
+        .map((cone) => ({ id: cone.id, label: cone.name, group: 'cones' as const })),
+      { id: 'role:reviewer', label: 'reviewer', group: 'roles' },
+    ]),
     sprinkles: new DummySprinkles(extras.sprinkles, agent, files),
     tray: new DummyTray(extras.tray, time),
     updates: new DummyUpdates(updates, time),

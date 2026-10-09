@@ -2,8 +2,8 @@ import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc-icons/swc-icon-delete.js';
-import { css, html, nothing, type TemplateResult } from 'lit';
-import type { Memory, MemoryTag, SliccModel } from '../model/types.ts';
+import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
+import type { Memory, MemoryScope, MemoryTag, SliccModel } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
 import { confirm } from './confirm.ts';
 import { panelCss } from './files.ts';
@@ -25,6 +25,8 @@ export function visible(
       (!needle || `${memory.title} ${memory.body} ${memory.section}`.toLowerCase().includes(needle))
   );
 }
+
+export const scopeGroups = { cones: 'Cones', roles: 'Roles' } as const;
 
 export const tagLabels: Record<MemoryTag, string> = {
   user: 'User',
@@ -127,6 +129,12 @@ export class SliccMemory extends ModelElement {
         font-weight: var(--swc-bold-font-weight);
         line-height: var(--swc-line-height-100);
       }
+      .from {
+        grid-column: 1 / -1;
+        margin-top: var(--swc-spacing-50);
+        font-size: var(--swc-font-size-75);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
       .summary {
         grid-column: 1 / -1;
         color: var(--swc-neutral-subdued-content-color-default);
@@ -224,6 +232,7 @@ export class SliccMemory extends ModelElement {
         <span class="title">${memory.title}</span>
         ${memory.tag ? html`<swc-badge size="s" variant="neutral" subtle>${tagLabels[memory.tag]}</swc-badge>` : nothing}
         ${open ? nothing : html`<span class="summary">${memory.body}</span>`}
+        ${memory.source === 'notes' ? html`<span class="from">From MEMORY.md</span>` : nothing}
       </button>
       ${
         open
@@ -241,19 +250,40 @@ export class SliccMemory extends ModelElement {
     </div>`;
   }
 
-  render(): TemplateResult {
+  #scopes: readonly MemoryScope[] = [];
+
+  protected willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed);
     const model = this.model;
-    const all = model?.memory.list() ?? [];
-    const shown = visible(all, this.scope, this.tag, this.query);
-    const cones = (model?.agent.list() ?? []).filter((agent) => agent.kind === 'cone');
-    return html`<div class="bar"><span>${shown.length} of ${all.filter((memory) => memory.scope === this.scope).length} memories</span><span class="spacer"></span>
+    this.#scopes = model?.memory.scopes?.() ?? [
+      { id: 'global', label: 'Everyone' },
+      ...(model?.agent.list() ?? [])
+        .filter((agent) => agent.kind === 'cone')
+        .map((cone) => ({ id: cone.id, label: cone.name })),
+    ];
+    if (!this.#scopes.some((item) => item.id === this.scope)) this.scope = 'global';
+  }
+
+  render(): TemplateResult {
+    const all = this.model?.memory.list() ?? [];
+    const scopes = this.#scopes;
+    const scope = this.scope;
+    const option = (item: MemoryScope) =>
+      html`<sp-menu-item value=${item.id}>${item.label}</sp-menu-item>`;
+    const shown = visible(all, scope, this.tag, this.query);
+    return html`<div class="bar"><span>${shown.length} of ${all.filter((memory) => memory.scope === scope).length} memories</span><span class="spacer"></span>
         <swc-action-button size="s" quiet @click=${() => (this.editing = 'new')}><swc-icon-add slot="icon"></swc-icon-add>Remember</swc-action-button>
       </div>
       <div class="tools">
         <sp-search size="s" label="Search memories" placeholder="Search memories" .value=${this.query} @input=${(event: Event) => (this.query = (event.target as HTMLInputElement).value)} @submit=${(event: Event) => event.preventDefault()}></sp-search>
-        <sp-picker size="s" label="Scope" value=${this.scope} @change=${(event: Event) => (this.scope = (event.target as HTMLInputElement).value)}>
-          <sp-menu-item value="global">Everyone</sp-menu-item>
-          ${cones.map((cone) => html`<sp-menu-item value=${cone.id}>${cone.name}</sp-menu-item>`)}
+        <sp-picker size="s" label="Scope" value=${scope} @change=${(event: Event) => (this.scope = (event.target as HTMLInputElement).value)}>
+          ${scopes.filter((item) => !item.group).map(option)}
+          ${(['cones', 'roles'] as const).map((group) => {
+            const items = scopes.filter((item) => item.group === group);
+            return items.length
+              ? html`<sp-menu-group size="s"><span slot="header">${scopeGroups[group]}</span>${items.map(option)}</sp-menu-group>`
+              : nothing;
+          })}
         </sp-picker>
         <sp-picker size="s" label="Tag" value=${this.tag} @change=${(event: Event) => (this.tag = (event.target as HTMLInputElement).value as TagFilter)}>
           <sp-menu-item value="all">All tags</sp-menu-item>
@@ -264,7 +294,7 @@ export class SliccMemory extends ModelElement {
         </sp-picker>
       </div>
       <div class="list">
-        ${this.editing === 'new' ? html`<div class="row">${this.#form({ scope: this.scope })}</div>` : nothing}
+        ${this.editing === 'new' ? html`<div class="row">${this.#form({ scope })}</div>` : nothing}
         ${
           shown.length
             ? sections(shown).map(

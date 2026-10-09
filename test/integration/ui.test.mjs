@@ -2018,6 +2018,31 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
   );
   await shot(page, 'memory-light');
 
+  await page.evaluate(() => {
+    window.memoryPart = (selector) =>
+      window.$('slicc-app', 'slicc-dock').content('memory').shadowRoot.querySelector(selector);
+    window.memoryPart('.tools sp-picker[label=Scope]').open = true;
+  });
+  await page.until(() => window.memoryPart('.tools sp-picker[label=Scope]').open === true);
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.memoryPart('.tools sp-picker[label=Scope]').querySelectorAll('[slot=header]')].map(
+        (node) => node.textContent
+      )
+    ),
+    ['Cones', 'Roles']
+  );
+  await shot(page, 'memory-scopes');
+  await page.evaluate(() =>
+    window.memoryPart('.tools sp-picker[label=Scope] sp-menu-item[value="role:reviewer"]').click()
+  );
+  await page.until(() => !!window.memoryPart('.row[data-id=mem-10] .from'));
+  assert.equal(
+    await page.evaluate(() => window.memoryPart('.tools sp-picker[label=Scope]').value),
+    'role:reviewer'
+  );
+  await shot(page, 'memory-role-notes');
+
   await page.evaluate(() => window.$('slicc-app', '.rail.right [data-surface=monitor]').click());
   await page.until(
     () =>
