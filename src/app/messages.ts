@@ -258,6 +258,7 @@ export function tool(call: ToolCall, color: 'light' | 'dark' = 'light'): Templat
       <span class="name">${call.name}</span>
       ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
       ${state(call.status)}
+      ${call.image ? html`<span class="thumb"><img src=${call.image} alt="" /></span>` : nothing}
     </summary>
     <div class="call">
       ${body(call, color)}
@@ -995,6 +996,23 @@ export const messageCss = css`
     overflow: auto;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+  details.tool > summary:has(.thumb) {
+    flex-wrap: wrap;
+  }
+  .thumb {
+    flex-basis: 100%;
+    padding-inline-start: calc(var(--swc-spacing-100) + var(--swc-spacing-300));
+    padding-block-end: var(--swc-spacing-75);
+  }
+  .thumb img {
+    display: block;
+    max-inline-size: min(100%, calc(var(--swc-spacing-1000) * 2));
+    max-block-size: calc(var(--swc-spacing-1000) * 1.25);
+    border-radius: var(--swc-corner-radius-75);
+  }
+  details[open] > summary .thumb {
+    display: none;
   }
   .shot {
     display: block;
