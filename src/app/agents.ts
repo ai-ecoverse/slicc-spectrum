@@ -172,7 +172,7 @@ export class SliccAgents extends ModelElement {
     if (!port?.drop) return;
     const ok = await confirm({
       title: `Drop scoop ${agent.name}?`,
-      body: 'It stops working. Its files stay.',
+      body: 'It stops, and its working folder is deleted. Its conversation and reports are kept. You can’t undo this.',
       action: 'Drop',
       variant: 'destructive',
       trigger,
