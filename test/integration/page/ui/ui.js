@@ -1,5 +1,5 @@
 import { createDummyModel } from '/dist/slicc-dummy.js';
-import '/dist/slicc-ui.js';
+import { confirm } from '/dist/slicc-ui.js';
 
 const params = new URLSearchParams(location.search);
 const delay = Number(params.get('delay') ?? 30);
@@ -7,6 +7,8 @@ const model = createDummyModel({
   delay,
   storage: localStorage,
   updates: params.get('updates') ?? 'current',
+  packages: params.get('packages') ?? 'off',
+  confirm,
   mounts: params.get('mounts') ?? 'off',
   network: params.get('network') ?? 'limited',
   tailnet: params.get('tailnet') ?? undefined,

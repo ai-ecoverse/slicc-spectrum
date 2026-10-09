@@ -13,12 +13,19 @@ import { DummySettings } from './settings.ts';
 import { DummySprinkles } from './sprinkles.ts';
 import { DummyTerminals } from './terminals.ts';
 import { DummyTray } from './tray.ts';
-import { DummyUpdates, type UpdateScenario } from './updates.ts';
+import {
+  DummyUpdates,
+  type PackageConfirm,
+  type PackageScenario,
+  type UpdateScenario,
+} from './updates.ts';
 
 export interface DummyOptions {
   delay?: number;
   storage?: Storage | null;
   updates?: UpdateScenario;
+  packages?: PackageScenario | 'off';
+  confirm?: PackageConfirm;
   mounts?: MountScenario | 'off';
   network?: NetworkScenario | 'off';
   tailnet?: TailnetScenario;
@@ -34,6 +41,8 @@ export function createDummyModel({
   delay = 30,
   storage = null,
   updates = 'current',
+  packages = 'off',
+  confirm,
   mounts = 'off',
   network = 'limited',
   tailnet,
@@ -77,7 +86,10 @@ export function createDummyModel({
     ]),
     sprinkles: new DummySprinkles(extras.sprinkles, agent, files),
     tray: new DummyTray(extras.tray, time),
-    updates: new DummyUpdates(updates, time),
+    updates: new DummyUpdates(updates, time, {
+      ...(packages === 'off' ? {} : { packages }),
+      confirm,
+    }),
     ...(network === 'off' ? {} : { network: new DummyNetwork(network, time, tailnet) }),
     ...(changes === 'files' ? {} : { changes: new DummyChanges(files, changes === 'git') }),
   };

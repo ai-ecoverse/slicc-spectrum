@@ -594,10 +594,45 @@ export interface UpdateItem {
   log?: string;
 }
 
-export interface UpdatesPort extends Subscribable<{ items: readonly UpdateItem[] }> {
+export type PackageState =
+  | 'available'
+  | 'queued'
+  | 'installing'
+  | 'installed'
+  | 'outdated'
+  | 'updating'
+  | 'removing'
+  | 'failed';
+export type PackageAction = 'install' | 'update' | 'remove' | 'retry';
+
+export interface PackageItem {
+  id: string;
+  package: string;
+  label: string;
+  description: string;
+  commands: readonly string[];
+  requires?: readonly string[];
+  state: PackageState;
+  version: string | null;
+  offered: string | null;
+  size?: number;
+  progress: { phase: 'download' | 'link'; done: number; total: number } | null;
+  error: string | null;
+  actions: readonly PackageAction[];
+  log?: string;
+}
+
+export interface UpdatesEvents {
+  items: readonly UpdateItem[];
+  packages: readonly PackageItem[];
+}
+
+export interface UpdatesPort extends Subscribable<UpdatesEvents> {
   list(): readonly UpdateItem[];
   ready(): boolean;
   act(id: string, action: UpdateAction): Promise<void>;
+  packages?(): readonly PackageItem[];
+  actPackage?(id: string, action: PackageAction): Promise<void>;
 }
 
 export type NetworkRoute = 'proxy' | 'extension' | 'tailnet' | 'page';
