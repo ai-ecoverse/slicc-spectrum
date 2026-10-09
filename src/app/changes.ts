@@ -1,6 +1,7 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/action-group/swc-action-group.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
+import '@adobe/spectrum-wc-icons/swc-icon-copy.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Change, ChangesPort, SliccModel } from '../model/types.ts';
 import { changesOf, ModelElement, shared, ThemedElement } from './base.ts';
@@ -62,6 +63,18 @@ export function groups(changes: readonly Change[]): Array<[string, Change[]]> {
   return [...byRepo];
 }
 
+export function commands(text: string): {
+  parts: Array<string | { code: string }>;
+  codes: string[];
+} {
+  const parts = text.split('`').map((part, index) => (index % 2 ? { code: part } : part));
+  if (parts.length % 2 === 0) return { parts: [text], codes: [] };
+  const codes = parts.flatMap((part) =>
+    typeof part === 'string' || !part.code ? [] : [part.code]
+  );
+  return { parts, codes: [...new Set(codes)] };
+}
+
 function errorLine(error: string): TemplateResult {
   return html`<div class="error" role="status" aria-live="polite">${
     error
@@ -71,12 +84,21 @@ function errorLine(error: string): TemplateResult {
 }
 
 export class SliccChanges extends ModelElement {
-  static properties = { ...ModelElement.properties, error: { state: true } };
+  static properties = {
+    ...ModelElement.properties,
+    error: { state: true },
+    copied: { state: true },
+    uncopied: { state: true },
+  };
   declare error: string;
+  declare copied: string;
+  declare uncopied: boolean;
 
   constructor() {
     super();
     this.error = '';
+    this.copied = '';
+    this.uncopied = false;
   }
 
   static styles = [
@@ -95,6 +117,36 @@ export class SliccChanges extends ModelElement {
       ul ul {
         padding: 0;
         overflow: visible;
+      }
+      .unavailable {
+        display: grid;
+        gap: var(--swc-spacing-200);
+        align-content: start;
+        padding: var(--swc-spacing-300);
+        overflow-y: auto;
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .unavailable p {
+        margin: 0;
+      }
+      .command {
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-100);
+        padding: var(--swc-spacing-75) var(--swc-spacing-75) var(--swc-spacing-75) var(--swc-spacing-200);
+        border-radius: var(--swc-corner-radius-medium-default);
+        background: var(--swc-background-layer-1-color);
+      }
+      code {
+        overflow-wrap: anywhere;
+        font-family: var(--swc-code-font-family-stack);
+        font-size: var(--swc-font-size-75);
+        color: var(--swc-code-color);
+      }
+      .command code {
+        flex: 1;
+        min-width: 0;
+        user-select: all;
       }
       .repo {
         display: flex;
@@ -266,10 +318,41 @@ export class SliccChanges extends ModelElement {
     )}</ul>`;
   }
 
+  async copy(code: string): Promise<void> {
+    try {
+      await globalThis.navigator.clipboard.writeText(code);
+      this.copied = code;
+      this.uncopied = false;
+    } catch {
+      this.copied = '';
+      this.uncopied = true;
+    }
+  }
+
+  #unavailable(text: string): TemplateResult {
+    const { parts, codes } = commands(text);
+    return html`<div class="unavailable">
+      <p data-unavailable>${parts.map((part) => (typeof part === 'string' ? part : html`<code>${part.code}</code>`))}</p>
+      ${codes.map(
+        (code) => html`<div class="command" data-command=${code}>
+          <code>${code}</code>
+          <swc-action-button size="s" quiet data-action="copy-command" accessible-label=${this.copied === code ? 'Copied' : `Copy ${code}`} @click=${() => this.copy(code)}>
+            <swc-icon-copy slot="icon"></swc-icon-copy>${this.copied === code ? 'Copied' : 'Copy'}
+          </swc-action-button>
+        </div>`
+      )}
+      ${
+        this.uncopied
+          ? html`<div class="error" role="alert" data-error="copy"><swc-icon-alert-diamond size="s" aria-hidden="true"></swc-icon-alert-diamond><span>Couldn’t copy. Select the command and copy it.</span></div>`
+          : nothing
+      }
+    </div>`;
+  }
+
   render(): TemplateResult {
     const port = this.model ? changesOf(this.model) : null;
     const unavailable = port?.unavailable?.() ?? null;
-    if (unavailable) return html`<div class="note" data-unavailable>${unavailable}</div>`;
+    if (unavailable) return this.#unavailable(unavailable);
     const changes = port?.changes() ?? [];
     return html`<div class="bar">
         <span>${changes.length} pending ${changes.length === 1 ? 'change' : 'changes'}</span>

@@ -1196,7 +1196,17 @@ test('without git, Changes says what it needs and the rail has no count', async 
           .$('slicc-app', 'slicc-dock', 'slicc-changes')
           .shadowRoot.querySelector('[data-unavailable]').textContent
     ),
-    /^Changes needs git and a git repository\./
+    /^Changes needs git, and git isn’t installed\. Install it with pnpm add -g @ai-ecoverse\/wasm-git, then run git init/
+  );
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [
+        ...window
+          .$('slicc-app', 'slicc-dock', 'slicc-changes')
+          .shadowRoot.querySelectorAll('[data-command]'),
+      ].map((row) => row.dataset.command)
+    ),
+    ['pnpm add -g @ai-ecoverse/wasm-git', 'git init']
   );
   await shot(page, 'changes-no-git');
   await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('changes'));

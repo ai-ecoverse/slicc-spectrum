@@ -7,7 +7,7 @@ export type ChangesScenario = 'files' | 'git' | 'nogit';
 export const repos = ['/workspace/harbor', '/workspace/skills'];
 
 export const noGit =
-  'Changes needs git and a git repository. Install git with pnpm add -g @ai-ecoverse/wasm-git, then git init, or clone with slicc-node or the extension connected.';
+  'Changes needs git, and git isn’t installed. Install it with `pnpm add -g @ai-ecoverse/wasm-git`, then run `git init` in a folder under /home, or clone with slicc-node or the extension connected.';
 
 function repoOf(path: string): string | undefined {
   return repos.find((repo) => path.startsWith(`${repo}/`));
