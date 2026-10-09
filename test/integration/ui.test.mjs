@@ -325,7 +325,7 @@ test('sending a message streams a reply with a tool call', async (t) => {
       .$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-conversation-turn.assistant:last-of-type')
       .textContent.replace(/\s+/g, ' ')
   );
-  assert.match(reply, /bash Run the tests done/);
+  assert.match(reply, /Run the tests bash Done/);
   assert.match(reply, /All 3 tests pass/);
   assert.equal(
     await page.evaluate(
@@ -1431,6 +1431,10 @@ test('tool cards show the command, its timeout, and an edit as a diff', async (t
     for (const card of all) card.open = true;
     await new Promise((resolve) => setTimeout(resolve, 300));
     for (const card of all) card.open = card.dataset.tool !== 'read_file';
+    window.clusterSummary = cluster
+      .querySelector('summary')
+      .textContent.replace(/\s+/g, ' ')
+      .trim();
     return [...cluster.querySelectorAll('details.tool')].map((card) => ({
       name: card.dataset.tool,
       meta: card.querySelector('.tool-meta')?.textContent ?? null,
@@ -1438,6 +1442,10 @@ test('tool cards show the command, its timeout, and an edit as a diff', async (t
       diff: card.querySelector('slicc-diff-view')?.getAttribute('path') ?? null,
     }));
   });
+  assert.equal(
+    await page.evaluate(() => window.clusterSummary),
+    '4 tools · 2 commands, 1 read, 1 edit Done'
+  );
   assert.deepEqual(
     cards.find((card) => card.input === '$ npm test'),
     { name: 'bash', meta: 'timeout 120s', input: '$ npm test', diff: null }

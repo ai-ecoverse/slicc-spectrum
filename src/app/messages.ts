@@ -14,9 +14,18 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-cancel.js';
 import '@adobe/spectrum-wc-icons/swc-icon-checkmark-circle.js';
+import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
+import '@adobe/spectrum-wc-icons/swc-icon-code.js';
+import '@adobe/spectrum-wc-icons/swc-icon-data.js';
+import '@adobe/spectrum-wc-icons/swc-icon-edit.js';
 import '@adobe/spectrum-wc-icons/swc-icon-file.js';
 import '@adobe/spectrum-wc-icons/swc-icon-file-text.js';
+import '@adobe/spectrum-wc-icons/swc-icon-globe-grid.js';
 import '@adobe/spectrum-wc-icons/swc-icon-lock.js';
+import '@adobe/spectrum-wc-icons/swc-icon-search.js';
+import '@adobe/spectrum-wc-icons/swc-icon-tools.js';
+import '@adobe/spectrum-wc-icons/swc-icon-user-group.js';
+import '@adobe/spectrum-wc-icons/swc-icon-web-page.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type {
   ActionCard,
@@ -72,17 +81,21 @@ export const lickLabels: Record<LickChannel, [string, string]> = {
   'sudo-request': ['Permission', 'notice'],
 };
 
-const toolStates = {
+const toolStates: Record<ToolStatus, [string, TemplateResult]> = {
+  running: [
+    'Running',
+    html`<swc-progress-circle size="s" label="Running" aria-hidden="true"></swc-progress-circle>`,
+  ],
   done: [
-    'done',
+    'Done',
     html`<swc-icon-checkmark-circle size="s" aria-hidden="true"></swc-icon-checkmark-circle>`,
   ],
   error: [
-    'failed',
+    'Failed',
     html`<swc-icon-alert-diamond size="s" aria-hidden="true"></swc-icon-alert-diamond>`,
   ],
-  cancelled: ['cancelled', html`<swc-icon-cancel size="s" aria-hidden="true"></swc-icon-cancel>`],
-} as const;
+  cancelled: ['Cancelled', html`<swc-icon-cancel size="s" aria-hidden="true"></swc-icon-cancel>`],
+};
 
 const stepStates: Record<ToolStatus, string> = {
   running: 'active',
@@ -90,6 +103,99 @@ const stepStates: Record<ToolStatus, string> = {
   error: 'stopped',
   cancelled: 'stopped',
 };
+
+interface ToolKind {
+  id: string;
+  one: string;
+  many: string;
+  icon: TemplateResult;
+}
+
+const toolKinds: Array<ToolKind & { match: RegExp }> = [
+  {
+    id: 'command',
+    match: /^(bash|shell|javascript)$/,
+    one: 'command',
+    many: 'commands',
+    icon: html`<swc-icon-code size="s" aria-hidden="true"></swc-icon-code>`,
+  },
+  {
+    id: 'edit',
+    match: /^(edit|edit_file|write_file)$/,
+    one: 'edit',
+    many: 'edits',
+    icon: html`<swc-icon-edit size="s" aria-hidden="true"></swc-icon-edit>`,
+  },
+  {
+    id: 'read',
+    match: /^(read|read_file|ls)$/,
+    one: 'read',
+    many: 'reads',
+    icon: html`<swc-icon-file-text size="s" aria-hidden="true"></swc-icon-file-text>`,
+  },
+  {
+    id: 'search',
+    match: /^(grep|glob|find|web_search)$/,
+    one: 'search',
+    many: 'searches',
+    icon: html`<swc-icon-search size="s" aria-hidden="true"></swc-icon-search>`,
+  },
+  {
+    id: 'fetch',
+    match: /^web_fetch$/,
+    one: 'fetch',
+    many: 'fetches',
+    icon: html`<swc-icon-globe-grid size="s" aria-hidden="true"></swc-icon-globe-grid>`,
+  },
+  {
+    id: 'browser',
+    match: /^browser/,
+    one: 'browser step',
+    many: 'browser steps',
+    icon: html`<swc-icon-web-page size="s" aria-hidden="true"></swc-icon-web-page>`,
+  },
+  {
+    id: 'agent',
+    match: /scoop|^send_message$/,
+    one: 'agent step',
+    many: 'agent steps',
+    icon: html`<swc-icon-user-group size="s" aria-hidden="true"></swc-icon-user-group>`,
+  },
+  {
+    id: 'memory',
+    match: /memory/,
+    one: 'memory update',
+    many: 'memory updates',
+    icon: html`<swc-icon-data size="s" aria-hidden="true"></swc-icon-data>`,
+  },
+];
+
+const otherKind: ToolKind = {
+  id: 'other',
+  one: 'other tool',
+  many: 'other tools',
+  icon: html`<swc-icon-tools size="s" aria-hidden="true"></swc-icon-tools>`,
+};
+
+function toolKind(name: string): ToolKind {
+  return toolKinds.find((kind) => kind.match.test(name)) ?? otherKind;
+}
+
+function toolSummary(calls: ToolCall[]): string {
+  const counts = new Map<ToolKind, number>();
+  for (const call of calls) {
+    const kind = toolKind(call.name);
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  return [...counts]
+    .sort((a, b) => b[1] - a[1])
+    .map(([kind, count]) => `${count} ${count === 1 ? kind.one : kind.many}`)
+    .join(', ');
+}
+
+function state(status: ToolStatus, label = toolStates[status][0]): TemplateResult {
+  return html`<span class="state" data-state=${status}>${toolStates[status][1]}<span>${label}</span></span>`;
+}
 
 const actionLabels: Record<ErrorAction, string> = {
   retry: 'Retry',
@@ -131,46 +237,61 @@ export function host(url: string): string | null {
   }
 }
 
-function body(call: ToolCall, color: 'light' | 'dark'): TemplateResult {
+function body(call: ToolCall, color: 'light' | 'dark'): TemplateResult | typeof nothing {
   if (call.diff) {
-    return html`<slicc-diff-view class="input" path=${call.paths[0] ?? call.title} color=${color} .oldText=${call.diff.before} .newText=${call.diff.after}></slicc-diff-view>`;
+    return html`<slicc-diff-view class="diff" path=${call.paths[0] ?? call.title} color=${color} .oldText=${call.diff.before} .newText=${call.diff.after}></slicc-diff-view>`;
   }
-  return html`<pre class="input">${call.name === 'bash' ? `$ ${call.input}` : call.input}</pre>`;
+  if (!call.input) return nothing;
+  if (call.name === 'bash') {
+    return html`<pre class="input"><span class="prompt">$ </span>${call.input}</pre>`;
+  }
+  return html`<pre class="input">${call.input}</pre>`;
 }
 
 export function tool(call: ToolCall, color: 'light' | 'dark' = 'light'): TemplateResult {
-  let state: TemplateResult;
-  if (call.status === 'running') {
-    state = html`<swc-progress-circle size="s" label="Running"></swc-progress-circle>`;
-  } else {
-    const [label, icon] = toolStates[call.status];
-    state = html`<span class="state">${icon}${label}</span>`;
-  }
-  return html`<details class="tool" data-status=${call.status} data-tool=${call.name}>
+  const kind = toolKind(call.name);
+  return html`<details class="tool" data-status=${call.status} data-tool=${call.name} data-kind=${kind.id}>
     <summary>
-      <span class="chevron" aria-hidden="true">▸</span>
-      <span class="name">${call.name}</span>
+      <swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right>
+      <span class="kind">${kind.icon}</span>
       <span class="title">${call.title}</span>
+      <span class="name">${call.name}</span>
       ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
-      ${state}
+      ${state(call.status)}
     </summary>
-    ${body(call, color)}
-    ${call.output ? html`<pre class="output">${call.output}</pre>` : nothing}
-    ${call.image ? html`<img class="shot" src=${call.image} alt=${call.title} />` : nothing}
+    <div class="call">
+      ${body(call, color)}
+      ${call.output ? html`<pre class="output">${call.output}</pre>` : nothing}
+      ${call.image ? html`<img class="shot" src=${call.image} alt=${call.title} />` : nothing}
+    </div>
   </details>`;
 }
 
 function cluster(calls: ToolCall[], open: boolean, color: 'light' | 'dark'): TemplateResult {
-  const failed = calls.filter((call) => call.status === 'error').length;
-  const running = calls.some((call) => call.status === 'running');
-  return html`<details class="cluster" ?open=${open || running}>
+  const count = (status: ToolStatus) => calls.filter((call) => call.status === status).length;
+  const [running, failed, cancelled] = [count('running'), count('error'), count('cancelled')];
+  const overall: ToolStatus = running
+    ? 'running'
+    : failed
+      ? 'error'
+      : cancelled
+        ? 'cancelled'
+        : 'done';
+  const label = [
+    running ? 'Running' : '',
+    failed ? `${failed} failed` : '',
+    cancelled ? `${cancelled} cancelled` : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
+  return html`<details class="cluster" data-status=${overall} ?open=${open || running > 0}>
     <summary>
-      <span class="chevron" aria-hidden="true">▸</span>
-      <span class="title">${calls.length} steps</span>
-      <span class="names">${[...new Set(calls.map((call) => call.name))].join(' · ')}</span>
-      ${failed ? html`<span class="state failed">${toolStates.error[1]}${failed} failed</span>` : nothing}
+      <swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right>
+      <span class="title">${calls.length} tools</span>
+      <span class="names"><span aria-hidden="true">· </span>${toolSummary(calls)}</span>
+      ${state(overall, label || undefined)}
     </summary>
-    ${calls.map((call) => tool(call, color))}
+    <div class="calls">${calls.map((call) => tool(call, color))}</div>
   </details>`;
 }
 
@@ -729,15 +850,15 @@ export const messageCss = css`
     padding-inline-start: var(--swc-spacing-200);
   }
   details.tool,
-  details.cluster,
+  details.cluster {
+    font-size: var(--swc-font-size-100);
+    border-radius: var(--swc-corner-radius-100);
+  }
   .lick {
     border: var(--swc-border-width-100) solid var(--swc-gray-200);
     border-radius: var(--swc-corner-radius-100);
     background: var(--swc-background-layer-1-color);
     font-size: var(--swc-font-size-100);
-  }
-  details.cluster > details.tool {
-    margin: var(--swc-spacing-75) var(--swc-spacing-100);
   }
   summary,
   .lick-head {
@@ -755,80 +876,129 @@ export const messageCss = css`
   summary::-webkit-details-marker {
     display: none;
   }
+  :is(details.tool, details.cluster) > summary {
+    padding-inline: var(--swc-spacing-100);
+  }
+  :is(details.tool, details.cluster) > summary:hover {
+    background: var(--swc-gray-100);
+  }
   summary:focus-visible,
   .diff-head:focus-visible,
-  .input:focus-visible {
+  input.input:focus-visible {
     outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
     outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
   }
   .chevron {
+    flex: none;
     transition: transform var(--swc-animation-duration-100);
     color: var(--swc-neutral-subdued-content-color-default);
   }
   details[open] > summary .chevron {
     transform: rotate(90deg);
   }
-  .tool .name,
-  .cluster .names {
-    font-family: var(--swc-code-font-family-stack);
+  .kind {
+    display: inline-flex;
+    flex: none;
     color: var(--swc-neutral-subdued-content-color-default);
   }
-  .title,
+  .tool .title,
+  .tool .name,
+  .cluster .names,
   .lick .text {
-    flex: 1;
     min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .cluster .title {
-    flex: none;
-    font-weight: 700;
+  .tool .title {
+    flex: 0 1 auto;
+    font-weight: var(--swc-medium-font-weight);
   }
-  .cluster .names {
+  .lick .text {
     flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  }
+  .tool .name {
+    flex: 0 4 auto;
+    font-family: var(--swc-code-font-family-stack);
+    color: var(--swc-neutral-subdued-content-color-default);
+  }
+  .tool-meta {
+    flex: none;
+    color: var(--swc-neutral-subdued-content-color-default);
+  }
+  .cluster > summary .title {
+    flex: none;
+    font-weight: var(--swc-bold-font-weight);
+  }
+  .cluster > summary .names {
+    flex: 0 1 auto;
+    color: var(--swc-neutral-subdued-content-color-default);
   }
   .state {
     display: inline-flex;
     align-items: center;
     gap: var(--swc-spacing-75);
     flex: none;
+    margin-inline-start: auto;
+    padding-inline-start: var(--swc-spacing-100);
     color: var(--swc-neutral-subdued-content-color-default);
   }
-  .tool[data-status='done'] > summary .state {
-    color: var(--swc-positive-color-1000);
+  .state[data-state='done'] swc-icon-checkmark-circle {
+    color: var(--swc-positive-visual-color);
   }
-  .tool[data-status='error'] > summary .state,
-  .state.failed {
+  .state[data-state='running'] {
+    color: var(--swc-neutral-content-color-default);
+  }
+  .state[data-state='error'] {
     color: var(--swc-negative-content-color-default);
+    font-weight: var(--swc-bold-font-weight);
   }
-  .tool-meta {
-    flex: none;
-    color: var(--swc-neutral-subdued-content-color-default);
+  .calls {
+    margin-inline-start: var(--swc-spacing-300);
+    padding-inline-start: var(--swc-spacing-75);
+    border-inline-start: var(--swc-border-width-200) solid var(--swc-gray-200);
   }
-  .tool > slicc-diff-view {
+  .call {
+    display: flex;
+    flex-direction: column;
+    gap: var(--swc-spacing-100);
+    padding: var(--swc-spacing-75) var(--swc-spacing-100) var(--swc-spacing-200) var(--swc-spacing-500);
+  }
+  .call:empty {
+    display: none;
+  }
+  .call > pre,
+  .call > slicc-diff-view {
     display: block;
-    margin: 0 var(--swc-spacing-100) var(--swc-spacing-100);
-    max-block-size: 240px;
+    margin: 0;
+    max-block-size: calc(var(--swc-spacing-1000) * 2.5);
     overflow: auto;
   }
-  .tool pre,
-  .lick pre {
-    margin: 0 var(--swc-spacing-100) var(--swc-spacing-100);
-    max-block-size: 240px;
-    overflow: auto;
+  .call > pre.input:has(+ pre.output) {
+    margin-block-end: calc(-1 * var(--swc-spacing-100));
+    border-block-end: 0;
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+  }
+  .call > pre.input + pre.output {
+    border-block-start-style: dashed;
+    border-start-start-radius: 0;
+    border-start-end-radius: 0;
+  }
+  .prompt {
+    color: var(--swc-neutral-subdued-content-color-default);
+    user-select: none;
   }
   .lick pre {
+    margin: 0 var(--swc-spacing-100) var(--swc-spacing-100);
+    max-block-size: calc(var(--swc-spacing-1000) * 2.5);
+    overflow: auto;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
   .shot {
     display: block;
-    max-inline-size: calc(100% - 2 * var(--swc-spacing-100));
-    margin: 0 var(--swc-spacing-100) var(--swc-spacing-100);
+    max-inline-size: min(100%, calc(var(--swc-spacing-1000) * 5));
     border-radius: var(--swc-corner-radius-100);
   }
   .gallery {
@@ -974,7 +1144,7 @@ export const messageCss = css`
     gap: var(--swc-spacing-100);
     margin-block-start: var(--swc-spacing-200);
   }
-  .input {
+  input.input {
     font: inherit;
     padding: var(--swc-spacing-75) var(--swc-spacing-100);
     border: var(--swc-border-width-100) solid var(--swc-gray-400);
