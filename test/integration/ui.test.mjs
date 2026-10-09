@@ -282,7 +282,6 @@ test('sending a message streams a reply with a tool call', async (t) => {
         '[data-status=streaming] details.tool[data-status=running]'
       )
   );
-  await shot(page, 'chat-streaming');
   await page.until(() => {
     const field = window.$(
       'slicc-app',
@@ -293,6 +292,7 @@ test('sending a message streams a reply with a tool call', async (t) => {
     );
     return field.hasAttribute('generating') && field.getAttribute('stop-label') === 'Stop';
   });
+  await shot(page, 'chat-streaming');
   await page.until(
     () =>
       window.$(
@@ -2863,6 +2863,9 @@ test('chat stays pinned to the bottom while content grows after render', async (
     await grow(log.clientHeight * 2);
     const pinned = gap();
     log.scrollTop = 0;
+    await frame();
+    await grow(300);
+    window.model.agent.emit('messages', window.model.agent.active());
     await frame();
     await grow(300);
     const reading = log.scrollTop;
