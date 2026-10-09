@@ -1,8 +1,12 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
+import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
+import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
+import '@adobe/spectrum-wc-icons/swc-icon-folder-add.js';
+import type { FileTree } from '@pierre/trees';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { GitStatusEntry } from '../components/file-tree.ts';
-import type { Change, FileEntry, SliccModel } from '../model/types.ts';
+import type { Change, FileEntry, FilePort, SliccModel } from '../model/types.ts';
 import { ModelElement, shared, ThemedElement } from './base.ts';
 
 export function relative(path: string): string {
@@ -121,33 +125,132 @@ export function statusMark(status: Change['status'], announce = true): TemplateR
   >`;
 }
 
+export function failure(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export class SliccFiles extends ModelElement {
-  static properties = { ...ModelElement.properties, count: { state: true } };
+  static properties = {
+    ...ModelElement.properties,
+    count: { state: true },
+    mounted: { state: true },
+    mounting: { state: true },
+    ejecting: { state: true },
+    error: { state: true },
+  };
   declare count: number;
+  declare mounted: readonly string[];
+  declare mounting: boolean;
+  declare ejecting: ReadonlySet<string>;
+  declare error: string;
   #entries: readonly FileEntry[] = [];
   #pending = false;
+  #reveal: string | null = null;
 
   constructor() {
     super();
     this.count = 0;
+    this.mounted = [];
+    this.mounting = false;
+    this.ejecting = new Set();
+    this.error = '';
   }
 
   static styles = [
     shared,
     panelCss,
     css`
+      :host {
+        container-type: inline-size;
+      }
       slicc-file-tree {
         flex: 1;
         min-height: 0;
+      }
+      .total {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .mount {
+        flex: none;
+      }
+      .error {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--swc-spacing-75);
+        flex: none;
+        color: var(--swc-negative-content-color-default);
+        background: var(--swc-background-layer-1-color);
+        white-space: normal;
+      }
+      .error:not(:empty) {
+        padding: var(--swc-spacing-75) var(--swc-spacing-100) var(--swc-spacing-75) var(--swc-spacing-200);
+        border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
+      }
+      .error swc-icon-alert-diamond {
+        flex: none;
+        color: var(--swc-negative-content-color-default);
+      }
+      .mounts {
+        flex: none;
+        display: flex;
+        flex-direction: column;
+        gap: var(--swc-spacing-50);
+        padding: var(--swc-spacing-75) var(--swc-spacing-100) var(--swc-spacing-75) var(--swc-spacing-200);
+        border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
+        background: var(--swc-background-layer-1-color);
+      }
+      .mounts .heading {
+        color: var(--swc-neutral-subdued-content-color-default);
+        font-weight: var(--swc-bold-font-weight);
+      }
+      .mounts ul {
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .mounts li {
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-100);
+        min-height: var(--swc-component-height-75);
+      }
+      .mounts .path {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-family: var(--swc-code-font-family-stack);
+      }
+      @container (min-width: 221px) {
+        .mount + swc-tooltip {
+          display: none;
+        }
+      }
+      @container (max-width: 220px) {
+        .mount {
+          --swc-action-button-gap: 0;
+          --swc-action-button-edge-to-text: var(--swc-spacing-75);
+          --swc-action-button-edge-to-visual: var(--swc-spacing-75);
+        }
+        .mount .label {
+          display: none;
+        }
       }
     `,
   ];
 
   protected subscribe(model: SliccModel): Array<() => void> {
     void model.files.list().then((entries) => this.#load(entries));
+    this.#mounts(model.files);
     return [
       model.files.on('files', (entries) => this.#load(entries)),
       model.files.on('changes', () => this.#sync()),
+      model.files.on('mounts', () => this.#mounts(model.files)),
     ];
   }
 
@@ -161,6 +264,8 @@ export class SliccFiles extends ModelElement {
         paths: readonly string[];
         gitStatus: readonly GitStatusEntry[];
         expanded: readonly string[];
+        tree: FileTree | null;
+        reveal(path: string, focus?: boolean): void;
       })
     | null {
     return this.renderRoot.querySelector('slicc-file-tree');
@@ -172,6 +277,10 @@ export class SliccFiles extends ModelElement {
     void this.updateComplete.then(() => this.#sync());
   }
 
+  #mounts(files: FilePort): void {
+    this.mounted = files.mounts?.() ?? [];
+  }
+
   #sync(): void {
     const tree = this.#tree();
     const changes = this.model?.files.changes() ?? [];
@@ -179,10 +288,57 @@ export class SliccFiles extends ModelElement {
     if (tree.paths.length === 0) tree.expanded = ancestors(changes.map((change) => change.path));
     tree.paths = treePaths(this.#entries);
     tree.gitStatus = treeStatus(changes);
+    this.#show();
     if (this.#pending) {
       this.#pending = false;
       requestAnimationFrame(() => tree.focus());
     }
+  }
+
+  #show(): void {
+    const tree = this.#tree();
+    const path = this.#reveal;
+    if (!tree || !path || !tree.paths.includes(path)) return;
+    this.#reveal = null;
+    const item = tree.tree?.getItem(path);
+    if (item && 'expand' in item) item.expand();
+    item?.select();
+    tree.reveal(path, false);
+  }
+
+  #mount(mountFolder: () => Promise<string | null>): void {
+    const result = mountFolder();
+    this.error = '';
+    this.mounting = true;
+    result
+      .then(
+        (path) => {
+          if (!path) return;
+          this.#reveal = `${relative(path)}/`;
+          this.#show();
+        },
+        (error: unknown) => {
+          this.error = failure(error);
+        }
+      )
+      .finally(() => {
+        this.mounting = false;
+      });
+  }
+
+  #eject(eject: (path: string) => Promise<void>, path: string): void {
+    const result = eject(path);
+    this.error = '';
+    this.ejecting = new Set([...this.ejecting, path]);
+    result
+      .catch((error: unknown) => {
+        this.error = failure(error);
+      })
+      .finally(() => {
+        const ejecting = new Set(this.ejecting);
+        ejecting.delete(path);
+        this.ejecting = ejecting;
+      });
   }
 
   #open(event: CustomEvent<{ path: string }>): void {
@@ -190,8 +346,61 @@ export class SliccFiles extends ModelElement {
     request(this, 'open-file', `/${event.detail.path}`);
   }
 
+  #mountButton(files: FilePort | undefined): TemplateResult | typeof nothing {
+    if (typeof files?.mountFolder !== 'function') return nothing;
+    const mountFolder = files.mountFolder.bind(files);
+    const label = 'Mount a folder…';
+    return html`<swc-action-button
+        id="mount"
+        class="mount"
+        size="s"
+        quiet
+        data-action="mount-folder"
+        accessible-label=${label}
+        ?pending=${this.mounting}
+        @click=${() => this.#mount(mountFolder)}
+        ><swc-icon-folder-add slot="icon"></swc-icon-folder-add><span class="label">${label}</span></swc-action-button
+      ><swc-tooltip for="mount" placement="bottom">${label}</swc-tooltip>`;
+  }
+
+  #strip(files: FilePort | undefined): TemplateResult | typeof nothing {
+    if (this.mounted.length === 0) return nothing;
+    const eject = files?.eject?.bind(files);
+    return html`<section class="mounts" aria-labelledby="mounted">
+      <span class="heading" id="mounted">Mounted</span>
+      <ul aria-labelledby="mounted">
+        ${this.mounted.map(
+          (path) => html`<li>
+            <span class="path" title=${path}>${path}</span>
+            ${
+              eject
+                ? html`<swc-action-button
+                    size="s"
+                    quiet
+                    data-action="eject"
+                    data-path=${path}
+                    accessible-label=${`Eject ${path}`}
+                    ?pending=${this.ejecting.has(path)}
+                    @click=${() => this.#eject(eject, path)}
+                    >Eject</swc-action-button
+                  >`
+                : nothing
+            }
+          </li>`
+        )}
+      </ul>
+    </section>`;
+  }
+
   render(): TemplateResult {
-    return html`<div class="bar"><span>${this.count} files</span></div>
+    const files = this.model?.files;
+    return html`<div class="bar"><span class="total">${this.count} files</span><span class="spacer"></span>${this.#mountButton(files)}</div>
+      <div class="error" role="status" aria-live="polite">${
+        this.error
+          ? html`<swc-icon-alert-diamond size="s" aria-hidden="true"></swc-icon-alert-diamond><span>${this.error}</span>`
+          : nothing
+      }</div>
+      ${this.#strip(files)}
       <slicc-file-tree @file-open=${this.#open}></slicc-file-tree>`;
   }
 }

@@ -2915,3 +2915,131 @@ test('agent requests, frozen cones and long lick bodies render as their own kind
   assert.deepEqual(wrap, ['pre-wrap', 'anywhere', true]);
   assert.deepEqual(page.errors, []);
 });
+
+test('the files panel mounts a folder, shows it as mounted, and ejects it', async (t) => {
+  const page = await open(t, { mounts: 'mount' });
+  await page.evaluate(() => window.$('slicc-app', '.rail.left [data-surface=files]').click());
+  await page.until(() => !!window.row('workspace/harbor/README.md'));
+  await page.until(
+    () => !!window.filesPart('.bar [data-action="mount-folder"]', '.swc-ActionButton-label')
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window.filesPart('.bar [data-action="mount-folder"]').textContent.trim()
+    ),
+    'Mount a folder…'
+  );
+  await shot(page, 'files-mount-light');
+
+  await page.evaluate(() => window.filesPart('[data-action="mount-folder"]').click());
+  await page.until(() => window.row('mnt/photos/')?.getAttribute('aria-selected') === 'true');
+  await page.until(() => !!window.row('mnt/photos/README.md'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.row('mnt/photos/').getAttribute('aria-expanded'),
+      [...filesPart('.mounts').querySelectorAll('li')].map((row) => [
+        row.querySelector('.path').textContent,
+        row.querySelector('[data-action="eject"]').dataset.path,
+      ]),
+      window.filesPart('.mounts .heading').textContent,
+    ]),
+    ['true', [['/mnt/photos', '/mnt/photos']], 'Mounted']
+  );
+  await shot(page, 'files-mounted-light');
+
+  await page.evaluate(() =>
+    window.filesPart('[data-action="eject"][data-path="/mnt/photos"]').click()
+  );
+  await page.until(() => !window.filesPart('.mounts') && !window.row('mnt/photos/'));
+
+  await page.evaluate(() => window.model.files.mountFolder());
+  await page.until(() => !!window.filesPart('.mounts') && !!window.row('mnt/photos/'));
+  await page.evaluate(() => window.model.files.eject('/mnt/photos'));
+  await page.until(() => !window.filesPart('.mounts') && !window.row('mnt/photos/'));
+
+  await page.evaluate(() => {
+    window.model.files.mount.scenario = 'fail';
+    window.filesPart('[data-action="mount-folder"]').click();
+  });
+  await page.until(
+    () => window.filesPart('.error')?.textContent.trim() === 'The folder couldn’t be mounted.'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.filesPart('.error').getAttribute('role'),
+      window.filesPart('.error').getAttribute('aria-live'),
+      !!window.filesPart('.error swc-icon-alert-diamond'),
+    ]),
+    ['status', 'polite', true]
+  );
+  await shot(page, 'files-mount-error-light');
+  await page.evaluate(() => {
+    window.model.files.mount.scenario = 'cancel';
+    window.filesPart('[data-action="mount-folder"]').click();
+  });
+  await page.until(() => window.filesPart('.error').textContent.trim() === '');
+  assert.deepEqual(page.errors, []);
+});
+
+async function mountedOnPhone(t, color) {
+  const page = await open(t, { mounts: 'mount', color });
+  await page.evaluate(() => {
+    document.querySelector('slicc-app').style.width = '390px';
+  });
+  await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+  await page.evaluate(() => window.$('slicc-app', '.rail [data-surface=files]').click());
+  await page.until(() => !!window.row('workspace/harbor/README.md'));
+  await page.until(() => !!window.filesPart('[data-action="mount-folder"]'));
+  await page.evaluate(() => window.model.files.mountFolder());
+  await page.until(() => !!window.filesPart('.mounts'));
+  await page.evaluate(() => {
+    window.model.files.mount.scenario = 'fail';
+    window.filesPart('[data-action="mount-folder"]').click();
+  });
+  await page.until(() => window.filesPart('.error')?.textContent.trim() !== '');
+  await shot(page, `files-mount-phone-${color}`);
+  return page;
+}
+
+test('the mount button, mounted strip and error line on a phone in light', async (t) => {
+  const page = await mountedOnPhone(t, 'light');
+  assert.deepEqual(page.errors, []);
+});
+
+test('the mount button, mounted strip and error line in dark, on a phone and on a desktop', async (t) => {
+  const page = await mountedOnPhone(t, 'dark');
+  await page.evaluate(() => {
+    document.querySelector('slicc-app').style.width = '';
+  });
+  await page.until(() => document.querySelector('slicc-app').screen === 'desktop');
+  await page.until(() => !!window.$('slicc-app', '.rail.left [data-surface=files]'));
+  await page.evaluate(() => window.$('slicc-app', '.rail.left [data-surface=files]').click());
+  await page.until(() => !!window.filesPart('.mounts'));
+  await shot(page, 'files-mount-dark');
+  const styles = () => {
+    const button = window.filesPart('[data-action="mount-folder"]');
+    const tip = window.filesPart('swc-tooltip[for="mount"]');
+    tip.open = true;
+    return new Promise((resolve) =>
+      requestAnimationFrame(() =>
+        resolve([
+          getComputedStyle(button.querySelector('.label')).display,
+          getComputedStyle(tip).display,
+          button.getAttribute('accessible-label'),
+        ])
+      )
+    );
+  };
+  assert.deepEqual(await page.evaluate(styles), ['inline', 'none', 'Mount a folder…']);
+  await page.evaluate(() => {
+    window.filesPart('swc-tooltip[for="mount"]').open = false;
+    window.$('slicc-app', 'slicc-dock', 'slicc-files').style.width = '200px';
+  });
+  await page.until(
+    () =>
+      getComputedStyle(window.filesPart('[data-action="mount-folder"] .label')).display === 'none'
+  );
+  assert.deepEqual(await page.evaluate(styles), ['none', 'block', 'Mount a folder…']);
+  await shot(page, 'files-mount-narrow-dark');
+  assert.deepEqual(page.errors, []);
+});

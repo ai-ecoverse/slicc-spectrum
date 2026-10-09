@@ -7,6 +7,7 @@ const model = createDummyModel({
   delay,
   storage: localStorage,
   updates: params.get('updates') ?? 'current',
+  mounts: params.get('mounts') ?? 'off',
 });
 if (params.has('color')) model.settings.update({ color: params.get('color') });
 const app = document.querySelector('slicc-app');
@@ -56,6 +57,8 @@ window.drag = async (source, target, x, y) => {
 };
 
 window.settingsPart = (...path) => window.$('slicc-app', 'slicc-dock', 'slicc-settings', ...path);
+
+window.filesPart = (...path) => window.$('slicc-app', 'slicc-dock', 'slicc-files', ...path);
 
 window.focused = () => {
   let node = document.activeElement;
