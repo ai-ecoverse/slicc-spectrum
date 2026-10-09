@@ -1,6 +1,8 @@
+import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/patterns/ai-toolkit/conversation-thread/swc-conversation-thread.js';
+import '@adobe/spectrum-wc-icons/swc-icon-new.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import type {
@@ -11,7 +13,7 @@ import type {
   Thinking,
   UserMessage,
 } from '../model/types.ts';
-import { meterVariant, shared, statusLight, ThemedElement } from './base.ts';
+import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
 import type { SliccComposer } from './composer.ts';
 import {
   assistant,
@@ -359,7 +361,12 @@ export class SliccChat extends ThemedElement {
     return out;
   }
 
-  #meta(agent: Agent): TemplateResult {
+  #newChat(agent: Agent): void {
+    (this.model as SliccModel).agent.clear(agent.id);
+    this.renderRoot.querySelector<SliccComposer>('slicc-composer')?.focus();
+  }
+
+  #meta(agent: Agent, empty: boolean): TemplateResult {
     const model = this.model as SliccModel;
     const fill = Math.round(agent.contextFill * 100);
     const meter = html`<swc-meter size="s" label-position="side" value=${fill} variant=${meterVariant(fill)}><span slot="label">Context</span></swc-meter>`;
@@ -371,7 +378,7 @@ export class SliccChat extends ThemedElement {
     }
     return html`${statusLight(agent.status)}
       <sp-picker size="s" quiet label="Model" value=${agent.model} @change=${(event: Event) => model.agent.setModel(agent.id, (event.target as HTMLInputElement).value)}>
-        ${model.settings.models().map((option) => html`<sp-menu-item value=${option.id}>${option.label}</sp-menu-item>`)}
+        ${chatModels(model.settings.models()).map((option) => html`<sp-menu-item value=${option.id}>${option.label}<span slot="description">${option.provider}</span></sp-menu-item>`)}
       </sp-picker>
       <sp-picker size="s" quiet label="Thinking" value=${model.settings.get().thinking} @change=${(event: Event) => model.settings.update({ thinking: (event.target as HTMLInputElement).value as Thinking })}>
         <sp-menu-item value="off">No thinking</sp-menu-item>
@@ -379,7 +386,8 @@ export class SliccChat extends ThemedElement {
         <sp-menu-item value="medium">Think</sp-menu-item>
         <sp-menu-item value="high">Think hard</sp-menu-item>
       </sp-picker>
-      ${meter}`;
+      ${meter}
+      <swc-action-button size="s" quiet data-action="new-chat" ?disabled=${empty} @click=${() => this.#newChat(agent)}><swc-icon-new slot="icon"></swc-icon-new>New chat</swc-action-button>`;
   }
 
   render(): TemplateResult {
@@ -391,7 +399,7 @@ export class SliccChat extends ThemedElement {
     this.#tail = messages.at(-1)?.id ?? '';
     return html`
       <header>
-        ${agent ? this.#meta(agent) : html`<span>No agent</span>`}
+        ${agent ? this.#meta(agent, !messages.length) : html`<span>No agent</span>`}
       </header>
       <div
         class="log"

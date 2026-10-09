@@ -17,7 +17,7 @@ import type {
   Thinking,
   UserMessage,
 } from '../model/types.ts';
-import { ModelElement, shared } from './base.ts';
+import { chatModels, ModelElement, shared } from './base.ts';
 import { size } from './messages.ts';
 
 export const limit = 25 * 1024 * 1024;
@@ -56,11 +56,13 @@ export const commands: Command[] = [
     name: 'model',
     detail: 'Switch this agent’s model',
     args: (model) =>
-      model.settings
-        .models()
-        .map((option) => ({ value: option.id, label: option.label, detail: option.provider })),
+      chatModels(model.settings.models()).map((option) => ({
+        value: option.id,
+        label: option.label,
+        detail: option.provider,
+      })),
     run: (model, id, arg) => {
-      if (model.settings.models().some((option) => option.id === arg))
+      if (chatModels(model.settings.models()).some((option) => option.id === arg))
         model.agent.setModel(id, arg);
     },
   },
