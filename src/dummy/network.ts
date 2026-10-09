@@ -15,6 +15,7 @@ export function networkFixtures(scenario: NetworkScenario, now = Date.now()): Ne
       detail: 'slicc-node on localhost:5710 reaches every site.',
       failures: [],
       extensionUrl,
+      browser: { via: 'proxy', detail: 'Chrome on localhost:9222.' },
     };
   }
   if (scenario === 'limited') {
@@ -35,6 +36,7 @@ export function networkFixtures(scenario: NetworkScenario, now = Date.now()): Ne
         },
       ],
       extensionUrl,
+      browser: { via: null },
     };
   }
   return {
@@ -59,6 +61,7 @@ export function networkFixtures(scenario: NetworkScenario, now = Date.now()): Ne
       },
     ],
     extensionUrl,
+    browser: { via: null },
   };
 }
 

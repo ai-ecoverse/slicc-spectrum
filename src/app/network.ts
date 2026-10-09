@@ -9,7 +9,13 @@ import '@adobe/spectrum-wc-icons/swc-icon-cloud-state-slow-connection.js';
 import '@adobe/spectrum-wc-icons/swc-icon-copy.js';
 import link from '@adobe/spectrum-wc/link.css';
 import { css, html, nothing, type TemplateResult, unsafeCSS } from 'lit';
-import type { NetworkFailure, NetworkRoute, NetworkStatus, SliccModel } from '../model/types.ts';
+import type {
+  BrowserAutomation,
+  NetworkFailure,
+  NetworkRoute,
+  NetworkStatus,
+  SliccModel,
+} from '../model/types.ts';
 import { ModelElement } from './base.ts';
 import { failure } from './files.ts';
 import { ago } from './freezer.ts';
@@ -30,6 +36,12 @@ const routes: Record<NetworkRoute | 'none', string> = {
   extension: 'Through the SLICC Chrome extension, which reaches every site.',
   page: 'Through this page’s own fetch. Sites that block cross-origin requests are out of reach.',
   none: 'No route to the network.',
+};
+
+export const automation: Record<NonNullable<BrowserAutomation['via']> | 'none', string> = {
+  extension: 'Browser automation: through the SLICC extension.',
+  proxy: 'Browser automation: through slicc-node.',
+  none: 'Browser automation: not available. Install the extension or run slicc-node.',
 };
 
 export function networkLabel(status: NetworkStatus): string {
@@ -277,6 +289,11 @@ export class SliccNetwork extends ModelElement {
       </div>
       <p data-route=${status.route ?? 'none'}>${routes[status.route ?? 'none']}</p>
       ${status.detail ? html`<p class="detail">${status.detail}</p>` : nothing}
+      ${
+        status.browser
+          ? html`<p data-browser=${status.browser.via ?? 'none'}>${automation[status.browser.via ?? 'none']}${status.browser.detail ? html` <span class="detail">${status.browser.detail}</span>` : nothing}</p>`
+          : nothing
+      }
       ${
         this.model?.network?.check
           ? html`<div class="actions"><swc-button size="m" variant="secondary" data-action="check" ?pending=${this.checking} @click=${() => this.check()}>Check again</swc-button></div>`
