@@ -8,7 +8,7 @@ import { DummyFiles, type MountScenario } from './files.ts';
 import * as fixtures from './fixtures.ts';
 import { DummyMemory } from './memory.ts';
 import { DummyMonitor } from './monitor.ts';
-import { DummyNetwork, type NetworkScenario } from './network.ts';
+import { DummyNetwork, type NetworkScenario, type TailnetScenario } from './network.ts';
 import { DummySettings } from './settings.ts';
 import { DummySprinkles } from './sprinkles.ts';
 import { DummyTerminals } from './terminals.ts';
@@ -21,6 +21,7 @@ export interface DummyOptions {
   updates?: UpdateScenario;
   mounts?: MountScenario | 'off';
   network?: NetworkScenario | 'off';
+  tailnet?: TailnetScenario;
   changes?: ChangesScenario;
 }
 
@@ -35,6 +36,7 @@ export function createDummyModel({
   updates = 'current',
   mounts = 'off',
   network = 'limited',
+  tailnet,
   changes = 'files',
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
@@ -76,7 +78,7 @@ export function createDummyModel({
     sprinkles: new DummySprinkles(extras.sprinkles, agent, files),
     tray: new DummyTray(extras.tray, time),
     updates: new DummyUpdates(updates, time),
-    ...(network === 'off' ? {} : { network: new DummyNetwork(network, time) }),
+    ...(network === 'off' ? {} : { network: new DummyNetwork(network, time, tailnet) }),
     ...(changes === 'files' ? {} : { changes: new DummyChanges(files, changes === 'git') }),
   };
   return { ...base, monitor: new DummyMonitor(base) };

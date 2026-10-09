@@ -9,14 +9,19 @@ import '@adobe/spectrum-wc-icons/swc-icon-cloud-state-slow-connection.js';
 import '@adobe/spectrum-wc-icons/swc-icon-copy.js';
 import link from '@adobe/spectrum-wc/link.css';
 import { css, html, nothing, type TemplateResult, unsafeCSS } from 'lit';
+import { live } from 'lit/directives/live.js';
 import type {
   BrowserAutomation,
   NetworkFailure,
+  NetworkPort,
   NetworkRoute,
   NetworkStatus,
   SliccModel,
+  TailnetState,
+  TailnetStatus,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
+import { confirm } from './confirm.ts';
 import { failure } from './files.ts';
 import { ago } from './freezer.ts';
 
@@ -50,6 +55,34 @@ export const automation: Record<
 
 export function automationOf(browser: BrowserAutomation): keyof typeof automation {
   return browser.declined ? 'declined' : (browser.via ?? 'none');
+}
+
+export const tailnetStates: Record<
+  TailnetState,
+  readonly ['neutral' | 'info' | 'positive' | 'notice' | 'negative', string]
+> = {
+  off: ['neutral', 'Off'],
+  loading: ['info', 'Loading'],
+  'needs-login': ['notice', 'Needs sign-in'],
+  starting: ['info', 'Connecting'],
+  running: ['positive', 'Connected'],
+  failed: ['negative', 'Failed'],
+};
+
+const tailnetOnly: Record<NetworkRoute | 'none', string> = {
+  proxy: 'Tailnet hosts only. Everything else goes through slicc-node.',
+  extension: 'Tailnet hosts only. Everything else goes through the SLICC extension.',
+  page: 'Tailnet hosts only. Everything else goes through this page’s fetch.',
+  none: 'Tailnet hosts only. Nothing else is reachable.',
+};
+
+export function tailnetAddress(addresses: readonly string[]): string | undefined {
+  return addresses.find((address) => address.startsWith('100.')) ?? addresses[0];
+}
+
+export function exitNodeValue(tailnet: TailnetStatus): string {
+  if (tailnet.autoExitNode) return 'auto';
+  return tailnet.exitNodes?.find((node) => node.name === tailnet.exitNode)?.id ?? 'none';
 }
 
 export function networkLabel(status: NetworkStatus): string {
@@ -86,11 +119,17 @@ export class SliccNetwork extends ModelElement {
     copied: { state: true },
     uncopied: { state: true },
     error: { state: true },
+    busy: { state: true },
+    tailnetError: { state: true },
+    tailnetCopied: { state: true },
   };
   declare checking: boolean;
   declare copied: boolean;
   declare uncopied: boolean;
   declare error: string;
+  declare busy: string;
+  declare tailnetError: string;
+  declare tailnetCopied: string;
 
   constructor() {
     super();
@@ -98,6 +137,9 @@ export class SliccNetwork extends ModelElement {
     this.copied = false;
     this.uncopied = false;
     this.error = '';
+    this.busy = '';
+    this.tailnetError = '';
+    this.tailnetCopied = '';
   }
 
   static styles = [
@@ -171,6 +213,51 @@ export class SliccNetwork extends ModelElement {
       .error swc-icon-alert-triangle {
         flex: none;
         margin-block-start: var(--swc-spacing-50);
+      }
+      .warning {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--swc-spacing-100);
+        padding: var(--swc-spacing-200);
+        border-radius: var(--swc-corner-radius-medium-default);
+        background: var(--swc-notice-subtle-background-color-default);
+        --swc-icon-color: var(--swc-notice-visual-color);
+      }
+      .warning swc-icon-alert-triangle {
+        flex: none;
+        margin-block-start: var(--swc-spacing-50);
+      }
+      .node {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        align-items: center;
+        gap: var(--swc-spacing-100) var(--swc-spacing-200);
+        margin: 0;
+      }
+      .node dt {
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .node dd {
+        margin: 0;
+      }
+      .key {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--swc-spacing-100);
+      }
+      .key sp-textfield {
+        flex: 1 1 200px;
+      }
+      .exit {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--swc-spacing-100) var(--swc-spacing-200);
+      }
+      .exit sp-picker {
+        width: 240px;
+        max-width: 100%;
       }
       .command {
         display: flex;
@@ -255,6 +342,7 @@ export class SliccNetwork extends ModelElement {
 
   protected subscribe(model: SliccModel): Array<() => void> {
     this.error = '';
+    this.tailnetError = '';
     return model.network ? [model.network.on('network', () => this.requestUpdate())] : [];
   }
 
@@ -285,6 +373,178 @@ export class SliccNetwork extends ModelElement {
       this.copied = false;
       this.uncopied = true;
     }
+  }
+
+  async #tailnet(action: string, run: () => Promise<void> | undefined): Promise<void> {
+    if (this.busy) return;
+    this.busy = action;
+    this.tailnetError = '';
+    try {
+      await run();
+    } catch (error) {
+      this.tailnetError = failure(error);
+    } finally {
+      this.busy = '';
+    }
+  }
+
+  async #copyTailnet(what: string, value: string): Promise<void> {
+    try {
+      await globalThis.navigator.clipboard.writeText(value);
+      this.tailnetCopied = what;
+      this.tailnetError = '';
+    } catch {
+      this.tailnetCopied = '';
+      this.tailnetError = 'Couldn’t copy. Select the text and copy it.';
+    }
+  }
+
+  #submitKey(event: Event, port: NetworkPort): void {
+    event.preventDefault();
+    const field = (event.currentTarget as HTMLElement).querySelector(
+      'sp-textfield'
+    ) as HTMLElement & { value: string };
+    const key = field.value.trim();
+    field.value = '';
+    if (key) void this.#tailnet('key', () => port.submitAuthKey?.(key));
+  }
+
+  #sendKey(event: Event): void {
+    (event.currentTarget as HTMLElement).closest('form')?.requestSubmit();
+  }
+
+  #enterKey(event: KeyboardEvent): void {
+    if (event.key === 'Enter') this.#sendKey(event);
+  }
+
+  async #signOut(port: NetworkPort): Promise<void> {
+    const ok = await confirm({
+      title: 'Sign out of Tailscale?',
+      body: 'This browser leaves your tailnet until you sign in again.',
+      action: 'Sign out',
+      variant: 'confirmation',
+    });
+    if (ok) await this.#tailnet('sign-out', () => port.logoutTailnet?.());
+  }
+
+  #copyRow(what: string, label: string, value: string): TemplateResult {
+    const copied = this.tailnetCopied === what;
+    return html`<dt>${label}</dt>
+      <dd class="command" data-copy=${what}>
+        <code>${value}</code>
+        <swc-action-button size="s" quiet data-action=${`copy-${what}`} accessible-label=${copied ? 'Copied' : `Copy ${label.toLowerCase()}`} @click=${() => this.#copyTailnet(what, value)}>
+          <swc-icon-copy slot="icon"></swc-icon-copy>${copied ? 'Copied' : 'Copy'}
+        </swc-action-button>
+      </dd>`;
+  }
+
+  #signIn(port: NetworkPort, tailnet: TailnetStatus): TemplateResult {
+    return html`<p>Sign in to add this browser to your tailnet.</p>
+      ${
+        tailnet.loginUrl
+          ? html`<p><a class="swc-Link" href=${tailnet.loginUrl} target="_blank" rel="noopener noreferrer" data-action="tailnet-sign-in">Sign in to Tailscale</a></p>`
+          : nothing
+      }
+      ${
+        port.submitAuthKey
+          ? html`<p class="muted" id="tailnet-key">Or paste an auth key:</p>
+            <form class="key" data-form="auth-key" @submit=${(event: Event) => this.#submitKey(event, port)}>
+              <sp-textfield size="m" type="password" autocomplete="off" label="Tailscale auth key" aria-labelledby="tailnet-key" placeholder="tskey-…" @keydown=${(event: KeyboardEvent) => this.#enterKey(event)}></sp-textfield>
+              <swc-button size="m" variant="secondary" data-action="submit-auth-key" ?pending=${this.busy === 'key'} @click=${(event: Event) => this.#sendKey(event)}>Connect</swc-button>
+            </form>`
+          : nothing
+      }`;
+  }
+
+  #running(port: NetworkPort, status: NetworkStatus, tailnet: TailnetStatus): TemplateResult {
+    const address = tailnet.node ? tailnetAddress(tailnet.node.addresses) : undefined;
+    const peers = tailnet.peers;
+    return html`${
+      tailnet.node
+        ? html`<p>This browser is on your tailnet${peers === undefined ? '' : ` with ${peers} other ${peers === 1 ? 'device' : 'devices'}`}.</p>
+          <dl class="node">
+            ${this.#copyRow('name', 'Name', tailnet.node.name)}
+            ${address ? this.#copyRow('address', 'Address', address) : nothing}
+          </dl>`
+        : nothing
+    }
+      ${
+        port.setExitNode && tailnet.exitNodes
+          ? html`<div class="exit">
+            <span id="exit-node">Exit node</span>
+            <sp-picker size="m" label="Exit node" aria-labelledby="exit-node" data-action="exit-node" .value=${live(exitNodeValue(tailnet))} ?pending=${this.busy === 'exit'} @change=${(event: Event) => this.#exit(event, port)}>
+              <sp-menu-item value="none">None</sp-menu-item>
+              <sp-menu-item value="auto">Automatic</sp-menu-item>
+              ${tailnet.exitNodes.map((node) => html`<sp-menu-item value=${node.id} ?disabled=${!node.online}>${node.name}${node.online ? nothing : html`<span slot="description">Offline</span>`}</sp-menu-item>`)}
+            </sp-picker>
+          </div>`
+          : nothing
+      }
+      <p data-exit=${tailnet.exitNode ? 'node' : 'none'}>${tailnet.exitNode ? `Internet through the exit node ${tailnet.exitNode}.` : tailnetOnly[status.route ?? 'none']}</p>
+      ${
+        tailnet.shieldsUp === false
+          ? html`<div class="warning" data-shields="down"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>Shields down: peers on your tailnet can connect to this browser.</span></div>`
+          : tailnet.shieldsUp
+            ? html`<p class="muted" data-shields="up">Shields up: peers can’t connect to this browser.</p>`
+            : nothing
+      }
+      ${
+        port.logoutTailnet
+          ? html`<div class="actions"><swc-button size="m" variant="secondary" data-action="tailnet-sign-out" ?pending=${this.busy === 'sign-out'} @click=${() => this.#signOut(port)}>Sign out</swc-button></div>`
+          : nothing
+      }`;
+  }
+
+  #exit(event: Event, port: NetworkPort): void {
+    const value = (event.target as HTMLElement & { value: string }).value;
+    void this.#tailnet('exit', () => port.setExitNode?.(value === 'none' ? null : value));
+  }
+
+  #failed(port: NetworkPort, tailnet: TailnetStatus): TemplateResult {
+    return html`<div class="error" data-error="tailnet"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${tailnet.detail ?? 'Tailscale stopped.'}</span></div>
+      ${
+        port.check
+          ? html`<div class="actions"><swc-button size="m" variant="secondary" data-action="tailnet-retry" ?pending=${this.busy === 'retry'} @click=${() => this.#tailnet('retry', () => port.check?.())}>Retry</swc-button></div>`
+          : nothing
+      }`;
+  }
+
+  #tailnetBody(port: NetworkPort, status: NetworkStatus, tailnet: TailnetStatus): unknown {
+    switch (tailnet.state) {
+      case 'off':
+        return html`<p class="muted">Reach the devices on your tailnet, and send the rest through an exit node.</p>`;
+      case 'needs-login':
+        return this.#signIn(port, tailnet);
+      case 'running':
+        return this.#running(port, status, tailnet);
+      case 'failed':
+        return this.#failed(port, tailnet);
+      default:
+        return html`<p class="muted">${tailnet.detail ?? (tailnet.state === 'loading' ? 'Loading Tailscale…' : 'Joining your tailnet…')}</p>`;
+    }
+  }
+
+  #tailnetSection(port: NetworkPort, status: NetworkStatus): TemplateResult | typeof nothing {
+    const tailnet = status.tailnet;
+    if (!tailnet) return nothing;
+    const [variant, label] = tailnetStates[tailnet.state];
+    return html`<section aria-labelledby="tailnet" data-tailnet=${tailnet.state}>
+      <div class="head">
+        <h2 id="tailnet">Tailscale</h2>
+        <swc-status-light variant=${variant}>${label}</swc-status-light>
+      </div>
+      ${
+        port.setTailnet
+          ? html`<sp-switch data-action="tailnet" .checked=${live(tailnet.state !== 'off')} ?disabled=${!!this.busy} @change=${(event: Event) => this.#tailnet('switch', () => port.setTailnet?.((event.target as HTMLElement & { checked: boolean }).checked))}>Use Tailscale</sp-switch>`
+          : nothing
+      }
+      ${this.#tailnetBody(port, status, tailnet)}
+      ${
+        this.tailnetError
+          ? html`<div class="error" role="alert" data-error="tailnet-action"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.tailnetError}</span></div>`
+          : nothing
+      }
+    </section>`;
   }
 
   #state(status: NetworkStatus): TemplateResult {
@@ -373,6 +633,7 @@ export class SliccNetwork extends ModelElement {
     const status = port.status();
     return html`<div class="page" tabindex="-1">
       ${this.#state(status)}
+      ${this.#tailnetSection(port, status)}
       ${this.#whole(status)}
       ${this.#failures(status)}
     </div>`;

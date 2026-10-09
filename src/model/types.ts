@@ -615,11 +615,36 @@ export interface NetworkStatus {
   failures: readonly NetworkFailure[];
   extensionUrl?: string;
   browser?: BrowserAutomation;
+  tailnet?: TailnetStatus;
+}
+
+export type TailnetState = 'off' | 'loading' | 'needs-login' | 'starting' | 'running' | 'failed';
+
+export interface TailnetExitNode {
+  id: string;
+  name: string;
+  online: boolean;
+}
+
+export interface TailnetStatus {
+  state: TailnetState;
+  detail?: string;
+  loginUrl?: string;
+  node?: { name: string; addresses: readonly string[] };
+  exitNode?: string | null;
+  exitNodes?: readonly TailnetExitNode[];
+  autoExitNode?: boolean;
+  shieldsUp?: boolean;
+  peers?: number;
 }
 
 export interface NetworkPort extends Subscribable<{ network: NetworkStatus }> {
   status(): NetworkStatus;
   check?(): Promise<void>;
+  setTailnet?(on: boolean): Promise<void>;
+  setExitNode?(id: string | 'auto' | null): Promise<void>;
+  submitAuthKey?(key: string): Promise<void>;
+  logoutTailnet?(): Promise<void>;
 }
 
 export interface SliccModel {

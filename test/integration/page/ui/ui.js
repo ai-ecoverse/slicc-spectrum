@@ -9,6 +9,7 @@ const model = createDummyModel({
   updates: params.get('updates') ?? 'current',
   mounts: params.get('mounts') ?? 'off',
   network: params.get('network') ?? 'limited',
+  tailnet: params.get('tailnet') ?? undefined,
   changes: params.get('changes') ?? 'files',
 });
 if (params.has('color')) model.settings.update({ color: params.get('color') });
