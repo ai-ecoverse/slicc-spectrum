@@ -28,7 +28,10 @@ export class SliccNotices extends ModelElement {
   static styles = css`
     :host {
       display: block;
-      flex: none;
+      flex: 0 1 auto;
+      min-height: 0;
+      max-height: 40%;
+      overflow-y: auto;
     }
     .notices {
       display: flex;
@@ -90,8 +93,16 @@ export class SliccNotices extends ModelElement {
     }
   `;
 
+  #port: NoticesPort | undefined;
+
   protected subscribe(model: SliccModel): Array<() => void> {
     const port = model.notices;
+    if (port !== this.#port) {
+      this.#port = port;
+      this.dismissed = new Set();
+      this.pending = new Map();
+      this.failures = new Map();
+    }
     if (!port) return [];
     return [
       port.on('notices', (notices) => {
@@ -124,7 +135,9 @@ export class SliccNotices extends ModelElement {
         ]);
       }
     } finally {
-      this.pending = new Map([...this.pending].filter(([key]) => key !== id));
+      if (this.model?.notices === port) {
+        this.pending = new Map([...this.pending].filter(([key]) => key !== id));
+      }
     }
   }
 

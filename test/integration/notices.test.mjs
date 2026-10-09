@@ -55,9 +55,18 @@ for (const [name, color, browser] of [
             .filter((node) => node.getBoundingClientRect().right > edge + 0.5)
             .map((node) => node.tagName),
           inside: edge <= chat.getBoundingClientRect().right + 0.5,
+          bounded: getComputedStyle(chat.shadowRoot.querySelector('slicc-notices')).overflowY,
         };
       }),
-      { order: true, between: true, role: 'status', focus: false, overflow: [], inside: true }
+      {
+        order: true,
+        between: true,
+        role: 'status',
+        focus: false,
+        overflow: [],
+        inside: true,
+        bounded: 'auto',
+      }
     );
     if (name === 'narrow') assert.equal(await page.evaluate(() => window.app.screen), 'phone');
     await shot(page, `notices-${name}-${color}`);
