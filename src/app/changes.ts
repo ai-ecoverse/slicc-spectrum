@@ -148,6 +148,20 @@ export class SliccChanges extends ModelElement {
         min-width: 0;
         user-select: all;
       }
+      p code {
+        display: inline-block;
+        max-inline-size: 100%;
+        font-size: var(--swc-font-size-50);
+        color: inherit;
+      }
+      .summary {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .bar swc-action-button {
+        flex: none;
+      }
       .repo {
         display: flex;
         gap: var(--swc-spacing-100);
@@ -305,7 +319,7 @@ export class SliccChanges extends ModelElement {
 
   #list(changes: readonly Change[]): TemplateResult {
     const grouped = groups(changes);
-    if (grouped.length < 2)
+    if (grouped.length === 1 && !grouped[0][0])
       return html`<ul aria-label="Pending changes" @keydown=${this.#keydown}>${changes.map((change) => this.#row(change))}</ul>`;
     return html`<ul aria-label="Pending changes" @keydown=${this.#keydown}>${grouped.map(
       ([repo, items]) => html`<li data-repo=${repo}>
@@ -355,7 +369,7 @@ export class SliccChanges extends ModelElement {
     if (unavailable) return this.#unavailable(unavailable);
     const changes = port?.changes() ?? [];
     return html`<div class="bar">
-        <span>${changes.length} pending ${changes.length === 1 ? 'change' : 'changes'}</span>
+        <span class="summary">${changes.length} pending ${changes.length === 1 ? 'change' : 'changes'}</span>
         <span class="spacer"></span>
         ${
           changes.length
@@ -389,8 +403,25 @@ export class SliccDiffPanel extends ThemedElement {
         flex: 1;
         min-height: 0;
       }
-      swc-action-group {
+      :host {
+        container-type: inline-size;
+      }
+      swc-action-group,
+      .bar swc-action-button {
         flex: none;
+      }
+      .bar .path {
+        min-width: 0;
+      }
+      @container (width < 480px) {
+        .bar .label {
+          position: absolute;
+          inline-size: 1px;
+          block-size: 1px;
+          overflow: hidden;
+          clip-path: inset(50%);
+          white-space: nowrap;
+        }
       }
       swc-action-button.selected {
         --swc-action-button-background-color-default: var(--swc-neutral-background-color-selected-default);
@@ -454,7 +485,7 @@ export class SliccDiffPanel extends ThemedElement {
     return html`<div class="bar">
         ${statusMark(change.status, false)}
         <span class="path" title=${this.path}>${this.path}</span>
-        <span>${statusLabels[change.status]}${by ? ` by ${by}` : ''}</span>
+        <span class="label">${statusLabels[change.status]}${by ? ` by ${by}` : ''}</span>
         <span class="spacer"></span>
         ${
           change.before === null && change.after === null
@@ -472,11 +503,11 @@ export class SliccDiffPanel extends ThemedElement {
           )}
         </swc-action-group>`
         }
-        <swc-action-button size="s" quiet @click=${() => port?.accept(this.path)}>
-          <swc-icon-checkmark slot="icon"></swc-icon-checkmark>Accept
+        <swc-action-button size="s" quiet data-action="accept" accessible-label="Accept" title="Accept" @click=${() => port?.accept(this.path)}>
+          <swc-icon-checkmark slot="icon"></swc-icon-checkmark><span class="label">Accept</span>
         </swc-action-button>
-        <swc-action-button size="s" quiet @click=${() => this.#revert(port as ChangesPort, change)}>
-          <swc-icon-revert slot="icon"></swc-icon-revert>Revert
+        <swc-action-button size="s" quiet data-action="revert" accessible-label="Revert" title="Revert" @click=${() => this.#revert(port as ChangesPort, change)}>
+          <swc-icon-revert slot="icon"></swc-icon-revert><span class="label">Revert</span>
         </swc-action-button>
       </div>
       ${errorLine(this.error)}
