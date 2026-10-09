@@ -533,24 +533,53 @@ export function lick(message: LickMessage, handlers: Handlers): TemplateResult {
 }
 
 export const messageCss = css`
+  swc-conversation-thread > .message,
+  swc-conversation-thread > .event {
+    margin-block-start: var(--swc-spacing-300);
+  }
+  swc-conversation-thread > .event + .event,
+  swc-conversation-thread > :first-child,
+  swc-conversation-thread > .day + * {
+    margin-block-start: 0;
+  }
   .meta {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--swc-spacing-100);
-    align-items: center;
+    gap: var(--swc-spacing-50) var(--swc-spacing-100);
+    align-items: baseline;
     font-size: var(--swc-font-size-75);
+    line-height: var(--swc-line-height-100);
     color: var(--swc-neutral-subdued-content-color-default);
   }
   .meta .who {
+    font-size: var(--swc-font-size-100);
     font-weight: 700;
     color: var(--swc-neutral-content-color-default);
+  }
+  .meta swc-badge {
+    align-self: center;
   }
   .bubble,
   .reply {
     display: flex;
     flex-direction: column;
-    gap: var(--swc-spacing-75);
+    gap: var(--swc-spacing-100);
     min-inline-size: 0;
+  }
+  .assistant swc-system-message {
+    line-height: var(--swc-line-height-200);
+  }
+  swc-system-message > :not([slot]) + :not([slot]) {
+    margin-block-start: var(--swc-spacing-100);
+  }
+  swc-system-message > .tool + .tool {
+    margin-block-start: 0;
+  }
+  .text > :is(p, ul, ol, blockquote, .heading),
+  .thinking,
+  .plan,
+  .delegation {
+    max-inline-size: 72ch;
   }
   .bubble {
     align-items: flex-end;
@@ -563,9 +592,6 @@ export const messageCss = css`
   .user[data-origin='agent'] swc-user-message.body {
     background: var(--swc-background-layer-1-color);
     border-color: var(--swc-gray-300);
-  }
-  swc-user-message.body {
-    font-size: var(--swc-font-size-100);
   }
   swc-user-message.body .text {
     white-space: pre-wrap;
@@ -592,22 +618,36 @@ export const messageCss = css`
   .text .table,
   .text pre,
   .text blockquote {
-    margin: var(--swc-spacing-85) 0;
+    margin: var(--swc-spacing-200) 0;
+  }
+  .text ul,
+  .text ol,
+  .plan ol {
+    padding-inline-start: var(--swc-spacing-400);
+  }
+  .text li + li,
+  .text li > :is(ul, ol) {
+    margin-block-start: var(--swc-spacing-75);
+  }
+  .text li > :is(ul, ol) {
+    margin-block-end: 0;
+  }
+  .text .heading {
+    font-weight: 700;
+    line-height: var(--swc-line-height-100);
+    margin: var(--swc-spacing-400) 0 var(--swc-spacing-100);
+  }
+  .text .heading[aria-level='3'] {
+    font-size: var(--swc-font-size-400);
+  }
+  .text .heading[aria-level='4'] {
+    font-size: var(--swc-font-size-300);
   }
   .text > :first-child {
     margin-block-start: 0;
   }
   .text > :last-child {
     margin-block-end: 0;
-  }
-  .text ul,
-  .text ol,
-  .plan ol {
-    padding-inline-start: var(--swc-spacing-350);
-  }
-  .text .heading {
-    font-weight: 700;
-    margin: var(--swc-spacing-200) 0 var(--swc-spacing-75);
   }
   .text img {
     max-inline-size: 100%;
@@ -624,7 +664,7 @@ export const messageCss = css`
   }
   li:has(> .task) {
     list-style: none;
-    margin-inline-start: calc(-1 * var(--swc-spacing-350));
+    margin-inline-start: calc(-1 * var(--swc-spacing-400));
   }
   .task {
     color: var(--swc-neutral-subdued-content-color-default);
@@ -635,7 +675,7 @@ export const messageCss = css`
   code,
   pre {
     font-family: var(--swc-code-font-family-stack);
-    font-size: var(--swc-font-size-75);
+    font-size: var(--swc-font-size-100);
   }
   :not(pre) > code {
     background: var(--swc-gray-100);
@@ -647,7 +687,8 @@ export const messageCss = css`
     background: var(--swc-background-layer-1-color);
     border: var(--swc-border-width-100) solid var(--swc-gray-200);
     border-radius: var(--swc-corner-radius-100);
-    padding: var(--swc-spacing-100) var(--swc-spacing-200);
+    padding: var(--swc-spacing-200) var(--swc-spacing-300);
+    line-height: var(--swc-line-height-200);
     overflow-x: auto;
     white-space: pre;
   }
@@ -656,12 +697,12 @@ export const messageCss = css`
   }
   table {
     border-collapse: collapse;
-    font-size: var(--swc-font-size-75);
+    font-size: var(--swc-font-size-100);
   }
   th,
   td {
     border: var(--swc-border-width-100) solid var(--swc-gray-200);
-    padding: var(--swc-spacing-50) var(--swc-spacing-100);
+    padding: var(--swc-spacing-75) var(--swc-spacing-200);
     text-align: start;
   }
   th {
@@ -673,9 +714,9 @@ export const messageCss = css`
   .thinking {
     color: var(--swc-neutral-subdued-content-color-default);
     font-style: italic;
-    font-size: var(--swc-font-size-75);
+    font-size: var(--swc-font-size-100);
     border-inline-start: var(--swc-border-width-200) solid var(--swc-gray-300);
-    padding-inline-start: var(--swc-spacing-100);
+    padding-inline-start: var(--swc-spacing-200);
   }
   details.tool,
   details.cluster,
@@ -683,7 +724,7 @@ export const messageCss = css`
     border: var(--swc-border-width-100) solid var(--swc-gray-200);
     border-radius: var(--swc-corner-radius-100);
     background: var(--swc-background-layer-1-color);
-    font-size: var(--swc-font-size-75);
+    font-size: var(--swc-font-size-100);
   }
   details.cluster > details.tool {
     margin: var(--swc-spacing-75) var(--swc-spacing-100);
@@ -693,8 +734,8 @@ export const messageCss = css`
     display: flex;
     align-items: center;
     gap: var(--swc-spacing-100);
-    padding: var(--swc-spacing-50) var(--swc-spacing-100);
-    min-block-size: var(--swc-spacing-400);
+    padding: var(--swc-spacing-75) var(--swc-spacing-200);
+    min-block-size: var(--swc-spacing-500);
     list-style: none;
   }
   summary {
@@ -801,9 +842,9 @@ export const messageCss = css`
     border: var(--swc-border-width-100) solid var(--swc-gray-200);
     border-inline-start: var(--swc-border-width-400) solid var(--tone);
     border-radius: var(--swc-corner-radius-100);
-    padding: var(--swc-spacing-85) var(--swc-spacing-200);
+    padding: var(--swc-spacing-200) var(--swc-spacing-300);
     background: var(--swc-background-layer-1-color);
-    font-size: var(--swc-font-size-75);
+    font-size: var(--swc-font-size-100);
     --tone: var(--swc-gray-400);
     --tone-text: var(--swc-neutral-subdued-content-color-default);
   }
@@ -832,7 +873,7 @@ export const messageCss = css`
     gap: var(--swc-spacing-85);
   }
   .card-meta {
-    margin-block-start: var(--swc-spacing-75);
+    margin-block-start: var(--swc-spacing-100);
     color: var(--swc-neutral-subdued-content-color-default);
   }
   .tone-text {
@@ -852,12 +893,16 @@ export const messageCss = css`
     color: var(--swc-negative-content-color-default);
   }
   .plan .label {
-    font-size: var(--swc-font-size-75);
+    font-size: var(--swc-font-size-100);
     font-weight: 700;
     color: var(--swc-neutral-subdued-content-color-default);
   }
   .plan ol {
-    margin: var(--swc-spacing-75) 0;
+    margin: var(--swc-spacing-100) 0 0;
+  }
+  .plan li + li,
+  ul.check li + li {
+    margin-block-start: var(--swc-spacing-75);
   }
   ul.check {
     list-style: none;
@@ -885,13 +930,13 @@ export const messageCss = css`
     display: block;
     inline-size: 100%;
     margin: 0;
-    padding: var(--swc-spacing-50) var(--swc-spacing-100);
+    padding: var(--swc-spacing-75) var(--swc-spacing-200);
     border: 0;
     border-block-end: var(--swc-border-width-100) solid var(--swc-gray-200);
     background: var(--swc-background-layer-1-color);
     color: var(--swc-accent-content-color-default);
     font-family: var(--swc-code-font-family-stack);
-    font-size: var(--swc-font-size-75);
+    font-size: var(--swc-font-size-100);
     text-align: start;
     cursor: pointer;
   }
@@ -901,7 +946,7 @@ export const messageCss = css`
   .question {
     border: var(--swc-border-width-100) solid var(--swc-gray-300);
     border-radius: var(--swc-corner-radius-100);
-    padding: var(--swc-spacing-100) var(--swc-spacing-200);
+    padding: var(--swc-spacing-200) var(--swc-spacing-300);
   }
   .question[data-state='open'] {
     border-color: var(--swc-accent-visual-color);
@@ -916,8 +961,8 @@ export const messageCss = css`
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--swc-spacing-85);
-    margin-block-start: var(--swc-spacing-85);
+    gap: var(--swc-spacing-100);
+    margin-block-start: var(--swc-spacing-200);
   }
   .input {
     font: inherit;
@@ -941,7 +986,7 @@ export const messageCss = css`
     flex-wrap: wrap;
     align-items: center;
     gap: var(--swc-spacing-75);
-    font-size: var(--swc-font-size-75);
+    font-size: var(--swc-font-size-100);
     color: var(--swc-neutral-subdued-content-color-default);
   }
   .delegation strong {
@@ -955,8 +1000,8 @@ export const messageCss = css`
     border: var(--swc-border-width-100) solid var(--swc-negative-visual-color);
     border-inline-start-width: var(--swc-border-width-400);
     border-radius: var(--swc-corner-radius-100);
-    padding: var(--swc-spacing-85) var(--swc-spacing-200);
-    font-size: var(--swc-font-size-75);
+    padding: var(--swc-spacing-200) var(--swc-spacing-300);
+    font-size: var(--swc-font-size-100);
   }
   .error-card .error-text {
     display: grid;
@@ -976,10 +1021,17 @@ export const messageCss = css`
   .day {
     display: flex;
     align-items: center;
-    gap: var(--swc-spacing-100);
-    margin: var(--swc-spacing-100) 0;
-    font-size: var(--swc-font-size-75);
+    gap: var(--swc-spacing-200);
+    font-size: var(--swc-font-size-100);
     color: var(--swc-neutral-subdued-content-color-default);
+  }
+  .day {
+    margin: var(--swc-spacing-400) 0 var(--swc-spacing-100);
+    font-size: var(--swc-font-size-75);
+    font-weight: 700;
+  }
+  .day:first-child {
+    margin-block-start: 0;
   }
   .marker-text {
     display: inline-flex;
@@ -993,7 +1045,7 @@ export const messageCss = css`
     background: var(--swc-gray-200);
   }
   .notice {
-    font-size: var(--swc-font-size-75);
+    font-size: var(--swc-font-size-100);
     color: var(--swc-neutral-subdued-content-color-default);
     text-align: center;
   }
