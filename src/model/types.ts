@@ -551,6 +551,7 @@ export interface TrayPort extends Subscribable<TrayEvents> {
 export type UpdateKind = 'bios' | 'kernel' | 'agent' | 'grammars' | 'global' | 'skills' | 'ui';
 export type UpdateState =
   | 'current'
+  | 'queued'
   | 'checking'
   | 'downloading'
   | 'linking'

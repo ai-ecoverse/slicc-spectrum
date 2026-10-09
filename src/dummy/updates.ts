@@ -41,6 +41,7 @@ export function updateFixtures(scenario: UpdateScenario): readonly UpdateItem[] 
       log: 'Linking syntax grammars\nProgress: linked 12 of 15',
     });
     items[4].state = 'checking';
+    Object.assign(items[5], { state: 'queued', from: null });
   } else if (scenario === 'available' || scenario === 'restart') {
     Object.assign(agent, {
       state: scenario === 'available' ? 'available' : 'ready',

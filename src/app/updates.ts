@@ -16,6 +16,7 @@ import { ModelElement } from './base.ts';
 
 const states = {
   current: ['neutral', 'Up to date'],
+  queued: ['neutral', 'Waiting'],
   checking: ['info', 'Checking'],
   downloading: ['info', 'Downloading'],
   linking: ['info', 'Linking'],
@@ -303,7 +304,8 @@ export class SliccUpdates extends ModelElement {
   }
 
   #item(item: UpdateItem): TemplateResult {
-    const [variant, label] = states[item.state];
+    const [variant, state] = states[item.state];
+    const label = item.state === 'failed' && item.from !== null ? 'Update failed' : state;
     const error = this.failures.get(item.id) ?? item.error;
     return html`<swc-divider size="s"></swc-divider>
     <article data-id=${item.id} data-state=${item.state} aria-label=${item.label}>
