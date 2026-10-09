@@ -6,6 +6,7 @@ import type { Agent, FrozenCone, FrozenKind, SliccModel } from '../model/types.t
 import { ModelElement, shared } from './base.ts';
 import { confirm } from './confirm.ts';
 import { panelCss } from './files.ts';
+import { coneLabel, twinned, withTitle } from './names.ts';
 
 export function ago(at: number, now = Date.now()): string {
   const days = Math.floor((now - at) / 86_400_000);
@@ -21,7 +22,7 @@ export async function deleteCone(
   trigger?: HTMLElement | null
 ): Promise<boolean> {
   const ok = await confirm({
-    title: `Delete cone ${agent.name}?`,
+    title: `Delete cone ${coneLabel(model, agent)}?`,
     body: 'It stops, with its scoops. Its conversation stays in the Freezer, where you can thaw it.',
     action: 'Delete cone',
     variant: 'confirmation',
@@ -107,13 +108,18 @@ export class SliccFreezer extends ModelElement {
 
   async #remove(cone: FrozenCone, trigger: HTMLElement): Promise<void> {
     const ok = await confirm({
-      title: `Remove ${cone.name} from the Freezer?`,
+      title: `Remove ${this.#named(cone)} from the Freezer?`,
       body: 'Its working folders are deleted. The conversation stays in the session database. You can’t undo this.',
       action: 'Remove',
       variant: 'destructive',
       trigger,
     });
     if (ok) this.model?.agent.discard(cone.id);
+  }
+
+  #named(cone: FrozenCone): string {
+    const rows = this.model?.agent.frozen() ?? [];
+    return twinned(cone.name, cone.id, rows) ? withTitle(cone.name, cone.title) : cone.name;
   }
 
   #thawedAs(id: string): string {
@@ -128,10 +134,10 @@ export class SliccFreezer extends ModelElement {
   #actions(cone: FrozenCone): TemplateResult {
     const model = this.model as SliccModel;
     if (cone.live) {
-      return html`<swc-action-button size="s" quiet data-action="open" accessible-label=${`Open ${cone.name}`} @click=${() => model.agent.select(cone.id)}>Open</swc-action-button>`;
+      return html`<swc-action-button size="s" quiet data-action="open" accessible-label=${`Open ${this.#named(cone)}`} @click=${() => model.agent.select(cone.id)}>Open</swc-action-button>`;
     }
-    return html`<swc-action-button size="s" quiet data-action="thaw" accessible-label=${`Thaw ${cone.name}`} @click=${() => model.agent.thaw(cone.id)}>Thaw</swc-action-button>
-      <swc-action-button size="s" quiet data-action="remove" accessible-label=${`Remove ${cone.name}`} @click=${(event: Event) => this.#remove(cone, event.currentTarget as HTMLElement)}>Remove</swc-action-button>`;
+    return html`<swc-action-button size="s" quiet data-action="thaw" accessible-label=${`Thaw ${this.#named(cone)}`} @click=${() => model.agent.thaw(cone.id)}>Thaw</swc-action-button>
+      <swc-action-button size="s" quiet data-action="remove" accessible-label=${`Remove ${this.#named(cone)}`} @click=${(event: Event) => this.#remove(cone, event.currentTarget as HTMLElement)}>Remove</swc-action-button>`;
   }
 
   #card(cone: FrozenCone): TemplateResult {

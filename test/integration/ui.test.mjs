@@ -102,7 +102,11 @@ test('the shell renders the default layout from the dummy model', async (t) => {
   assert.deepEqual(
     await page.evaluate(() =>
       [...window.$('slicc-app', 'header sp-picker').querySelectorAll('sp-menu-item')].map((item) =>
-        item.textContent.trim()
+        [...item.childNodes]
+          .filter((node) => node.nodeType === 3)
+          .map((node) => node.textContent)
+          .join('')
+          .trim()
       )
     ),
     [
@@ -3438,7 +3442,14 @@ test('the agent picker lists cones and opens the agents panel for the rest', asy
     await page
       .evaluate(() =>
         [...window.$('slicc-app', 'header sp-picker').querySelectorAll('sp-menu-item')].map(
-          (item) => [item.value, item.textContent.trim()]
+          (item) => [
+            item.value,
+            [...item.childNodes]
+              .filter((node) => node.nodeType === 3)
+              .map((node) => node.textContent)
+              .join('')
+              .trim(),
+          ]
         )
       )
       .then((items) => [

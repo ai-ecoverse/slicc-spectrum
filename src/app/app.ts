@@ -9,6 +9,7 @@ import { Dips, dipType } from './dips.ts';
 import { defaultFontBase, defaultVariableFont, installFonts } from './fonts.ts';
 import { deleteCone } from './freezer.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
+import { agentTitle, untitled, watchTitles } from './names.ts';
 import { networkHealth, networkIcon, networkLabel } from './network.ts';
 import {
   chatAgent,
@@ -287,6 +288,13 @@ export class SliccApp extends ThemedElement {
     sp-picker {
       min-width: calc(var(--swc-spacing-400) * 8);
     }
+    header sp-menu-item [slot='description'] {
+      display: block;
+      max-inline-size: calc(var(--swc-spacing-1000) * 4);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     slicc-dock {
       height: 100%;
     }
@@ -313,6 +321,7 @@ export class SliccApp extends ThemedElement {
         update();
       }),
       changesOf(model).on('changes', update),
+      watchTitles(model, update),
       model.terminals.on('terminals', () => {
         this.#prune();
         update();
@@ -817,7 +826,7 @@ export class SliccApp extends ThemedElement {
               ? keyed(
                   cones.map((agent) => agent.id).join(' '),
                   html`<sp-picker size="s" label="Agent" value=${this.#cone()} @change=${this.#pick}>
-            ${cones.map((agent) => html`<sp-menu-item value=${agent.id}>${agent.name}</sp-menu-item>`)}
+            ${cones.map((agent) => html`<sp-menu-item value=${agent.id}>${agent.name}<span slot="description">${agentTitle(this.model as SliccModel, agent) || untitled}</span></sp-menu-item>`)}
             ${
               this.model?.agent.createCone
                 ? html`<sp-menu-divider></sp-menu-divider><sp-menu-item value=${newCone} data-action="new-cone"><swc-icon-add slot="icon"></swc-icon-add>New cone</sp-menu-item>`
