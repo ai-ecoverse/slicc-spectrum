@@ -33,14 +33,22 @@ export class FakeShell implements TerminalSession {
   #interrupted = false;
   #history: string[] = [];
   #commands: Record<string, Command>;
+  #onCwd: ((cwd: string) => void) | undefined;
   cwd: string;
   closed = false;
 
-  constructor(sink: TerminalSink, files: FilePort, cwd: string, clock: Clock) {
+  constructor(
+    sink: TerminalSink,
+    files: FilePort,
+    cwd: string,
+    clock: Clock,
+    onCwd?: (cwd: string) => void
+  ) {
     this.#sink = sink;
     this.#files = files;
     this.#clock = clock;
     this.cwd = cwd;
+    this.#onCwd = onCwd;
     this.#commands = {
       help: () => this.#print('Commands: cat cd clear date echo exit git help ls npm pwd whoami'),
       pwd: () => this.#print(this.cwd),
@@ -81,8 +89,10 @@ export class FakeShell implements TerminalSession {
 
   async #cd(target: string): Promise<void> {
     const path = resolve(this.cwd, target);
-    if (path === '/' || (await this.#entries()).get(path) === 'directory') this.cwd = path;
-    else this.#print(`bash: cd: ${target}: No such file or directory`);
+    if (path === '/' || (await this.#entries()).get(path) === 'directory') {
+      this.cwd = path;
+      this.#onCwd?.(path);
+    } else this.#print(`bash: cd: ${target}: No such file or directory`);
   }
 
   async #ls(target: string): Promise<void> {
@@ -227,6 +237,11 @@ export class FakeShell implements TerminalSession {
   }
 }
 
-export function shellBackend(files: FilePort, cwd: string, clock: Clock): TerminalBackend {
-  return { open: (sink) => new FakeShell(sink, files, cwd, clock) };
+export function shellBackend(
+  files: FilePort,
+  cwd: string,
+  clock: Clock,
+  onCwd?: (cwd: string) => void
+): TerminalBackend {
+  return { open: (sink) => new FakeShell(sink, files, cwd, clock, onCwd) };
 }
