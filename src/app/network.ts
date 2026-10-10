@@ -469,7 +469,7 @@ export class SliccNetwork extends ModelElement {
   }
 
   focus(): void {
-    this.focusOn('swc-button, a, summary, swc-action-button', '.page');
+    this.focusOn('sp-picker, swc-button, a, summary, swc-action-button', '.page');
   }
 
   async check(): Promise<void> {
@@ -645,7 +645,7 @@ export class SliccNetwork extends ModelElement {
       <p data-exit=${tailnet.exitNode ? 'node' : 'none'}>${tailnet.exitNode ? `Internet through the exit node ${tailnet.exitNode}.` : tailnetOnly[status.route ?? 'none']}</p>`;
   }
 
-  #exitLine(status: NetworkStatus): TemplateResult | typeof nothing {
+  #exitLine(port: NetworkPort, status: NetworkStatus): TemplateResult | typeof nothing {
     const exit = status.exit;
     if (!exit) return nothing;
     if (exit.kind === 'tailnet') {
@@ -656,7 +656,7 @@ export class SliccNetwork extends ModelElement {
     const device = status.links?.devices.find((item) => item.id === exit.id);
     if (device?.state === 'connected') return nothing;
     const who = device ? `${device.name} is ${device.state}` : 'The linked device isn’t connected';
-    return html`<div class="warning" data-exit="device" data-held><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${who}. Internet traffic waits until it’s connected.</span></div>`;
+    return html`<div class="warning" data-exit="device" data-held><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><div class="banner"><span>${who}. Internet traffic waits until it’s connected.</span><div class="actions"><swc-button size="s" variant="secondary" fill-style="outline" data-action="exit-direct" ?pending=${this.busy === 'exit'} ?disabled=${this.#waiting('exit')} @click=${() => this.#act('exit', () => port.setExit?.(null), 'error')}>Send directly</swc-button></div></div></div>`;
   }
 
   #exitPicker(port: NetworkPort, status: NetworkStatus): TemplateResult | typeof nothing {
@@ -686,7 +686,7 @@ export class SliccNetwork extends ModelElement {
           }
         </sp-picker>
       </div>
-      ${this.#exitLine(status)}`;
+      ${this.#exitLine(port, status)}`;
   }
 
   #exitAll(event: Event, port: NetworkPort): void {
