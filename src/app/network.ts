@@ -135,13 +135,28 @@ export function unlinkBody(device: LinkedDevice, isExit: boolean): string {
   return isExit ? `${body} Internet traffic goes directly again.` : body;
 }
 
-export const wholeWeb: ReadonlySet<NetworkRoute | null> = new Set([
+export const wholeWeb: ReadonlySet<NetworkRoute | 'link' | null> = new Set([
   'proxy',
   'extension',
   'tailnet',
+  'link',
 ]);
 
+export function routeOf(status: NetworkStatus): NetworkRoute | 'link' | null {
+  return status.exit?.kind === 'link' ? 'link' : status.route;
+}
+
+function linkLine(status: NetworkStatus, id: string): string {
+  const device = status.links?.devices.find((item) => item.id === id);
+  if (!device) return 'Waiting for a linked device that isn’t connected.';
+  if (device.state !== 'connected') return `Waiting for the linked device ${device.name}.`;
+  return device.policy
+    ? `Through the linked device ${device.name}, which reaches ${device.policy}.`
+    : `Through the linked device ${device.name}.`;
+}
+
 export function routeLine(status: NetworkStatus): string {
+  if (status.exit?.kind === 'link') return linkLine(status, status.exit.id);
   const node = status.route === 'tailnet' ? status.tailnet?.exitNode : null;
   return node
     ? `Through the Tailscale exit node ${node}, which reaches every site.`
@@ -842,7 +857,7 @@ export class SliccNetwork extends ModelElement {
         <h2 id="state">Connection</h2>
         <swc-status-light variant=${variant} data-health=${status.health}>${label}</swc-status-light>
       </div>
-      <p data-route=${status.route ?? 'none'}>${routeLine(status)}</p>
+      <p data-route=${routeOf(status) ?? 'none'}>${routeLine(status)}</p>
       ${status.detail ? html`<p class="detail">${status.detail}</p>` : nothing}
       ${this.#exitPicker(port, status)}
       ${
@@ -875,7 +890,7 @@ export class SliccNetwork extends ModelElement {
   }
 
   #whole(status: NetworkStatus): TemplateResult {
-    if (wholeWeb.has(status.route)) {
+    if (wholeWeb.has(routeOf(status))) {
       return html`<details><summary>Other ways to reach the whole web</summary><div>${this.#ways(status)}</div></details>`;
     }
     return html`<section aria-labelledby="whole">
