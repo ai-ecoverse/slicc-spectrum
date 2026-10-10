@@ -221,7 +221,9 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
     const exit = this.#exit;
     const device =
       exit?.kind === 'link' ? this.#links?.devices.find((item) => item.id === exit.id) : undefined;
-    const browsing = this.#links?.devices.some((item) => item.browsers?.length);
+    const browsing = this.#links?.devices.some(
+      (item) => item.state === 'connected' && item.browsers?.length
+    );
     const routed = this.#withTailnet(
       browsing && linked.browser?.via === null ? { ...linked, browser: { via: 'link' } } : linked
     );

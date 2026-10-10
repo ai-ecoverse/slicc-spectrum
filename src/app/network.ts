@@ -65,7 +65,8 @@ export function automationOf(browser: BrowserAutomation): keyof typeof automatio
 export function browserLine(browser: BrowserAutomation, links?: NetworkLinks): string {
   const via = automationOf(browser);
   if (via !== 'link') return automation[via];
-  const found = (links?.devices ?? []).flatMap((device) =>
+  const connected = (links?.devices ?? []).filter((device) => device.state === 'connected');
+  const found = connected.flatMap((device) =>
     (device.browsers ?? []).map((item) => ({ name: item.name, device: device.name }))
   );
   if (found.length === 1)
