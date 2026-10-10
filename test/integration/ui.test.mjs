@@ -3477,6 +3477,73 @@ test('Tailscale signs in with an auth key, picks an exit node and signs out', as
   assert.deepEqual(page.errors, []);
 });
 
+test('linked devices pick the exit, unlink, and retry local network access', async (t) => {
+  const page = await open(t, { network: 'ok', tailnet: 'running', links: 'exit' });
+  await page.evaluate(() => window.app.show('network'));
+  await page.evaluate(() => {
+    window.netPanel = () => window.$('slicc-app', 'slicc-dock').content('network')?.shadowRoot;
+  });
+  await page.until(() => !!window.netPanel()?.querySelector('section[data-links]'));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const shadow = window.netPanel();
+      return [
+        shadow.querySelector('section[data-links]').dataset.links,
+        shadow.querySelector('sp-picker[data-action=exit]').value,
+        shadow.querySelector('[data-exit=device]').textContent.trim(),
+        shadow.querySelector('[data-device=link-quay] [data-exit-badge]').textContent.trim(),
+        !!shadow.querySelector('[data-action=exit-node]'),
+      ];
+    }),
+    [
+      'linked',
+      'link:link-quay',
+      'Internet through the linked device slicc on quay-studio.',
+      'Exit',
+      false,
+    ]
+  );
+  await shot(page, 'links-exit');
+  await page.evaluate(() => {
+    const picker = window.netPanel().querySelector('sp-picker[data-action=exit]');
+    picker.value = 'tailnet:auto';
+    picker.dispatchEvent(new Event('change'));
+  });
+  await page.until(() => window.netPanel().querySelector('[data-exit]')?.dataset.exit === 'node');
+  assert.equal(
+    await page.evaluate(() => window.netPanel().querySelector('[data-exit]').textContent.trim()),
+    'Internet through an automatic Tailscale exit node.'
+  );
+  await page.evaluate(() =>
+    window.netPanel().querySelector('[data-device=link-dock] [data-action=unlink]').click()
+  );
+  await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
+  await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
+  await page.until(() => !window.netPanel().querySelector('[data-device=link-dock]'));
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-dock').content('network').style.width = '420px';
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const host = window.$('slicc-app', 'slicc-dock').content('network');
+      const edge = host.getBoundingClientRect().right;
+      return [...host.shadowRoot.querySelectorAll('li.device > *, sp-picker, .command')]
+        .filter((element) => element.getBoundingClientRect().right > edge + 0.5)
+        .map((element) => element.className || element.localName);
+    }),
+    []
+  );
+  await page.evaluate(() => window.app.model.network.setLinks('denied'));
+  await page.until(() => !!window.netPanel().querySelector('[data-link-permission=denied]'));
+  await shot(page, 'links-denied');
+  await page.evaluate(() => window.netPanel().querySelector('[data-action=retry-links]').click());
+  await page.until(
+    () => window.netPanel().querySelector('section[data-links]').dataset.links === 'linked'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('without a network port there is no indicator and no Network panel', async (t) => {
   const page = await open(t, { network: 'off' });
   assert.deepEqual(

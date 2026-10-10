@@ -12,6 +12,7 @@ const model = createDummyModel({
   mounts: params.get('mounts') ?? 'off',
   network: params.get('network') ?? 'limited',
   tailnet: params.get('tailnet') ?? undefined,
+  links: params.get('links') ?? undefined,
   changes: params.get('changes') ?? 'files',
   notices: params.get('notices') ?? 'off',
   tabs: params.get('tabs') ?? 'off',

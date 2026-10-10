@@ -8,7 +8,12 @@ import { DummyFiles, type MountScenario } from './files.ts';
 import * as fixtures from './fixtures.ts';
 import { DummyMemory } from './memory.ts';
 import { DummyMonitor } from './monitor.ts';
-import { DummyNetwork, type NetworkScenario, type TailnetScenario } from './network.ts';
+import {
+  DummyNetwork,
+  type LinksScenario,
+  type NetworkScenario,
+  type TailnetScenario,
+} from './network.ts';
 import { DummyNotices, type NoticeScenario } from './notices.ts';
 import { DummySettings } from './settings.ts';
 import { DummySprinkles } from './sprinkles.ts';
@@ -31,6 +36,7 @@ export interface DummyOptions {
   mounts?: MountScenario | 'off';
   network?: NetworkScenario | 'off';
   tailnet?: TailnetScenario;
+  links?: LinksScenario;
   changes?: ChangesScenario;
   notices?: NoticeScenario | 'off';
   tabs?: TabsScenario | 'off';
@@ -54,6 +60,7 @@ export function createDummyModel({
   mounts = 'off',
   network = 'limited',
   tailnet,
+  links,
   changes = 'files',
   notices = 'off',
   tabs = 'off',
@@ -110,7 +117,7 @@ export function createDummyModel({
       ...(packages === 'off' ? {} : { packages }),
       confirm,
     }),
-    ...(network === 'off' ? {} : { network: new DummyNetwork(network, time, tailnet) }),
+    ...(network === 'off' ? {} : { network: new DummyNetwork(network, time, tailnet, links) }),
     ...(changes === 'files' ? {} : { changes: new DummyChanges(files, changes === 'git') }),
     ...(notices === 'off' ? {} : { notices: new DummyNotices(notices, time) }),
     ...(tabs === 'off' ? {} : { tabs: new DummyTabs(tabs, time) }),
