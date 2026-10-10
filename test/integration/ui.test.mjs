@@ -1346,7 +1346,7 @@ test('terminals run the fake shell, each in its own panel', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
-test('the browser lists its windows with thumbnails, and follows agents', async (t) => {
+test('the browser lists its tabs with thumbnails, focuses one, and follows agents', async (t) => {
   const page = await open(t);
   await page.evaluate(() => window.$('slicc-app', '.rail.right [data-surface=browser]').click());
   await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.window'));
@@ -1371,7 +1371,7 @@ test('the browser lists its windows with thumbnails, and follows agents', async 
       .textContent.replace(/\s+/g, ' ')
       .trim()
   );
-  assert.match(first, /harbor · localhost localhost:8787 Loaded Active Driven by harbor/);
+  assert.match(first, /harbor · localhost localhost:8787 Loaded Active Last used by harbor/);
   assert.equal(
     await page.evaluate(() =>
       window
@@ -1395,17 +1395,32 @@ test('the browser lists its windows with thumbnails, and follows agents', async 
     window.$('slicc-app', 'slicc-dock', 'slicc-browser', 'li[data-id=tab-docs] .window').focus()
   );
   await page.press('Enter');
+  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.focused'));
+  assert.equal(
+    await page.evaluate(() =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.address .url').textContent.trim()
+    ),
+    'api.example.com/docs/v2/forecast'
+  );
+  assert.equal(
+    await page.evaluate(
+      () => window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.driving').dataset.driving
+    ),
+    'none'
+  );
+  await page.evaluate(() =>
+    window.$('slicc-app', 'slicc-dock', 'slicc-browser', '[data-action=open-tab]').click()
+  );
   await page.until(() => window.model.browser.active() === 'tab-docs');
+  await page.evaluate(() =>
+    window.$('slicc-app', 'slicc-dock', 'slicc-browser', '[data-action=all-tabs]').click()
+  );
   await page.until(
     () =>
       window
         .$('slicc-app', 'slicc-dock', 'slicc-browser', 'li[data-id=tab-docs] .window')
-        .getAttribute('aria-current') === 'true'
+        ?.getAttribute('aria-current') === 'true'
   );
-  await page.evaluate(() =>
-    window.$('slicc-app', 'slicc-dock', 'slicc-browser', 'li[data-id=tab-pull] .window').click()
-  );
-  await page.until(() => window.model.browser.active() === 'tab-pull');
 
   await page.press('6', 'alt');
   await page.until(() => /slicc-browser > button$/.test(window.focused()));
@@ -1416,7 +1431,7 @@ test('the browser lists its windows with thumbnails, and follows agents', async 
         .closest('li')
         .getAttribute('data-id')
     ),
-    'tab-pull'
+    'tab-docs'
   );
   assert.doesNotMatch(await page.evaluate(() => window.focused()), /sp-textfield/);
   await page.evaluate(() =>
@@ -1481,6 +1496,72 @@ test('the browser lists its windows with thumbnails, and follows agents', async 
       ).gridTemplateColumns.split(' ').length > 1
   );
   await shot(page, 'browser-grid-light');
+  assert.deepEqual(page.errors, []);
+});
+
+test('the browser follows a driven tab live, lists its actions and stops the agent', async (t) => {
+  const page = await open(t, { browser: 'driving' });
+  await page.evaluate(() => {
+    window.inBrowser = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-browser', selector);
+    window.app.show('browser');
+  });
+  await page.until(() => window.inBrowser('figure')?.dataset.view === 'live');
+  assert.equal(
+    await page.evaluate(() => window.inBrowser('.driving swc-status-light').textContent.trim()),
+    'harbor is using this tab'
+  );
+  assert.equal(
+    await page.evaluate(() => window.inBrowser('.address .url').textContent.trim()),
+    'localhost:8787/forecast'
+  );
+  await page.until(() => window.inBrowser('.actions.last li')?.dataset.status === 'running');
+  assert.match(
+    await page.evaluate(() => window.inBrowser('details summary').textContent.trim()),
+    /^Recent actions \(\d+\)$/
+  );
+  assert.equal(
+    await page.evaluate(() => window.inBrowser('li[data-kind=request]').title),
+    'GET https://api.example.com/v2/tides'
+  );
+  await shot(page, 'browser-driving-light');
+
+  await page.evaluate(() => window.inBrowser('.driving [data-action=stop-agent]').click());
+  await page.until(() => window.inBrowser('.driving')?.dataset.driving === 'none');
+  await page.until(() => window.inBrowser('.actions.last li')?.dataset.status === 'failed');
+  assert.equal(
+    await page.evaluate(() => window.inBrowser('.actions.last .failure').textContent.trim()),
+    'Stopped'
+  );
+
+  await page.evaluate(() => window.inBrowser('[data-action=all-tabs]').click());
+  await page.until(
+    () => !!window.inBrowser('li[data-id=tab-pull][data-controlled] [data-action=stop-agent]')
+  );
+  await page.evaluate(() => window.dock().close('browser'));
+  await page.until(() => !!window.$('slicc-app', '.rail .badged .dot[data-driven]'));
+  assert.equal(
+    await page.evaluate(() =>
+      window.$('slicc-app', '.rail [data-surface=browser]').getAttribute('accessible-label')
+    ),
+    'Open Browser, a tab is in use'
+  );
+  await page.evaluate(() => window.model.agent.stop('scoop-otter'));
+  await page.until(() => !window.$('slicc-app', '.rail .badged .dot[data-driven]'));
+  assert.deepEqual(page.errors, []);
+});
+
+test('the browser says when browser control isn’t connected', async (t) => {
+  const page = await open(t, { browser: 'off' });
+  await page.evaluate(() => window.app.show('browser'));
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.offline[data-browser=none]')
+  );
+  assert.ok(
+    await page.evaluate(
+      () => !!window.$('slicc-app', 'slicc-dock', 'slicc-browser', '[data-action=copy-command]')
+    )
+  );
+  await shot(page, 'browser-off-light');
   assert.deepEqual(page.errors, []);
 });
 
