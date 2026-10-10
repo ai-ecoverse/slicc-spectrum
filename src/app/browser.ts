@@ -150,7 +150,7 @@ export class SliccBrowser extends ModelElement {
   #focus: string | null = null;
   #driven = new Set<string>();
   #pulse = new Set<string>();
-  #watching: { tabId: string; stop: () => void } | null = null;
+  #watching: { tabId: string; size: string; stop: () => void } | null = null;
   #ticker: ReturnType<typeof setInterval> | null = null;
   #width = 0;
   #copied: 'url' | 'failed' | null = null;
@@ -577,6 +577,7 @@ export class SliccBrowser extends ModelElement {
       () => resize.disconnect(),
       () => document.removeEventListener('visibilitychange', visibility),
       () => this.#settle(null),
+      () => this.#still(),
     ];
   }
 
@@ -685,27 +686,31 @@ export class SliccBrowser extends ModelElement {
     this.#settle(visible && tab?.controlled && this.model?.browser.watch ? tab.id : null);
     if (visible && tab && !this.#ticker)
       this.#ticker = setInterval(() => this.requestUpdate(), 1000);
-    if (!(visible && tab) && this.#ticker) {
-      clearInterval(this.#ticker);
-      this.#ticker = null;
-    }
+    if (!(visible && tab)) this.#still();
     const list = this.renderRoot.querySelector('.actions:not(.last)');
     const count = list?.childElementCount ?? 0;
     if (list && count !== this.#count) list.scrollTop = list.scrollHeight;
     this.#count = count;
   }
 
+  #still(): void {
+    if (this.#ticker) clearInterval(this.#ticker);
+    this.#ticker = null;
+  }
+
   #settle(id: string | null): void {
-    if (this.#watching?.tabId === id) return;
-    this.#watching?.stop();
-    this.#watching = null;
-    if (!id) return;
-    const box = this.renderRoot.querySelector('.frame')?.getBoundingClientRect();
+    const box = id ? this.renderRoot.querySelector('.frame')?.getBoundingClientRect() : undefined;
     const size = box?.width
       ? { width: Math.round(box.width), height: Math.round(box.height) }
       : undefined;
+    const key = size ? `${size.width}x${size.height}` : '';
+    if (this.#watching?.tabId === id && this.#watching?.size === key) return;
+    this.#watching?.stop();
+    this.#watching = null;
+    if (!id) return;
     this.#watching = {
       tabId: id,
+      size: key,
       stop: (this.model as SliccModel).browser.watch?.(id, size) as () => void,
     };
   }
@@ -922,7 +927,7 @@ export class SliccBrowser extends ModelElement {
         <div class="bar">
           <swc-action-button size="s" quiet data-action="all-tabs" @click=${() => {
             this.#show(null);
-            this.focusOn('.window');
+            void this.updateComplete.then(() => this.focusOn('.window'));
           }}><swc-icon-chevron-left slot="icon"></swc-icon-chevron-left>All tabs (${tabs.length})</swc-action-button>
           ${wide ? nothing : this.#picker(tabs, tab)}
         </div>
