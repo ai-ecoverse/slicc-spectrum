@@ -1,6 +1,6 @@
 import type { SliccModel } from '../model/types.ts';
 import { DummyAgent } from './agent.ts';
-import { DummyBrowser } from './browser.ts';
+import { type BrowserScenario, browserHistory, DummyBrowser, drive } from './browser.ts';
 import { type ChangesScenario, DummyChanges } from './changes.ts';
 import { clock } from './clock.ts';
 import * as extras from './extras.ts';
@@ -32,9 +32,11 @@ export interface DummyOptions {
   tailnet?: TailnetScenario;
   changes?: ChangesScenario;
   notices?: NoticeScenario | 'off';
+  browser?: BrowserScenario;
 }
 
 export interface DummyModel extends SliccModel {
+  browser: DummyBrowser;
   updates: DummyUpdates;
   network?: DummyNetwork;
   notices?: DummyNotices;
@@ -51,6 +53,7 @@ export function createDummyModel({
   tailnet,
   changes = 'files',
   notices = 'off',
+  browser: scenario = 'idle',
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
   const mount =
@@ -59,7 +62,10 @@ export function createDummyModel({
       : { scenario: mounts, point: fixtures.mountPoint, files: fixtures.mounted };
   const pending = changes === 'git' ? [...fixtures.pending, fixtures.skillEdit] : fixtures.pending;
   const files = new DummyFiles(fixtures.files, fixtures.directories, pending, time, mount);
-  const browser = new DummyBrowser(fixtures.tabs, time);
+  const browser = new DummyBrowser(scenario === 'off' ? [] : fixtures.tabs, time, {
+    history: browserHistory(scenario),
+    controlled: scenario === 'driving' ? ['tab-preview', 'tab-pull'] : [],
+  });
   const agent = new DummyAgent(
     fixtures.agents,
     fixtures.conversations,
@@ -68,6 +74,12 @@ export function createDummyModel({
     fixtures.queues,
     extras.frozen
   );
+  const stop = agent.stop.bind(agent);
+  agent.stop = (agentId: string) => {
+    stop(agentId);
+    browser.release(agentId);
+  };
+  if (scenario === 'driving') void browser.run(drive);
   const base = {
     agent,
     files,

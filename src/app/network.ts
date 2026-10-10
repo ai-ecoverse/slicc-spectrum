@@ -24,8 +24,9 @@ import { ModelElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import { failure } from './files.ts';
 import { ago } from './freezer.ts';
+import { command, copyText, reach, reachStyles } from './reach.ts';
 
-export const command = 'npx @ai-ecoverse/slicc-node';
+export { command } from './reach.ts';
 
 export const networkHealth: Record<
   NetworkStatus['health'],
@@ -155,6 +156,7 @@ export class SliccNetwork extends ModelElement {
 
   static styles = [
     unsafeCSS(link),
+    reachStyles,
     css`
       :host {
         display: block;
@@ -270,23 +272,6 @@ export class SliccNetwork extends ModelElement {
         width: 240px;
         max-width: 100%;
       }
-      .command {
-        display: flex;
-        align-items: center;
-        gap: var(--swc-spacing-100);
-        padding: var(--swc-spacing-75) var(--swc-spacing-75) var(--swc-spacing-75) var(--swc-spacing-200);
-        border-radius: var(--swc-corner-radius-medium-default);
-        background: var(--swc-background-layer-1-color);
-      }
-      code {
-        flex: 1;
-        min-width: 0;
-        overflow-wrap: anywhere;
-        font-family: var(--swc-code-font-family-stack);
-        font-size: var(--swc-font-size-75);
-        color: var(--swc-code-color);
-        user-select: all;
-      }
       .swc-Link {
         font-size: inherit;
       }
@@ -376,14 +361,9 @@ export class SliccNetwork extends ModelElement {
   }
 
   async copy(): Promise<void> {
-    try {
-      await globalThis.navigator.clipboard.writeText(command);
-      this.copied = true;
-      this.uncopied = false;
-    } catch {
-      this.copied = false;
-      this.uncopied = true;
-    }
+    const done = await copyText(command);
+    this.copied = done;
+    this.uncopied = !done;
   }
 
   async #tailnet(action: string, run: () => Promise<void> | undefined): Promise<void> {
@@ -591,24 +571,14 @@ export class SliccNetwork extends ModelElement {
   }
 
   #ways(status: NetworkStatus): TemplateResult {
-    return html`<p>Install the SLICC Chrome extension, or run slicc-node on this computer. Either one reaches every site.</p>
-      ${
-        status.extensionUrl
-          ? html`<p><a class="swc-Link" href=${status.extensionUrl} target="_blank" rel="noopener noreferrer" data-action="install-extension">Install the Chrome extension</a></p>`
-          : nothing
-      }
-      <p>To run slicc-node, enter this in a terminal:</p>
-      <div class="command">
-        <code>${command}</code>
-        <swc-action-button size="s" quiet data-action="copy-command" accessible-label=${this.copied ? 'Copied' : 'Copy command'} @click=${() => this.copy()}>
-          <swc-icon-copy slot="icon"></swc-icon-copy>${this.copied ? 'Copied' : 'Copy'}
-        </swc-action-button>
-      </div>
-      ${
-        this.uncopied
-          ? html`<div class="error" role="alert" data-error="copy"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>Couldn’t copy. Select the command and copy it.</span></div>`
-          : nothing
-      }`;
+    return reach({
+      intro:
+        'Install the SLICC Chrome extension, or run slicc-node on this computer. Either one reaches every site.',
+      extensionUrl: status.extensionUrl,
+      copied: this.copied,
+      uncopied: this.uncopied,
+      copy: () => this.copy(),
+    });
   }
 
   #whole(status: NetworkStatus): TemplateResult {

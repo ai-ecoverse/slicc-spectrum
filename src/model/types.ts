@@ -353,11 +353,51 @@ export interface BrowserTab {
   url: string;
   status: TabStatus;
   agentId: string | null;
+  controlled?: boolean;
+  favicon?: string;
+}
+
+export type BrowserActionKind =
+  | 'open'
+  | 'goto'
+  | 'back'
+  | 'reload'
+  | 'close'
+  | 'select'
+  | 'snapshot'
+  | 'screenshot'
+  | 'eval'
+  | 'click'
+  | 'fill'
+  | 'type'
+  | 'press'
+  | 'scroll'
+  | 'request';
+
+export interface BrowserAction {
+  id: string;
+  tabId: string | null;
+  agentId: string | null;
+  kind: BrowserActionKind;
+  target?: string;
+  value?: string;
+  length?: number;
+  status: 'running' | 'done' | 'failed';
+  error?: string;
+  at: number;
+}
+
+export interface BrowserFrame {
+  tabId: string;
+  src: string;
+  at: number;
 }
 
 export interface BrowserEvents {
   tabs: readonly BrowserTab[];
   active: string | null;
+  action?: BrowserAction;
+  frame?: BrowserFrame;
 }
 
 export interface BrowserPort extends Subscribable<BrowserEvents> {
@@ -368,6 +408,8 @@ export interface BrowserPort extends Subscribable<BrowserEvents> {
   navigate(id: string, url: string): void;
   close(id: string): void;
   screenshot(id: string): Promise<string>;
+  actions?(tabId?: string): readonly BrowserAction[];
+  watch?(tabId: string, size?: { width: number; height: number }): () => void;
 }
 
 export type ColorScheme = 'light' | 'dark' | 'system';

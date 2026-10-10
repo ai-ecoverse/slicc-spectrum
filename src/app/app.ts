@@ -227,6 +227,17 @@ export class SliccApp extends ThemedElement {
       inset-inline-end: calc(-1 * var(--swc-spacing-75));
       pointer-events: none;
     }
+    .badged .dot {
+      position: absolute;
+      inset-block-start: var(--swc-spacing-75);
+      inset-inline-end: var(--swc-spacing-75);
+      width: var(--swc-spacing-100);
+      height: var(--swc-spacing-100);
+      border-radius: 50%;
+      background: var(--swc-informative-visual-color);
+      box-shadow: 0 0 0 var(--swc-border-width-200) var(--swc-background-layer-1-color);
+      pointer-events: none;
+    }
     header swc-status-light {
       align-self: center;
     }
@@ -327,6 +338,7 @@ export class SliccApp extends ThemedElement {
         update();
       }),
       model.sprinkles.on('sprinkles', update),
+      model.browser.on('tabs', update),
       this.dips.on('change', update),
       ...(model.updates ? [model.updates.on('items', update)] : []),
       ...(model.network ? [model.network.on('network', update)] : []),
@@ -608,12 +620,20 @@ export class SliccApp extends ThemedElement {
 
   #railButton(item: Surface, side: string): TemplateResult {
     const changes = item.id === 'changes' ? this.#changes() : 0;
-    const label = changes ? `Open ${item.title}, ${changeCount(changes)}` : `Open ${item.title}`;
+    const driven =
+      item.id === 'browser' && !!this.model?.browser.list().some((tab) => tab.controlled);
+    const label = changes
+      ? `Open ${item.title}, ${changeCount(changes)}`
+      : driven
+        ? `Open ${item.title}, a tab is in use`
+        : `Open ${item.title}`;
     const button = staticHtml`<swc-action-button id=${`rail-${item.id}`} quiet size="m" accessible-label=${label} data-surface=${item.id} @click=${() => this.show(item.id)}>${railIcon(item.icon)}</swc-action-button>`;
     const tooltip = html`<swc-tooltip for=${`rail-${item.id}`} placement=${{ left: 'end', right: 'start', bottom: 'top' }[side]}>${item.title}</swc-tooltip>`;
     return changes
       ? html`<span class="badged">${button}<swc-badge size="s" variant="neutral" aria-hidden="true">${changes}</swc-badge></span>${tooltip}`
-      : html`${button}${tooltip}`;
+      : driven
+        ? html`<span class="badged">${button}<span class="dot" data-driven aria-hidden="true"></span></span>${tooltip}`
+        : html`${button}${tooltip}`;
   }
 
   #changes(): number {
