@@ -220,8 +220,10 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
     const device =
       exit?.kind === 'link' ? this.#links?.devices.find((item) => item.id === exit.id) : undefined;
     const routed = this.#withTailnet(linked);
-    if (device?.state !== 'connected') return routed;
-    return { ...routed, health: 'ok', detail: `${device.name} carries the internet traffic.` };
+    if (!device) return routed;
+    if (device.state !== 'connected') return { ...routed, health: 'failing', detail: `Internet traffic waits for ${device.name}.` };
+    const { detail: _detail, ...rest } = routed;
+    return { ...rest, health: 'ok' };
   }
 
   #withTailnet(status: NetworkStatus): NetworkStatus {
