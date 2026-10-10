@@ -9,6 +9,8 @@ export type { NetworkScenario, TailnetScenario } from './dummy/network.ts';
 export { DummyNetwork, networkFixtures, tailnetFixtures } from './dummy/network.ts';
 export type { NoticeScenario } from './dummy/notices.ts';
 export { DummyNotices, noticeFixtures } from './dummy/notices.ts';
+export type { TabsScenario } from './dummy/tabs.ts';
+export { DummyTabs, tabsFixtures } from './dummy/tabs.ts';
 export type {
   DummyUpdatesOptions,
   PackageConfirm,

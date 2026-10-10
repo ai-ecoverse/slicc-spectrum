@@ -12,6 +12,7 @@ import { DummyNetwork, type NetworkScenario, type TailnetScenario } from './netw
 import { DummyNotices, type NoticeScenario } from './notices.ts';
 import { DummySettings } from './settings.ts';
 import { DummySprinkles } from './sprinkles.ts';
+import { DummyTabs, type TabsScenario } from './tabs.ts';
 import { DummyTerminals } from './terminals.ts';
 import { DummyTray } from './tray.ts';
 import {
@@ -32,6 +33,7 @@ export interface DummyOptions {
   tailnet?: TailnetScenario;
   changes?: ChangesScenario;
   notices?: NoticeScenario | 'off';
+  tabs?: TabsScenario | 'off';
   browser?: BrowserScenario;
 }
 
@@ -40,6 +42,7 @@ export interface DummyModel extends SliccModel {
   updates: DummyUpdates;
   network?: DummyNetwork;
   notices?: DummyNotices;
+  tabs?: DummyTabs;
 }
 
 export function createDummyModel({
@@ -53,6 +56,7 @@ export function createDummyModel({
   tailnet,
   changes = 'files',
   notices = 'off',
+  tabs = 'off',
   browser: scenario = 'idle',
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
@@ -109,6 +113,7 @@ export function createDummyModel({
     ...(network === 'off' ? {} : { network: new DummyNetwork(network, time, tailnet) }),
     ...(changes === 'files' ? {} : { changes: new DummyChanges(files, changes === 'git') }),
     ...(notices === 'off' ? {} : { notices: new DummyNotices(notices, time) }),
+    ...(tabs === 'off' ? {} : { tabs: new DummyTabs(tabs, time) }),
   };
   return { ...base, monitor: new DummyMonitor(base) };
 }

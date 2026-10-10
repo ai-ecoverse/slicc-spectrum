@@ -33,6 +33,7 @@ import {
   surfaces,
 } from './panels.ts';
 import { installProperties } from './properties.ts';
+import { alone, tabsLight } from './tabs.ts';
 import { TerminalPanels } from './terminals.ts';
 import { theme } from './theme.ts';
 import { UpdateVisibility, updatesStatus } from './updates.ts';
@@ -158,6 +159,33 @@ export class SliccApp extends ThemedElement {
       display: flex;
       flex-direction: column;
       height: 100%;
+    }
+    .shell[data-alone] header > :not(.brand),
+    .shell[data-alone] main,
+    .shell[data-alone] .rail.bottom {
+      display: none;
+    }
+    .alone {
+      display: flex;
+      flex: 1;
+      align-items: center;
+      justify-content: center;
+      padding: var(--swc-spacing-400);
+      text-align: center;
+      font-size: var(--swc-font-size-300);
+      color: var(--swc-neutral-subdued-content-color-default);
+    }
+    .alone p {
+      margin: 0;
+    }
+    header .tabs {
+      display: inline-flex;
+      align-self: center;
+      padding-inline: var(--swc-spacing-75);
+      border-radius: var(--swc-corner-radius-small-default);
+    }
+    header .tabs:focus-visible {
+      outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
     }
     main {
       display: grid;
@@ -342,6 +370,7 @@ export class SliccApp extends ThemedElement {
       this.dips.on('change', update),
       ...(model.updates ? [model.updates.on('items', update)] : []),
       ...(model.network ? [model.network.on('network', update)] : []),
+      ...(model.tabs ? [model.tabs.on('tabs', update)] : []),
     ];
   }
 
@@ -809,6 +838,16 @@ export class SliccApp extends ThemedElement {
       <swc-tooltip for="updates" placement="bottom">${text}</swc-tooltip>`;
   }
 
+  #tabsIndicator(): TemplateResult | typeof nothing {
+    const state = this.model?.tabs?.state();
+    const light = tabsLight(state);
+    if (!state || !light) return nothing;
+    return html`<span id="tabs" class="tabs" tabindex="0" role="img" data-tabs data-role=${state.role} ?data-stalled=${state.stalled} data-skew=${state.skew ?? nothing} aria-label=${`${light.text}. ${light.tooltip}`}>
+        <swc-status-light size="s" variant=${light.variant}>${this.screen === 'phone' ? nothing : light.text}</swc-status-light>
+      </span>
+      <swc-tooltip for="tabs" placement="bottom">${light.tooltip}</swc-tooltip>`;
+  }
+
   #networkIndicator(): TemplateResult | typeof nothing {
     const port = this.model?.network;
     if (!port || !this.#offers('network')) return nothing;
@@ -837,8 +876,9 @@ export class SliccApp extends ThemedElement {
     const color = this.color;
     const cones = (this.model?.agent.list() ?? []).filter((agent) => agent.kind === 'cone');
     const rails = this.#rails();
+    const lonely = this.model?.tabs?.state().role === 'alone';
     return html`<div class=${`swc-theme swc-theme--sizeM swc-theme--${color}`}><sp-theme system="spectrum-two" color=${color} scale="medium">
-      <div class="shell">
+      <div class="shell" ?data-alone=${lonely}>
         <header>
           <span class="brand">slicc</span>
           ${
@@ -868,6 +908,7 @@ export class SliccApp extends ThemedElement {
           }
           <span class="spacer"></span>
           <div class="status" role="status"><slot name="status"></slot></div>
+          ${this.#tabsIndicator()}
           ${this.#updatesIndicator()}
           ${this.#networkIndicator()}
           ${this.#offers('chat') ? html`<slicc-tray .model=${this.model} ?compact=${this.screen === 'phone'}></slicc-tray>` : nothing}
@@ -897,6 +938,7 @@ export class SliccApp extends ThemedElement {
           }
           ${this.#headerButton('theme', color === 'dark' ? 'Switch to light theme' : 'Switch to dark theme', html`<swc-icon-contrast slot="icon"></swc-icon-contrast>`, () => this.toggleColor())}
         </header>
+        ${lonely ? html`<div class="alone" role="status" data-tabs="alone"><p>${alone}</p></div>` : nothing}
         <main>
           ${rails.left}
           <slicc-dock empty-text="All panels are closed. Open one from a rail or View." @layout-change=${this.#save}

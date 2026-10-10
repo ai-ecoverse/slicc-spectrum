@@ -6,6 +6,7 @@ import { css, html, nothing, type TemplateResult } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import type { Notice, NoticesPort, SliccModel } from '../model/types.ts';
 import { ModelElement } from './base.ts';
+import { tabsBanner } from './tabs.ts';
 
 export class SliccNotices extends ModelElement {
   static properties = {
@@ -103,8 +104,10 @@ export class SliccNotices extends ModelElement {
       this.pending = new Map();
       this.failures = new Map();
     }
-    if (!port) return [];
+    const tabs = model.tabs ? [model.tabs.on('tabs', () => this.requestUpdate())] : [];
+    if (!port) return tabs;
     return [
+      ...tabs,
       port.on('notices', (notices) => {
         const ids = new Set(notices.map((notice) => notice.id));
         this.dismissed = new Set([...this.dismissed].filter((id) => ids.has(id)));
@@ -163,11 +166,29 @@ export class SliccNotices extends ModelElement {
     </div>`;
   }
 
+  #tabs(): TemplateResult | typeof nothing {
+    const tabs = this.model?.tabs;
+    const banner = tabsBanner(tabs?.state());
+    if (!tabs || !banner) return nothing;
+    return html`<div class="notice" role="status" data-tabs-notice=${banner.kind} data-skew=${banner.skew ?? nothing} data-tone="warning">
+      <swc-icon-alert-triangle></swc-icon-alert-triangle>
+      <div class="text">
+        <p>${banner.text}</p>
+        ${
+          banner.reload
+            ? html`<div class="actions"><swc-button size="s" variant="secondary" fill-style="outline" data-action="reload" @click=${() => tabs.reload()}>Reload</swc-button></div>`
+            : nothing
+        }
+      </div>
+    </div>`;
+  }
+
   render(): TemplateResult | typeof nothing {
     const port: NoticesPort | undefined = this.model?.notices;
     const notices = (port?.list() ?? []).filter((notice) => !this.dismissed.has(notice.id));
-    if (!notices.length) return nothing;
-    return html`<div class="notices">${repeat(
+    const tabs = this.#tabs();
+    if (!notices.length && tabs === nothing) return nothing;
+    return html`<div class="notices">${tabs}${repeat(
       notices,
       (notice) => notice.id,
       (notice) => this.#notice(notice)
