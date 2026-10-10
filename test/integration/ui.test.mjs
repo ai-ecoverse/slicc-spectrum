@@ -1263,6 +1263,13 @@ test('terminals run the fake shell, each in its own panel', async (t) => {
     ),
     /\/workspace\/harbor New terminal/
   );
+  await page.evaluate(() => window.terminal().focus());
+  await page.type('cd src');
+  await page.press('Enter');
+  await page.until(
+    () =>
+      window.terminal().shadowRoot.querySelector('.cwd')?.textContent === '/workspace/harbor/src'
+  );
 
   await page.evaluate(() =>
     window.terminal().shadowRoot.querySelector('swc-action-button').click()

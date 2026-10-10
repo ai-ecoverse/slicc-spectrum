@@ -1,5 +1,5 @@
 import type { TerminalBackend } from '../backend.ts';
-import { kernelBackend, type TerminalKernel } from '../kernel-backend.ts';
+import { cwdPromptCommand, kernelBackend, type TerminalKernel } from '../kernel-backend.ts';
 import { Emitter } from '../model/emitter.ts';
 import type { TerminalEvents, TerminalInfo, TerminalPort } from '../model/types.ts';
 
@@ -60,6 +60,13 @@ export class KernelTerminals extends Emitter<TerminalEvents> implements Terminal
     this.emit('terminals', this.list());
   }
 
+  #move(id: string, cwd: string): void {
+    const terminal = this.#terminals.find((candidate) => candidate.id === id);
+    if (!terminal || terminal.cwd === cwd) return;
+    terminal.cwd = cwd;
+    this.emit('terminals', this.list());
+  }
+
   backend(id: string): TerminalBackend {
     const terminal = this.#terminals.find((candidate) => candidate.id === id);
     if (!terminal) throw new Error(`No terminal ${id}`);
@@ -68,7 +75,8 @@ export class KernelTerminals extends Emitter<TerminalEvents> implements Terminal
       backend = kernelBackend(this.#kernel, {
         argv: this.#argv,
         cwd: terminal.cwd,
-        env: this.#env,
+        env: { PROMPT_COMMAND: cwdPromptCommand, ...this.#env },
+        onCwd: (cwd) => this.#move(id, cwd),
       });
       this.#backends.set(id, backend);
     }
