@@ -449,6 +449,7 @@ export class SliccNetwork extends ModelElement {
   protected subscribe(model: SliccModel): Array<() => void> {
     this.error = '';
     this.tailnetError = '';
+    this.linksError = '';
     return model.network ? [model.network.on('network', () => this.requestUpdate())] : [];
   }
 
