@@ -48,12 +48,19 @@ export class DummyTerminals extends Emitter<TerminalEvents> implements TerminalP
     this.emit('terminals', this.list());
   }
 
+  #move(id: string, cwd: string): void {
+    const terminal = this.#terminals.find((candidate) => candidate.id === id);
+    if (!terminal || terminal.cwd === cwd) return;
+    terminal.cwd = cwd;
+    this.emit('terminals', this.list());
+  }
+
   backend(id: string): TerminalBackend {
     const terminal = this.#terminals.find((candidate) => candidate.id === id);
     if (!terminal) throw new Error(`No terminal ${id}`);
     let backend = this.#backends.get(id);
     if (!backend) {
-      backend = shellBackend(this.#files, terminal.cwd, this.#clock);
+      backend = shellBackend(this.#files, terminal.cwd, this.#clock, (cwd) => this.#move(id, cwd));
       this.#backends.set(id, backend);
     }
     return backend;

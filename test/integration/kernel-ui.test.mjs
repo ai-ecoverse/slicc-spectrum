@@ -103,6 +103,9 @@ test('moving or floating a terminal panel keeps its bash session', async (t) => 
   const page = await chrome.page(t);
   await boot(page);
   await run(page, 'mkdir -p /tmp; cd /tmp; X=1; echo "set $((40 + 2))"', 'set 42');
+  await page.until(
+    () => window.terminal().shadowRoot.querySelector('.cwd')?.textContent === '/tmp'
+  );
   const lines = () => window.screen().split('\n');
 
   await page.evaluate(() => {
