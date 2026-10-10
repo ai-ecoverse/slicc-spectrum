@@ -649,13 +649,12 @@ export class SliccNetwork extends ModelElement {
     const exit = status.exit;
     if (!exit) return nothing;
     if (exit.kind === 'tailnet') {
+      if (status.route === 'tailnet') return nothing;
       const name = status.tailnet?.exitNodes?.find((node) => node.id === exit.node)?.name;
       return html`<p data-exit="node">${name ? `Internet through the Tailscale exit node ${name}.` : 'Internet through an automatic Tailscale exit node.'}</p>`;
     }
     const device = status.links?.devices.find((item) => item.id === exit.id);
-    if (device?.state === 'connected') {
-      return html`<p data-exit="device">Internet through the linked device ${device.name}.</p>`;
-    }
+    if (device?.state === 'connected') return nothing;
     const who = device ? `${device.name} is ${device.state}` : 'The linked device isn’t connected';
     return html`<div class="warning" data-exit="device" data-held><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${who}. Internet traffic waits until it’s connected.</span></div>`;
   }

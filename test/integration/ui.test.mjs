@@ -3490,18 +3490,13 @@ test('linked devices pick the exit, unlink, and retry local network access', asy
       return [
         shadow.querySelector('section[data-links]').dataset.links,
         shadow.querySelector('sp-picker[data-action=exit]').value,
-        shadow.querySelector('[data-exit=device]').textContent.trim(),
+        shadow.querySelector('[data-route]').dataset.route,
+        !!shadow.querySelector('[data-exit]'),
         shadow.querySelector('[data-device=link-quay] [data-exit-badge]').textContent.trim(),
         !!shadow.querySelector('[data-action=exit-node]'),
       ];
     }),
-    [
-      'linked',
-      'link:link-quay',
-      'Internet through the linked device slicc on quay-studio.',
-      'Exit',
-      false,
-    ]
+    ['linked', 'link:link-quay', 'link', false, 'Exit', false]
   );
   await shot(page, 'links-exit');
   await page.evaluate(() => {
@@ -3509,10 +3504,15 @@ test('linked devices pick the exit, unlink, and retry local network access', asy
     picker.value = 'tailnet:auto';
     picker.dispatchEvent(new Event('change'));
   });
-  await page.until(() => window.netPanel().querySelector('[data-exit]')?.dataset.exit === 'node');
-  assert.equal(
-    await page.evaluate(() => window.netPanel().querySelector('[data-exit]').textContent.trim()),
-    'Internet through an automatic Tailscale exit node.'
+  await page.until(
+    () => window.netPanel().querySelector('[data-route]').dataset.route === 'tailnet'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.netPanel().querySelector('[data-route]').textContent.trim(),
+      !!window.netPanel().querySelector('[data-exit]'),
+    ]),
+    ['Through the Tailscale exit node keel-router, which reaches every site.', false]
   );
   await page.evaluate(() =>
     window.netPanel().querySelector('[data-device=link-dock] [data-action=unlink]').click()
