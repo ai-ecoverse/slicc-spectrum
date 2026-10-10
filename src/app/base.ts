@@ -26,11 +26,15 @@ export class ModelElement extends LitElement {
   }
 
   protected focusOn(...selectors: string[]): void {
+    this.focusWith({}, ...selectors);
+  }
+
+  protected focusWith(options: FocusOptions, ...selectors: string[]): void {
     const focus = () =>
       selectors
         .map((selector) => this.renderRoot.querySelector<HTMLElement>(selector))
         .find(Boolean)
-        ?.focus();
+        ?.focus(options);
     if (this.hasUpdated) focus();
     else void this.updateComplete.then(focus);
   }

@@ -271,7 +271,7 @@ export class SliccBrowser extends ModelElement {
         width: 100%;
         height: 100%;
         object-fit: cover;
-        object-position: top;
+        object-position: left top;
       }
       .meta {
         display: flex;
@@ -584,7 +584,6 @@ export class SliccBrowser extends ModelElement {
   focus(): void {
     void this.updateComplete.then(() =>
       this.focusOn(
-        '[data-action="stop-agent"]',
         '[data-action="all-tabs"]',
         '.window[aria-current="true"]',
         '.window',
@@ -925,9 +924,11 @@ export class SliccBrowser extends ModelElement {
       ${wide ? this.#list(tabs, tab) : nothing}
       <section class="detail" aria-label=${tab.title}>
         <div class="bar">
-          <swc-action-button size="s" quiet data-action="all-tabs" @click=${() => {
+          <swc-action-button size="s" quiet data-action="all-tabs" @click=${(event: MouseEvent) => {
             this.#show(null);
-            void this.updateComplete.then(() => this.focusOn('.window'));
+            void this.updateComplete.then(() =>
+              this.focusWith({ focusVisible: event.detail === 0 }, '.window')
+            );
           }}><swc-icon-chevron-left slot="icon"></swc-icon-chevron-left>All tabs (${tabs.length})</swc-action-button>
           ${wide ? nothing : this.#picker(tabs, tab)}
         </div>
