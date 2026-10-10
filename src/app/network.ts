@@ -469,7 +469,11 @@ export class SliccNetwork extends ModelElement {
   }
 
   focus(): void {
-    this.focusWith({ focusVisible: false }, 'sp-picker, swc-button, a, summary, swc-action-button', '.page');
+    this.focusWith(
+      { focusVisible: false },
+      'sp-picker, swc-button, a, summary, swc-action-button',
+      '.page'
+    );
   }
 
   async check(): Promise<void> {
