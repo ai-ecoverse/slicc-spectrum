@@ -1,9 +1,24 @@
 import { Emitter } from '../model/emitter.ts';
-import type { NetworkPort, NetworkStatus, TailnetStatus } from '../model/types.ts';
+import type {
+  LinkedDevice,
+  NetworkExit,
+  NetworkLinks,
+  NetworkPort,
+  NetworkStatus,
+  TailnetStatus,
+} from '../model/types.ts';
 import type { Clock } from './clock.ts';
 
 export type NetworkScenario = 'ok' | 'limited' | 'failing';
 export type TailnetScenario = 'off' | 'needs-login' | 'running' | 'failed';
+export type LinksScenario =
+  | 'none'
+  | 'preparing'
+  | 'linked'
+  | 'reconnecting'
+  | 'exit'
+  | 'prompt'
+  | 'denied';
 
 const minute = 60_000;
 
@@ -96,23 +111,115 @@ export function tailnetFixtures(scenario: TailnetScenario): TailnetStatus {
   return { ...base, state: 'off' };
 }
 
+const linkedDevices: readonly LinkedDevice[] = [
+  {
+    id: 'link-quay',
+    name: 'slicc on quay-studio',
+    host: 'quay-studio.slicc.internal',
+    address: '198.18.57.11',
+    mode: 'local',
+    offers: ['net', 'http', 'ssh'],
+    policy: 'every public address, this machine, and the local network',
+    exit: true,
+    state: 'connected',
+  },
+  {
+    id: 'link-pier',
+    name: 'slicc on pier-nuc',
+    host: 'pier-nuc.slicc.internal',
+    address: '198.18.57.12',
+    mode: 'remote',
+    offers: ['net', 'ssh'],
+    policy: 'every public address and the local network',
+    exit: true,
+    state: 'connected',
+  },
+  {
+    id: 'link-dock',
+    name: 'slicc on dock-builder',
+    host: 'dock-builder.slicc.internal',
+    address: '198.18.57.13',
+    mode: 'remote',
+    offers: ['http'],
+    policy: 'this machine',
+    exit: false,
+    state: 'connected',
+  },
+];
+
+export function joinUrl(rotation = 0): string {
+  return `https://join.slicc.example/l/${rotation ? `r${rotation}-` : ''}7Hq2kd9FXw3m`;
+}
+
+export function linksFixtures(
+  scenario: LinksScenario,
+  rotation = 0
+): { links: NetworkLinks; exit: NetworkExit } {
+  const url = joinUrl(rotation);
+  const base = { joinUrl: url, joinCommand: `npx sliccy ${url} follow`, permission: null };
+  if (scenario === 'preparing') {
+    return { links: { ...base, joinUrl: null, joinCommand: null, devices: [] }, exit: null };
+  }
+  if (scenario === 'none') return { links: { ...base, devices: [] }, exit: null };
+  if (scenario === 'prompt') {
+    return { links: { ...base, devices: [], permission: 'prompt' }, exit: null };
+  }
+  if (scenario === 'denied') {
+    return { links: { ...base, devices: [], permission: 'denied' }, exit: null };
+  }
+  if (scenario === 'reconnecting') {
+    const devices = linkedDevices.map((device) =>
+      device.id === 'link-pier' ? { ...device, state: 'reconnecting' as const } : device
+    );
+    return { links: { ...base, devices }, exit: { kind: 'link', id: 'link-pier' } };
+  }
+  return {
+    links: { ...base, devices: linkedDevices },
+    exit: scenario === 'exit' ? { kind: 'link', id: 'link-quay' } : null,
+  };
+}
+
 export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements NetworkPort {
   scenario: NetworkScenario;
   #base: NetworkStatus;
   #status: NetworkStatus;
   #clock: Clock;
   #tailnet: TailnetStatus | undefined;
+  #links: NetworkLinks | undefined;
+  #exit: NetworkExit = null;
+  #rotation = 0;
+  setExit?: (exit: NetworkExit) => Promise<void>;
+  unlink?: (id: string) => Promise<void>;
+  rotateJoinUrl?: () => Promise<void>;
+  retryLinks?: () => Promise<void>;
 
-  constructor(scenario: NetworkScenario, clock: Clock, tailnet?: TailnetScenario) {
+  constructor(
+    scenario: NetworkScenario,
+    clock: Clock,
+    tailnet?: TailnetScenario,
+    links?: LinksScenario
+  ) {
     super();
     this.scenario = scenario;
     this.#clock = clock;
     this.#tailnet = tailnet ? tailnetFixtures(tailnet) : undefined;
+    if (links) {
+      ({ links: this.#links, exit: this.#exit } = linksFixtures(links));
+      this.setExit = (exit) => this.#setExit(exit);
+      this.unlink = (id) => this.#unlink(id);
+      this.rotateJoinUrl = () => this.#rotate();
+      this.retryLinks = () => this.#retry();
+    }
     this.#base = networkFixtures(scenario);
     this.#status = this.#with(this.#base);
   }
 
   #with(status: NetworkStatus): NetworkStatus {
+    const linked = this.#links ? { ...status, links: this.#links, exit: this.#exit } : status;
+    return this.#withTailnet(linked);
+  }
+
+  #withTailnet(status: NetworkStatus): NetworkStatus {
     const tailnet = this.#tailnet;
     if (!tailnet) return status;
     const exit = tailnet.state === 'running' ? tailnet.exitNode : null;
@@ -128,8 +235,62 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
 
   #set(tailnet: TailnetStatus): void {
     this.#tailnet = tailnet;
+    this.#emit();
+  }
+
+  #emit(): void {
     this.#status = this.#with(this.#base);
     this.emit('network', this.#status);
+  }
+
+  setLinks(scenario: LinksScenario): void {
+    ({ links: this.#links, exit: this.#exit } = linksFixtures(scenario, this.#rotation));
+    this.#emit();
+  }
+
+  async #setExit(exit: NetworkExit): Promise<void> {
+    await this.#clock.sleep(4);
+    const links = this.#links as NetworkLinks;
+    if (exit?.kind === 'link') {
+      const device = links.devices.find((item) => item.id === exit.id);
+      if (!device?.exit || device.state !== 'connected') {
+        throw new Error('That device can’t carry internet traffic right now.');
+      }
+    }
+    if (this.#tailnet) {
+      const node = exit?.kind === 'tailnet' ? exit.node : null;
+      await this.setExitNode(node);
+    }
+    this.#exit = exit;
+    this.#emit();
+  }
+
+  async #unlink(id: string): Promise<void> {
+    await this.#clock.sleep(4);
+    const links = this.#links as NetworkLinks;
+    this.#links = { ...links, devices: links.devices.filter((device) => device.id !== id) };
+    if (this.#exit?.kind === 'link' && this.#exit.id === id) this.#exit = null;
+    this.#emit();
+  }
+
+  async #rotate(): Promise<void> {
+    await this.#clock.sleep(4);
+    this.#rotation += 1;
+    const url = joinUrl(this.#rotation);
+    this.#links = {
+      ...(this.#links as NetworkLinks),
+      joinUrl: url,
+      joinCommand: `npx sliccy ${url} follow`,
+    };
+    this.#emit();
+  }
+
+  async #retry(): Promise<void> {
+    await this.#clock.sleep(4);
+    const links = this.#links as NetworkLinks;
+    const devices = links.devices.length ? links.devices : linkedDevices.slice(0, 1);
+    this.#links = { ...links, permission: null, devices };
+    this.#emit();
   }
 
   status(): NetworkStatus {

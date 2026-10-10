@@ -700,7 +700,39 @@ export interface NetworkStatus {
   extensionUrl?: string;
   browser?: BrowserAutomation;
   tailnet?: TailnetStatus;
+  links?: NetworkLinks;
+  exit?: NetworkExit;
 }
+
+export type LinkMode = 'local' | 'remote';
+
+export type LinkOffer = 'net' | 'http' | 'ssh';
+
+export type LinkState = 'connecting' | 'connected' | 'reconnecting';
+
+export interface LinkedDevice {
+  id: string;
+  name: string;
+  host: string;
+  address: string;
+  mode: LinkMode;
+  offers: readonly LinkOffer[];
+  policy?: string;
+  exit: boolean;
+  state: LinkState;
+}
+
+export interface NetworkLinks {
+  joinUrl: string | null;
+  joinCommand: string | null;
+  devices: readonly LinkedDevice[];
+  permission?: 'prompt' | 'denied' | null;
+}
+
+export type NetworkExit =
+  | null
+  | { kind: 'tailnet'; node: string | 'auto' }
+  | { kind: 'link'; id: string };
 
 export type TailnetState = 'off' | 'loading' | 'needs-login' | 'starting' | 'running' | 'failed';
 
@@ -729,6 +761,10 @@ export interface NetworkPort extends Subscribable<{ network: NetworkStatus }> {
   setExitNode?(id: string | 'auto' | null): Promise<void>;
   submitAuthKey?(key: string): Promise<void>;
   logoutTailnet?(): Promise<void>;
+  setExit?(exit: NetworkExit): Promise<void>;
+  unlink?(id: string): Promise<void>;
+  rotateJoinUrl?(): Promise<void>;
+  retryLinks?(): Promise<void>;
 }
 
 export interface NoticeAction {
