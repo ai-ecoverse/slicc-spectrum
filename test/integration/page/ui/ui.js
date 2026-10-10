@@ -14,6 +14,7 @@ const model = createDummyModel({
   tailnet: params.get('tailnet') ?? undefined,
   changes: params.get('changes') ?? 'files',
   notices: params.get('notices') ?? 'off',
+  tabs: params.get('tabs') ?? 'off',
   browser: params.get('browser') ?? 'idle',
 });
 if (params.has('color')) model.settings.update({ color: params.get('color') });

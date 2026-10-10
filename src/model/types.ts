@@ -750,6 +750,21 @@ export interface NoticesPort extends Subscribable<{ notices: readonly Notice[] }
   dismiss(id: string): void;
 }
 
+export type TabRole = 'owner' | 'follower' | 'connecting' | 'alone';
+
+export type TabSkew = 'newer' | 'older';
+
+export interface TabsState {
+  role: TabRole;
+  stalled: boolean;
+  skew: TabSkew | null;
+}
+
+export interface TabsPort extends Subscribable<{ tabs: TabsState }> {
+  state(): TabsState;
+  reload(): void;
+}
+
 export interface SliccModel {
   agent: AgentPort;
   files: FilePort;
@@ -764,4 +779,5 @@ export interface SliccModel {
   network?: NetworkPort;
   changes?: ChangesPort;
   notices?: NoticesPort;
+  tabs?: TabsPort;
 }

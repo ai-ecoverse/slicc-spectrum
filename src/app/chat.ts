@@ -26,6 +26,7 @@ import {
   toolMessage,
   user,
 } from './messages.ts';
+import { connecting } from './tabs.ts';
 
 const navigation = new Set([
   'ArrowUp',
@@ -194,6 +195,7 @@ export class SliccChat extends ThemedElement {
         if (!this.agent) this.#refresh(true);
       }),
       model.agent.on('agents', () => this.requestUpdate()),
+      ...(model.tabs ? [model.tabs.on('tabs', () => this.requestUpdate())] : []),
       model.agent.on('messages', (agentId) => {
         if (agentId === this.#id()) this.#refresh(this.#sent(agentId));
       }),
@@ -420,7 +422,9 @@ export class SliccChat extends ThemedElement {
                   ([key]) => key,
                   ([, item]) => item
                 )}</swc-conversation-thread>`
-              : html`<div class="empty">No messages yet. Ask ${agent?.name ?? 'the agent'} something.</div>`
+              : this.model?.tabs?.state().role === 'connecting'
+                ? html`<div class="empty" data-connecting>${connecting}</div>`
+                : html`<div class="empty">No messages yet. Ask ${agent?.name ?? 'the agent'} something.</div>`
           }
         </div>
       </div>
