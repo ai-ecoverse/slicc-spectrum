@@ -169,7 +169,12 @@ export function packageFixtures(scenario: PackageScenario): readonly PackageItem
   const patch = (id: string, change: Partial<PackageItem>) => {
     items[at(id)] = { ...items[at(id)], ...change };
   };
-  patch('python', { state: 'installed', version: '3.13.1', actions: ['remove'] });
+  patch('python', {
+    state: 'installed',
+    version: '3.13.1',
+    notes: ['1 untested dependency: @harbor/wasi-sockets@0.4.2-1'],
+    actions: ['remove'],
+  });
   patch('uv', { state: 'outdated', version: '0.8.1', actions: ['update', 'remove'] });
   patch('esbuild', {
     state: 'installing',

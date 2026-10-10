@@ -612,6 +612,7 @@ export interface PackageItem {
   description: string;
   commands: readonly string[];
   requires?: readonly string[];
+  notes?: readonly string[];
   state: PackageState;
   version: string | null;
   offered: string | null;
