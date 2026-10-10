@@ -122,6 +122,7 @@ const linkedDevices: readonly LinkedDevice[] = [
     policy: 'every public address, this machine, and the local network',
     exit: true,
     state: 'connected',
+    browsers: [{ runtime: 'quay-studio/chrome', name: 'Chrome' }],
   },
   {
     id: 'link-pier',
@@ -133,6 +134,7 @@ const linkedDevices: readonly LinkedDevice[] = [
     policy: 'every public address and the local network',
     exit: true,
     state: 'connected',
+    browsers: [{ runtime: 'pier-nuc/chrome', name: 'Chrome' }],
   },
   {
     id: 'link-dock',
@@ -219,7 +221,12 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
     const exit = this.#exit;
     const device =
       exit?.kind === 'link' ? this.#links?.devices.find((item) => item.id === exit.id) : undefined;
-    const routed = this.#withTailnet(linked);
+    const browsing = this.#links?.devices.some(
+      (item) => item.state === 'connected' && item.browsers?.length
+    );
+    const routed = this.#withTailnet(
+      browsing && linked.browser?.via === null ? { ...linked, browser: { via: 'link' } } : linked
+    );
     if (!device) return routed;
     return { ...routed, health: device.state === 'connected' ? 'ok' : 'failing', detail: null };
   }

@@ -54,11 +54,26 @@ const routes: Record<NetworkRoute | 'none', string> = {
 export const automation: Record<NonNullable<BrowserAutomation['via']> | 'none', string> = {
   extension: 'Browser automation: through the SLICC extension.',
   proxy: 'Browser automation: through slicc-node.',
+  link: 'Browser automation: through a linked device.',
   none: 'Browser automation: not available. Install the extension or run slicc-node.',
 };
 
 export function automationOf(browser: BrowserAutomation): keyof typeof automation {
   return browser.via ?? 'none';
+}
+
+export function browserLine(browser: BrowserAutomation, links?: NetworkLinks): string {
+  const via = automationOf(browser);
+  if (via !== 'link') return automation[via];
+  const connected = (links?.devices ?? []).filter((device) => device.state === 'connected');
+  const found = connected.flatMap((device) =>
+    (device.browsers ?? []).map((item) => ({ name: item.name, device: device.name }))
+  );
+  if (found.length === 1)
+    return `Browser automation: through ${found[0].name} on the linked device ${found[0].device}.`;
+  if (found.length > 1)
+    return `Browser automation: through ${found.length} browsers on linked devices.`;
+  return automation.link;
 }
 
 export const tailnetStates: Record<
@@ -375,7 +390,8 @@ export class SliccNetwork extends ModelElement {
         color: var(--swc-neutral-subdued-content-color-default);
         overflow-wrap: anywhere;
       }
-      .where code {
+      .where code,
+      [data-browsers] code {
         font-family: var(--swc-code-font-family-stack);
       }
       .key {
@@ -737,6 +753,11 @@ export class SliccNetwork extends ModelElement {
       <span class="where"><code>${device.host}</code><span><code>${device.address}</code> · ${device.mode === 'local' ? 'This computer' : 'Remote'}</span></span>
       ${device.policy ? html`<span class="muted" data-policy>Reaches ${device.policy}.</span>` : nothing}
       ${
+        device.browsers?.length
+          ? html`<span class="muted" data-browsers>${device.browsers.length === 1 ? 'Browser' : 'Browsers'}: ${device.browsers.map((item, index) => html`${index ? ', ' : ''}${item.name} (<code>${item.runtime}</code>)`)}</span>`
+          : nothing
+      }
+      ${
         device.offers.includes('ssh')
           ? html`<div class="command" data-copy="ssh"><code>ssh ${device.host}</code>${this.#copyButton(`ssh:${device.id}`, 'ssh', 'ssh command', `ssh ${device.host}`, 'linksError')}</div>`
           : nothing
@@ -865,7 +886,7 @@ export class SliccNetwork extends ModelElement {
       ${this.#exitPicker(port, status)}
       ${
         status.browser
-          ? html`<p data-browser=${automationOf(status.browser)}>${automation[automationOf(status.browser)]}${status.browser.detail ? html` <span class="detail">${status.browser.detail}</span>` : nothing}</p>`
+          ? html`<p data-browser=${automationOf(status.browser)}>${browserLine(status.browser, status.links)}${status.browser.detail ? html` <span class="detail">${status.browser.detail}</span>` : nothing}</p>`
           : nothing
       }
       ${

@@ -687,7 +687,7 @@ export interface NetworkFailure {
 }
 
 export interface BrowserAutomation {
-  via: 'extension' | 'proxy' | null;
+  via: 'extension' | 'proxy' | 'link' | null;
   detail?: string;
   declined?: boolean;
 }
@@ -710,6 +710,11 @@ export type LinkOffer = 'net' | 'http' | 'ssh';
 
 export type LinkState = 'connecting' | 'connected' | 'reconnecting';
 
+export interface LinkedBrowser {
+  runtime: string;
+  name: string;
+}
+
 export interface LinkedDevice {
   id: string;
   name: string;
@@ -720,6 +725,7 @@ export interface LinkedDevice {
   policy?: string;
   exit: boolean;
   state: LinkState;
+  browsers?: readonly LinkedBrowser[];
 }
 
 export interface NetworkLinks {
