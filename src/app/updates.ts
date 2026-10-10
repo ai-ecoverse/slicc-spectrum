@@ -331,6 +331,14 @@ export class SliccUpdates extends ModelElement {
         content: '·';
         margin-inline: var(--swc-spacing-100);
       }
+      .notes {
+        display: flex;
+        flex-direction: column;
+        color: var(--swc-neutral-subdued-content-color-default);
+        font-size: var(--swc-font-size-75);
+        line-height: var(--swc-line-height-200);
+        overflow-wrap: anywhere;
+      }
       .commands {
         display: flex;
         flex-wrap: wrap;
@@ -589,6 +597,7 @@ export class SliccUpdates extends ModelElement {
       )}</div>
       <p class="description">${item.description}</p>
       ${this.#packageMeta(item, all)}
+      ${item.notes?.length ? html`<p class="notes" data-notes>${item.notes.map((note) => html`<span>${note}</span>`)}</p>` : nothing}
       ${
         item.commands.length
           ? html`<p class="commands"><span class="hidden">Commands: </span>${item.commands.map(
