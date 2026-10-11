@@ -3,7 +3,13 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@spectrum-web-components/alert-dialog/sp-alert-dialog.js';
 import { css, html, type LitElement, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
-import type { Approval, ApprovalDecision, ApprovalEnd, SliccModel } from '../model/types.ts';
+import type {
+  Approval,
+  ApprovalDecision,
+  ApprovalEnd,
+  ApprovalsPort,
+  SliccModel,
+} from '../model/types.ts';
 import { ModelElement } from './base.ts';
 import { dialogStyles, focused } from './confirm.ts';
 
@@ -51,7 +57,9 @@ export class SliccApprovals extends ModelElement {
   #armed = false;
   #arming: ReturnType<typeof setTimeout> | undefined;
   #showing: Approval | null = null;
-  #decided = new Set<string>();
+  #pending = new Set<string>();
+  #done = new Set<string>();
+  #port: ApprovalsPort | undefined;
   #ended = new Map<string, ApprovalEnd>();
   #timer: ReturnType<typeof setInterval> | null = null;
   #shown = '';
@@ -111,6 +119,16 @@ export class SliccApprovals extends ModelElement {
 
   protected subscribe(model: SliccModel): Array<() => void> {
     const port = model.approvals;
+    if (port !== this.#port) {
+      this.#port = port;
+      this.#showing = null;
+      this.gone = null;
+      this.busy = '';
+      this.failure = null;
+      this.#pending.clear();
+      this.#done.clear();
+      this.#ended.clear();
+    }
     if (!port) return [];
     return [
       port.on('approvals', () => {
@@ -132,6 +150,7 @@ export class SliccApprovals extends ModelElement {
     super.disconnectedCallback();
     this.#tick(false);
     clearTimeout(this.#arming);
+    this.#showing = null;
   }
 
   #tick(on: boolean): void {
@@ -147,16 +166,17 @@ export class SliccApprovals extends ModelElement {
     if (!port?.decide || this.busy || (decision !== 'deny' && !this.#armed)) return;
     this.busy = decision;
     this.failure = null;
-    this.#decided.add(approval.id);
+    this.#pending.add(approval.id);
     try {
       await port.decide(approval.id, decision);
+      this.#done.add(approval.id);
     } catch (error) {
-      this.#decided.delete(approval.id);
       this.failure = {
         id: approval.id,
         message: error instanceof Error ? error.message : String(error),
       };
     } finally {
+      this.#pending.delete(approval.id);
       this.busy = '';
     }
   }
@@ -169,10 +189,11 @@ export class SliccApprovals extends ModelElement {
     super.willUpdate(changed);
     const list = this.#current();
     const showing = this.#showing;
+    if (showing && this.#pending.has(showing.id)) return;
     if (
       showing &&
       !this.gone &&
-      !this.#decided.has(showing.id) &&
+      !this.#done.has(showing.id) &&
       !list.some((approval) => approval.id === showing.id)
     ) {
       const reason =
@@ -262,7 +283,9 @@ export class SliccApprovals extends ModelElement {
         </sp-alert-dialog>`
       );
     }
-    const [approval, ...rest] = this.#current();
+    const held = this.#showing && this.#pending.has(this.#showing.id) ? this.#showing : null;
+    const list = this.#current();
+    const [approval, ...rest] = held ? [held, ...list.filter(({ id }) => id !== held.id)] : list;
     if (!approval) return nothing;
     const failure = this.failure?.id === approval.id ? this.failure.message : '';
     return this.#dialog(
