@@ -166,13 +166,17 @@ export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort 
           delta: `$${(status.rate ?? 0).toFixed(2)}/h`,
           series: wave(this.#tick + 7),
         },
-        {
-          id: 'budget',
-          label: `Budget (${status.budget.window})`,
-          value: `${status.budget.percent}%`,
-          unit: status.budget.resets,
-          ratio: status.budget.percent / 100,
-        },
+        ...(status.budget
+          ? [
+              {
+                id: 'budget',
+                label: `Budget (${status.budget.window})`,
+                value: `${status.budget.percent}%`,
+                unit: status.budget.resets,
+                ratio: status.budget.percent / 100,
+              },
+            ]
+          : []),
         {
           id: 'context',
           label: 'Fullest context',

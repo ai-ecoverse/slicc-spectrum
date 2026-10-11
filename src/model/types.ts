@@ -590,6 +590,12 @@ export interface Follower {
   since: number;
 }
 
+export interface TrayBudget {
+  percent: number;
+  window: 'daily' | 'weekly' | 'monthly';
+  resets: string;
+}
+
 export interface TrayStatus {
   name: string;
   kind: FloatKind;
@@ -598,7 +604,7 @@ export interface TrayStatus {
   followers: Follower[];
   spent?: number;
   rate?: number;
-  budget: { percent: number; window: 'daily' | 'weekly' | 'monthly'; resets: string };
+  budget?: TrayBudget;
   joinUrl: string;
 }
 

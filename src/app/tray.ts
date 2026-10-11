@@ -1,5 +1,5 @@
-import { css, html, type TemplateResult } from 'lit';
-import type { SliccModel, TrayConnection, TrayStatus } from '../model/types.ts';
+import { css, html, nothing, type TemplateResult } from 'lit';
+import type { SliccModel, TrayBudget, TrayConnection, TrayStatus } from '../model/types.ts';
 import { ModelElement, meterVariant, shared } from './base.ts';
 
 export const connectionVariant: Record<TrayConnection, string> = {
@@ -31,8 +31,13 @@ export function spendLine(status: TrayStatus): string {
   return `Spent $${status.spent.toFixed(2)}${rate}. `;
 }
 
-export function budgetLine(status: TrayStatus): string {
-  return `${spendLine(status)}${status.budget.percent}% of the ${status.budget.window} budget, ${status.budget.resets}.`;
+export function budgetLine(status: TrayStatus, budget: TrayBudget): string {
+  return `${spendLine(status)}${budget.percent}% of the ${budget.window} budget, ${budget.resets}.`;
+}
+
+export function shownBudget(status: TrayStatus): TrayBudget | null {
+  const budget = status.budget;
+  return budget && (budget.percent > 0 || status.spent) ? budget : null;
 }
 
 export class SliccTray extends ModelElement {
@@ -117,7 +122,7 @@ export class SliccTray extends ModelElement {
     const connection = connectionLabel[status.connection];
     const followers = `${status.followers.length} ${status.followers.length === 1 ? 'follower' : 'followers'}`;
     const light = status.connection === 'live' ? status.name : `${status.name}, ${connection}`;
-    const budget = `Budget ${status.budget.percent}%`;
+    const budget = shownBudget(status);
     return html`${this.#item(
       'chip',
       'network',
@@ -131,13 +136,18 @@ export class SliccTray extends ModelElement {
       () => this.#open('network', 'sync')
     )}
       <swc-tooltip for="chip" placement="bottom">${`${connection}, ${followers}`}</swc-tooltip>
-      ${this.#item(
-        'usage',
-        'monitor',
-        `${budget}. ${budgetLine(status)}`,
-        html`<swc-status-light size="s" variant=${budgetVariant(status.budget.percent)}>${budget}</swc-status-light>`,
-        () => this.#open('monitor')
-      )}
-      <swc-tooltip for="usage" placement="bottom">${budgetLine(status)}</swc-tooltip>`;
+      ${budget ? this.#usage(status, budget) : nothing}`;
+  }
+
+  #usage(status: TrayStatus, budget: TrayBudget): TemplateResult {
+    const label = `Budget ${budget.percent}%`;
+    return html`${this.#item(
+      'usage',
+      'monitor',
+      `${label}. ${budgetLine(status, budget)}`,
+      html`<swc-status-light size="s" variant=${budgetVariant(budget.percent)}>${label}</swc-status-light>`,
+      () => this.#open('monitor')
+    )}
+      <swc-tooltip for="usage" placement="bottom">${budgetLine(status, budget)}</swc-tooltip>`;
   }
 }

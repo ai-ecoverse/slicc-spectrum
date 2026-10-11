@@ -248,7 +248,7 @@ export function linksFixtures(
   const url = joinUrl(rotation);
   const base = {
     joinUrl: url,
-    joinCommand: `npx sliccy ${url} follow`,
+    joinCommand: `npx sliccy@next ${url} follow`,
     followUrl: followUrl(rotation),
     permission: null,
   };
@@ -435,7 +435,7 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
     this.#links = {
       ...(this.#links as NetworkLinks),
       joinUrl: url,
-      joinCommand: `npx sliccy ${url} follow`,
+      joinCommand: `npx sliccy@next ${url} follow`,
       followUrl: followUrl(this.#rotation),
     };
     this.#emit();
