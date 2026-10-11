@@ -12,7 +12,11 @@ const accountStatus = {
   disconnected: ['neutral', 'Not connected'],
   'signing-in': ['info', 'Signing in…'],
   rejected: ['notice', 'Rejected'],
+  'needs-sign-in': ['neutral', 'Needs sign-in'],
+  'sign-in-expired': ['notice', 'Sign-in expired'],
 } as const;
+
+const popup = (account: Account) => account.group === 'mcp' && account.auth === 'oauth';
 
 const secretNames = { 'api-key': 'API key', token: 'token' } as const;
 const rejectedNames = { 'api-key': 'API key rejected', token: 'Token rejected' } as const;
@@ -291,14 +295,18 @@ export class SliccSettings extends ModelElement {
         @click=${() => this.#disconnect(account)}
       >Disconnect</swc-button>`;
     }
-    const label = account.status === 'expired' ? 'Reconnect' : 'Connect';
+    const label = popup(account)
+      ? 'Sign in'
+      : account.status === 'expired'
+        ? 'Reconnect'
+        : 'Connect';
     const entering = this.entering === account.id;
     const busy = this.#signingIn(account) || (!entering && this.pending.has(account.id));
     return html`<swc-button
       size="m"
       variant="secondary"
       data-action="connect"
-      accessible-label=${`${label} ${account.provider}`}
+      accessible-label=${popup(account) ? `Sign in to ${account.provider}` : `${label} ${account.provider}`}
       ?pending=${busy}
       ?disabled=${entering}
       @click=${() => this.#start(account)}
@@ -308,6 +316,8 @@ export class SliccSettings extends ModelElement {
   #status(account: Account): keyof typeof accountStatus {
     if (this.#signingIn(account)) return 'signing-in';
     if (account.status === 'expired' && account.auth === 'api-key') return 'rejected';
+    if (popup(account) && account.status === 'disconnected') return 'needs-sign-in';
+    if (popup(account) && account.status === 'expired') return 'sign-in-expired';
     return account.status;
   }
 
