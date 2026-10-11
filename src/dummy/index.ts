@@ -45,6 +45,7 @@ export interface DummyOptions {
   approvals?: ApprovalScenario | 'off';
   follow?: FollowScenario | 'off';
   browser?: BrowserScenario;
+  sprinkles?: 'builtin' | 'cones';
 }
 
 export interface DummyModel extends SliccModel {
@@ -73,6 +74,7 @@ export function createDummyModel({
   approvals = 'off',
   follow = 'off',
   browser: scenario = 'idle',
+  sprinkles = 'builtin',
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
   const mount =
@@ -119,7 +121,11 @@ export function createDummyModel({
         .map((cone) => ({ id: cone.id, label: cone.name, group: 'cones' as const })),
       { id: 'role:reviewer', label: 'reviewer', group: 'roles' },
     ]),
-    sprinkles: new DummySprinkles(extras.sprinkles, agent, files),
+    sprinkles: new DummySprinkles(
+      sprinkles === 'cones' ? [...extras.sprinkles, ...extras.coneSprinkles] : extras.sprinkles,
+      agent,
+      files
+    ),
     tray: new DummyTray(extras.tray, time),
     updates: new DummyUpdates(updates, time, {
       ...(packages === 'off' ? {} : { packages }),

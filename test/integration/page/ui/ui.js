@@ -20,6 +20,7 @@ const model = createDummyModel({
   approvals: params.get('approvals') ?? 'off',
   follow,
   browser: params.get('browser') ?? 'idle',
+  sprinkles: params.get('sprinkles') ?? 'builtin',
 });
 if (params.has('color')) model.settings.update({ color: params.get('color') });
 const app = document.querySelector('slicc-app');

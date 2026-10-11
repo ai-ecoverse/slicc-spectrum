@@ -211,6 +211,27 @@ export const sprinkles: Sprinkle[] = [
   },
 ];
 
+const coneSprinkle = (
+  agentId: string,
+  name: string,
+  title: string,
+  icon: string,
+  body: string
+): Sprinkle => ({
+  id: `${agentId}/${name}`,
+  name,
+  title,
+  icon,
+  agentId,
+  html: `<style>body { font-family: var(--s2-font-family); color: var(--s2-content-default); padding: var(--s2-spacing-300) var(--s2-spacing-400); }</style><div class="sprinkle-stack"><h2 class="sprinkle-heading">${title}</h2><p class="sprinkle-body">${body}</p></div>`,
+});
+
+export const coneSprinkles: Sprinkle[] = [
+  coneSprinkle('cone-harbor', 'board', 'Board', 'kanban', 'Forecast endpoints in review: 3.'),
+  coneSprinkle('cone-tides', 'board', 'Board', 'kanban', 'Tide table tasks this week: 5.'),
+  coneSprinkle('cone-release', 'changelog', 'Changelog', 'scroll-text', 'Draft notes for 2.4.0.'),
+];
+
 export const tray: TrayStatus = {
   name: 'sliccstart',
   kind: 'sliccstart',

@@ -1,4 +1,5 @@
 import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
+import { ifDefined } from 'lit/directives/if-defined.js';
 import { keyed } from 'lit/directives/keyed.js';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import type { PanelParams, SerializedDockview, SliccDock } from '../components/dock.ts';
@@ -241,6 +242,11 @@ export class SliccApp extends ThemedElement {
     }
     .rail:empty {
       display: none;
+    }
+    .rail .cones {
+      flex: none;
+      inline-size: var(--swc-component-height-75);
+      border-block-start: var(--swc-border-width-100) solid var(--swc-gray-300);
     }
     .rail swc-action-button.selected {
       --swc-action-button-background-color-default: var(--swc-neutral-background-color-selected-default);
@@ -626,9 +632,7 @@ export class SliccApp extends ThemedElement {
       openChat(this.dock, agent, this.screen);
       return;
     }
-    const sprinkle = this.model?.sprinkles
-      .list()
-      .find((candidate) => `sprinkle:${candidate.id}` === id);
+    const sprinkle = this.#sprinkles().find((candidate) => `sprinkle:${candidate.id}` === id);
     if (sprinkle) {
       openSprinkle(this.dock, sprinkle, this.screen);
       return;
@@ -649,7 +653,22 @@ export class SliccApp extends ThemedElement {
   }
 
   #sprinkle(id: string): Sprinkle | undefined {
-    return this.model?.sprinkles.list().find((candidate) => candidate.id === id);
+    return this.#sprinkles().find((candidate) => candidate.id === id);
+  }
+
+  #sprinkles(): Sprinkle[] {
+    const model = this.model;
+    if (!model) return [];
+    const selected = this.#cone();
+    const cones = model.agent.list().filter((agent) => agent.kind === 'cone');
+    const list = model.sprinkles.list();
+    const order = [selected, ...cones.map((cone) => cone.id), ...list.map((item) => item.agentId)];
+    return list
+      .map((sprinkle) => {
+        const cone = cones.find((agent) => agent.id === sprinkle.agentId && agent.id !== selected);
+        return cone ? { ...sprinkle, title: `${cone.name} / ${sprinkle.title}` } : sprinkle;
+      })
+      .sort((a, b) => order.indexOf(a.agentId) - order.indexOf(b.agentId));
   }
 
   #detach(id: string, place: Placement | null, open: boolean): void {
@@ -692,7 +711,7 @@ export class SliccApp extends ThemedElement {
     const label = `${visible ? `${item.title}, shown` : `Open ${item.title}`}${
       changes ? `, ${changeCount(changes)}` : driven ? ', a tab is in use' : ''
     }`;
-    const button = staticHtml`<swc-action-button id=${`rail-${item.id}`} class=${visible ? 'selected' : ''} quiet size="m" accessible-label=${label} data-surface=${item.id} ?data-visible=${visible} @click=${() => this.show(item.id)}>${railIcon(item.icon)}</swc-action-button>`;
+    const button = staticHtml`<swc-action-button id=${`rail-${item.id}`} class=${visible ? 'selected' : ''} quiet size="m" accessible-label=${label} data-surface=${item.id} data-cone=${ifDefined(item.cone)} ?data-visible=${visible} @click=${() => this.show(item.id)}>${railIcon(item.icon)}</swc-action-button>`;
     const tooltip = html`<swc-tooltip for=${`rail-${item.id}`} placement=${{ left: 'end', right: 'start', bottom: 'top' }[side]}>${item.title}</swc-tooltip>`;
     return changes
       ? html`<span class="badged">${button}<swc-badge size="s" variant="neutral" aria-hidden="true">${changes}</swc-badge></span>${tooltip}`
@@ -726,8 +745,10 @@ export class SliccApp extends ThemedElement {
         ? Math.min(primary.length, railCapacity(this.#width, Infinity))
         : railCapacity(this.#width, items.length);
     const shown = side === 'bottom' ? primary.slice(0, fit) : items;
+    const grouped = new Set(shown.map((item) => item.cone).filter(Boolean)).size > 1;
     return html`<nav class=${`rail ${side}`} aria-label=${`Panels, ${side}`} @dragover=${this.#railOver} @dragleave=${this.#railLeave} @drop=${this.#railDrop}>${shown.map(
-      (item) => this.#railButton(item, side)
+      (item, index) =>
+        html`${grouped && index && shown[index - 1].cone !== item.cone ? html`<span class="cones" aria-hidden="true"></span>` : nothing}${this.#railButton(item, side)}`
     )}${this.#more(items.filter((item) => !shown.includes(item)))}</nav>`;
   }
 
@@ -737,7 +758,7 @@ export class SliccApp extends ThemedElement {
     bottom: TemplateResult | typeof nothing;
   } {
     const dock = this.renderRoot.querySelector('slicc-dock') as SliccDock | null;
-    const sprinkles = (this.model?.sprinkles.list() ?? [])
+    const sprinkles = this.#sprinkles()
       .filter((sprinkle) => !sprinkle.inline || this.dips.has(sprinkle.id))
       .map(sprinkleSurface);
     const all = dock && this.#started ? [...sprinkles, ...this.#available()] : [];
