@@ -251,11 +251,11 @@ test('every destructive action asks first and acts only on confirm', async (t) =
   );
 
   await page.evaluate(() => window.$('slicc-app', 'slicc-tray', '.chip').click());
-  await page.until(() => !!window.$('slicc-app', 'slicc-tray', '.panel'));
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-network', '[data-action=tray-disconnect]')
+  );
   const leave = () =>
-    [...window.$('slicc-app', 'slicc-tray').shadowRoot.querySelectorAll('.panel swc-action-button')]
-      .find((button) => button.textContent.trim() === 'Disconnect')
-      .click();
+    window.$('slicc-app', 'slicc-dock', 'slicc-network', '[data-action=tray-disconnect]').click();
   await page.evaluate(leave);
   await page.until(dialog);
   assert.match((await page.evaluate(dialog)).title, /^Disconnect from .+\?$/);

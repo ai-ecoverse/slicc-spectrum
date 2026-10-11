@@ -44,7 +44,15 @@ test('the shell renders the default layout from the dummy model', async (t) => {
         (b) => b.dataset.surface
       )
     ),
-    ['files', 'memory', 'freezer', 'settings', 'updates']
+    ['agents', 'chat', 'files', 'memory', 'freezer', 'settings', 'updates']
+  );
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.$('slicc-app').shadowRoot.querySelectorAll('.rail [data-visible]')].map(
+        (b) => b.dataset.surface
+      )
+    ),
+    ['agents', 'chat', 'changes']
   );
   assert.equal(
     await page.evaluate(() => window.$('slicc-app', 'sp-theme').getAttribute('system')),
@@ -701,27 +709,36 @@ test('each screen class has its own layout, and rails restore closed panels', as
       rails: [...app.shadowRoot.querySelectorAll('.rail [data-surface]')].map(
         (button) => button.dataset.surface
       ),
+      visible: [...app.shadowRoot.querySelectorAll('.rail [data-visible]')].map(
+        (button) => button.dataset.surface
+      ),
     };
   };
   assert.deepEqual(await page.evaluate(state), {
     screen: 'desktop',
     panels: ['agents', 'changes', 'chat:cone-sliccy'],
     rails: [
+      'agents',
+      'chat',
       'files',
       'memory',
       'freezer',
       'settings',
       'updates',
       'sprinkle:suggestions',
+      'changes',
       'terminal',
       'browser',
       'monitor',
       'network',
     ],
+    visible: ['agents', 'chat', 'changes'],
   });
 
   await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('agents'));
-  await page.until(() => !!window.$('slicc-app', '.rail.left [data-surface=agents]'));
+  await page.until(
+    () => !window.$('slicc-app', '.rail.left [data-surface=agents]').hasAttribute('data-visible')
+  );
   await shot(page, 'rails-light');
   await page.evaluate(() => window.$('slicc-app', '.rail.left [data-surface=agents]').click());
   await page.until(() => window.$('slicc-app', 'slicc-dock').has('agents'));
@@ -733,7 +750,8 @@ test('each screen class has its own layout, and rails restore closed panels', as
   assert.deepEqual(await page.evaluate(state), {
     screen: 'phone',
     panels: ['chat:cone-sliccy'],
-    rails: ['agents', 'files', 'changes', 'terminal', 'browser'],
+    rails: ['agents', 'chat', 'files', 'changes', 'terminal', 'browser'],
+    visible: ['chat'],
   });
   assert.deepEqual(
     await page.evaluate(() =>
@@ -773,6 +791,8 @@ test('each screen class has its own layout, and rails restore closed panels', as
     screen: 'tablet',
     panels: ['agents', 'chat:cone-sliccy'],
     rails: [
+      'agents',
+      'chat',
       'files',
       'memory',
       'freezer',
@@ -785,9 +805,12 @@ test('each screen class has its own layout, and rails restore closed panels', as
       'monitor',
       'network',
     ],
+    visible: ['agents', 'chat'],
   });
   await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('agents'));
-  await page.until(() => !!window.$('slicc-app', '.rail.left [data-surface=agents]'));
+  await page.until(
+    () => !window.$('slicc-app', '.rail.left [data-surface=agents]').hasAttribute('data-visible')
+  );
 
   await page.evaluate(() => {
     document.querySelector('slicc-app').style.width = '';
@@ -807,6 +830,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
     panels: ['chat:cone-sliccy'],
     rails: [
       'agents',
+      'chat',
       'files',
       'memory',
       'freezer',
@@ -819,6 +843,7 @@ test('each screen class has its own layout, and rails restore closed panels', as
       'monitor',
       'network',
     ],
+    visible: ['chat'],
   });
   assert.deepEqual(page.errors, []);
 });
@@ -2572,16 +2597,20 @@ test('SLICC sprinkles run sandboxed with Lucide icons and lick their cone, and t
   );
 
   await page.evaluate(() => window.$('slicc-app', 'slicc-tray', '.chip').click());
-  await page.until(() => window.$('slicc-app', 'slicc-tray', 'swc-popover').open === true);
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-network', 'section[aria-labelledby=sync]')
+  );
   assert.match(
-    await page.evaluate(() => window.$('slicc-app', 'slicc-tray', '.panel').textContent),
+    await page.evaluate(
+      () =>
+        window.$('slicc-app', 'slicc-dock', 'slicc-network', 'section[aria-labelledby=sync]')
+          .textContent
+    ),
     /leader/
   );
   await shot(page, 'tray-light');
   await page.evaluate(() =>
-    [...window.$('slicc-app', 'slicc-tray').shadowRoot.querySelectorAll('.panel swc-action-button')]
-      .find((button) => button.textContent.trim() === 'Disconnect')
-      .click()
+    window.$('slicc-app', 'slicc-dock', 'slicc-network', '[data-action=tray-disconnect]').click()
   );
   await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
   await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
@@ -3299,7 +3328,7 @@ test('the network indicator shows the health and opens the Network panel', async
       return [
         root.querySelector('[data-route]').dataset.route,
         root.querySelector('[data-action=install-extension]').getAttribute('href'),
-        root.querySelector('code').textContent.trim(),
+        root.querySelector('section[aria-labelledby=whole] code').textContent.trim(),
         root.querySelectorAll('li[data-url]').length,
         !!root.querySelector('[data-action=check]'),
         /\u2014/.test(root.textContent),

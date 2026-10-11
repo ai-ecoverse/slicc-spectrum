@@ -15,7 +15,6 @@ import { networkHealth, networkIcon, networkLabel, networkStatus, remoteLight } 
 import {
   chatAgent,
   chats,
-  closed,
   create,
   type DocumentKind,
   defaultLayout,
@@ -29,6 +28,7 @@ import {
   type ScreenClass,
   type Surface,
   screenClass,
+  shown,
   sprinkleSurface,
   surface,
   surfaces,
@@ -58,7 +58,7 @@ export const deleteActiveCone = 'slicc:delete-cone';
 
 export const railPitch = 52;
 
-export const phoneRail = ['agents', 'files', 'changes', 'terminal', 'browser'];
+export const phoneRail = ['chat', 'agents', 'files', 'changes', 'terminal', 'browser'];
 
 export function railCapacity(width: number, count: number): number {
   if (!width) return count;
@@ -241,6 +241,16 @@ export class SliccApp extends ThemedElement {
     }
     .rail:empty {
       display: none;
+    }
+    .rail swc-action-button.selected {
+      --swc-action-button-background-color-default: var(--swc-neutral-background-color-selected-default);
+      --swc-action-button-background-color-hover: var(--swc-neutral-background-color-selected-hover);
+      --swc-action-button-background-color-down: var(--swc-neutral-background-color-selected-down);
+      --swc-action-button-background-color-focus: var(--swc-neutral-background-color-selected-key-focus);
+      --swc-action-button-content-color-default: var(--swc-gray-25);
+      --swc-action-button-content-color-hover: var(--swc-gray-25);
+      --swc-action-button-content-color-down: var(--swc-gray-25);
+      --swc-action-button-content-color-focus: var(--swc-gray-25);
     }
     .badged {
       position: relative;
@@ -593,6 +603,7 @@ export class SliccApp extends ThemedElement {
 
   #activated(event: Event): void {
     const { id } = (event as CustomEvent<{ id: string | null }>).detail;
+    this.requestUpdate();
     this.terminalPanels.activated(id);
     const agent = chatAgent(id);
     if (agent && agent !== this.model?.agent.active()) this.model?.agent.select(agent);
@@ -604,7 +615,12 @@ export class SliccApp extends ThemedElement {
     this.#save();
   }
 
-  show(id: string): void {
+  #showSurface(event: Event): void {
+    const { id, section } = (event as CustomEvent<{ id: string; section?: string }>).detail;
+    this.show(id, section);
+  }
+
+  show(id: string, section?: string): void {
     const agent = this.#active();
     if (id === 'chat' && agent && this.#offers('chat')) {
       openChat(this.dock, agent, this.screen);
@@ -626,6 +642,10 @@ export class SliccApp extends ThemedElement {
     openSurface(this.dock, item, this.screen);
     if (id === 'updates') this.dock.api.getPanel(id)?.api.updateParameters({ boot: false });
     this.dock.focusPanel(id);
+    if (section)
+      (
+        this.dock.content(id) as (HTMLElement & { reveal?(name: string): void }) | undefined
+      )?.reveal?.(section);
   }
 
   #sprinkle(id: string): Sprinkle | undefined {
@@ -668,12 +688,11 @@ export class SliccApp extends ThemedElement {
     const changes = item.id === 'changes' ? this.#changes() : 0;
     const driven =
       item.id === 'browser' && !!this.model?.browser.list().some((tab) => tab.controlled);
-    const label = changes
-      ? `Open ${item.title}, ${changeCount(changes)}`
-      : driven
-        ? `Open ${item.title}, a tab is in use`
-        : `Open ${item.title}`;
-    const button = staticHtml`<swc-action-button id=${`rail-${item.id}`} quiet size="m" accessible-label=${label} data-surface=${item.id} @click=${() => this.show(item.id)}>${railIcon(item.icon)}</swc-action-button>`;
+    const visible = shown(this.dock, item.id);
+    const label = `${visible ? `${item.title}, shown` : `Open ${item.title}`}${
+      changes ? `, ${changeCount(changes)}` : driven ? ', a tab is in use' : ''
+    }`;
+    const button = staticHtml`<swc-action-button id=${`rail-${item.id}`} class=${visible ? 'selected' : ''} quiet size="m" accessible-label=${label} data-surface=${item.id} ?data-visible=${visible} @click=${() => this.show(item.id)}>${railIcon(item.icon)}</swc-action-button>`;
     const tooltip = html`<swc-tooltip for=${`rail-${item.id}`} placement=${{ left: 'end', right: 'start', bottom: 'top' }[side]}>${item.title}</swc-tooltip>`;
     return changes
       ? html`<span class="badged">${button}<swc-badge size="s" variant="neutral" aria-hidden="true">${changes}</swc-badge></span>${tooltip}`
@@ -707,7 +726,7 @@ export class SliccApp extends ThemedElement {
         ? Math.min(primary.length, railCapacity(this.#width, Infinity))
         : railCapacity(this.#width, items.length);
     const shown = side === 'bottom' ? primary.slice(0, fit) : items;
-    return html`<nav class=${`rail ${side}`} aria-label=${`Closed panels, ${side}`} @dragover=${this.#railOver} @dragleave=${this.#railLeave} @drop=${this.#railDrop}>${shown.map(
+    return html`<nav class=${`rail ${side}`} aria-label=${`Panels, ${side}`} @dragover=${this.#railOver} @dragleave=${this.#railLeave} @drop=${this.#railDrop}>${shown.map(
       (item) => this.#railButton(item, side)
     )}${this.#more(items.filter((item) => !shown.includes(item)))}</nav>`;
   }
@@ -720,14 +739,13 @@ export class SliccApp extends ThemedElement {
     const dock = this.renderRoot.querySelector('slicc-dock') as SliccDock | null;
     const sprinkles = (this.model?.sprinkles.list() ?? [])
       .filter((sprinkle) => !sprinkle.inline || this.dips.has(sprinkle.id))
-      .map(sprinkleSurface)
-      .filter((item) => !dock?.has(item.id));
-    const shut = dock && this.#started ? [...sprinkles, ...closed(dock, this.#available())] : [];
+      .map(sprinkleSurface);
+    const all = dock && this.#started ? [...sprinkles, ...this.#available()] : [];
     const phone = this.screen === 'phone';
     return {
-      left: this.#rail(phone ? [] : shut.filter((item) => item.side !== 'right'), 'left'),
-      right: this.#rail(phone ? [] : shut.filter((item) => item.side === 'right'), 'right'),
-      bottom: phone ? this.#rail(shut, 'bottom') : nothing,
+      left: this.#rail(phone ? [] : all.filter((item) => item.side !== 'right'), 'left'),
+      right: this.#rail(phone ? [] : all.filter((item) => item.side === 'right'), 'right'),
+      bottom: phone ? this.#rail(all, 'bottom') : nothing,
     };
   }
 
@@ -945,7 +963,7 @@ export class SliccApp extends ThemedElement {
           ${this.#updatesIndicator()}
           ${this.#remoteIndicator()}
           ${this.#networkIndicator()}
-          ${this.#offers('chat') ? html`<slicc-tray .model=${this.model} ?compact=${this.screen === 'phone'}></slicc-tray>` : nothing}
+          ${this.#offers('chat') ? html`<slicc-tray .model=${this.model} .panels=${['network', 'monitor'].filter((id) => this.#offers(id))} ?compact=${this.screen === 'phone'} @show-surface=${this.#showSurface}></slicc-tray>` : nothing}
           <sp-action-menu size="s" quiet label="View" @change=${this.#view}>
             <swc-icon-view-grid slot="icon"></swc-icon-view-grid>
             <span slot="label" class="view-label">View</span>
@@ -983,7 +1001,7 @@ export class SliccApp extends ThemedElement {
             @open-file=${(event: Event) => this.#request('file', event)}
             @open-diff=${(event: Event) => this.#request('diff', event)}
             @new-terminal=${() => this.newTerminal()}
-            @show-surface=${(event: Event) => this.show((event as CustomEvent<{ id: string }>).detail.id)}
+            @show-surface=${this.#showSurface}
           ></slicc-dock>
           ${rails.right}
         </main>
