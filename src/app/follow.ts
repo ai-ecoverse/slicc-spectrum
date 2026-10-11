@@ -243,7 +243,7 @@ export class SliccFollow extends ModelElement {
 
   #page(page: FollowPage): TemplateResult {
     return html`<div class="page" data-follow-page=${page.kind}>
-      ${page.kind === 'connecting' || page.kind === 'waiting' ? html`<swc-progress-circle size="m" indeterminate aria-hidden="true"></swc-progress-circle>` : nothing}
+      ${page.kind === 'connecting' || page.kind === 'waiting' ? html`<swc-progress-circle size="m" indeterminate label=${page.kind === 'waiting' ? 'Waiting' : 'Connecting'} aria-hidden="true"></swc-progress-circle>` : nothing}
       <h2 aria-live="polite">${page.title}</h2>
       <p class="muted">${page.body}</p>
       ${this.#error()}
