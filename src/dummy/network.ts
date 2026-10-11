@@ -18,7 +18,8 @@ export type LinksScenario =
   | 'reconnecting'
   | 'exit'
   | 'prompt'
-  | 'denied';
+  | 'denied'
+  | 'remote';
 
 const minute = 60_000;
 
@@ -123,6 +124,7 @@ const linkedDevices: readonly LinkedDevice[] = [
     exit: true,
     state: 'connected',
     browsers: [{ runtime: 'quay-studio/chrome', name: 'Chrome' }],
+    control: { allowed: true, fixed: true },
   },
   {
     id: 'link-pier',
@@ -135,6 +137,7 @@ const linkedDevices: readonly LinkedDevice[] = [
     exit: true,
     state: 'connected',
     browsers: [{ runtime: 'pier-nuc/chrome', name: 'Chrome' }],
+    control: { allowed: false },
   },
   {
     id: 'link-dock',
@@ -146,6 +149,7 @@ const linkedDevices: readonly LinkedDevice[] = [
     policy: 'this machine',
     exit: false,
     state: 'connected',
+    control: { allowed: false },
   },
 ];
 
@@ -175,6 +179,26 @@ export function linksFixtures(
     );
     return { links: { ...base, devices }, exit: { kind: 'link', id: 'link-pier' } };
   }
+  if (scenario === 'remote') {
+    const devices: LinkedDevice[] = linkedDevices.map((device) => {
+      if (device.id === 'link-quay') return { ...device, controlling: 'watch' };
+      if (device.id === 'link-pier')
+        return { ...device, control: { allowed: true }, controlling: 'prompt' };
+      return device;
+    });
+    devices.push({
+      id: 'link-reef',
+      name: 'slicc on reef-laptop',
+      host: 'reef-laptop.slicc.internal',
+      address: '198.18.57.14',
+      mode: 'remote',
+      offers: [],
+      exit: false,
+      state: 'offline',
+      control: { allowed: false },
+    });
+    return { links: { ...base, devices }, exit: null };
+  }
   return {
     links: { ...base, devices: linkedDevices },
     exit: scenario === 'exit' ? { kind: 'link', id: 'link-quay' } : null,
@@ -192,6 +216,7 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
   #rotation = 0;
   setExit?: (exit: NetworkExit) => Promise<void>;
   unlink?: (id: string) => Promise<void>;
+  setRemoteControl?: (id: string, allowed: boolean) => Promise<void>;
   rotateJoinUrl?: () => Promise<void>;
   retryLinks?: () => Promise<void>;
 
@@ -209,6 +234,7 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
       ({ links: this.#links, exit: this.#exit } = linksFixtures(links));
       this.setExit = (exit) => this.#setExit(exit);
       this.unlink = (id) => this.#unlink(id);
+      this.setRemoteControl = (id, allowed) => this.#control(id, allowed);
       this.rotateJoinUrl = () => this.#rotate();
       this.retryLinks = () => this.#retry();
     }
@@ -274,6 +300,18 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
       await this.setExitNode(node);
     }
     this.#exit = exit;
+    this.#emit();
+  }
+
+  async #control(id: string, allowed: boolean): Promise<void> {
+    await this.#clock.sleep(4);
+    const links = this.#links as NetworkLinks;
+    const devices = links.devices.map((device) => {
+      if (device.id !== id) return device;
+      const next = { ...device, control: { ...device.control, allowed } };
+      return allowed ? next : { ...next, controlling: undefined };
+    });
+    this.#links = { ...links, devices };
     this.#emit();
   }
 

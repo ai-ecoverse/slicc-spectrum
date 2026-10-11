@@ -708,7 +708,14 @@ export type LinkMode = 'local' | 'remote';
 
 export type LinkOffer = 'net' | 'http' | 'ssh';
 
-export type LinkState = 'connecting' | 'connected' | 'reconnecting';
+export type LinkState = 'connecting' | 'connected' | 'reconnecting' | 'offline';
+
+export interface RemoteControl {
+  allowed: boolean;
+  fixed?: boolean;
+}
+
+export type RemoteControlMode = 'prompt' | 'watch';
 
 export interface LinkedBrowser {
   runtime: string;
@@ -726,6 +733,8 @@ export interface LinkedDevice {
   exit: boolean;
   state: LinkState;
   browsers?: readonly LinkedBrowser[];
+  control?: RemoteControl;
+  controlling?: RemoteControlMode;
 }
 
 export interface NetworkLinks {
@@ -769,6 +778,7 @@ export interface NetworkPort extends Subscribable<{ network: NetworkStatus }> {
   logoutTailnet?(): Promise<void>;
   setExit?(exit: NetworkExit): Promise<void>;
   unlink?(id: string): Promise<void>;
+  setRemoteControl?(id: string, allowed: boolean): Promise<void>;
   rotateJoinUrl?(): Promise<void>;
   retryLinks?(): Promise<void>;
 }

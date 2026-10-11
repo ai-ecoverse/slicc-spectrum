@@ -22,6 +22,7 @@ import type {
   NetworkPort,
   NetworkRoute,
   NetworkStatus,
+  RemoteControlMode,
   SliccModel,
   TailnetState,
   TailnetStatus,
@@ -105,19 +106,56 @@ export function exitNodeValue(tailnet: TailnetStatus): string {
   return tailnet.exitNodes?.find((node) => node.name === tailnet.exitNode)?.id ?? 'none';
 }
 
-export const linkStates: Record<LinkState, readonly ['info' | 'positive' | 'notice', string]> = {
+export const linkStates: Record<
+  LinkState,
+  readonly ['neutral' | 'info' | 'positive' | 'notice', string]
+> = {
   connecting: ['info', 'Connecting'],
   connected: ['positive', 'Connected'],
   reconnecting: ['notice', 'Reconnecting'],
+  offline: ['neutral', 'Offline'],
 };
 
-export type LinksSummary = 'permission' | 'none' | 'reconnecting' | 'connecting' | 'linked';
+export const controlBadges: Record<RemoteControlMode, string> = {
+  prompt: 'Prompting',
+  watch: 'Watching',
+};
+
+export interface RemoteLight {
+  mode: RemoteControlMode;
+  text: string;
+  tooltip: string;
+}
+
+export function remoteLight(status: NetworkStatus | undefined): RemoteLight | null {
+  const active = (status?.links?.devices ?? []).filter((device) => device.controlling);
+  if (!active.length) return null;
+  const prompting = active.filter((device) => device.controlling === 'prompt');
+  const watching = active.filter((device) => device.controlling === 'watch');
+  const say = (devices: readonly LinkedDevice[], verb: string): string[] => {
+    if (!devices.length) return [];
+    if (devices.length === 1) return [`${devices[0].name} is ${verb} the agent.`];
+    return [`${devices.length} linked devices are ${verb} the agent.`];
+  };
+  const tooltip = [...say(prompting, 'sending prompts to'), ...say(watching, 'watching')].join(' ');
+  if (prompting.length) return { mode: 'prompt', text: 'Remote control', tooltip };
+  return { mode: 'watch', text: 'Watched remotely', tooltip };
+}
+
+export type LinksSummary =
+  | 'permission'
+  | 'none'
+  | 'reconnecting'
+  | 'connecting'
+  | 'offline'
+  | 'linked';
 
 export function linksSummary(links: NetworkLinks): LinksSummary {
   if (links.permission) return 'permission';
   if (!links.devices.length) return 'none';
   if (links.devices.some((device) => device.state === 'reconnecting')) return 'reconnecting';
   if (links.devices.some((device) => device.state === 'connecting')) return 'connecting';
+  if (links.devices.every((device) => device.state === 'offline')) return 'offline';
   return 'linked';
 }
 
@@ -127,7 +165,10 @@ export function linksLight(
   const summary = linksSummary(links);
   if (summary === 'permission') return ['notice', 'Needs permission'];
   if (summary === 'none') return ['neutral', 'None'];
-  if (summary === 'linked') return ['positive', `${links.devices.length} linked`];
+  if (summary === 'linked') {
+    const online = links.devices.filter((device) => device.state !== 'offline');
+    return ['positive', `${online.length} linked`];
+  }
   return linkStates[summary];
 }
 
@@ -714,6 +755,42 @@ export class SliccNetwork extends ModelElement {
     void this.#act('exit', () => port.setExit?.(parseExit(value)), 'error');
   }
 
+  #control(port: NetworkPort, device: LinkedDevice): TemplateResult | typeof nothing {
+    const control = device.control;
+    if (!control) return nothing;
+    if (control.fixed)
+      return html`<span class="muted" data-control="fixed">Remote control is always allowed from this computer.</span>`;
+    if (!port.setRemoteControl) {
+      return html`<span class="muted" data-control=${control.allowed ? 'allowed' : 'off'}>${control.allowed ? 'Remote control allowed.' : 'Remote control not allowed.'}</span>`;
+    }
+    return html`<sp-switch class="control" data-action="remote-control" .checked=${live(control.allowed)} ?disabled=${this.busy !== ''} @change=${(event: Event) => this.#setControl(port, device, event.target as HTMLElement & { checked: boolean })}>Allow remote control</sp-switch>`;
+  }
+
+  async #setControl(
+    port: NetworkPort,
+    device: LinkedDevice,
+    toggle: { checked: boolean }
+  ): Promise<void> {
+    const allowed = toggle.checked;
+    if (allowed) {
+      const ok = await confirm({
+        title: `Allow remote control from ${device.name}?`,
+        body: 'It can send prompts to the agent, watch its replies and stop it. Unlinking it, or a new certificate on it, turns this off again.',
+        action: 'Allow',
+        variant: 'confirmation',
+      });
+      if (!ok) {
+        toggle.checked = false;
+        return;
+      }
+    }
+    await this.#act(
+      `control:${device.id}`,
+      () => port.setRemoteControl?.(device.id, allowed),
+      'linksError'
+    );
+  }
+
   async #unlink(port: NetworkPort, status: NetworkStatus, device: LinkedDevice): Promise<void> {
     const isExit = status.exit?.kind === 'link' && status.exit.id === device.id;
     const ok = await confirm({
@@ -744,6 +821,7 @@ export class SliccNetwork extends ModelElement {
         <span class="name" title=${device.name}>${device.name}</span>
         <swc-status-light size="s" variant=${variant}>${label}</swc-status-light>
         ${isExit ? html`<swc-badge size="s" variant="accent" subtle data-exit-badge>Exit</swc-badge>` : nothing}
+        ${device.controlling ? html`<swc-badge size="s" variant="informative" subtle data-controlling=${device.controlling}>${controlBadges[device.controlling]}</swc-badge>` : nothing}
       </div>
       ${
         port.unlink
@@ -757,6 +835,7 @@ export class SliccNetwork extends ModelElement {
           ? html`<span class="muted" data-browsers>${device.browsers.length === 1 ? 'Browser' : 'Browsers'}: ${device.browsers.map((item, index) => html`${index ? ', ' : ''}${item.name} (<code>${item.runtime}</code>)`)}</span>`
           : nothing
       }
+      ${this.#control(port, device)}
       ${
         device.offers.includes('ssh')
           ? html`<div class="command" data-copy="ssh"><code>ssh ${device.host}</code>${this.#copyButton(`ssh:${device.id}`, 'ssh', 'ssh command', `ssh ${device.host}`, 'linksError')}</div>`
