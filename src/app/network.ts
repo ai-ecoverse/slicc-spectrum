@@ -130,16 +130,16 @@ export interface RemoteLight {
 export function remoteLight(status: NetworkStatus | undefined): RemoteLight | null {
   const active = (status?.links?.devices ?? []).filter((device) => device.controlling);
   if (!active.length) return null;
-  const mode = active.some((device) => device.controlling === 'prompt') ? 'prompt' : 'watch';
-  const text = mode === 'prompt' ? 'Remote control' : 'Watched remotely';
-  if (active.length > 1)
-    return {
-      mode,
-      text,
-      tooltip: `${active.length} linked devices are ${mode === 'prompt' ? 'controlling' : 'watching'} the agent.`,
-    };
-  const verb = mode === 'prompt' ? 'is sending prompts to' : 'is watching';
-  return { mode, text, tooltip: `${active[0].name} ${verb} the agent.` };
+  const prompting = active.filter((device) => device.controlling === 'prompt');
+  const watching = active.filter((device) => device.controlling === 'watch');
+  const say = (devices: readonly LinkedDevice[], verb: string): string[] => {
+    if (!devices.length) return [];
+    if (devices.length === 1) return [`${devices[0].name} is ${verb} the agent.`];
+    return [`${devices.length} linked devices are ${verb} the agent.`];
+  };
+  const tooltip = [...say(prompting, 'sending prompts to'), ...say(watching, 'watching')].join(' ');
+  if (prompting.length) return { mode: 'prompt', text: 'Remote control', tooltip };
+  return { mode: 'watch', text: 'Watched remotely', tooltip };
 }
 
 export type LinksSummary =
@@ -763,8 +763,7 @@ export class SliccNetwork extends ModelElement {
     if (!port.setRemoteControl) {
       return html`<span class="muted" data-control=${control.allowed ? 'allowed' : 'off'}>${control.allowed ? 'Remote control allowed.' : 'Remote control not allowed.'}</span>`;
     }
-    const action = `control:${device.id}`;
-    return html`<sp-switch class="control" data-action="remote-control" .checked=${live(control.allowed)} ?disabled=${this.#waiting(action)} @change=${(event: Event) => this.#setControl(port, device, event.target as HTMLElement & { checked: boolean })}>Allow remote control</sp-switch>`;
+    return html`<sp-switch class="control" data-action="remote-control" .checked=${live(control.allowed)} ?disabled=${this.busy !== ''} @change=${(event: Event) => this.#setControl(port, device, event.target as HTMLElement & { checked: boolean })}>Allow remote control</sp-switch>`;
   }
 
   async #setControl(
