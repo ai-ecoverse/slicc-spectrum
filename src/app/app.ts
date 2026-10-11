@@ -476,6 +476,14 @@ export class SliccApp extends ThemedElement {
     if (layout) this.#start(this.model);
     else if (changed.has('model')) this.#rebind(this.model);
     this.#updates(layout);
+    this.#retitle();
+  }
+
+  #retitle(): void {
+    for (const sprinkle of this.#sprinkles()) {
+      const panel = this.dock.api.getPanel(`sprinkle:${sprinkle.id}`);
+      if (panel && panel.title !== sprinkle.title) panel.api.setTitle(sprinkle.title);
+    }
   }
 
   #updates(layout: boolean): void {
