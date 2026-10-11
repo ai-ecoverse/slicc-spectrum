@@ -10,7 +10,7 @@ import { defaultFontBase, defaultVariableFont, installFonts } from './fonts.ts';
 import { deleteCone } from './freezer.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
 import { agentTitle, untitled, watchTitles } from './names.ts';
-import { networkHealth, networkIcon, networkLabel } from './network.ts';
+import { networkHealth, networkIcon, networkLabel, remoteLight } from './network.ts';
 import {
   chatAgent,
   chats,
@@ -848,6 +848,17 @@ export class SliccApp extends ThemedElement {
       <swc-tooltip for="tabs" placement="bottom">${light.tooltip}</swc-tooltip>`;
   }
 
+  #remoteIndicator(): TemplateResult | typeof nothing {
+    const port = this.model?.network;
+    if (!port || !this.#offers('network')) return nothing;
+    const light = remoteLight(port.status());
+    if (!light) return nothing;
+    return html`<swc-action-button id="remote" quiet size="s" data-remote=${light.mode} accessible-label=${`${light.text}. ${light.tooltip}`} @click=${() => this.show('network')}>
+        <swc-status-light size="s" variant="info">${this.screen === 'phone' ? nothing : light.text}</swc-status-light>
+      </swc-action-button>
+      <swc-tooltip for="remote" placement="bottom">${light.tooltip}</swc-tooltip>`;
+  }
+
   #networkIndicator(): TemplateResult | typeof nothing {
     const port = this.model?.network;
     if (!port || !this.#offers('network')) return nothing;
@@ -910,6 +921,7 @@ export class SliccApp extends ThemedElement {
           <div class="status" role="status"><slot name="status"></slot></div>
           ${this.#tabsIndicator()}
           ${this.#updatesIndicator()}
+          ${this.#remoteIndicator()}
           ${this.#networkIndicator()}
           ${this.#offers('chat') ? html`<slicc-tray .model=${this.model} ?compact=${this.screen === 'phone'}></slicc-tray>` : nothing}
           <sp-action-menu size="s" quiet label="View" @change=${this.#view}>
