@@ -601,6 +601,14 @@ export class SliccNetwork extends ModelElement {
         color: var(--swc-neutral-subdued-content-color-default);
         overflow-wrap: anywhere;
       }
+      .folders {
+        margin-top: var(--swc-spacing-100);
+      }
+      .folders .subheading {
+        font-size: var(--swc-font-size-75);
+        font-weight: var(--swc-bold-font-weight);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
       .folders ul {
         display: flex;
         flex-direction: column;
@@ -1155,7 +1163,7 @@ export class SliccNetwork extends ModelElement {
   ): TemplateResult {
     const heading = `folders-${device.id}`;
     return html`<div class="folders" data-folders>
-      <span class="muted" id=${heading}>Folders</span>
+      <span class="subheading" id=${heading}>Folders</span>
       <ul aria-labelledby=${heading}>${folders.map((folder) => this.#folder(port, device, folder))}</ul>
     </div>`;
   }
