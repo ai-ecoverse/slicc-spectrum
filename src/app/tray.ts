@@ -25,8 +25,14 @@ export function budgetVariant(percent: number): string {
   return variant === 'informative' ? 'neutral' : variant;
 }
 
+export function spendLine(status: TrayStatus): string {
+  if (!status.spent) return '';
+  const rate = status.rate ? ` · $${status.rate.toFixed(2)}/h` : '';
+  return `Spent $${status.spent.toFixed(2)}${rate}. `;
+}
+
 export function budgetLine(status: TrayStatus): string {
-  return `Spent $${status.spent.toFixed(2)} · $${status.rate.toFixed(2)}/h. ${status.budget.percent}% of the ${status.budget.window} budget, ${status.budget.resets}.`;
+  return `${spendLine(status)}${status.budget.percent}% of the ${status.budget.window} budget, ${status.budget.resets}.`;
 }
 
 export class SliccTray extends ModelElement {

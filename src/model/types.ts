@@ -507,10 +507,12 @@ export interface MonitorVital {
 }
 
 export interface MonitorRow {
+  id?: string;
   name: string;
   meta: string;
   status: MonitorStatus;
   badges?: string[];
+  depth?: number;
 }
 
 export interface MonitorSection {
@@ -594,8 +596,8 @@ export interface TrayStatus {
   connection: TrayConnection;
   role: TrayRole;
   followers: Follower[];
-  spent: number;
-  rate: number;
+  spent?: number;
+  rate?: number;
   budget: { percent: number; window: 'daily' | 'weekly' | 'monthly'; resets: string };
   joinUrl: string;
 }
