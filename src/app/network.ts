@@ -2,6 +2,7 @@ import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
+import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-cloud.js';
 import '@adobe/spectrum-wc-icons/swc-icon-cloud-state-error.js';
@@ -9,6 +10,8 @@ import '@adobe/spectrum-wc-icons/swc-icon-cloud-state-online.js';
 import '@adobe/spectrum-wc-icons/swc-icon-cloud-state-slow-connection.js';
 import '@adobe/spectrum-wc-icons/swc-icon-copy.js';
 import '@adobe/spectrum-wc-icons/swc-icon-info-circle.js';
+import '@adobe/spectrum-wc-icons/swc-icon-visibility.js';
+import '@adobe/spectrum-wc-icons/swc-icon-visibility-off.js';
 import link from '@adobe/spectrum-wc/link.css';
 import { css, html, nothing, type TemplateResult, unsafeCSS } from 'lit';
 import { live } from 'lit/directives/live.js';
@@ -336,6 +339,28 @@ export const networkIcon: Record<NetworkStatus['health'], TemplateResult> = {
   failing: html`<swc-icon-cloud-state-error slot="icon"></swc-icon-cloud-state-error>`,
 };
 
+const dots = '••••••';
+
+function maskUrl(url: string): string {
+  const cut = url.search(/[?#]/);
+  const base = cut < 0 ? url : url.slice(0, cut);
+  const path = base.replace(/\/+$/, '');
+  const slash = path.lastIndexOf('/');
+  if (slash > path.indexOf('//') + 1) return `${path.slice(0, slash + 1)}${dots}`;
+  return cut < 0 ? `${path}/${dots}` : `${base}${url[cut]}${dots}`;
+}
+
+function masked(text: string): TemplateResult[] {
+  return maskSecret(text)
+    .split(dots)
+    .map((part, i) => (i ? html`<span class="dots">${dots}</span>${part}` : html`${part}`));
+}
+
+export function maskSecret(text: string): string {
+  const masked = text.replace(/https?:\/\/\S+/g, maskUrl);
+  return masked === text ? dots : masked;
+}
+
 export function host(url: string): string {
   try {
     return new URL(url).host || url;
@@ -363,6 +388,7 @@ export class SliccNetwork extends ModelElement {
     busy: { state: true },
     tailnetError: { state: true },
     tailnetCopied: { state: true },
+    revealed: { state: true },
     linksError: { state: true },
     syncError: { state: true },
   };
@@ -373,6 +399,7 @@ export class SliccNetwork extends ModelElement {
   declare busy: string;
   declare tailnetError: string;
   declare tailnetCopied: string;
+  declare revealed: Record<string, string>;
   declare linksError: string;
   declare syncError: string;
 
@@ -385,6 +412,7 @@ export class SliccNetwork extends ModelElement {
     this.busy = '';
     this.tailnetError = '';
     this.tailnetCopied = '';
+    this.revealed = {};
     this.linksError = '';
     this.syncError = '';
   }
@@ -607,6 +635,10 @@ export class SliccNetwork extends ModelElement {
       summary:hover {
         color: var(--swc-neutral-subdued-content-color-hover);
       }
+      .dots {
+        display: inline-block;
+        white-space: nowrap;
+      }
       summary:focus-visible {
         outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
         outline-offset: var(--swc-focus-ring-gap);
@@ -676,9 +708,10 @@ export class SliccNetwork extends ModelElement {
       const target = this.renderRoot.querySelector<HTMLElement>(
         `section[aria-labelledby="${section}"]`
       );
-      target
-        ?.querySelector<HTMLElement>('swc-button, swc-action-button')
-        ?.focus({ focusVisible: false });
+      (
+        target?.querySelector<HTMLElement>('[data-action^="copy-"]') ??
+        target?.querySelector<HTMLElement>('swc-button, swc-action-button')
+      )?.focus({ focusVisible: false });
       target?.scrollIntoView({ block: 'start' });
     });
   }
@@ -735,7 +768,8 @@ export class SliccNetwork extends ModelElement {
   async #copyValue(
     key: string,
     value: string,
-    area: 'tailnetError' | 'linksError' | 'syncError'
+    area: 'tailnetError' | 'linksError' | 'syncError',
+    hidden: boolean
   ): Promise<void> {
     try {
       await globalThis.navigator.clipboard.writeText(value);
@@ -743,7 +777,9 @@ export class SliccNetwork extends ModelElement {
       this[area] = '';
     } catch {
       this.tailnetCopied = '';
-      this[area] = 'Couldn’t copy. Select the text and copy it.';
+      this[area] = hidden
+        ? 'Couldn’t copy. Choose Show, then select the text and copy it.'
+        : 'Couldn’t copy. Select the text and copy it.';
     }
   }
 
@@ -785,10 +821,11 @@ export class SliccNetwork extends ModelElement {
     what: string,
     label: string,
     value: string,
-    area: 'tailnetError' | 'linksError' | 'syncError'
+    area: 'tailnetError' | 'linksError' | 'syncError',
+    hidden = false
   ): TemplateResult {
     const copied = this.tailnetCopied === key;
-    return html`<swc-action-button size="s" quiet data-action=${`copy-${what}`} accessible-label=${copied ? 'Copied' : `Copy ${label}`} @click=${() => this.#copyValue(key, value, area)}>
+    return html`<swc-action-button size="s" quiet data-action=${`copy-${what}`} accessible-label=${copied ? 'Copied' : `Copy ${label}`} @click=${() => this.#copyValue(key, value, area, hidden)}>
       <swc-icon-copy slot="icon"></swc-icon-copy>${copied ? 'Copied' : 'Copy'}
     </swc-action-button>`;
   }
@@ -798,13 +835,25 @@ export class SliccNetwork extends ModelElement {
     label: string,
     value: string,
     area: 'tailnetError' | 'linksError' | 'syncError' = 'tailnetError',
-    spoken = label.toLowerCase()
+    spoken = label.toLowerCase(),
+    secret = false
   ): TemplateResult {
+    const hidden = secret && this.revealed[what] !== value;
     return html`<dt>${label}</dt>
-      <dd class="command" data-copy=${what}>
-        <code>${value}</code>
-        ${this.#copyButton(what, what, spoken, value, area)}
+      <dd class="command" data-copy=${what} data-secret=${secret ? (hidden ? 'hidden' : 'shown') : nothing}>
+        <code>${hidden ? masked(value) : value}</code>
+        ${secret ? this.#revealButton(what, spoken, value, hidden) : nothing}
+        ${this.#copyButton(what, what, spoken, value, area, hidden)}
       </dd>`;
+  }
+
+  #revealButton(what: string, spoken: string, value: string, hidden: boolean): TemplateResult {
+    const id = `reveal-${what}`;
+    const label = `${hidden ? 'Show' : 'Hide'} ${spoken}`;
+    return html`<swc-action-button id=${id} size="s" quiet data-action=${id} accessible-label=${label} @click=${() => {
+      this.revealed = { ...this.revealed, [what]: hidden ? value : '' };
+    }}>${hidden ? html`<swc-icon-visibility slot="icon"></swc-icon-visibility>` : html`<swc-icon-visibility-off slot="icon"></swc-icon-visibility-off>`}</swc-action-button
+    ><swc-tooltip for=${id} placement="top">${label}</swc-tooltip>`;
   }
 
   #signIn(port: NetworkPort, tailnet: TailnetStatus): TemplateResult {
@@ -1069,8 +1118,8 @@ export class SliccNetwork extends ModelElement {
         ready
           ? html`<p>Run this on that computer:</p>
             <dl class="node stacked" data-join="ready">
-              ${links.joinCommand ? this.#copyRow('join-command', 'Command', links.joinCommand, 'linksError', 'command') : nothing}
-              ${links.joinUrl ? this.#copyRow('join-url', 'Join URL', links.joinUrl, 'linksError', 'join URL') : nothing}
+              ${links.joinCommand ? this.#copyRow('join-command', 'Command', links.joinCommand, 'linksError', 'command', true) : nothing}
+              ${links.joinUrl ? this.#copyRow('join-url', 'Join URL', links.joinUrl, 'linksError', 'join URL', true) : nothing}
             </dl>
             ${
               follow
@@ -1078,7 +1127,7 @@ export class SliccNetwork extends ModelElement {
                   <p>Scan this code on your phone, or open the link on another computer, to follow this SLICC there. It waits until you allow it here.</p>
                   <div class="follow" data-join="follow">
                     ${qrCode(follow, 'QR code of the follow link')}
-                    <dl class="node stacked">${this.#copyRow('follow-url', 'Link', follow, 'linksError', 'follow link')}</dl>
+                    <dl class="node stacked">${this.#copyRow('follow-url', 'Link', follow, 'linksError', 'follow link', true)}</dl>
                   </div>`
                 : nothing
             }
@@ -1231,7 +1280,7 @@ export class SliccNetwork extends ModelElement {
         <dt>Name</dt><dd>${status.name}</dd>
         <dt>Role</dt><dd>${status.role}</dd>
         <dt>Runs in</dt><dd>${status.kind}</dd>
-        ${status.joinUrl ? this.#copyRow('tray-join', 'Join link', status.joinUrl, 'syncError', 'join link') : nothing}
+        ${status.joinUrl ? this.#copyRow('tray-join', 'Join link', status.joinUrl, 'syncError', 'join link', true) : nothing}
       </dl>
       <h3 id="sync-followers">Followers</h3>
       ${
