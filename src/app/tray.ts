@@ -26,9 +26,12 @@ export function budgetVariant(percent: number): string {
 }
 
 export function spendLine(status: TrayStatus): string {
-  if (!status.spent) return '';
-  const rate = status.rate ? ` · $${status.rate.toFixed(2)}/h` : '';
-  return `Spent $${status.spent.toFixed(2)}${rate}. `;
+  const parts = [
+    status.spent ? `Spent $${status.spent.toFixed(2)}` : '',
+    status.rate ? `$${status.rate.toFixed(2)}/h` : '',
+  ];
+  const line = parts.filter(Boolean).join(' · ');
+  return line ? `${line}. ` : '';
 }
 
 export function budgetLine(status: TrayStatus, budget: TrayBudget): string {
