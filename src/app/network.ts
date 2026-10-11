@@ -343,10 +343,11 @@ const dots = '••••••';
 
 function maskUrl(url: string): string {
   const cut = url.search(/[?#]/);
-  if (cut >= 0) return `${url.slice(0, cut + 1)}${dots}`;
-  const path = url.replace(/\/+$/, '');
+  const base = cut < 0 ? url : url.slice(0, cut);
+  const path = base.replace(/\/+$/, '');
   const slash = path.lastIndexOf('/');
-  return slash > path.indexOf('//') + 1 ? `${path.slice(0, slash + 1)}${dots}` : `${path}/${dots}`;
+  if (slash > path.indexOf('//') + 1) return `${path.slice(0, slash + 1)}${dots}`;
+  return cut < 0 ? `${path}/${dots}` : `${base}${url[cut]}${dots}`;
 }
 
 function masked(text: string): TemplateResult[] {
