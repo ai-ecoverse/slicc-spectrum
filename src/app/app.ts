@@ -853,7 +853,7 @@ export class SliccApp extends ThemedElement {
     if (!port || !this.#offers('network')) return nothing;
     const light = remoteLight(port.status());
     if (!light) return nothing;
-    return html`<swc-action-button id="remote" quiet size="s" data-remote=${light.mode} accessible-label=${`${light.text}. ${light.tooltip}`} @click=${() => this.show('network')}>
+    return html`<swc-action-button id="remote" quiet size="s" data-remote=${light.mode} accessible-label=${light.tooltip} @click=${() => this.show('network')}>
         <swc-status-light size="s" variant="info">${this.screen === 'phone' ? nothing : light.text}</swc-status-light>
       </swc-action-button>
       <swc-tooltip for="remote" placement="bottom">${light.tooltip}</swc-tooltip>`;
