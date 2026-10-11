@@ -40,7 +40,7 @@ export function budgetLine(status: TrayStatus, budget: TrayBudget): string {
 
 export function shownBudget(status: TrayStatus): TrayBudget | null {
   const budget = status.budget;
-  return budget && (budget.percent > 0 || status.spent) ? budget : null;
+  return budget && (budget.percent > 0 || status.spent || status.rate) ? budget : null;
 }
 
 export class SliccTray extends ModelElement {
