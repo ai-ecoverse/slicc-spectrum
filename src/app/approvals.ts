@@ -3,7 +3,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@spectrum-web-components/alert-dialog/sp-alert-dialog.js';
 import { css, html, type LitElement, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
-import type { Approval, ApprovalDecision, SliccModel } from '../model/types.ts';
+import type { Approval, ApprovalDecision, ApprovalEnd, SliccModel } from '../model/types.ts';
 import { ModelElement } from './base.ts';
 import { dialogStyles, focused } from './confirm.ts';
 
@@ -13,8 +13,16 @@ export function countdown(ms: number): string {
 }
 
 export function asking(approval: Approval): string {
-  const { name, where } = approval.requester;
-  return `${name} wants to run this with sudo${where ? ` in ${where}` : ''}`;
+  const { kind, name, where } = approval.requester;
+  const place = where ? ` in ${where}` : '';
+  return kind === 'user'
+    ? `You ran this with sudo${place} (as ${name})`
+    : `${name} wants to run this with sudo${place}`;
+}
+
+export function sudo(approval: Approval): string {
+  const as = approval.target && approval.target !== 'root' ? `-u ${approval.target} ` : '';
+  return `sudo ${as}${approval.command}`;
 }
 
 export function waiting(model: SliccModel | null, now: number): Approval[] {
@@ -23,16 +31,28 @@ export function waiting(model: SliccModel | null, now: number): Approval[] {
     .sort((a, b) => a.createdAt - b.createdAt);
 }
 
+function gone(reason: ApprovalEnd): 'elsewhere' | 'expired' {
+  return reason === 'expired' ? 'expired' : 'elsewhere';
+}
+
 export class SliccApprovals extends ModelElement {
   static properties = {
     ...ModelElement.properties,
     now: { state: true },
     busy: { state: true },
     failure: { state: true },
+    gone: { state: true },
   };
   declare now: number;
   declare busy: ApprovalDecision | '';
   declare failure: { id: string; message: string } | null;
+  declare gone: { approval: Approval; reason: 'elsewhere' | 'expired' } | null;
+  arming = 500;
+  #armed = false;
+  #arming: ReturnType<typeof setTimeout> | undefined;
+  #showing: Approval | null = null;
+  #decided = new Set<string>();
+  #ended = new Map<string, ApprovalEnd>();
   #timer: ReturnType<typeof setInterval> | null = null;
   #shown = '';
   #trigger: HTMLElement | null = null;
@@ -42,6 +62,7 @@ export class SliccApprovals extends ModelElement {
     this.now = Date.now();
     this.busy = '';
     this.failure = null;
+    this.gone = null;
   }
 
   static styles = [
@@ -96,12 +117,21 @@ export class SliccApprovals extends ModelElement {
         this.now = Date.now();
         this.requestUpdate();
       }),
+      port.on('ended', ({ id, reason }) => {
+        this.#ended.set(id, reason);
+        if (this.gone?.approval.id === id) {
+          this.gone = reason === 'withdrawn' ? null : { ...this.gone, reason: gone(reason) };
+          if (!this.gone) this.#showing = null;
+        }
+        this.requestUpdate();
+      }),
     ];
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.#tick(false);
+    clearTimeout(this.#arming);
   }
 
   #tick(on: boolean): void {
@@ -114,12 +144,14 @@ export class SliccApprovals extends ModelElement {
 
   async decide(approval: Approval, decision: ApprovalDecision): Promise<void> {
     const port = this.model?.approvals;
-    if (!port?.decide || this.busy) return;
+    if (!port?.decide || this.busy || (decision !== 'deny' && !this.#armed)) return;
     this.busy = decision;
     this.failure = null;
+    this.#decided.add(approval.id);
     try {
       await port.decide(approval.id, decision);
     } catch (error) {
+      this.#decided.delete(approval.id);
       this.failure = {
         id: approval.id,
         message: error instanceof Error ? error.message : String(error),
@@ -133,28 +165,57 @@ export class SliccApprovals extends ModelElement {
     return this.model?.approvals?.decide ? waiting(this.model, this.now) : [];
   }
 
+  protected willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed);
+    const list = this.#current();
+    const showing = this.#showing;
+    if (
+      showing &&
+      !this.gone &&
+      !this.#decided.has(showing.id) &&
+      !list.some((approval) => approval.id === showing.id)
+    ) {
+      const reason =
+        this.#ended.get(showing.id) ?? (showing.expiresAt <= this.now ? 'expired' : 'answered');
+      if (reason !== 'withdrawn') this.gone = { approval: showing, reason: gone(reason) };
+    }
+    if (this.gone) return;
+    const next = list[0] ?? null;
+    if (next?.id === showing?.id) return;
+    this.#showing = next;
+    clearTimeout(this.#arming);
+    this.#armed = false;
+    this.#arming = setTimeout(() => (this.#armed = true), this.arming);
+  }
+
   protected updated(changed: PropertyValues): void {
     super.updated(changed);
     const all = this.model?.approvals?.list() ?? [];
-    this.#tick(all.length > 0);
+    this.#tick(this.isConnected && all.length > 0);
     const dialog = this.renderRoot.querySelector('dialog');
-    const id = dialog?.dataset.approval ?? '';
-    if (id === this.#shown) return;
+    const key = dialog ? `${dialog.dataset.approval}:${dialog.dataset.gone ?? ''}` : '';
+    if (key === this.#shown) return;
     if (dialog && !this.#shown) this.#trigger = focused();
-    this.#shown = id;
+    this.#shown = key;
     if (!dialog) {
       if (this.#trigger?.isConnected) this.#trigger.focus();
       this.#trigger = null;
       return;
     }
     if (!dialog.open) dialog.showModal();
-    const deny = dialog.querySelector('[data-action=deny]') as LitElement;
-    void deny.updateComplete.then(() => deny.focus());
+    const first = dialog.querySelector('[data-action=deny], [data-action=close]') as LitElement;
+    void first.updateComplete.then(() => first.focus());
+  }
+
+  close(): void {
+    this.gone = null;
+    this.#showing = null;
   }
 
   #cancel(event: Event, approval: Approval): void {
     event.preventDefault();
-    void this.decide(approval, 'deny');
+    if (this.gone) this.close();
+    else void this.decide(approval, 'deny');
   }
 
   #button(
@@ -175,17 +236,41 @@ export class SliccApprovals extends ModelElement {
     >`;
   }
 
+  #dialog(approval: Approval, key: string, content: TemplateResult): unknown {
+    return keyed(
+      key,
+      html`<dialog role="alertdialog" aria-labelledby="title" aria-describedby="asking" data-approval=${approval.id} data-kind=${approval.kind} data-requester=${approval.requester.kind} data-gone=${this.gone?.reason ?? nothing} @cancel=${(event: Event) => this.#cancel(event, approval)}>${content}</dialog>`
+    );
+  }
+
+  #request(approval: Approval): TemplateResult {
+    return html`<p id="asking">${asking(approval)}:</p>
+      <pre class="command" data-command>${sudo(approval)}</pre>`;
+  }
+
   render(): unknown {
+    if (this.gone) {
+      const { approval, reason } = this.gone;
+      return this.#dialog(
+        approval,
+        `gone:${approval.id}`,
+        html`<sp-alert-dialog variant="information">
+          <h2 id="title" slot="heading">${reason === 'expired' ? 'Sudo request timed out' : 'Answered in another tab'}</h2>
+          ${this.#request(approval)}
+          ${reason === 'expired' ? html`<p class="timer" data-timer>Denied because nobody answered in time.</p>` : nothing}
+          <swc-button slot="button" variant="secondary" fill-style="outline" data-action="close" @click=${() => this.close()}>Close</swc-button>
+        </sp-alert-dialog>`
+      );
+    }
     const [approval, ...rest] = this.#current();
     if (!approval) return nothing;
     const failure = this.failure?.id === approval.id ? this.failure.message : '';
-    return keyed(
+    return this.#dialog(
+      approval,
       approval.id,
-      html`<dialog role="alertdialog" aria-labelledby="title" aria-describedby="asking" data-approval=${approval.id} data-kind=${approval.kind} data-requester=${approval.requester.kind} @cancel=${(event: Event) => this.#cancel(event, approval)}>
-        <sp-alert-dialog variant="warning">
+      html`<sp-alert-dialog variant="warning">
           <h2 id="title" slot="heading">Allow sudo?</h2>
-          <p id="asking">${asking(approval)}:</p>
-          <pre class="command" data-command>sudo ${approval.command}</pre>
+          ${this.#request(approval)}
           ${approval.cwd ? html`<p class="cwd">In ${approval.cwd}</p>` : nothing}
           ${approval.always ? html`<p class="hint">Always allow lets ${approval.requester.name} run exactly this command with sudo without asking again.</p>` : nothing}
           ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : nothing}
@@ -194,8 +279,7 @@ export class SliccApprovals extends ModelElement {
           ${this.#button(approval, 'deny', 'Deny', 'secondary')}
           ${approval.always ? this.#button(approval, 'always', 'Always allow', 'secondary') : nothing}
           ${this.#button(approval, 'once', 'Allow once', 'accent')}
-        </sp-alert-dialog>
-      </dialog>`
+        </sp-alert-dialog>`
     );
   }
 }

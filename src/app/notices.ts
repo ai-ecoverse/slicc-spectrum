@@ -5,7 +5,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-info-circle.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import type { Approval, Notice, NoticesPort, SliccModel } from '../model/types.ts';
-import { asking, deadline, waiting } from './approvals.ts';
+import { asking, deadline, sudo, waiting } from './approvals.ts';
 import { ModelElement } from './base.ts';
 import { tabsBanner } from './tabs.ts';
 
@@ -196,7 +196,7 @@ export class SliccNotices extends ModelElement {
       <swc-icon-alert-triangle></swc-icon-alert-triangle>
       <div class="text">
         <span class="title">Waiting for sudo approval</span>
-        <p>${asking(approval)}: <code>sudo ${approval.command}</code></p>
+        <p>${asking(approval)}: <code>${sudo(approval)}</code></p>
         <p>Answer it in the tab running SLICC. Denied automatically at ${deadline(approval.expiresAt)}.</p>
       </div>
     </div>`;

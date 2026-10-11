@@ -819,6 +819,7 @@ export interface SudoApproval {
   kind: 'sudo';
   requester: ApprovalRequester;
   command: string;
+  target?: string;
   cwd?: string;
   createdAt: number;
   expiresAt: number;
@@ -827,7 +828,14 @@ export interface SudoApproval {
 
 export type Approval = SudoApproval;
 
-export interface ApprovalsPort extends Subscribable<{ approvals: readonly Approval[] }> {
+export type ApprovalEnd = 'answered' | 'withdrawn' | 'expired';
+
+export interface ApprovalsEvents {
+  approvals: readonly Approval[];
+  ended: { id: string; reason: ApprovalEnd };
+}
+
+export interface ApprovalsPort extends Subscribable<ApprovalsEvents> {
   list(): readonly Approval[];
   decide?(id: string, decision: ApprovalDecision): Promise<void>;
 }
