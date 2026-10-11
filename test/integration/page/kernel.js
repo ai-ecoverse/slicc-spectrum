@@ -40,6 +40,7 @@ async function install() {
 window.boot = async () => {
   await install();
   window.kernel = await createKernel({ root: await navigator.storage.getDirectory() });
+  await window.kernel.users.add({ name: 'slicc', home: '/home' });
   const terminal = document.querySelector('slicc-terminal');
   window.statuses = [];
   terminal.addEventListener('exit', ({ detail }) => window.statuses.push(detail.status));
@@ -47,7 +48,11 @@ window.boot = async () => {
   const opened = new Promise((resolve) =>
     terminal.addEventListener('ready', resolve, { once: true })
   );
-  terminal.backend = kernelBackend(window.kernel, { cwd: '/home', env: { PS1: 'slicc:\\w\\$ ' } });
+  terminal.backend = kernelBackend(window.kernel, {
+    cwd: '/home',
+    user: 'slicc',
+    env: { PS1: 'slicc:\\w\\$ ' },
+  });
   await opened;
   window.terminal = terminal;
   terminal.focus();

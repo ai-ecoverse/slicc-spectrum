@@ -6,6 +6,7 @@ import type { TerminalEvents, TerminalInfo, TerminalPort } from '../model/types.
 export interface KernelTerminalsOptions {
   argv?: string[];
   cwd?: string;
+  user?: string | number;
   env?: Record<string, string>;
   open?: number;
 }
@@ -14,6 +15,7 @@ export class KernelTerminals extends Emitter<TerminalEvents> implements Terminal
   #kernel: TerminalKernel;
   #argv: string[];
   #cwd: string;
+  #user: string | number | undefined;
   #env: Record<string, string> | undefined;
   #terminals: TerminalInfo[] = [];
   #backends = new Map<string, TerminalBackend>();
@@ -21,12 +23,13 @@ export class KernelTerminals extends Emitter<TerminalEvents> implements Terminal
 
   constructor(
     kernel: TerminalKernel,
-    { argv = ['bash', '-i'], cwd = '/home', env, open = 1 }: KernelTerminalsOptions = {}
+    { argv = ['bash', '-i'], cwd = '/home', user, env, open = 1 }: KernelTerminalsOptions = {}
   ) {
     super();
     this.#kernel = kernel;
     this.#argv = argv;
     this.#cwd = cwd;
+    this.#user = user;
     this.#env = env;
     for (let i = 0; i < open; i++) this.open();
   }
@@ -75,6 +78,7 @@ export class KernelTerminals extends Emitter<TerminalEvents> implements Terminal
       backend = kernelBackend(this.#kernel, {
         argv: this.#argv,
         cwd: terminal.cwd,
+        user: this.#user,
         env: { PROMPT_COMMAND: cwdPromptCommand, ...this.#env },
         onCwd: (cwd) => this.#move(id, cwd),
       });

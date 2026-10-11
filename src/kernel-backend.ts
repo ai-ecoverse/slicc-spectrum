@@ -10,6 +10,7 @@ export interface KernelTerminal {
 
 export interface KernelTerminalOptions {
   cwd?: string;
+  user?: string | number;
   env?: Record<string, string>;
   cols: number;
   rows: number;
@@ -23,6 +24,7 @@ export interface TerminalKernel {
 export interface KernelBackendOptions {
   argv?: string[];
   cwd?: string;
+  user?: string | number;
   env?: Record<string, string>;
   onCwd?: (cwd: string) => void;
 }
@@ -55,7 +57,7 @@ export function cwdWatcher(onCwd: (cwd: string) => void): (bytes: Uint8Array) =>
 
 export function kernelBackend(
   kernel: TerminalKernel,
-  { argv = ['bash', '-i'], cwd, env, onCwd }: KernelBackendOptions = {}
+  { argv = ['bash', '-i'], cwd, user, env, onCwd }: KernelBackendOptions = {}
 ): TerminalBackend {
   return {
     async open(sink, { cols, rows }) {
@@ -64,7 +66,14 @@ export function kernelBackend(
         watch?.(bytes);
         sink.output(bytes);
       };
-      const terminal = await kernel.openTerminal(argv, { cwd, env, cols, rows, onData });
+      const terminal = await kernel.openTerminal(argv, {
+        cwd,
+        ...(user === undefined ? {} : { user }),
+        env,
+        cols,
+        rows,
+        onData,
+      });
       terminal.exited.then(
         (status) => sink.exit(status),
         (error) => {
