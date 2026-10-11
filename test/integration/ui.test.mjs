@@ -4120,3 +4120,25 @@ test('the mount button, mounted strip and error line in dark, on a phone and on 
   await shot(page, 'files-mount-narrow-dark');
   assert.deepEqual(page.errors, []);
 });
+
+test('a panel taller than its group never scrolls the group or its tab strip away', async (t) => {
+  const page = await chrome.page(t);
+  await page.goto('/ui/?delay=5');
+  await page.until(() => window.ready === true);
+  const moved = await page.evaluate(async () => {
+    const dock = window.$('slicc-app', 'slicc-dock').shadowRoot;
+    const boxes = [
+      ...dock.querySelectorAll('.dv-groupview, .dv-view, .dv-split-view-container, .panel'),
+    ];
+    const panel = window.$('slicc-app', 'slicc-dock', 'slicc-chat').closest('.panel');
+    panel.style.height = '2000px';
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    panel
+      .querySelector('slicc-chat')
+      .shadowRoot.querySelector('.log')
+      .lastElementChild.scrollIntoView({ block: 'end' });
+    for (const box of boxes) box.scrollTop = 200;
+    return boxes.filter((box) => box.scrollTop > 0).length;
+  });
+  assert.equal(moved, 0);
+});

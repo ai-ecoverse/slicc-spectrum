@@ -15,6 +15,7 @@ const accountStatus = {
 } as const;
 
 const secretNames = { 'api-key': 'API key', token: 'token' } as const;
+const rejectedNames = { 'api-key': 'API key rejected', token: 'Token rejected' } as const;
 
 export class SliccSettings extends ModelElement {
   static properties = {
@@ -311,7 +312,9 @@ export class SliccSettings extends ModelElement {
   }
 
   #account(account: Account): TemplateResult {
-    const [variant, label] = accountStatus[this.#status(account)];
+    const status = this.#status(account);
+    const [variant, generic] = accountStatus[status];
+    const label = status === 'rejected' ? rejectedNames[account.secret ?? 'api-key'] : generic;
     const failure =
       this.failure?.id === account.id
         ? html`<div class="failure" role="alert">
