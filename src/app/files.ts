@@ -239,15 +239,33 @@ export class SliccFiles extends ModelElement {
         color: var(--swc-neutral-subdued-content-color-default);
       }
       .mounts .path[data-source] {
+        --sep: 2ch;
         display: flex;
         flex-wrap: wrap;
+        margin-left: calc(-1 * var(--sep));
+        clip-path: inset(0 0 0 var(--sep));
       }
       .mounts .path[data-source] > span {
+        display: flex;
         min-width: 0;
-        max-width: 100%;
+        max-width: calc(100% - var(--sep));
+        margin-left: var(--sep);
+      }
+      .mounts .target,
+      .mounts .source .name {
+        min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: pre;
+      }
+      .mounts .source {
+        position: relative;
+      }
+      .mounts .source .sep {
+        position: absolute;
+        right: 100%;
+        width: var(--sep);
+        text-align: center;
       }
       .mounts .path {
         flex: 1;
@@ -440,7 +458,7 @@ export class SliccFiles extends ModelElement {
   #mounted(path: string): TemplateResult {
     const source = this.sources.get(path);
     if (!source) return html`<span class="path" title=${path}>${path}</span>`;
-    return html`<span class="path" title=${`${path} · ${source}`} data-source=${source}><span class="target">${path}</span><span class="source"> · ${source}</span></span>`;
+    return html`<span class="path" title=${`${path} · ${source}`} data-source=${source}><span class="target">${path}</span><span class="source"><span class="sep">·</span><span class="name">${source}</span></span></span>`;
   }
 
   #strip(files: FilePort | undefined): TemplateResult | typeof nothing {
