@@ -379,6 +379,14 @@ export const accounts: Account[] = [
     group: 'mcp',
     secret: 'token',
   },
+  {
+    id: 'mcp:design',
+    provider: 'design',
+    identity: 'design.example',
+    status: 'disconnected',
+    auth: 'oauth',
+    group: 'mcp',
+  },
 ];
 
 export const agents: Agent[] = [
