@@ -186,7 +186,7 @@ export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort 
       ],
       alerts: [
         ...agents
-          .filter((candidate) => candidate.contextFill >= 0.6)
+          .filter((candidate) => candidate.contextFill >= 0.8)
           .map((candidate) => ({
             id: `fill-${candidate.id}`,
             title: `${candidate.name} is ${Math.round(candidate.contextFill * 100)}% full`,

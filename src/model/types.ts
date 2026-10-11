@@ -313,6 +313,12 @@ export interface FileEvents {
   mounts: readonly string[];
 }
 
+export interface MountInfo {
+  target: string;
+  source?: string;
+  type: string;
+}
+
 export interface FilePort extends Subscribable<FileEvents> {
   list(): Promise<readonly FileEntry[]>;
   read(path: string): Promise<string>;
@@ -323,6 +329,7 @@ export interface FilePort extends Subscribable<FileEvents> {
   revert(path: string): Promise<void>;
   mountFolder?(path?: string): Promise<string | null>;
   mounts?(): readonly string[];
+  mountInfo?(): readonly MountInfo[];
   eject?(path: string): Promise<void>;
   needsFolder?(): readonly string[];
 }
@@ -769,6 +776,14 @@ export interface LinkedDevice {
   access?: DeviceAccess;
   asking?: boolean;
   terminals?: number;
+  folders?: readonly LinkedFolder[];
+}
+
+export interface LinkedFolder {
+  name: string;
+  source: string;
+  readonly: boolean;
+  mounted?: string;
 }
 
 export interface NetworkLinks {
@@ -817,6 +832,8 @@ export interface NetworkPort extends Subscribable<{ network: NetworkStatus }> {
   setAccess?(id: string, key: AccessKey, allowed: boolean): Promise<void>;
   rotateJoinUrl?(): Promise<void>;
   retryLinks?(): Promise<void>;
+  mountFolder?(source: string): Promise<string>;
+  ejectFolder?(source: string): Promise<void>;
 }
 
 export interface NoticeAction {

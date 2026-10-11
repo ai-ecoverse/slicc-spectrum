@@ -20,6 +20,7 @@ import type {
   BrowserAutomation,
   DeviceAccess,
   LinkedDevice,
+  LinkedFolder,
   LinkState,
   NetworkExit,
   NetworkFailure,
@@ -64,7 +65,7 @@ export const automation: Record<NonNullable<BrowserAutomation['via']> | 'none', 
   extension: 'Browser automation: through the SLICC extension.',
   proxy: 'Browser automation: through slicc-node.',
   link: 'Browser automation: through a linked device.',
-  none: 'Browser automation: not available. Install the extension or run slicc-node.',
+  none: 'Browser automation: not available. Install the extension, or run slicc-node or npx sliccy@next.',
 };
 
 export function automationOf(browser: BrowserAutomation): keyof typeof automation {
@@ -600,7 +601,43 @@ export class SliccNetwork extends ModelElement {
         color: var(--swc-neutral-subdued-content-color-default);
         overflow-wrap: anywhere;
       }
+      .folders ul {
+        display: flex;
+        flex-direction: column;
+        gap: var(--swc-spacing-75);
+        margin: var(--swc-spacing-75) 0 0;
+        padding: 0;
+        list-style: none;
+      }
+      .folders li {
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-100);
+        min-width: 0;
+      }
+      .folders swc-icon-folder {
+        flex: none;
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .folder {
+        flex: 1;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--swc-spacing-50) var(--swc-spacing-100);
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .folder > code {
+        flex: none;
+        max-width: 100%;
+      }
+      .folder .muted {
+        flex-basis: 100%;
+        font-size: var(--swc-font-size-75);
+      }
       .where code,
+      .folder code,
       [data-browsers] code {
         font-family: var(--swc-code-font-family-stack);
       }
@@ -1101,6 +1138,7 @@ export class SliccNetwork extends ModelElement {
           ? html`<span class="muted" data-browsers>${device.browsers.length === 1 ? 'Browser' : 'Browsers'}: ${device.browsers.map((item, index) => html`${index ? ', ' : ''}${item.name} (<code>${item.runtime}</code>)`)}</span>`
           : nothing
       }
+      ${device.folders?.length ? this.#folders(port, device, device.folders) : nothing}
       ${device.asking ? this.#ask(port, device) : this.#access(port, device)}
       ${
         device.offers.includes('ssh')
@@ -1108,6 +1146,43 @@ export class SliccNetwork extends ModelElement {
           : nothing
       }
     </li>`;
+  }
+
+  #folders(
+    port: NetworkPort,
+    device: LinkedDevice,
+    folders: readonly LinkedFolder[]
+  ): TemplateResult {
+    const heading = `folders-${device.id}`;
+    return html`<div class="folders" data-folders>
+      <span class="muted" id=${heading}>Folders</span>
+      <ul aria-labelledby=${heading}>${folders.map((folder) => this.#folder(port, device, folder))}</ul>
+    </div>`;
+  }
+
+  #folder(port: NetworkPort, device: LinkedDevice, folder: LinkedFolder): TemplateResult {
+    const action = `folder:${folder.source}`;
+    const busy = this.busy === action;
+    const button = folder.mounted
+      ? port.ejectFolder
+        ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="eject-folder" data-id=${folder.source} accessible-label=${`Eject ${folder.mounted}`} ?pending=${busy} ?disabled=${this.#waiting(action)} @click=${() => this.#act(action, () => port.ejectFolder?.(folder.source), 'linksError')}>Eject</swc-button>`
+        : nothing
+      : port.mountFolder
+        ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="mount-folder" data-id=${folder.source} accessible-label=${`Mount ${folder.source}`} ?pending=${busy} ?disabled=${this.#waiting(action) || device.state !== 'connected'} @click=${() => this.#act(action, () => this.#mountFolder(port, folder.source), 'linksError')}>Mount</swc-button>`
+        : nothing;
+    return html`<li data-folder=${folder.source} data-mounted=${folder.mounted ? 'yes' : 'no'}>
+      <swc-icon-folder size="s" aria-hidden="true"></swc-icon-folder>
+      <span class="folder">
+        <code title=${folder.source}>${folder.name}</code>
+        ${folder.readonly ? html`<swc-badge size="s" variant="neutral" subtle data-readonly>Read-only</swc-badge>` : nothing}
+        ${folder.mounted ? html`<span class="muted" data-mounted-at>Mounted at <code>${folder.mounted}</code></span>` : nothing}
+      </span>
+      ${button}
+    </li>`;
+  }
+
+  async #mountFolder(port: NetworkPort, source: string): Promise<void> {
+    await port.mountFolder?.(source);
   }
 
   #join(port: NetworkPort, links: NetworkLinks): TemplateResult {

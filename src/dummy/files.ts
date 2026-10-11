@@ -1,5 +1,5 @@
 import { Emitter } from '../model/emitter.ts';
-import type { Change, FileEntry, FileEvents, FilePort } from '../model/types.ts';
+import type { Change, FileEntry, FileEvents, FilePort, MountInfo } from '../model/types.ts';
 import type { Clock } from './clock.ts';
 
 function parents(path: string): string[] {
@@ -19,9 +19,11 @@ export class DummyFiles extends Emitter<FileEvents> implements FilePort {
   mount: DummyMount | null;
   mountFolder?: (path?: string) => Promise<string | null>;
   mounts?: () => readonly string[];
+  mountInfo?: () => readonly MountInfo[];
   eject?: (path: string) => Promise<void>;
   needsFolder?: () => readonly string[];
   #mounted = new Set<string>();
+  #sources = new Map<string, string>();
   #needs = new Set<string>();
   #contents = new Map<string, string>();
   #directories = new Set<string>();
@@ -41,8 +43,7 @@ export class DummyFiles extends Emitter<FileEvents> implements FilePort {
     this.mount = mount;
     if (mount) {
       this.mountFolder = (path) => this.#mountFolder(mount, path);
-      this.mounts = () => [...this.#mounted];
-      this.eject = (path) => this.#eject(path);
+      this.#ejectable();
       this.needsFolder = () => [...this.#needs];
       if (mount.scenario === 'needs') this.#needs.add(mount.point);
     }
@@ -143,6 +144,30 @@ export class DummyFiles extends Emitter<FileEvents> implements FilePort {
     this.#announce(path);
   }
 
+  #ejectable(): void {
+    this.mounts = () => [...this.#mounted];
+    this.mountInfo = () =>
+      [...this.#mounted].map((target) => {
+        const source = this.#sources.get(target);
+        return source ? { target, source, type: 'hostfs' } : { target, type: 'local' };
+      });
+    this.eject = (path) => this.#eject(path);
+  }
+
+  async attach(target: string, source: string, contents: Record<string, string>): Promise<string> {
+    await this.#clock.sleep();
+    if (!this.eject) this.#ejectable();
+    const files = Object.entries(contents).map(([path, text]) => {
+      const file = `${target}/${path}`;
+      this.#put(file, text, Date.now());
+      return file;
+    });
+    this.#mounted.add(target);
+    this.#sources.set(target, source);
+    this.#remount(files);
+    return target;
+  }
+
   async #mountFolder(mount: DummyMount, point?: string): Promise<string | null> {
     await this.#clock.sleep();
     if (mount.scenario === 'cancel') return null;
@@ -165,6 +190,7 @@ export class DummyFiles extends Emitter<FileEvents> implements FilePort {
   async #eject(path: string): Promise<void> {
     await this.#clock.sleep();
     if (!this.#mounted.delete(path)) throw new Error(`Nothing is mounted at ${path}.`);
+    this.#sources.delete(path);
     const inside = (candidate: string) => candidate === path || candidate.startsWith(`${path}/`);
     const files = [...this.#contents.keys()].filter(inside);
     for (const file of files) {

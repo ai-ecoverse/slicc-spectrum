@@ -2,6 +2,7 @@ import { Emitter } from '../model/emitter.ts';
 import type {
   AccessKey,
   LinkedDevice,
+  LinkedFolder,
   NetworkExit,
   NetworkLinks,
   NetworkPort,
@@ -9,6 +10,7 @@ import type {
   TailnetStatus,
 } from '../model/types.ts';
 import type { Clock } from './clock.ts';
+import type { DummyFiles } from './files.ts';
 
 export type NetworkScenario = 'ok' | 'limited' | 'failing';
 export type TailnetScenario = 'off' | 'needs-login' | 'running' | 'failed';
@@ -127,6 +129,7 @@ const linkedDevices: readonly LinkedDevice[] = [
     state: 'connected',
     browsers: [{ runtime: 'quay-studio/chrome', name: 'Chrome' }],
     control: { allowed: true, fixed: true },
+    folders: [{ name: 'sketches', source: 'quay-studio/sketches', readonly: false }],
   },
   {
     id: 'link-pier',
@@ -140,6 +143,10 @@ const linkedDevices: readonly LinkedDevice[] = [
     state: 'connected',
     browsers: [{ runtime: 'pier-nuc/chrome', name: 'Chrome' }],
     control: { allowed: false },
+    folders: [
+      { name: 'proj', source: 'pier-nuc/proj', readonly: false },
+      { name: 'archive', source: 'pier-nuc/archive', readonly: true },
+    ],
   },
   {
     id: 'link-dock',
@@ -154,6 +161,13 @@ const linkedDevices: readonly LinkedDevice[] = [
     control: { allowed: false },
   },
 ];
+
+export function folderFiles(folder: LinkedFolder): Record<string, string> {
+  return {
+    'README.md': `# ${folder.name}\n\nShared from ${folder.source}.\n`,
+    'notes.txt': 'Tide tables, rope lengths, and a list of knots to learn.\n',
+  };
+}
 
 export function joinUrl(rotation = 0): string {
   return `https://join.slicc.example/l/${rotation ? `r${rotation}-` : ''}7Hq2kd9FXw3m`;
@@ -313,12 +327,16 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
   setAccess?: (id: string, key: AccessKey, allowed: boolean) => Promise<void>;
   rotateJoinUrl?: () => Promise<void>;
   retryLinks?: () => Promise<void>;
+  mountFolder?: (source: string) => Promise<string>;
+  ejectFolder?: (source: string) => Promise<void>;
+  #files: DummyFiles | undefined;
 
   constructor(
     scenario: NetworkScenario,
     clock: Clock,
     tailnet?: TailnetScenario,
-    links?: LinksScenario
+    links?: LinksScenario,
+    files?: DummyFiles
   ) {
     super();
     this.scenario = scenario;
@@ -332,6 +350,10 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
       this.setAccess = (id, key, allowed) => this.#access(id, key, allowed);
       this.rotateJoinUrl = () => this.#rotate();
       this.retryLinks = () => this.#retry();
+      this.mountFolder = (source) => this.#mountFolder(source);
+      this.ejectFolder = (source) => this.#ejectFolder(source);
+      this.#files = files;
+      files?.on('mounts', (targets) => this.#mounted(targets));
     }
     this.#base = networkFixtures(scenario);
     this.#status = this.#with(this.#base);
@@ -426,6 +448,54 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
     this.#links = { ...links, devices: links.devices.filter((device) => device.id !== id) };
     if (this.#exit?.kind === 'link' && this.#exit.id === id) this.#exit = null;
     this.#emit();
+  }
+
+  #folder(source: string): LinkedFolder {
+    const folder = this.#links?.devices
+      .flatMap((device) => device.folders ?? [])
+      .find((item) => item.source === source);
+    if (!folder) throw new Error(`No linked device shares ${source}.`);
+    return folder;
+  }
+
+  #mark(mounted: (folder: LinkedFolder) => string | undefined): void {
+    const links = this.#links as NetworkLinks;
+    const devices = links.devices.map((device) =>
+      device.folders
+        ? {
+            ...device,
+            folders: device.folders.map((folder) => {
+              const { mounted: _, ...rest } = folder;
+              const at = mounted(folder);
+              return at ? { ...rest, mounted: at } : rest;
+            }),
+          }
+        : device
+    );
+    this.#links = { ...links, devices };
+    this.#emit();
+  }
+
+  #mounted(targets: readonly string[]): void {
+    this.#mark((folder) => targets.find((target) => target === `/mnt/${folder.source}`));
+  }
+
+  async #mountFolder(source: string): Promise<string> {
+    const folder = this.#folder(source);
+    if (folder.mounted) return folder.mounted;
+    const target = `/mnt/${source}`;
+    if (this.#files) await this.#files.attach(target, source, folderFiles(folder));
+    else await this.#clock.sleep();
+    this.#mark((item) => (item.source === source ? target : item.mounted));
+    return target;
+  }
+
+  async #ejectFolder(source: string): Promise<void> {
+    const folder = this.#folder(source);
+    if (!folder.mounted) throw new Error(`${source} isn’t mounted.`);
+    if (this.#files?.eject) await this.#files.eject(folder.mounted);
+    else await this.#clock.sleep();
+    this.#mark((item) => (item.source === source ? undefined : item.mounted));
   }
 
   async #rotate(): Promise<void> {
