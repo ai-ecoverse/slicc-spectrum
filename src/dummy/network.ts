@@ -1,5 +1,6 @@
 import { Emitter } from '../model/emitter.ts';
 import type {
+  AccessKey,
   LinkedDevice,
   NetworkExit,
   NetworkLinks,
@@ -19,7 +20,8 @@ export type LinksScenario =
   | 'exit'
   | 'prompt'
   | 'denied'
-  | 'remote';
+  | 'remote'
+  | 'followers';
 
 const minute = 60_000;
 
@@ -157,15 +159,106 @@ export function joinUrl(rotation = 0): string {
   return `https://join.slicc.example/l/${rotation ? `r${rotation}-` : ''}7Hq2kd9FXw3m`;
 }
 
+export function followUrl(rotation = 0): string {
+  return `https://seven.slicc.example/#follow=${joinUrl(rotation)}`;
+}
+
+const followers: readonly LinkedDevice[] = [
+  {
+    id: 'link-quay',
+    name: 'slicc on quay-studio',
+    host: 'quay-studio.slicc.internal',
+    address: '198.18.57.11',
+    mode: 'local',
+    offers: ['net', 'http', 'ssh'],
+    exit: true,
+    state: 'connected',
+    kind: 'cli',
+    access: { control: true, fixed: true },
+  },
+  {
+    id: 'link-pier',
+    name: 'slicc on pier-nuc',
+    host: 'pier-nuc.slicc.internal',
+    address: '198.18.57.12',
+    mode: 'remote',
+    offers: ['net', 'ssh'],
+    exit: true,
+    state: 'connected',
+    kind: 'cli',
+    access: { control: true },
+    controlling: 'prompt',
+  },
+  {
+    id: 'link-bay',
+    name: 'SLICC on bay-laptop',
+    host: '',
+    address: '',
+    mode: 'remote',
+    offers: [],
+    exit: false,
+    state: 'connected',
+    kind: 'seven',
+    access: { view: true, control: true, terminal: true },
+    controlling: 'watch',
+    terminals: 1,
+  },
+  {
+    id: 'link-reef',
+    name: 'SLICC on reef-phone',
+    host: '',
+    address: '',
+    mode: 'remote',
+    offers: [],
+    exit: false,
+    state: 'connected',
+    kind: 'seven',
+    access: { view: true, control: false, terminal: false },
+    controlling: 'watch',
+  },
+  {
+    id: 'link-tide',
+    name: 'SLICC on tide-tablet',
+    host: '',
+    address: '',
+    mode: 'remote',
+    offers: [],
+    exit: false,
+    state: 'connected',
+    kind: 'seven',
+    asking: true,
+    access: { view: false, control: false, terminal: false },
+  },
+];
+
+export function grant(device: LinkedDevice, key: AccessKey, allowed: boolean): LinkedDevice {
+  const access = { ...device.access, [key]: allowed };
+  if (key === 'view' && !allowed && 'control' in access) access.control = false;
+  const next: LinkedDevice = { ...device, access, asking: device.asking && !access.view };
+  if (!access.view && !access.control) next.controlling = undefined;
+  else if (!access.control && next.controlling === 'prompt') next.controlling = 'watch';
+  if (!access.terminal) next.terminals = undefined;
+  return next;
+}
+
 export function linksFixtures(
   scenario: LinksScenario,
   rotation = 0
 ): { links: NetworkLinks; exit: NetworkExit } {
   const url = joinUrl(rotation);
-  const base = { joinUrl: url, joinCommand: `npx sliccy ${url} follow`, permission: null };
+  const base = {
+    joinUrl: url,
+    joinCommand: `npx sliccy ${url} follow`,
+    followUrl: followUrl(rotation),
+    permission: null,
+  };
   if (scenario === 'preparing') {
-    return { links: { ...base, joinUrl: null, joinCommand: null, devices: [] }, exit: null };
+    return {
+      links: { ...base, joinUrl: null, joinCommand: null, followUrl: null, devices: [] },
+      exit: null,
+    };
   }
+  if (scenario === 'followers') return { links: { ...base, devices: followers }, exit: null };
   if (scenario === 'none') return { links: { ...base, devices: [] }, exit: null };
   if (scenario === 'prompt') {
     return { links: { ...base, devices: [], permission: 'prompt' }, exit: null };
@@ -217,6 +310,7 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
   setExit?: (exit: NetworkExit) => Promise<void>;
   unlink?: (id: string) => Promise<void>;
   setRemoteControl?: (id: string, allowed: boolean) => Promise<void>;
+  setAccess?: (id: string, key: AccessKey, allowed: boolean) => Promise<void>;
   rotateJoinUrl?: () => Promise<void>;
   retryLinks?: () => Promise<void>;
 
@@ -235,6 +329,7 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
       this.setExit = (exit) => this.#setExit(exit);
       this.unlink = (id) => this.#unlink(id);
       this.setRemoteControl = (id, allowed) => this.#control(id, allowed);
+      this.setAccess = (id, key, allowed) => this.#access(id, key, allowed);
       this.rotateJoinUrl = () => this.#rotate();
       this.retryLinks = () => this.#retry();
     }
@@ -315,6 +410,16 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
     this.#emit();
   }
 
+  async #access(id: string, key: AccessKey, allowed: boolean): Promise<void> {
+    await this.#clock.sleep(4);
+    const links = this.#links as NetworkLinks;
+    const devices = links.devices.map((device) =>
+      device.id === id ? grant(device, key, allowed) : device
+    );
+    this.#links = { ...links, devices };
+    this.#emit();
+  }
+
   async #unlink(id: string): Promise<void> {
     await this.#clock.sleep(4);
     const links = this.#links as NetworkLinks;
@@ -331,6 +436,7 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
       ...(this.#links as NetworkLinks),
       joinUrl: url,
       joinCommand: `npx sliccy ${url} follow`,
+      followUrl: followUrl(this.#rotation),
     };
     this.#emit();
   }

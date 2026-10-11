@@ -8,6 +8,7 @@ import { SliccChat } from './app/chat.ts';
 import { SliccComposer } from './app/composer.ts';
 import { SliccConfirm, SliccPrompt } from './app/confirm.ts';
 import { SliccFiles, SliccFileView } from './app/files.ts';
+import { SliccFollow } from './app/follow.ts';
 import { SliccFreezer } from './app/freezer.ts';
 import { SliccLucide } from './app/lucide.ts';
 import { SliccMemory } from './app/memory.ts';
@@ -54,6 +55,7 @@ export {
   SliccFiles,
   SliccFileTree,
   SliccFileView,
+  SliccFollow,
   SliccNetwork,
   SliccNotices,
   SliccPrompt,
@@ -77,6 +79,7 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-sprinkle': SliccSprinkle,
   'slicc-lucide': SliccLucide,
   'slicc-tray': SliccTray,
+  'slicc-follow': SliccFollow,
   'slicc-updates': SliccUpdates,
   'slicc-network': SliccNetwork,
   'slicc-notices': SliccNotices,

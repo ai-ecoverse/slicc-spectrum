@@ -13,7 +13,9 @@ import link from '@adobe/spectrum-wc/link.css';
 import { css, html, nothing, type TemplateResult, unsafeCSS } from 'lit';
 import { live } from 'lit/directives/live.js';
 import type {
+  AccessKey,
   BrowserAutomation,
+  DeviceAccess,
   LinkedDevice,
   LinkState,
   NetworkExit,
@@ -28,9 +30,10 @@ import type {
   TailnetStatus,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
-import { confirm } from './confirm.ts';
+import { type ConfirmOptions, confirm } from './confirm.ts';
 import { failure } from './files.ts';
 import { ago } from './freezer.ts';
+import { qrCode } from './qr.ts';
 import { command, copyText, reach, reachStyles } from './reach.ts';
 
 export { command } from './reach.ts';
@@ -127,27 +130,107 @@ export const controlBadges: Record<RemoteControlMode, string> = {
   watch: 'Watching',
 };
 
+export const accessLabels: Record<AccessKey, string> = {
+  view: 'View',
+  control: 'Control',
+  terminal: 'Terminal',
+};
+
+const accessKeys = Object.keys(accessLabels) as AccessKey[];
+
+export function accessShown(access: DeviceAccess): AccessKey[] {
+  return accessKeys.filter((key) => access[key] !== undefined);
+}
+
+export function terminalsText(count: number): string {
+  return count === 1 ? 'Terminal open' : `${count} terminals open`;
+}
+
+const again = 'Unlinking it, or a new certificate on it, turns this off again.';
+
+export function accessConfirm(device: LinkedDevice, key: AccessKey | 'follow'): ConfirmOptions {
+  const name = device.name;
+  const [title, body] = {
+    follow: [
+      `Let ${name} follow this SLICC?`,
+      'It sees the agent’s conversations live. To let it send prompts or open terminals, turn on Control or Terminal for it afterwards.',
+    ],
+    view: [
+      `Let ${name} view this SLICC?`,
+      'It sees the agent’s conversations live, but can’t send prompts.',
+    ],
+    control: [
+      `Allow remote control from ${name}?`,
+      'It can send prompts to the agent, steer it and stop it.',
+    ],
+    terminal: [
+      `Give ${name} a root shell?`,
+      'Terminal lets it open shells on this SLICC as root: it can run any command and read or change every file.',
+    ],
+  }[key];
+  return { title, body: `${body} ${again}`, action: 'Allow', variant: 'confirmation' };
+}
+
 export interface RemoteLight {
-  mode: RemoteControlMode;
+  mode: RemoteControlMode | 'terminal' | 'ask';
+  variant: 'info' | 'notice';
   text: string;
   tooltip: string;
 }
 
+function say(
+  devices: readonly LinkedDevice[],
+  one: (device: LinkedDevice) => string,
+  many: string
+): string[] {
+  if (!devices.length) return [];
+  return [devices.length === 1 ? one(devices[0]) : `${devices.length} ${many}`];
+}
+
 export function remoteLight(status: NetworkStatus | undefined): RemoteLight | null {
-  const active = (status?.links?.devices ?? []).filter((device) => device.controlling);
-  if (!active.length) return null;
-  const prompting = active.filter((device) => device.controlling === 'prompt');
-  const watching = active.filter((device) => device.controlling === 'watch');
-  const say = (devices: readonly LinkedDevice[], verb: string): string[] => {
-    if (!devices.length) return [];
-    if (devices.length === 1) return [`${devices[0].name} is ${verb} the agent.`];
-    return [`${devices.length} linked devices are ${verb} the agent.`];
-  };
-  const tooltip = [...say(prompting, 'sending prompts to'), ...say(watching, 'watching')].join(' ');
-  const by = (devices: readonly LinkedDevice[]) =>
-    devices.length === 1 ? devices[0].name : `${devices.length} linked devices`;
-  if (prompting.length) return { mode: 'prompt', text: `Controlled by ${by(prompting)}`, tooltip };
-  return { mode: 'watch', text: `Watched by ${by(watching)}`, tooltip };
+  const devices = status?.links?.devices ?? [];
+  const asking = devices.filter((device) => device.asking);
+  const prompting = devices.filter((device) => device.controlling === 'prompt');
+  const watching = devices.filter((device) => device.controlling === 'watch');
+  const shells = devices.filter((device) => device.terminals);
+  if (!asking.length && !prompting.length && !watching.length && !shells.length) return null;
+  const tooltip = [
+    ...say(
+      asking,
+      (device) => `${device.name} asks to follow this SLICC. Allow it in Linked devices.`,
+      'devices ask to follow this SLICC. Allow them in Linked devices.'
+    ),
+    ...say(
+      prompting,
+      (device) => `${device.name} is sending prompts to the agent.`,
+      'linked devices are sending prompts to the agent.'
+    ),
+    ...say(
+      shells,
+      (device) =>
+        `${device.name} has ${device.terminals === 1 ? 'a terminal' : `${device.terminals} terminals`} open here.`,
+      'linked devices have terminals open here.'
+    ),
+    ...say(
+      watching,
+      (device) => `${device.name} is watching the agent.`,
+      'linked devices are watching the agent.'
+    ),
+  ].join(' ');
+  const by = (list: readonly LinkedDevice[]) =>
+    list.length === 1 ? list[0].name : `${list.length} linked devices`;
+  if (asking.length) {
+    const text =
+      asking.length === 1
+        ? `${asking[0].name} asks to follow`
+        : `${asking.length} devices ask to follow`;
+    return { mode: 'ask', variant: 'notice', text, tooltip };
+  }
+  if (prompting.length)
+    return { mode: 'prompt', variant: 'info', text: `Controlled by ${by(prompting)}`, tooltip };
+  if (shells.length)
+    return { mode: 'terminal', variant: 'info', text: `Terminal open from ${by(shells)}`, tooltip };
+  return { mode: 'watch', variant: 'info', text: `Watched by ${by(watching)}`, tooltip };
 }
 
 export type LinksSummary =
@@ -408,6 +491,36 @@ export class SliccNetwork extends ModelElement {
       .banner {
         display: grid;
         gap: var(--swc-spacing-100);
+      }
+      h3 {
+        margin: var(--swc-spacing-200) 0 0;
+        font-size: var(--swc-font-size-100);
+        font-weight: var(--swc-bold-font-weight);
+        color: var(--swc-heading-color);
+      }
+      .follow {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--swc-spacing-300);
+      }
+      .follow dl {
+        flex: 1 1 240px;
+      }
+      .qr {
+        flex: none;
+        width: 168px;
+        height: 168px;
+        border-radius: var(--swc-corner-radius-small-default);
+      }
+      .access {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0 var(--swc-spacing-200);
+      }
+      .access > .muted {
+        flex-basis: 100%;
       }
       li.device {
         align-items: center;
@@ -810,40 +923,95 @@ export class SliccNetwork extends ModelElement {
     if (ok) await this.#act(`unlink:${device.id}`, () => port.unlink?.(device.id), 'linksError');
   }
 
-  async #rotate(port: NetworkPort): Promise<void> {
+  async #rotate(port: NetworkPort, follow: boolean): Promise<void> {
     const ok = await confirm({
       title: 'Make a new join URL?',
-      body: 'Linked devices stay linked. Anyone with the old URL can’t link anymore.',
+      body: `Linked devices stay linked. Anyone with the old ${follow ? 'join URL, follow link or QR code' : 'URL'} can’t link anymore.`,
       action: 'New URL',
       variant: 'confirmation',
     });
     if (ok) await this.#act('rotate', () => port.rotateJoinUrl?.(), 'linksError');
   }
 
+  #access(port: NetworkPort, device: LinkedDevice): TemplateResult | typeof nothing {
+    const access = device.access;
+    if (!access) return this.#control(port, device);
+    const keys = accessShown(access);
+    if (access.fixed)
+      return html`<span class="muted" data-access="fixed">Always allowed from this computer: ${keys.map((key) => accessLabels[key]).join(', ')}.</span>`;
+    if (!port.setAccess) {
+      const granted = keys.filter((key) => access[key]).map((key) => accessLabels[key]);
+      return html`<span class="muted" data-access="read">${granted.length ? `Allowed: ${granted.join(', ')}.` : 'Nothing allowed yet.'}</span>`;
+    }
+    return html`<div class="access" role="group" aria-label=${`Allow from ${device.name}`} data-access="edit">
+      <span class="muted" aria-hidden="true">Allow</span>
+      ${keys.map((key) => html`<sp-switch size="s" data-action=${`access-${key}`} .checked=${live(!!access[key])} ?disabled=${this.busy !== '' || (key === 'control' && access.view === false)} @change=${(event: Event) => this.#setAccess(port, device, key, event.target as HTMLElement & { checked: boolean })}>${accessLabels[key]}</sp-switch>`)}
+    </div>`;
+  }
+
+  async #setAccess(
+    port: NetworkPort,
+    device: LinkedDevice,
+    key: AccessKey,
+    toggle: { checked: boolean }
+  ): Promise<void> {
+    const allowed = toggle.checked;
+    if (allowed && !(await confirm(accessConfirm(device, key)))) {
+      toggle.checked = false;
+      return;
+    }
+    await this.#act(
+      `access:${device.id}`,
+      () => port.setAccess?.(device.id, key, allowed),
+      'linksError'
+    );
+  }
+
+  async #allow(port: NetworkPort, device: LinkedDevice): Promise<void> {
+    if (!(await confirm(accessConfirm(device, 'follow')))) return;
+    await this.#act(
+      `allow:${device.id}`,
+      () => port.setAccess?.(device.id, 'view', true),
+      'linksError'
+    );
+  }
+
+  #ask(port: NetworkPort, device: LinkedDevice): TemplateResult {
+    const action = `allow:${device.id}`;
+    return html`<div class="info" data-ask><swc-icon-info-circle size="s" aria-hidden="true"></swc-icon-info-circle><div class="banner"><span>${device.name} asks to follow this SLICC. It waits until you allow it.</span>${
+      port.setAccess
+        ? html`<div class="actions"><swc-button size="s" variant="accent" data-action="allow-follow" ?pending=${this.busy === action} ?disabled=${this.#waiting(action)} @click=${() => this.#allow(port, device)}>Allow</swc-button></div>`
+        : nothing
+    }</div></div>`;
+  }
+
   #device(port: NetworkPort, status: NetworkStatus, device: LinkedDevice): TemplateResult {
-    const [variant, label] = linkStates[device.state];
+    const [variant, label] = device.asking
+      ? (['notice', 'Asks to follow'] as const)
+      : linkStates[device.state];
     const isExit = status.exit?.kind === 'link' && status.exit.id === device.id;
     const action = `unlink:${device.id}`;
-    return html`<li class="device" data-device=${device.id} data-state=${device.state} data-mode=${device.mode}>
+    return html`<li class="device" data-device=${device.id} data-state=${device.state} data-mode=${device.mode} data-kind=${device.kind ?? 'cli'} ?data-asking=${device.asking}>
       <div class="who">
         <span class="name" title=${device.name}>${device.name}</span>
         <swc-status-light size="s" variant=${variant}>${label}</swc-status-light>
         ${isExit ? html`<swc-badge size="s" variant="accent" subtle data-exit-badge>Exit</swc-badge>` : nothing}
         ${device.controlling ? html`<swc-badge size="s" variant="informative" subtle data-controlling=${device.controlling}>${controlBadges[device.controlling]}</swc-badge>` : nothing}
+        ${device.terminals ? html`<swc-badge size="s" variant="informative" subtle data-terminals=${device.terminals}>${terminalsText(device.terminals)}</swc-badge>` : nothing}
       </div>
       ${
         port.unlink
           ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="unlink" ?pending=${this.busy === action} ?disabled=${this.#waiting(action)} @click=${() => this.#unlink(port, status, device)}>Unlink</swc-button>`
           : nothing
       }
-      <span class="where"><code>${device.host}</code><span><code>${device.address}</code> · ${device.mode === 'local' ? 'This computer' : 'Remote'}</span></span>
+      <span class="where">${device.host ? html`<code>${device.host}</code>` : nothing}<span>${device.address ? html`<code>${device.address}</code> · ` : nothing}${device.mode === 'local' ? 'This computer' : 'Remote'}${device.kind === 'seven' ? ' · Follower' : ''}</span></span>
       ${device.policy ? html`<span class="muted" data-policy>Reaches ${device.policy}.</span>` : nothing}
       ${
         device.browsers?.length
           ? html`<span class="muted" data-browsers>${device.browsers.length === 1 ? 'Browser' : 'Browsers'}: ${device.browsers.map((item, index) => html`${index ? ', ' : ''}${item.name} (<code>${item.runtime}</code>)`)}</span>`
           : nothing
       }
-      ${this.#control(port, device)}
+      ${device.asking ? this.#ask(port, device) : this.#access(port, device)}
       ${
         device.offers.includes('ssh')
           ? html`<div class="command" data-copy="ssh"><code>ssh ${device.host}</code>${this.#copyButton(`ssh:${device.id}`, 'ssh', 'ssh command', `ssh ${device.host}`, 'linksError')}</div>`
@@ -854,6 +1022,7 @@ export class SliccNetwork extends ModelElement {
 
   #join(port: NetworkPort, links: NetworkLinks): TemplateResult {
     const ready = links.joinCommand || links.joinUrl;
+    const follow = links.followUrl;
     return html`<p>Link a slicc CLI on another computer, or on this one, to reach its network, ssh into it, or send internet traffic through it.</p>
       ${
         ready
@@ -863,8 +1032,18 @@ export class SliccNetwork extends ModelElement {
               ${links.joinUrl ? this.#copyRow('join-url', 'Join URL', links.joinUrl, 'linksError', 'join URL') : nothing}
             </dl>
             ${
+              follow
+                ? html`<h3 id="follow-link">Open on another device</h3>
+                  <p>Scan this code on your phone, or open the link on another computer, to follow this SLICC there. It waits until you allow it here.</p>
+                  <div class="follow" data-join="follow">
+                    ${qrCode(follow, 'QR code of the follow link')}
+                    <dl class="node stacked">${this.#copyRow('follow-url', 'Link', follow, 'linksError', 'follow link')}</dl>
+                  </div>`
+                : nothing
+            }
+            ${
               port.rotateJoinUrl && links.joinUrl
-                ? html`<div class="actions"><swc-button size="s" variant="secondary" fill-style="outline" data-action="rotate-join-url" ?pending=${this.busy === 'rotate'} ?disabled=${this.#waiting('rotate')} @click=${() => this.#rotate(port)}>New join URL</swc-button></div>`
+                ? html`<div class="actions"><swc-button size="s" variant="secondary" fill-style="outline" data-action="rotate-join-url" ?pending=${this.busy === 'rotate'} ?disabled=${this.#waiting('rotate')} @click=${() => this.#rotate(port, !!follow)}>New join URL</swc-button></div>`
                 : nothing
             }`
           : html`<p class="muted" data-join="preparing">Preparing a join URL…</p>`

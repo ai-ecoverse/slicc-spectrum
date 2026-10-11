@@ -7,6 +7,7 @@ import { clock } from './clock.ts';
 import * as extras from './extras.ts';
 import { DummyFiles, type MountScenario } from './files.ts';
 import * as fixtures from './fixtures.ts';
+import { DummyFollow, type FollowScenario } from './follow.ts';
 import { DummyMemory } from './memory.ts';
 import { DummyMonitor } from './monitor.ts';
 import {
@@ -42,6 +43,7 @@ export interface DummyOptions {
   notices?: NoticeScenario | 'off';
   tabs?: TabsScenario | 'off';
   approvals?: ApprovalScenario | 'off';
+  follow?: FollowScenario | 'off';
   browser?: BrowserScenario;
 }
 
@@ -52,6 +54,7 @@ export interface DummyModel extends SliccModel {
   notices?: DummyNotices;
   tabs?: DummyTabs;
   approvals?: DummyApprovals;
+  follow?: DummyFollow;
 }
 
 export function createDummyModel({
@@ -68,6 +71,7 @@ export function createDummyModel({
   notices = 'off',
   tabs = 'off',
   approvals = 'off',
+  follow = 'off',
   browser: scenario = 'idle',
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
@@ -126,6 +130,7 @@ export function createDummyModel({
     ...(notices === 'off' ? {} : { notices: new DummyNotices(notices, time) }),
     ...(tabs === 'off' ? {} : { tabs: new DummyTabs(tabs, time) }),
     ...(approvals === 'off' ? {} : { approvals: new DummyApprovals(approvals, time) }),
+    ...(follow === 'off' ? {} : { follow: new DummyFollow(follow, time) }),
   };
   return { ...base, monitor: new DummyMonitor(base) };
 }

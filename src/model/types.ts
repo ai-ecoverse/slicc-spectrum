@@ -720,6 +720,17 @@ export interface RemoteControl {
 
 export type RemoteControlMode = 'prompt' | 'watch';
 
+export type LinkKind = 'cli' | 'seven';
+
+export type AccessKey = 'view' | 'control' | 'terminal';
+
+export interface DeviceAccess {
+  view?: boolean;
+  control?: boolean;
+  terminal?: boolean;
+  fixed?: boolean;
+}
+
 export interface LinkedBrowser {
   runtime: string;
   name: string;
@@ -738,11 +749,16 @@ export interface LinkedDevice {
   browsers?: readonly LinkedBrowser[];
   control?: RemoteControl;
   controlling?: RemoteControlMode;
+  kind?: LinkKind;
+  access?: DeviceAccess;
+  asking?: boolean;
+  terminals?: number;
 }
 
 export interface NetworkLinks {
   joinUrl: string | null;
   joinCommand: string | null;
+  followUrl?: string | null;
   devices: readonly LinkedDevice[];
   permission?: 'prompt' | 'denied' | null;
 }
@@ -782,6 +798,7 @@ export interface NetworkPort extends Subscribable<{ network: NetworkStatus }> {
   setExit?(exit: NetworkExit): Promise<void>;
   unlink?(id: string): Promise<void>;
   setRemoteControl?(id: string, allowed: boolean): Promise<void>;
+  setAccess?(id: string, key: AccessKey, allowed: boolean): Promise<void>;
   rotateJoinUrl?(): Promise<void>;
   retryLinks?(): Promise<void>;
 }
@@ -855,6 +872,22 @@ export interface TabsPort extends Subscribable<{ tabs: TabsState }> {
   reload(): void;
 }
 
+export type FollowLink = 'connecting' | 'connected' | 'reconnecting' | 'unlinked' | 'failed';
+
+export interface FollowState {
+  owner: string;
+  link: FollowLink;
+  access: DeviceAccess;
+  name?: string;
+  error?: string;
+}
+
+export interface FollowPort extends Subscribable<{ follow: FollowState }> {
+  state(): FollowState;
+  leave(): Promise<void>;
+  retry?(): Promise<void>;
+}
+
 export interface SliccModel {
   agent: AgentPort;
   files: FilePort;
@@ -871,4 +904,5 @@ export interface SliccModel {
   notices?: NoticesPort;
   tabs?: TabsPort;
   approvals?: ApprovalsPort;
+  follow?: FollowPort;
 }
