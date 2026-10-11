@@ -25,7 +25,7 @@ export interface PromptOptions {
   submit?: (value: string) => Promise<void>;
 }
 
-function focused(): HTMLElement | null {
+export function focused(): HTMLElement | null {
   let active = document.activeElement as HTMLElement | null;
   while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement as HTMLElement;
   return active;
@@ -40,7 +40,7 @@ function themeOf(node: Node | null): Element {
   );
 }
 
-const dialogStyles = css`
+export const dialogStyles = css`
   dialog {
     box-sizing: border-box;
     max-inline-size: calc(100vw - 2 * var(--swc-spacing-300));

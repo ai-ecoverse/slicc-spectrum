@@ -1,5 +1,6 @@
 import type { SliccModel } from '../model/types.ts';
 import { DummyAgent } from './agent.ts';
+import { type ApprovalScenario, DummyApprovals } from './approvals.ts';
 import { type BrowserScenario, browserHistory, DummyBrowser, drive } from './browser.ts';
 import { type ChangesScenario, DummyChanges } from './changes.ts';
 import { clock } from './clock.ts';
@@ -40,6 +41,7 @@ export interface DummyOptions {
   changes?: ChangesScenario;
   notices?: NoticeScenario | 'off';
   tabs?: TabsScenario | 'off';
+  approvals?: ApprovalScenario | 'off';
   browser?: BrowserScenario;
 }
 
@@ -49,6 +51,7 @@ export interface DummyModel extends SliccModel {
   network?: DummyNetwork;
   notices?: DummyNotices;
   tabs?: DummyTabs;
+  approvals?: DummyApprovals;
 }
 
 export function createDummyModel({
@@ -64,6 +67,7 @@ export function createDummyModel({
   changes = 'files',
   notices = 'off',
   tabs = 'off',
+  approvals = 'off',
   browser: scenario = 'idle',
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
@@ -121,6 +125,7 @@ export function createDummyModel({
     ...(changes === 'files' ? {} : { changes: new DummyChanges(files, changes === 'git') }),
     ...(notices === 'off' ? {} : { notices: new DummyNotices(notices, time) }),
     ...(tabs === 'off' ? {} : { tabs: new DummyTabs(tabs, time) }),
+    ...(approvals === 'off' ? {} : { approvals: new DummyApprovals(approvals, time) }),
   };
   return { ...base, monitor: new DummyMonitor(base) };
 }

@@ -964,6 +964,7 @@ export class SliccApp extends ThemedElement {
           ></slicc-dock>
           ${rails.right}
         </main>
+        <slicc-approvals .model=${this.model}></slicc-approvals>
         ${rails.bottom}
       </div>
     </sp-theme></div>`;

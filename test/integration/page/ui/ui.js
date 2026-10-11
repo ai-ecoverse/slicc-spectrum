@@ -16,6 +16,7 @@ const model = createDummyModel({
   changes: params.get('changes') ?? 'files',
   notices: params.get('notices') ?? 'off',
   tabs: params.get('tabs') ?? 'off',
+  approvals: params.get('approvals') ?? 'off',
   browser: params.get('browser') ?? 'idle',
 });
 if (params.has('color')) model.settings.update({ color: params.get('color') });

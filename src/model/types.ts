@@ -805,6 +805,33 @@ export interface NoticesPort extends Subscribable<{ notices: readonly Notice[] }
   dismiss(id: string): void;
 }
 
+export type ApprovalDecision = 'once' | 'always' | 'deny';
+
+export interface ApprovalRequester {
+  kind: 'agent' | 'user';
+  name: string;
+  agentId?: string;
+  where?: string;
+}
+
+export interface SudoApproval {
+  id: string;
+  kind: 'sudo';
+  requester: ApprovalRequester;
+  command: string;
+  cwd?: string;
+  createdAt: number;
+  expiresAt: number;
+  always: boolean;
+}
+
+export type Approval = SudoApproval;
+
+export interface ApprovalsPort extends Subscribable<{ approvals: readonly Approval[] }> {
+  list(): readonly Approval[];
+  decide?(id: string, decision: ApprovalDecision): Promise<void>;
+}
+
 export type TabRole = 'owner' | 'follower' | 'connecting' | 'alone';
 
 export type TabSkew = 'newer' | 'older';
@@ -835,4 +862,5 @@ export interface SliccModel {
   changes?: ChangesPort;
   notices?: NoticesPort;
   tabs?: TabsPort;
+  approvals?: ApprovalsPort;
 }

@@ -1,6 +1,7 @@
 import './app/spectrum.ts';
 import { SliccAgents } from './app/agents.ts';
 import { SliccApp } from './app/app.ts';
+import { SliccApprovals } from './app/approvals.ts';
 import { SliccBrowser } from './app/browser.ts';
 import { SliccChanges, SliccDiffPanel } from './app/changes.ts';
 import { SliccChat } from './app/chat.ts';
@@ -40,6 +41,7 @@ export type * from './model/types.ts';
 export {
   SliccAgents,
   SliccApp,
+  SliccApprovals,
   SliccBrowser,
   SliccChanges,
   SliccChat,
@@ -78,6 +80,7 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-updates': SliccUpdates,
   'slicc-network': SliccNetwork,
   'slicc-notices': SliccNotices,
+  'slicc-approvals': SliccApprovals,
   'slicc-confirm': SliccConfirm,
   'slicc-prompt': SliccPrompt,
   'slicc-app': SliccApp,
