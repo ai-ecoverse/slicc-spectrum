@@ -178,10 +178,14 @@
   font-size: var(--spectrum-font-size-75, 12px);
 }
 
+.slicc-dock-theme :is(.dv-groupview, .dv-view, .dv-split-view-container) {
+  overflow: clip !important;
+}
+
 .panel {
   height: 100%;
   width: 100%;
-  overflow: hidden;
+  overflow: clip;
   display: flex;
   flex-direction: column;
 }
