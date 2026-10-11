@@ -647,7 +647,13 @@ export type PackageState =
   | 'updating'
   | 'removing'
   | 'failed';
-export type PackageAction = 'install' | 'update' | 'remove' | 'retry';
+export type PackageAction = 'install' | 'update' | 'remove' | 'retry' | 'unpin';
+
+export interface PackagePin {
+  base: string | null;
+  range: string;
+  project: string;
+}
 
 export interface PackageItem {
   id: string;
@@ -666,6 +672,8 @@ export interface PackageItem {
   error: string | null;
   actions: readonly PackageAction[];
   log?: string;
+  origin?: 'catalog' | 'user';
+  pin?: PackagePin;
 }
 
 export interface UpdatesEvents {

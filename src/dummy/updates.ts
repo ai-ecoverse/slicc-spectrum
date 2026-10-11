@@ -11,7 +11,7 @@ import type {
 import type { Clock } from './clock.ts';
 
 export type UpdateScenario = 'current' | 'boot' | 'starting' | 'available' | 'restart' | 'failure';
-export type PackageScenario = 'mixed' | 'empty' | 'fail';
+export type PackageScenario = 'mixed' | 'empty' | 'fail' | 'user';
 export type PackageConfirm = (options: {
   title: string;
   body: string;
@@ -108,9 +108,52 @@ const offer = (
 
 const fetchFailed = 'The download stopped. Check the connection and try again.';
 
+const yours = (
+  project: 'agent' | 'grammars',
+  name: string,
+  description: string,
+  version: string,
+  pin: { base: string | null; range: string },
+  change: Partial<PackageItem> = {}
+): PackageItem => ({
+  id: `user:${project}:${name}`,
+  package: name,
+  label: name.replace(/^@[^/]+\//, ''),
+  description,
+  commands: [],
+  state: 'installed',
+  version,
+  offered: null,
+  progress: null,
+  error: null,
+  actions: [pin.base === null ? 'remove' : 'unpin'],
+  origin: 'user',
+  pin: { ...pin, project: `/opt/${project}` },
+  ...change,
+});
+
+const userPackages = (): PackageItem[] => [
+  yours('agent', '@harbor/agent-kit', 'Agent toolkit, held at your version.', '0.24.0', {
+    base: '0.25.0',
+    range: '0.24.0',
+  }),
+  yours(
+    'agent',
+    '@harbor/tide-math',
+    'Tide tables and harmonic constants.',
+    '1.2.4',
+    { base: null, range: '^1.2.0' },
+    { warnings: ['Needs @harbor/wasm-x@1.2.3-4, which seven hasn’t tested.'] }
+  ),
+  yours('grammars', '@harbor/grammar-tides', 'Syntax highlighting for .tide files.', '0.3.1', {
+    base: null,
+    range: '^0.3.0',
+  }),
+];
+
 export function packageFixtures(scenario: PackageScenario): readonly PackageItem[] {
   if (scenario === 'empty') return [];
-  const items = [
+  const items: PackageItem[] = [
     offer('git', 'git', 'Version control for your projects.', ['git'], '2.47.1', 4_300_000),
     offer(
       'python',
@@ -188,7 +231,7 @@ export function packageFixtures(scenario: PackageScenario): readonly PackageItem
     actions: ['retry'],
     log: 'Packages: +1\nERR_PNPM_FETCH_TIMEOUT Request timed out after 30000ms',
   });
-  return items;
+  return scenario === 'user' ? [...items, ...userPackages()] : items;
 }
 
 export interface DummyUpdatesOptions {
@@ -223,6 +266,7 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
   #patchPackage(id: string, patch: Partial<PackageItem>): void {
     const next = this.#packages.map((item) => (item.id === id ? { ...item, ...patch } : item));
     this.#packages = next.map((item) => {
+      if (item.origin === 'user') return item;
       const missing =
         item.version === null
           ? []
@@ -240,6 +284,13 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
   async #actPackage(id: string, action: PackageAction): Promise<void> {
     const item = this.#packages.find((candidate) => candidate.id === id);
     if (!item?.actions.includes(action)) throw new Error(`Package action unavailable: ${id}`);
+    if (item.origin === 'user') {
+      this.#patchPackage(id, { state: 'removing', error: null, actions: [] });
+      await this.#clock.sleep(2);
+      this.#packages = this.#packages.filter((candidate) => candidate.id !== id);
+      this.emit('packages', this.#packages);
+      return;
+    }
     if (action === 'remove') {
       const users = this.#packages
         .filter((other) => other.version !== null && other.requires?.includes(id))
