@@ -178,8 +178,10 @@
   font-size: var(--spectrum-font-size-75, 12px);
 }
 
-.slicc-dock-theme :is(.dv-groupview, .dv-view, .dv-split-view-container) {
-  overflow: clip !important;
+.slicc-dock-theme .dv-groupview > .dv-content-container,
+.slicc-dock-theme .dv-split-view-container,
+.slicc-dock-theme .dv-split-view-container .dv-view-container .dv-view {
+  overflow: clip;
 }
 
 .panel {
