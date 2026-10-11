@@ -114,6 +114,13 @@ interface ToolKind {
 
 const toolKinds: Array<ToolKind & { match: RegExp }> = [
   {
+    id: 'mcp',
+    match: /^mcp__/,
+    one: 'MCP tool',
+    many: 'MCP tools',
+    icon: html`<swc-icon-plugin size="s" aria-hidden="true"></swc-icon-plugin>`,
+  },
+  {
     id: 'command',
     match: /^(bash|shell|javascript)$/,
     one: 'command',
@@ -161,13 +168,6 @@ const toolKinds: Array<ToolKind & { match: RegExp }> = [
     one: 'agent step',
     many: 'agent steps',
     icon: html`<swc-icon-user-group size="s" aria-hidden="true"></swc-icon-user-group>`,
-  },
-  {
-    id: 'mcp',
-    match: /^mcp__/,
-    one: 'MCP tool',
-    many: 'MCP tools',
-    icon: html`<swc-icon-plugin size="s" aria-hidden="true"></swc-icon-plugin>`,
   },
   {
     id: 'memory',
