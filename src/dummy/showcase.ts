@@ -180,6 +180,13 @@ const toolShapes: ToolCall[] = [
     'Cache keys are per city and per UTC day.',
     'Memory updated (3 sections, 412 characters)'
   ),
+  tool(
+    'k-mcp',
+    'mcp__docs__search',
+    'docs · search',
+    '{\n  "query": "forecast units"\n}',
+    '2 pages: /forecast, /units'
+  ),
   tool('k-t13', 'bash', 'Deploy to staging', 'wrangler deploy --env staging', 'Stopped', {
     status: 'cancelled',
   }),

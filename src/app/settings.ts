@@ -11,7 +11,10 @@ const accountStatus = {
   expired: ['notice', 'Expired'],
   disconnected: ['neutral', 'Not connected'],
   'signing-in': ['info', 'Signing in…'],
+  rejected: ['notice', 'Rejected'],
 } as const;
+
+const secretNames = { 'api-key': 'API key', token: 'token' } as const;
 
 export class SliccSettings extends ModelElement {
   static properties = {
@@ -240,8 +243,8 @@ export class SliccSettings extends ModelElement {
           size="m"
           type="password"
           autocomplete="off"
-          label=${`${account.provider} API key`}
-          placeholder="Paste the API key"
+          label=${`${account.provider} ${secretNames[account.secret ?? 'api-key']}`}
+          placeholder=${`Paste the ${secretNames[account.secret ?? 'api-key']}`}
           @keydown=${(event: KeyboardEvent) => this.#enter(event)}
         ></sp-textfield>
         <swc-button size="m" variant="accent" data-action="save" ?pending=${busy} @click=${(event: Event) => this.#send(event)}>Save</swc-button>
@@ -301,9 +304,14 @@ export class SliccSettings extends ModelElement {
     >${label}</swc-button>`;
   }
 
+  #status(account: Account): keyof typeof accountStatus {
+    if (this.#signingIn(account)) return 'signing-in';
+    if (account.status === 'expired' && account.auth === 'api-key') return 'rejected';
+    return account.status;
+  }
+
   #account(account: Account): TemplateResult {
-    const [variant, label] =
-      accountStatus[this.#signingIn(account) ? 'signing-in' : account.status];
+    const [variant, label] = accountStatus[this.#status(account)];
     const failure =
       this.failure?.id === account.id
         ? html`<div class="failure" role="alert">
@@ -325,6 +333,9 @@ export class SliccSettings extends ModelElement {
     const settings = this.model?.settings;
     const value = settings?.get();
     if (!(settings && value)) return html`<div class="page">No settings.</div>`;
+    const accounts = settings.accounts();
+    const providers = accounts.filter((account) => account.group !== 'mcp');
+    const servers = accounts.filter((account) => account.group === 'mcp');
     return html`<div class="page">
       <h2>Appearance</h2>
       <div class="rows">
@@ -370,7 +381,13 @@ export class SliccSettings extends ModelElement {
       </div>
       </div>
       <h2>Accounts</h2>
-      <div class="accounts">${settings.accounts().map((account) => this.#account(account))}</div>
+      <div class="accounts">${providers.map((account) => this.#account(account))}</div>
+      ${
+        servers.length
+          ? html`<h2>MCP servers</h2>
+              <div class="accounts" data-group="mcp">${servers.map((account) => this.#account(account))}</div>`
+          : nothing
+      }
     </div>`;
   }
 }

@@ -361,6 +361,24 @@ export const accounts: Account[] = [
   { id: 'github', provider: 'GitHub', identity: '@example-dev', status: 'connected' },
   { id: 'adobe', provider: 'Adobe', identity: 'dev@example.com', status: 'expired' },
   { id: 'openai', provider: 'OpenAI', identity: '', status: 'disconnected', auth: 'api-key' },
+  {
+    id: 'mcp:docs',
+    provider: 'docs',
+    identity: 'docs.example',
+    status: 'connected',
+    auth: 'api-key',
+    group: 'mcp',
+    secret: 'token',
+  },
+  {
+    id: 'mcp:tickets',
+    provider: 'tickets',
+    identity: 'tickets.example',
+    status: 'expired',
+    auth: 'api-key',
+    group: 'mcp',
+    secret: 'token',
+  },
 ];
 
 export const agents: Agent[] = [

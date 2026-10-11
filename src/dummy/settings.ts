@@ -72,9 +72,15 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
     if (account && account.auth !== 'api-key' && !(await this.#signIn(account))) return;
     if (account?.auth === 'api-key' || !account) await this.#clock.sleep(10);
     if (account?.auth === 'api-key' && !secret)
-      throw new Error(`${account.provider} needs an API key`);
+      throw new Error(
+        `${account.provider} needs ${account.secret === 'token' ? 'a token' : 'an API key'}`
+      );
     const identity =
-      account?.auth === 'api-key' ? 'API key' : account?.identity || `${id}-user@example.com`;
+      account?.group === 'mcp'
+        ? account.identity
+        : account?.auth === 'api-key'
+          ? 'API key'
+          : account?.identity || `${id}-user@example.com`;
     this.#set(id, { status: 'connected', identity });
   }
 
