@@ -266,6 +266,7 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
   #patchPackage(id: string, patch: Partial<PackageItem>): void {
     const next = this.#packages.map((item) => (item.id === id ? { ...item, ...patch } : item));
     this.#packages = next.map((item) => {
+      if (item.origin === 'user') return item;
       const missing =
         item.version === null
           ? []
