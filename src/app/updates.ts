@@ -8,6 +8,7 @@ import { repeat } from 'lit/directives/repeat.js';
 import type {
   PackageAction,
   PackageItem,
+  PackagePin,
   PackageState,
   SliccModel,
   UpdateAction,
@@ -56,7 +57,21 @@ const packageActions: Record<PackageAction, string> = {
   update: 'Update',
   remove: 'Remove',
   retry: 'Retry',
+  unpin: 'Unpin',
 };
+
+function packageLight(item: PackageItem): readonly [string, string] | null {
+  if (item.pin && item.state === 'installed')
+    return ['positive', item.pin.base === null ? 'Added' : 'Pinned'];
+  if (item.pin?.base && item.state === 'removing') return ['info', 'Unpinning'];
+  return packageStates[item.state];
+}
+
+function pinVersion(item: PackageItem, pin: PackagePin): readonly string[] {
+  const version = item.version ?? pin.range;
+  if (pin.base === null) return [pin.range === version ? version : `${pin.range} → ${version}`];
+  return [version, pin.base === version ? 'the version seven ships' : `seven ships ${pin.base}`];
+}
 
 const packageRunning: ReadonlySet<PackageState> = new Set(['installing', 'updating', 'removing']);
 
@@ -547,6 +562,14 @@ export class SliccUpdates extends ModelElement {
   }
 
   #packageMeta(item: PackageItem, all: readonly PackageItem[]): TemplateResult {
+    if (item.pin) {
+      const [version, ...rest] = pinVersion(item, item.pin);
+      return html`<p class="meta" data-pin=${item.pin.base === null ? 'added' : 'pinned'}>
+        <span class="version">${version}</span>
+        ${rest.map((part) => html`<span>${part}</span>`)}
+        <span>in ${item.pin.project}</span>
+      </p>`;
+    }
     const version =
       item.version === null
         ? item.offered
@@ -579,12 +602,12 @@ export class SliccUpdates extends ModelElement {
     return html`<swc-progress-bar
       size="s"
       indeterminate
-      accessible-label=${`${item.label}: ${packageStates[item.state]?.[1].toLowerCase()}`}
+      accessible-label=${`${item.label}: ${packageLight(item)?.[1].toLowerCase()}`}
     ></swc-progress-bar>`;
   }
 
   #package(item: PackageItem, all: readonly PackageItem[], act: boolean): TemplateResult {
-    const light = packageStates[item.state];
+    const light = packageLight(item);
     const busy = this.busy.get(item.id);
     const shown = busy ? [busy] : act ? item.actions : [];
     const error = this.problems.get(item.id) ?? item.error;
@@ -635,25 +658,41 @@ export class SliccUpdates extends ModelElement {
     </li>`;
   }
 
+  #list(
+    items: readonly PackageItem[],
+    all: readonly PackageItem[],
+    port: UpdatesPort
+  ): TemplateResult {
+    return html`<ul>${repeat(
+      items,
+      (item) => item.id,
+      (item) => this.#package(item, all, Boolean(port.actPackage))
+    )}</ul>`;
+  }
+
   #packages(port: UpdatesPort | undefined): TemplateResult | typeof nothing {
     if (!port?.packages) return nothing;
     const all = port.packages();
+    const offered = all.filter((item) => item.origin !== 'user');
+    const yours = all.filter((item) => item.origin === 'user');
     return html`<section data-section="packages" aria-labelledby="packages">
       <swc-divider size="m"></swc-divider>
       <h2 id="packages">Optional packages</h2>
       <p class="hint">
-        ${all.length ? 'Tools for the agent and the terminal. Install the ones you need; you can remove them later.' : 'No optional packages are offered right now.'}
+        ${offered.length ? 'Tools for the agent and the terminal. Install the ones you need; you can remove them later.' : 'No optional packages are offered right now.'}
       </p>
-      ${
-        all.length
-          ? html`<ul>${repeat(
-              all,
-              (item) => item.id,
-              (item) => this.#package(item, all, Boolean(port.actPackage))
-            )}</ul>`
-          : nothing
-      }
-    </section>`;
+      ${offered.length ? this.#list(offered, all, port) : nothing}
+    </section>
+    ${
+      yours.length
+        ? html`<section data-section="user-packages" aria-labelledby="user-packages">
+            <swc-divider size="m"></swc-divider>
+            <h2 id="user-packages">Your packages</h2>
+            <p class="hint">Packages you added or pinned with pnpm in /opt/agent or /opt/grammars. Seven’s updates keep them until you unpin or remove them.</p>
+            ${this.#list(yours, all, port)}
+          </section>`
+        : nothing
+    }`;
   }
 
   render(): TemplateResult {
