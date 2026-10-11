@@ -46,12 +46,13 @@ window.boot = async () => {
   await install();
   const root = await navigator.storage.getDirectory();
   const kernel = await createKernel({ root });
+  await kernel.users.add({ name: 'slicc', home: '/home' });
   const model = createKernelModel({
     kernel,
     root,
     storage: localStorage,
     files: { skip: ['/node_modules'], interval: 500 },
-    terminals: { env: { PS1: 'slicc:\\w\\$ ' } },
+    terminals: { user: 'slicc', env: { PS1: 'slicc:\\w\\$ ' } },
   });
   model.settings.update({ color: 'light' });
   const app = document.querySelector('slicc-app');

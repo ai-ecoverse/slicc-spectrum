@@ -58,7 +58,7 @@ Keystrokes reach `write` as the bytes a terminal would send: UTF-8 text, `\r` fo
 
 ### slicc-kernel
 
-`kernelBackend(kernel, { argv, cwd, env })` adapts slicc-kernel's terminal API to the interface above. `argv` defaults to `['bash', '-i']`. It is typed structurally, so this package doesn't depend on slicc-kernel. If the session fails, its error message is printed and `exit` reports status 1.
+`kernelBackend(kernel, { argv, cwd, user, env })` adapts slicc-kernel's terminal API to the interface above. `argv` defaults to `['bash', '-i']`. `user` (a name or uid, slicc-kernel 1.44 and later) is who the session runs as; without it the kernel runs it as `root`, with `HOME=/root`. It is typed structurally, so this package doesn't depend on slicc-kernel. If the session fails, its error message is printed and `exit` reports status 1.
 
 ```js
 import { createKernel } from './node_modules/@ai-ecoverse/slicc-kernel/dist/index.js';
@@ -240,7 +240,7 @@ app.model = createKernelModel({ kernel, root, storage: localStorage, files: { sk
 ```
 
 - **`KernelFiles`** lists the OPFS root as the tree, reads and writes files through the OPFS API, and removes them recursively. Directories in `skip` show up but aren't scanned; paths in `hide` (and everything under them) don't show up at all. `start()` rescans on every `FileSystemObserver` record, or every `interval` ms (default 2000) where the browser can't observe OPFS, and emits `files` and a `file` per changed file, so open tabs follow what the terminal writes. Without an agent there are no pending changes.
-- **`KernelTerminals`** opens `bash -i` (or `argv`) in `cwd` (default `/home`) through `kernelBackend`, one session per terminal, as many as the user opens. `open` (default 1) is how many it starts with.
+- **`KernelTerminals`** opens `bash -i` (or `argv`) in `cwd` (default `/home`) as `user` (default the kernel's, `root`) through `kernelBackend`, one session per terminal, as many as the user opens. `open` (default 1) is how many it starts with.
 - Everything else is idle (`IdleAgent`, `IdleBrowser`, `IdleMemory`, `IdleMonitor`, `IdleSprinkles`, `IdleTray`, from `idleModel(storage)`): empty lists, and actions that need a backend throw. Settings are kept in `storage`. Leave their surfaces out of `surfaces`.
 
 Each section is its own port, so an embedder can mix real and dummy per section, for example `{ ...createDummyModel(), files: new KernelFiles(root) }`.
