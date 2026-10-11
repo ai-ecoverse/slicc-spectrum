@@ -23,6 +23,7 @@ export interface Surface {
   side: Side;
   open: readonly ScreenClass[];
   width?: number;
+  cone?: string;
 }
 
 export const surfaces: Surface[] = [
@@ -338,6 +339,7 @@ export function sprinkleSurface(sprinkle: Sprinkle): Surface {
     icon: sprinkle.icon,
     side: 'right',
     open: [],
+    cone: sprinkle.agentId,
   };
 }
 
