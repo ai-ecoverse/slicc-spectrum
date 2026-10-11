@@ -158,6 +158,7 @@ export class SliccFiles extends ModelElement {
     ...ModelElement.properties,
     count: { state: true },
     mounted: { state: true },
+    sources: { state: true },
     mounting: { state: true },
     ejecting: { state: true },
     waiting: { state: true },
@@ -166,6 +167,7 @@ export class SliccFiles extends ModelElement {
   };
   declare count: number;
   declare mounted: readonly string[];
+  declare sources: ReadonlyMap<string, string>;
   declare mounting: boolean;
   declare ejecting: ReadonlySet<string>;
   declare waiting: readonly string[];
@@ -179,6 +181,7 @@ export class SliccFiles extends ModelElement {
     super();
     this.count = 0;
     this.mounted = [];
+    this.sources = new Map();
     this.mounting = false;
     this.ejecting = new Set();
     this.waiting = [];
@@ -231,6 +234,20 @@ export class SliccFiles extends ModelElement {
         align-items: center;
         gap: var(--swc-spacing-100);
         min-height: var(--swc-component-height-75);
+      }
+      .mounts .source {
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .mounts .path[data-source] {
+        display: flex;
+        flex-wrap: wrap;
+      }
+      .mounts .path[data-source] > span {
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: pre;
       }
       .mounts .path {
         flex: 1;
@@ -292,7 +309,11 @@ export class SliccFiles extends ModelElement {
   }
 
   #mounts(files: FilePort): void {
-    this.mounted = files.mounts?.() ?? [];
+    const info = files.mountInfo?.();
+    this.mounted = info ? info.map((item) => item.target) : (files.mounts?.() ?? []);
+    this.sources = new Map(
+      (info ?? []).flatMap((item) => (item.source ? [[item.target, item.source] as const] : []))
+    );
     this.waiting = files.needsFolder?.() ?? [];
   }
 
@@ -416,6 +437,12 @@ export class SliccFiles extends ModelElement {
     </section>`;
   }
 
+  #mounted(path: string): TemplateResult {
+    const source = this.sources.get(path);
+    if (!source) return html`<span class="path" title=${path}>${path}</span>`;
+    return html`<span class="path" title=${`${path} · ${source}`} data-source=${source}><span class="target">${path}</span><span class="source"> · ${source}</span></span>`;
+  }
+
   #strip(files: FilePort | undefined): TemplateResult | typeof nothing {
     if (this.mounted.length === 0) return nothing;
     const eject = files?.eject?.bind(files);
@@ -424,7 +451,7 @@ export class SliccFiles extends ModelElement {
       <ul aria-labelledby="mounted">
         ${this.mounted.map(
           (path) => html`<li>
-            <span class="path" title=${path}>${path}</span>
+            ${this.#mounted(path)}
             ${
               eject
                 ? html`<swc-action-button

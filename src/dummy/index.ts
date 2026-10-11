@@ -133,7 +133,9 @@ export function createDummyModel({
       ...(packages === 'off' ? {} : { packages }),
       confirm,
     }),
-    ...(network === 'off' ? {} : { network: new DummyNetwork(network, time, tailnet, links) }),
+    ...(network === 'off'
+      ? {}
+      : { network: new DummyNetwork(network, time, tailnet, links, files) }),
     ...(changes === 'files' ? {} : { changes: new DummyChanges(files, changes === 'git') }),
     ...(notices === 'off' ? {} : { notices: new DummyNotices(notices, time) }),
     ...(tabs === 'off' ? {} : { tabs: new DummyTabs(tabs, time) }),
