@@ -68,18 +68,13 @@ export function requiresText(item: PackageItem, all: readonly PackageItem[]): st
     const found = all.find((other) => other.id === id);
     return { label: found?.label ?? id, missing: found?.version === null };
   });
-  if (!needs.length) return null;
-  if (item.version === null) {
-    const present = needs.filter((need) => !need.missing).map((need) => need.label);
-    const missing = needs.filter((need) => need.missing).map((need) => need.label);
-    return [
-      present.length ? `Needs ${list(present)}` : '',
-      missing.length ? `Installs ${list(missing)} too` : '',
-    ]
-      .filter(Boolean)
-      .join('; ');
-  }
-  return `Needs ${list(needs.map((need) => (need.missing ? `${need.label} (not installed)` : need.label)))}`;
+  const present = needs.filter((need) => !need.missing).map((need) => need.label);
+  const missing = needs.filter((need) => need.missing).map((need) => need.label);
+  const parts = [
+    present.length ? `Uses ${list(present)}` : '',
+    item.version === null && missing.length ? `Installs ${list(missing)} too` : '',
+  ].filter(Boolean);
+  return parts.length ? parts.join('; ') : null;
 }
 
 type Failures = ReadonlyMap<string, string>;
@@ -338,6 +333,20 @@ export class SliccUpdates extends ModelElement {
         font-size: var(--swc-font-size-75);
         line-height: var(--swc-line-height-200);
         overflow-wrap: anywhere;
+      }
+      .warnings {
+        display: flex;
+        flex-direction: column;
+        gap: var(--swc-spacing-75);
+        font-size: var(--swc-font-size-75);
+        line-height: var(--swc-line-height-200);
+        overflow-wrap: anywhere;
+        --swc-icon-color: var(--swc-notice-visual-color);
+      }
+      .warnings span {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--swc-spacing-75);
       }
       .commands {
         display: flex;
@@ -598,6 +607,14 @@ export class SliccUpdates extends ModelElement {
       <p class="description">${item.description}</p>
       ${this.#packageMeta(item, all)}
       ${item.notes?.length ? html`<p class="notes" data-notes>${item.notes.map((note) => html`<span>${note}</span>`)}</p>` : nothing}
+      ${
+        item.warnings?.length
+          ? html`<p class="warnings" data-warnings>${item.warnings.map(
+              (warning) =>
+                html`<span><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>${warning}</span>`
+            )}</p>`
+          : nothing
+      }
       ${
         item.commands.length
           ? html`<p class="commands"><span class="hidden">Commands: </span>${item.commands.map(
