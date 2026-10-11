@@ -22,6 +22,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-file.js';
 import '@adobe/spectrum-wc-icons/swc-icon-file-text.js';
 import '@adobe/spectrum-wc-icons/swc-icon-globe-grid.js';
 import '@adobe/spectrum-wc-icons/swc-icon-lock.js';
+import '@adobe/spectrum-wc-icons/swc-icon-plugin.js';
 import '@adobe/spectrum-wc-icons/swc-icon-search.js';
 import '@adobe/spectrum-wc-icons/swc-icon-tools.js';
 import '@adobe/spectrum-wc-icons/swc-icon-user-group.js';
@@ -160,6 +161,13 @@ const toolKinds: Array<ToolKind & { match: RegExp }> = [
     one: 'agent step',
     many: 'agent steps',
     icon: html`<swc-icon-user-group size="s" aria-hidden="true"></swc-icon-user-group>`,
+  },
+  {
+    id: 'mcp',
+    match: /^mcp__/,
+    one: 'MCP tool',
+    many: 'MCP tools',
+    icon: html`<swc-icon-plugin size="s" aria-hidden="true"></swc-icon-plugin>`,
   },
   {
     id: 'memory',

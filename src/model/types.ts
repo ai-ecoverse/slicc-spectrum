@@ -433,6 +433,8 @@ export interface Account {
   status: AccountStatus;
   auth?: 'oauth' | 'api-key' | 'local';
   needs?: 'cors-free-transport';
+  group?: 'providers' | 'mcp';
+  secret?: 'api-key' | 'token';
 }
 
 export interface ModelOption {
