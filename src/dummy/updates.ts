@@ -221,7 +221,19 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
   }
 
   #patchPackage(id: string, patch: Partial<PackageItem>): void {
-    this.#packages = this.#packages.map((item) => (item.id === id ? { ...item, ...patch } : item));
+    const next = this.#packages.map((item) => (item.id === id ? { ...item, ...patch } : item));
+    this.#packages = next.map((item) => {
+      const missing =
+        item.version === null
+          ? []
+          : next.filter((other) => item.requires?.includes(other.id) && other.version === null);
+      if (!missing.length) return item.warnings ? { ...item, warnings: undefined } : item;
+      const warnings = missing.map(
+        (other) =>
+          `Needs ${other.label}, which isn’t installed. Install ${other.label} again to use it.`
+      );
+      return { ...item, warnings };
+    });
     this.emit('packages', this.#packages);
   }
 

@@ -448,9 +448,10 @@ for (const [name, browser] of [
       window.$('slicc-app', 'slicc-confirm').shadowRoot.querySelector('[data-action]').click()
     );
     await page.until(() => window.pkg('python')?.dataset.state === 'available');
+    assert.equal(await page.evaluate(() => window.pkg('uv', '[data-requires]')), null);
     assert.equal(
-      await page.evaluate(() => window.pkg('uv', '[data-requires]').textContent),
-      'Needs Python (not installed)'
+      await page.evaluate(() => window.pkg('uv', '[data-warnings]').textContent.trim()),
+      'Needs Python, which isn’t installed. Install Python again to use it.'
     );
     assert.equal(
       await page.evaluate(() => window.pkg('ruff', '[data-requires]').textContent),

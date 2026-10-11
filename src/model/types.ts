@@ -655,6 +655,7 @@ export interface PackageItem {
   commands: readonly string[];
   requires?: readonly string[];
   notes?: readonly string[];
+  warnings?: readonly string[];
   state: PackageState;
   version: string | null;
   offered: string | null;
