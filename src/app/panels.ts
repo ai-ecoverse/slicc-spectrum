@@ -325,14 +325,9 @@ export function defaultLayout(
   if (chat) dock.api.getPanel(chat)?.api.setActive();
 }
 
-export function closed(dock: SliccDock, items: readonly Surface[] = surfaces): Surface[] {
-  const grouped: Record<string, () => string[]> = {
-    chat: () => chats(dock),
-    terminal: () => terminalPanels(dock),
-  };
-  return items.filter((item) =>
-    item.id in grouped ? grouped[item.id]().length === 0 : !dock.has(item.id)
-  );
+export function shown(dock: SliccDock, id: string): boolean {
+  const ids = id === 'chat' ? chats(dock) : id === 'terminal' ? terminalPanels(dock) : [id];
+  return ids.some((panel) => dock.api.getPanel(panel)?.api.isVisible === true);
 }
 
 export function sprinkleSurface(sprinkle: Sprinkle): Surface {

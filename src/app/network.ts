@@ -28,6 +28,7 @@ import type {
   SliccModel,
   TailnetState,
   TailnetStatus,
+  TrayPort,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
 import { type ConfirmOptions, confirm } from './confirm.ts';
@@ -35,6 +36,7 @@ import { failure } from './files.ts';
 import { ago } from './freezer.ts';
 import { qrCode } from './qr.ts';
 import { command, copyText, reach, reachStyles } from './reach.ts';
+import { connectionLabel, connectionVariant } from './tray.ts';
 
 export { command } from './reach.ts';
 
@@ -362,6 +364,7 @@ export class SliccNetwork extends ModelElement {
     tailnetError: { state: true },
     tailnetCopied: { state: true },
     linksError: { state: true },
+    syncError: { state: true },
   };
   declare checking: boolean;
   declare copied: boolean;
@@ -371,6 +374,7 @@ export class SliccNetwork extends ModelElement {
   declare tailnetError: string;
   declare tailnetCopied: string;
   declare linksError: string;
+  declare syncError: string;
 
   constructor() {
     super();
@@ -382,6 +386,7 @@ export class SliccNetwork extends ModelElement {
     this.tailnetError = '';
     this.tailnetCopied = '';
     this.linksError = '';
+    this.syncError = '';
   }
 
   static styles = [
@@ -413,6 +418,7 @@ export class SliccNetwork extends ModelElement {
         display: grid;
         gap: var(--swc-spacing-200);
         align-content: start;
+        scroll-margin-top: var(--swc-spacing-300);
       }
       h2 {
         margin: 0;
@@ -657,7 +663,24 @@ export class SliccNetwork extends ModelElement {
     this.error = '';
     this.tailnetError = '';
     this.linksError = '';
-    return model.network ? [model.network.on('network', () => this.requestUpdate())] : [];
+    this.syncError = '';
+    const update = () => this.requestUpdate();
+    return [
+      model.tray.on('status', update),
+      ...(model.network ? [model.network.on('network', update)] : []),
+    ];
+  }
+
+  reveal(section: string): void {
+    void this.updateComplete.then(() => {
+      const target = this.renderRoot.querySelector<HTMLElement>(
+        `section[aria-labelledby="${section}"]`
+      );
+      target
+        ?.querySelector<HTMLElement>('swc-button, swc-action-button')
+        ?.focus({ focusVisible: false });
+      target?.scrollIntoView({ block: 'start' });
+    });
   }
 
   focus(): void {
@@ -691,7 +714,7 @@ export class SliccNetwork extends ModelElement {
   async #act(
     action: string,
     run: () => Promise<void> | undefined,
-    area: 'error' | 'tailnetError' | 'linksError'
+    area: 'error' | 'tailnetError' | 'linksError' | 'syncError' | 'syncError'
   ): Promise<void> {
     if (this.busy) return;
     this.busy = action;
@@ -709,7 +732,11 @@ export class SliccNetwork extends ModelElement {
     return this.#act(action, run, 'tailnetError');
   }
 
-  async #copyValue(key: string, value: string, area: 'tailnetError' | 'linksError'): Promise<void> {
+  async #copyValue(
+    key: string,
+    value: string,
+    area: 'tailnetError' | 'linksError' | 'syncError'
+  ): Promise<void> {
     try {
       await globalThis.navigator.clipboard.writeText(value);
       this.tailnetCopied = key;
@@ -758,7 +785,7 @@ export class SliccNetwork extends ModelElement {
     what: string,
     label: string,
     value: string,
-    area: 'tailnetError' | 'linksError'
+    area: 'tailnetError' | 'linksError' | 'syncError'
   ): TemplateResult {
     const copied = this.tailnetCopied === key;
     return html`<swc-action-button size="s" quiet data-action=${`copy-${what}`} accessible-label=${copied ? 'Copied' : `Copy ${label}`} @click=${() => this.#copyValue(key, value, area)}>
@@ -770,7 +797,7 @@ export class SliccNetwork extends ModelElement {
     what: string,
     label: string,
     value: string,
-    area: 'tailnetError' | 'linksError' = 'tailnetError',
+    area: 'tailnetError' | 'linksError' | 'syncError' = 'tailnetError',
     spoken = label.toLowerCase()
   ): TemplateResult {
     return html`<dt>${label}</dt>
@@ -1182,6 +1209,49 @@ export class SliccNetwork extends ModelElement {
     </section>`;
   }
 
+  async #disconnect(tray: TrayPort, name: string, trigger: HTMLElement): Promise<void> {
+    const ok = await confirm({
+      title: `Disconnect from ${name}?`,
+      body: 'This SLICC stops syncing with the tray until you reconnect.',
+      action: 'Disconnect',
+      variant: 'confirmation',
+      trigger,
+    });
+    if (ok) tray.disconnect();
+  }
+
+  #sync(tray: TrayPort): TemplateResult {
+    const status = tray.status();
+    return html`<section aria-labelledby="sync" data-sync=${status.connection}>
+      <div class="head">
+        <h2 id="sync">Sync</h2>
+        <swc-status-light variant=${connectionVariant[status.connection]}>${connectionLabel[status.connection]}</swc-status-light>
+      </div>
+      <dl class="node">
+        <dt>Name</dt><dd>${status.name}</dd>
+        <dt>Role</dt><dd>${status.role}</dd>
+        <dt>Runs in</dt><dd>${status.kind}</dd>
+        ${status.joinUrl ? this.#copyRow('tray-join', 'Join link', status.joinUrl, 'syncError', 'join link') : nothing}
+      </dl>
+      <h3 id="sync-followers">Followers</h3>
+      ${
+        status.followers.length
+          ? html`<ul aria-labelledby="sync-followers" data-followers>${status.followers.map((follower) => html`<li data-follower=${follower.id}>${follower.name} <span class="muted">${follower.device}</span></li>`)}</ul>`
+          : html`<p class="muted" data-followers>No one else is connected.</p>`
+      }
+      <div class="actions">${
+        status.connection === 'offline'
+          ? html`<swc-button size="m" variant="secondary" data-action="tray-reconnect" @click=${() => tray.reconnect()}>Reconnect</swc-button>`
+          : html`<swc-button size="m" variant="secondary" data-action="tray-disconnect" @click=${(event: Event) => this.#disconnect(tray, status.name, event.currentTarget as HTMLElement)}>Disconnect</swc-button>`
+      }</div>
+      ${
+        this.syncError
+          ? html`<div class="error" role="alert" data-error="sync"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.syncError}</span></div>`
+          : nothing
+      }
+    </section>`;
+  }
+
   #ways(status: NetworkStatus): TemplateResult {
     return reach({
       intro:
@@ -1231,6 +1301,7 @@ export class SliccNetwork extends ModelElement {
     const status = networkStatus(port);
     return html`<div class="page" tabindex="-1">
       ${this.#state(port, status)}
+      ${this.#sync((this.model as SliccModel).tray)}
       ${this.#tailnetSection(port, status)}
       ${this.#linksSection(port, status)}
       ${this.#whole(status)}

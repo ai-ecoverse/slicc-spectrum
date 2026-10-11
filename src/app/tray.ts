@@ -1,7 +1,6 @@
 import { css, html, type TemplateResult } from 'lit';
-import type { SliccModel, TrayConnection } from '../model/types.ts';
+import type { SliccModel, TrayConnection, TrayStatus } from '../model/types.ts';
 import { ModelElement, meterVariant, shared } from './base.ts';
-import { confirm } from './confirm.ts';
 
 export const connectionVariant: Record<TrayConnection, string> = {
   live: 'positive',
@@ -21,30 +20,47 @@ export const connectionLabel: Record<TrayConnection, string> = {
   error: 'Error',
 };
 
+export function budgetVariant(percent: number): string {
+  const variant = meterVariant(percent);
+  return variant === 'informative' ? 'neutral' : variant;
+}
+
+export function budgetLine(status: TrayStatus): string {
+  return `Spent $${status.spent.toFixed(2)} · $${status.rate.toFixed(2)}/h. ${status.budget.percent}% of the ${status.budget.window} budget, ${status.budget.resets}.`;
+}
+
 export class SliccTray extends ModelElement {
   static properties = {
     ...ModelElement.properties,
-    copied: { state: true },
+    panels: { attribute: false },
   };
-  declare copied: boolean;
+  declare panels: readonly string[];
 
   constructor() {
     super();
-    this.copied = false;
+    this.panels = ['network', 'monitor'];
   }
 
   static styles = [
     shared,
     css`
       :host {
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
+        gap: var(--swc-spacing-75);
       }
       .chip > span {
         display: inline-flex;
         align-items: center;
         gap: var(--swc-spacing-75);
       }
-      .chip swc-status-light {
+      span.chip,
+      span.usage {
+        display: inline-flex;
+        align-items: center;
+        padding-inline: var(--swc-spacing-100);
+      }
+      swc-status-light {
         align-self: center;
       }
       .chip .followers {
@@ -52,51 +68,12 @@ export class SliccTray extends ModelElement {
         align-items: center;
         gap: var(--swc-spacing-50);
       }
-      :host([compact]) .chip .detail {
+      :host([compact]) .chip .detail,
+      :host([compact]) .usage {
         display: none;
       }
       .muted {
         color: var(--swc-neutral-subdued-content-color-default);
-      }
-      .panel {
-        display: grid;
-        gap: var(--swc-spacing-200);
-        width: calc(var(--swc-spacing-400) * 12);
-        max-width: 100%;
-        padding: var(--swc-spacing-300);
-        box-sizing: border-box;
-        font-size: var(--swc-font-size-100);
-        color: var(--swc-neutral-content-color-default);
-      }
-      dl {
-        display: grid;
-        grid-template-columns: auto 1fr;
-        gap: var(--swc-spacing-75) var(--swc-spacing-200);
-        margin: 0;
-      }
-      dt {
-        color: var(--swc-neutral-subdued-content-color-default);
-      }
-      dd {
-        margin: 0;
-      }
-      h3 {
-        margin: 0 0 var(--swc-spacing-75);
-        font-size: inherit;
-        font-weight: var(--swc-bold-font-weight);
-      }
-      ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-      }
-      swc-meter {
-        width: 100%;
-      }
-      .actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--swc-spacing-100);
       }
     `,
   ];
@@ -105,17 +82,26 @@ export class SliccTray extends ModelElement {
     return [model.tray.on('status', () => this.requestUpdate())];
   }
 
-  async #disconnect(name: string, trigger: HTMLElement): Promise<void> {
-    const body = 'This SLICC stops syncing with the tray until you reconnect.';
-    const title = `Disconnect from ${name}?`;
-    if (await confirm({ title, body, action: 'Disconnect', variant: 'confirmation', trigger }))
-      this.model?.tray.disconnect();
+  #open(id: string, section?: string): void {
+    this.dispatchEvent(
+      new CustomEvent('show-surface', {
+        detail: section ? { id, section } : { id },
+        bubbles: true,
+        composed: true,
+      })
+    );
   }
 
-  async copy(): Promise<void> {
-    const url = this.model?.tray.status().joinUrl ?? '';
-    await globalThis.navigator?.clipboard?.writeText(url).catch(() => {});
-    this.copied = true;
+  #item(
+    id: string,
+    surface: string,
+    label: string,
+    content: TemplateResult,
+    open: () => void
+  ): TemplateResult {
+    return this.panels.includes(surface)
+      ? html`<swc-action-button id=${id} class=${id} size="s" quiet data-surface=${surface} accessible-label=${label} @click=${open}>${content}</swc-action-button>`
+      : html`<span id=${id} class=${id} tabindex="0" role="img" aria-label=${label}>${content}</span>`;
   }
 
   render(): TemplateResult {
@@ -125,53 +111,27 @@ export class SliccTray extends ModelElement {
     const connection = connectionLabel[status.connection];
     const followers = `${status.followers.length} ${status.followers.length === 1 ? 'follower' : 'followers'}`;
     const light = status.connection === 'live' ? status.name : `${status.name}, ${connection}`;
-    return html`<swc-action-button
-        id="chip"
-        class="chip"
-        size="s"
-        quiet
-        accessible-label=${`Tray ${status.name}: ${connection}, ${followers}`}
-      >
-        <span>
+    const budget = `Budget ${status.budget.percent}%`;
+    return html`${this.#item(
+      'chip',
+      'network',
+      `Tray ${status.name}: ${connection}, ${followers}`,
+      html`<span>
           <swc-status-light size="s" variant=${connectionVariant[status.connection]}>
             <span class="detail">${light}</span>
           </swc-status-light>
           <span class="detail muted followers"><swc-icon-user-group size="s"></swc-icon-user-group>${status.followers.length}</span>
-        </span>
-      </swc-action-button>
+        </span>`,
+      () => this.#open('network', 'sync')
+    )}
       <swc-tooltip for="chip" placement="bottom">${`${connection}, ${followers}`}</swc-tooltip>
-      <swc-popover for="chip" placement="bottom-end" accessible-label="Tray" @swc-open=${() => {
-        this.copied = false;
-      }}>
-        <div class="panel">
-          <dl>
-            <dt>Name</dt><dd>${status.name}</dd>
-            <dt>Connection</dt><dd>${connection}</dd>
-            <dt>Role</dt><dd>${status.role}</dd>
-            <dt>Runs in</dt><dd>${status.kind}</dd>
-            <dt>Spent</dt><dd>$${status.spent.toFixed(2)} · $${status.rate.toFixed(2)}/h</dd>
-          </dl>
-          <swc-meter size="s" value=${status.budget.percent} variant=${meterVariant(status.budget.percent)}>
-            <span slot="label">Budget (${status.budget.window})</span>
-            <span slot="description">${status.budget.resets}</span>
-          </swc-meter>
-          <div>
-            <h3>Followers</h3>
-            ${
-              status.followers.length
-                ? html`<ul>${status.followers.map((follower) => html`<li>${follower.name} <span class="muted">${follower.device}</span></li>`)}</ul>`
-                : html`<div class="muted">No one else is connected.</div>`
-            }
-          </div>
-          <div class="actions">
-            <swc-action-button size="s" @click=${() => this.copy()}>${this.copied ? 'Copied' : 'Copy join link'}</swc-action-button>
-            ${
-              status.connection === 'offline'
-                ? html`<swc-action-button size="s" @click=${() => model.tray.reconnect()}>Reconnect</swc-action-button>`
-                : html`<swc-action-button size="s" @click=${(event: Event) => this.#disconnect(status.name, event.currentTarget as HTMLElement)}>Disconnect</swc-action-button>`
-            }
-          </div>
-        </div>
-      </swc-popover>`;
+      ${this.#item(
+        'usage',
+        'monitor',
+        `${budget}. ${budgetLine(status)}`,
+        html`<swc-status-light size="s" variant=${budgetVariant(status.budget.percent)}>${budget}</swc-status-light>`,
+        () => this.#open('monitor')
+      )}
+      <swc-tooltip for="usage" placement="bottom">${budgetLine(status)}</swc-tooltip>`;
   }
 }
