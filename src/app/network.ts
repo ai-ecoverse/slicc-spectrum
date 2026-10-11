@@ -63,8 +63,14 @@ export function automationOf(browser: BrowserAutomation): keyof typeof automatio
   return browser.via ?? 'none';
 }
 
-export function browserLine(browser: BrowserAutomation, links?: NetworkLinks): string {
+export function browserLine(
+  browser: BrowserAutomation,
+  links?: NetworkLinks,
+  route?: NetworkRoute | null
+): string {
   const via = automationOf(browser);
+  if (via === 'none' && route === 'proxy')
+    return 'Browser automation: slicc-node has no browser attached.';
   if (via !== 'link') return automation[via];
   const connected = (links?.devices ?? []).filter((device) => device.state === 'connected');
   const found = connected.flatMap((device) =>
@@ -138,8 +144,10 @@ export function remoteLight(status: NetworkStatus | undefined): RemoteLight | nu
     return [`${devices.length} linked devices are ${verb} the agent.`];
   };
   const tooltip = [...say(prompting, 'sending prompts to'), ...say(watching, 'watching')].join(' ');
-  if (prompting.length) return { mode: 'prompt', text: 'Remote control', tooltip };
-  return { mode: 'watch', text: 'Watched remotely', tooltip };
+  const by = (devices: readonly LinkedDevice[]) =>
+    devices.length === 1 ? devices[0].name : `${devices.length} linked devices`;
+  if (prompting.length) return { mode: 'prompt', text: `Controlled by ${by(prompting)}`, tooltip };
+  return { mode: 'watch', text: `Watched by ${by(watching)}`, tooltip };
 }
 
 export type LinksSummary =
@@ -965,7 +973,7 @@ export class SliccNetwork extends ModelElement {
       ${this.#exitPicker(port, status)}
       ${
         status.browser
-          ? html`<p data-browser=${automationOf(status.browser)}>${browserLine(status.browser, status.links)}${status.browser.detail ? html` <span class="detail">${status.browser.detail}</span>` : nothing}</p>`
+          ? html`<p data-browser=${automationOf(status.browser)}>${browserLine(status.browser, status.links, status.route)}${status.browser.detail ? html` <span class="detail">${status.browser.detail}</span>` : nothing}</p>`
           : nothing
       }
       ${
