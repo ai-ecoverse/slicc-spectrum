@@ -123,7 +123,8 @@ export class SliccChat extends ThemedElement {
         min-width: calc(var(--swc-spacing-400) * 4);
         margin-inline-start: auto;
       }
-      header .frozen {
+      header .frozen,
+      header .model {
         color: var(--swc-neutral-content-color-default);
       }
       .watch-only {
@@ -354,7 +355,10 @@ export class SliccChat extends ThemedElement {
     const model = this.model as SliccModel;
     const last = messages.at(-1);
     const suggestion =
-      last?.role === 'assistant' && !agent.frozen && !model.agent.busy(agent.id)
+      last?.role === 'assistant' &&
+      !agent.frozen &&
+      !watchOnly(model) &&
+      !model.agent.busy(agent.id)
         ? model.agent.suggestion(agent.id)
         : null;
     for (const message of messages) {
@@ -386,6 +390,12 @@ export class SliccChat extends ThemedElement {
       return html`<swc-badge size="s" variant="informative" subtle>Frozen</swc-badge>
         <span class="frozen">Read only</span>
         <swc-button size="s" variant="secondary" fill-style="outline" data-action="thaw" @click=${() => model.agent.thaw(agent.id)}>Thaw</swc-button>
+        ${meter}`;
+    }
+    if (watchOnly(model)) {
+      const label = model.settings.models().find((option) => option.id === agent.model)?.label;
+      return html`${statusLight(agent.status)}
+        <span class="model" data-model>${label ?? agent.model}</span>
         ${meter}`;
     }
     return html`${statusLight(agent.status)}

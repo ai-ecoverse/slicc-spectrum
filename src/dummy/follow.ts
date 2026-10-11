@@ -31,7 +31,7 @@ export function followFixtures(scenario: FollowScenario): FollowState {
       ...base,
       link: 'failed',
       access: none,
-      error: `The tray couldn’t reach ${owner}. It may be closed or offline.`,
+      error: `Couldn’t reach ${owner}. It may be closed or offline.`,
     };
   return { ...base, link: 'connected', access: full };
 }

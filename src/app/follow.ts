@@ -5,6 +5,7 @@ import '@adobe/spectrum-wc/components/progress-circle/swc-progress-circle.js';
 import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
+import '@adobe/spectrum-wc-icons/swc-icon-user-following.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { FollowLink, FollowState, SliccModel } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
@@ -265,6 +266,7 @@ export class SliccFollow extends ModelElement {
     if (this.page) return page ? this.#page(page) : nothing;
     const light = followLight(state);
     return html`<swc-action-button id="chip" class="chip" size="s" quiet data-follow=${state.link} accessible-label=${light.text}>
+        ${this.compact ? html`<swc-icon-user-following slot="icon" size="s" aria-hidden="true"></swc-icon-user-following>` : nothing}
         <swc-status-light size="s" variant=${light.variant}><span class="text">${light.text}</span></swc-status-light>
       </swc-action-button>
       <swc-tooltip for="chip" placement="bottom">${light.text}</swc-tooltip>
@@ -273,7 +275,7 @@ export class SliccFollow extends ModelElement {
           <h2>${light.text}</h2>
           ${
             state.link === 'reconnecting'
-              ? html`<p class="muted" data-reconnecting>The link to ${state.owner} dropped. The conversation may be out of date until it’s back.</p>`
+              ? html`<p class="muted" data-reconnecting>The link to ${state.owner} dropped. The conversation may be out of date until it’s back${state.access.control ? ', and sending waits until then' : ''}.</p>`
               : nothing
           }
           <p data-can>${followCan(state)}</p>

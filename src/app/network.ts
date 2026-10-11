@@ -187,6 +187,20 @@ function say(
   return [devices.length === 1 ? one(devices[0]) : `${devices.length} ${many}`];
 }
 
+export function deviceName(name: string): string {
+  return name.replace(/^slicc\b/i, 'SLICC');
+}
+
+export function networkStatus(port: NetworkPort): NetworkStatus {
+  const status = port.status();
+  if (!status.links) return status;
+  const devices = status.links.devices.map((device) => ({
+    ...device,
+    name: deviceName(device.name),
+  }));
+  return { ...status, links: { ...status.links, devices } };
+}
+
 export function remoteLight(status: NetworkStatus | undefined): RemoteLight | null {
   const devices = status?.links?.devices ?? [];
   const asking = devices.filter((device) => device.asking);
@@ -1214,7 +1228,7 @@ export class SliccNetwork extends ModelElement {
     if (!port) {
       return html`<div class="page" tabindex="-1"><p class="muted">Network information is not connected.</p></div>`;
     }
-    const status = port.status();
+    const status = networkStatus(port);
     return html`<div class="page" tabindex="-1">
       ${this.#state(port, status)}
       ${this.#tailnetSection(port, status)}
