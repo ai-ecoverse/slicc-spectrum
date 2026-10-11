@@ -4,7 +4,8 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-info-circle.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
-import type { Notice, NoticesPort, SliccModel } from '../model/types.ts';
+import type { Approval, Notice, NoticesPort, SliccModel } from '../model/types.ts';
+import { asking, deadline, sudo, waiting } from './approvals.ts';
 import { ModelElement } from './base.ts';
 import { tabsBanner } from './tabs.ts';
 
@@ -79,6 +80,10 @@ export class SliccNotices extends ModelElement {
     p {
       margin: 0;
     }
+    code {
+      font-family: var(--swc-code-font-family-stack);
+      overflow-wrap: anywhere;
+    }
     .actions {
       display: flex;
       flex-wrap: wrap;
@@ -104,7 +109,10 @@ export class SliccNotices extends ModelElement {
       this.pending = new Map();
       this.failures = new Map();
     }
-    const tabs = model.tabs ? [model.tabs.on('tabs', () => this.requestUpdate())] : [];
+    const tabs = [
+      ...(model.tabs ? [model.tabs.on('tabs', () => this.requestUpdate())] : []),
+      ...(model.approvals ? [model.approvals.on('approvals', () => this.requestUpdate())] : []),
+    ];
     if (!port) return tabs;
     return [
       ...tabs,
@@ -183,12 +191,24 @@ export class SliccNotices extends ModelElement {
     </div>`;
   }
 
+  #approval(approval: Approval): TemplateResult {
+    return html`<div class="notice" role="status" data-approval-notice=${approval.id} data-tone="warning">
+      <swc-icon-alert-triangle></swc-icon-alert-triangle>
+      <div class="text">
+        <span class="title">Waiting for sudo approval</span>
+        <p>${asking(approval)}: <code>${sudo(approval)}</code></p>
+        <p>Answer it in the tab running SLICC. Denied automatically at ${deadline(approval.expiresAt)}.</p>
+      </div>
+    </div>`;
+  }
+
   render(): TemplateResult | typeof nothing {
     const port: NoticesPort | undefined = this.model?.notices;
     const notices = (port?.list() ?? []).filter((notice) => !this.dismissed.has(notice.id));
     const tabs = this.#tabs();
-    if (!notices.length && tabs === nothing) return nothing;
-    return html`<div class="notices">${tabs}${repeat(
+    const approvals = this.model?.approvals?.decide ? [] : waiting(this.model, Date.now());
+    if (!notices.length && !approvals.length && tabs === nothing) return nothing;
+    return html`<div class="notices">${tabs}${approvals.map((approval) => this.#approval(approval))}${repeat(
       notices,
       (notice) => notice.id,
       (notice) => this.#notice(notice)
