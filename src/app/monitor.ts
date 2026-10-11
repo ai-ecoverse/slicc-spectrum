@@ -1,11 +1,15 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/meter/swc-meter.js';
+import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
+import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
 import { css, html, nothing, svg, type TemplateResult } from 'lit';
+import { repeat } from 'lit/directives/repeat.js';
 import type {
   MonitorAlert,
+  MonitorRow,
   MonitorSection,
   MonitorStatus,
   MonitorVital,
@@ -44,7 +48,26 @@ export const surfaces: Record<string, string> = {
   terminals: 'terminal',
   tabs: 'browser',
   changes: 'changes',
+  processes: 'terminal',
 };
+
+export const rowLights: Record<MonitorStatus, 'info' | 'neutral' | 'notice' | 'negative'> = {
+  active: 'info',
+  idle: 'neutral',
+  warn: 'notice',
+  error: 'negative',
+};
+
+const rowSpoken: Record<MonitorStatus, string> = {
+  active: 'Active',
+  idle: 'Idle',
+  warn: 'Needs attention',
+  error: 'Error',
+};
+
+export function indent(depth: number | undefined): number {
+  return Math.min(Math.max(Math.floor(depth ?? 0), 0), 6);
+}
 
 export function attention(
   section: MonitorSection
@@ -62,6 +85,17 @@ export function attention(
 }
 
 export class SliccMonitor extends ModelElement {
+  static properties = {
+    ...ModelElement.properties,
+    expanded: { state: true },
+  };
+  declare expanded: Record<string, boolean>;
+
+  constructor() {
+    super();
+    this.expanded = {};
+  }
+
   static styles = [
     shared,
     panelCss,
@@ -152,6 +186,9 @@ export class SliccMonitor extends ModelElement {
         list-style: none;
       }
       .section {
+        display: grid;
+      }
+      .line {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
@@ -159,13 +196,81 @@ export class SliccMonitor extends ModelElement {
         min-height: var(--swc-component-height-100);
         padding: var(--swc-spacing-50) 0;
       }
-      .section .name {
+      .toggle {
+        all: unset;
+        box-sizing: border-box;
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-75);
+        cursor: pointer;
+        border-radius: var(--swc-corner-radius-small-default);
+      }
+      .toggle:focus-visible {
+        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+        outline-offset: var(--swc-focus-ring-gap);
+      }
+      .chevron {
+        flex: none;
+        width: var(--swc-component-height-50);
+        display: inline-flex;
+        justify-content: center;
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .toggle[aria-expanded='true'] swc-icon-chevron-right {
+        transform: rotate(90deg);
+      }
+      :host(:dir(rtl)) .toggle[aria-expanded='false'] swc-icon-chevron-right {
+        transform: scaleX(-1);
+      }
+      .line .name {
         flex: 1;
         min-width: 0;
       }
-      .section .num {
+      .line .num {
         font-weight: var(--swc-bold-font-weight);
         font-variant-numeric: tabular-nums;
+      }
+      .rows {
+        display: grid;
+        gap: var(--swc-spacing-50);
+        margin: 0 0 var(--swc-spacing-100);
+        padding: 0;
+        padding-inline-start: calc(var(--swc-component-height-50) + var(--swc-spacing-75));
+        list-style: none;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        column-gap: var(--swc-spacing-100);
+        padding-inline-start: calc(var(--depth, 0) * var(--swc-spacing-300));
+      }
+      .row swc-status-light {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .row .badges {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+        align-self: start;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: end;
+        gap: var(--swc-spacing-50);
+      }
+      .row swc-status-light {
+        grid-column: 1;
+        grid-row: 1;
+      }
+      .row .meta {
+        grid-column: 1;
+        grid-row: 2;
+        padding-inline-start: var(--swc-spacing-300);
+        color: var(--swc-neutral-subdued-content-color-default);
+        font-size: var(--swc-font-size-75);
+        overflow-wrap: anywhere;
       }
     `,
   ];
@@ -216,18 +321,47 @@ export class SliccMonitor extends ModelElement {
     );
   }
 
+  #row(row: MonitorRow): TemplateResult {
+    const depth = indent(row.depth);
+    return html`<li class="row" data-id=${row.id ?? nothing} data-status=${row.status} data-depth=${depth || nothing} style=${depth ? `--depth: ${depth}` : nothing}>
+      <swc-status-light size="s" variant=${rowLights[row.status]}><span class="sr">${rowSpoken[row.status]}: </span>${row.name}</swc-status-light>
+      <span class="badges">${(row.badges ?? []).map((badge) => html`<swc-badge size="s" variant="neutral" subtle>${badge}</swc-badge>`)}</span>
+      ${row.meta ? html`<span class="meta">${row.meta}</span>` : nothing}
+    </li>`;
+  }
+
   #section(section: MonitorSection): TemplateResult {
     const flag = attention(section);
     const surface = surfaces[section.id];
-    return html`<li class="section" data-id=${section.id}>
-      <span class="name">${section.label}</span>
-      ${flag ? html`<swc-badge size="s" variant=${flag.variant} subtle>${flag.text}</swc-badge>` : nothing}
-      <span class="num">${section.rows.length}</span>
+    const rows = section.rows.length > 0;
+    const open = rows && (this.expanded[section.id] ?? flag !== null);
+    const list = `rows-${section.id}`;
+    return html`<li class="section" data-id=${section.id} data-open=${open ? '' : nothing}>
+      <div class="line">
+        ${
+          rows
+            ? html`<button class="toggle" aria-expanded=${open ? 'true' : 'false'} aria-controls=${open ? list : nothing} @click=${() => {
+                this.expanded = { ...this.expanded, [section.id]: !open };
+              }}><span class="chevron"><swc-icon-chevron-right size="s" aria-hidden="true"></swc-icon-chevron-right></span><span class="name">${section.label}</span></button>`
+            : html`<span class="chevron"></span><span class="name">${section.label}</span>`
+        }
+        ${flag ? html`<swc-badge size="s" variant=${flag.variant} subtle>${flag.text}</swc-badge>` : nothing}
+        <span class="num">${section.rows.length}</span>
+        ${
+          surface
+            ? html`<swc-action-button size="s" quiet accessible-label=${`Open ${section.label}`} @click=${() => this.#open(surface)}
+                >Open</swc-action-button
+              >`
+            : nothing
+        }
+      </div>
       ${
-        surface
-          ? html`<swc-action-button size="s" quiet accessible-label=${`Open ${section.label}`} @click=${() => this.#open(surface)}
-              >Open</swc-action-button
-            >`
+        open
+          ? html`<ul class="rows" id=${list} aria-label=${section.label}>${repeat(
+              section.rows,
+              (row, i) => row.id ?? i,
+              (row) => this.#row(row)
+            )}</ul>`
           : nothing
       }
     </li>`;

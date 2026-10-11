@@ -4,6 +4,7 @@ import type {
   MonitorEvents,
   MonitorPort,
   MonitorRow,
+  MonitorSection,
   MonitorSnapshot,
   MonitorStatus,
   SliccModel,
@@ -23,13 +24,102 @@ export function wave(seed: number, length = 24): number[] {
   );
 }
 
+export const agentSections: MonitorSection[] = [
+  {
+    id: 'tasks',
+    label: 'Tasks',
+    rows: [
+      { id: 't1', name: 'generating', meta: 'sliccy · running · 12s', status: 'active' },
+      {
+        id: 't2',
+        name: 'tool bash',
+        meta: 'sliccy · running · 8s',
+        status: 'active',
+        depth: 1,
+        badges: ['bash'],
+      },
+      {
+        id: 't3',
+        name: 'scoop quiet-otter',
+        meta: 'quiet-otter · waiting · 2m',
+        status: 'idle',
+        depth: 1,
+        badges: ['waits on 2'],
+      },
+      {
+        id: 't4',
+        name: 'tool read_file',
+        meta: 'quiet-otter · completing · 1s',
+        status: 'active',
+        depth: 2,
+      },
+      {
+        id: 't5',
+        name: 'report for quiet-otter',
+        meta: 'quiet-otter · pending · 2m',
+        status: 'idle',
+        depth: 2,
+        badges: ['background'],
+      },
+      {
+        id: 't6',
+        name: 'cron tide-check',
+        meta: 'session · aborting · 14s',
+        status: 'warn',
+        badges: ['aborting'],
+      },
+    ],
+  },
+  {
+    id: 'processes',
+    label: 'Processes',
+    rows: [
+      {
+        id: 'p412',
+        name: 'bash',
+        meta: 'pid 412 · slicc · 3m',
+        status: 'idle',
+        badges: ['terminal'],
+      },
+      {
+        id: 'p418',
+        name: 'node build.mjs --watch',
+        meta: 'pid 418 · slicc · 1m',
+        status: 'active',
+        badges: ['sliccy'],
+      },
+      {
+        id: 'p433',
+        name: 'grep -r harbor .',
+        meta: 'pid 433 · slicc · 40s',
+        status: 'warn',
+        badges: ['quiet-otter'],
+      },
+    ],
+  },
+  {
+    id: 'problems',
+    label: 'Recent problems',
+    rows: [
+      {
+        id: 'e1',
+        name: 'quiet-otter · turn',
+        meta: 'The model returned an error: overloaded. Retrying in 8 s.',
+        status: 'error',
+      },
+    ],
+  },
+];
+
 export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort {
   #model: Omit<SliccModel, 'monitor'>;
   #tick = 0;
+  #extra: MonitorSection[];
 
-  constructor(model: Omit<SliccModel, 'monitor'>) {
+  constructor(model: Omit<SliccModel, 'monitor'>, extra: MonitorSection[] = []) {
     super();
     this.#model = model;
+    this.#extra = extra;
     const update = () => this.resync();
     model.agent.on('agents', update);
     model.terminals.on('terminals', update);
@@ -51,7 +141,9 @@ export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort 
     const fill = Math.max(...agents.map((candidate) => candidate.contextFill), 0);
     const agentRows = agents.map(
       (candidate): MonitorRow => ({
-        name: candidate.kind === 'scoop' ? `↳ ${candidate.name}` : candidate.name,
+        id: candidate.id,
+        name: candidate.name,
+        depth: candidate.kind === 'scoop' ? 1 : 0,
         meta: `${candidate.status} · ${Math.round(candidate.contextFill * 100)}% context`,
         status: statuses[candidate.status],
         badges: candidate.unread ? [`${candidate.unread} unread`] : [],
@@ -70,17 +162,21 @@ export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort 
         {
           id: 'spend',
           label: 'Spend',
-          value: `$${status.spent.toFixed(2)}`,
-          delta: `$${status.rate.toFixed(2)}/h`,
+          value: `$${(status.spent ?? 0).toFixed(2)}`,
+          delta: `$${(status.rate ?? 0).toFixed(2)}/h`,
           series: wave(this.#tick + 7),
         },
-        {
-          id: 'budget',
-          label: `Budget (${status.budget.window})`,
-          value: `${status.budget.percent}%`,
-          unit: status.budget.resets,
-          ratio: status.budget.percent / 100,
-        },
+        ...(status.budget
+          ? [
+              {
+                id: 'budget',
+                label: `Budget (${status.budget.window})`,
+                value: `${status.budget.percent}%`,
+                unit: status.budget.resets,
+                ratio: status.budget.percent / 100,
+              },
+            ]
+          : []),
         {
           id: 'context',
           label: 'Fullest context',
@@ -110,6 +206,7 @@ export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort 
       ],
       sections: [
         { id: 'agents', label: 'Cones and scoops', rows: agentRows },
+        ...this.#extra,
         {
           id: 'terminals',
           label: 'Terminals',

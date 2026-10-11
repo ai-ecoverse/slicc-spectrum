@@ -9,7 +9,7 @@ import { DummyFiles, type MountScenario } from './files.ts';
 import * as fixtures from './fixtures.ts';
 import { DummyFollow, type FollowScenario } from './follow.ts';
 import { DummyMemory } from './memory.ts';
-import { DummyMonitor } from './monitor.ts';
+import { agentSections, DummyMonitor } from './monitor.ts';
 import {
   DummyNetwork,
   type LinksScenario,
@@ -46,6 +46,7 @@ export interface DummyOptions {
   follow?: FollowScenario | 'off';
   browser?: BrowserScenario;
   sprinkles?: 'builtin' | 'cones';
+  monitor?: 'dummy' | 'agent';
 }
 
 export interface DummyModel extends SliccModel {
@@ -75,6 +76,7 @@ export function createDummyModel({
   follow = 'off',
   browser: scenario = 'idle',
   sprinkles = 'builtin',
+  monitor = 'dummy',
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
   const mount =
@@ -138,5 +140,8 @@ export function createDummyModel({
     ...(approvals === 'off' ? {} : { approvals: new DummyApprovals(approvals, time) }),
     ...(follow === 'off' ? {} : { follow: new DummyFollow(follow, time) }),
   };
-  return { ...base, monitor: new DummyMonitor(base) };
+  return {
+    ...base,
+    monitor: new DummyMonitor(base, monitor === 'agent' ? agentSections : undefined),
+  };
 }
