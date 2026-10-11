@@ -5,6 +5,8 @@ export { browserHistory, DummyBrowser, page } from './dummy/browser.ts';
 export type { ChangesScenario } from './dummy/changes.ts';
 export { DummyChanges } from './dummy/changes.ts';
 export type { DummyMount, MountScenario } from './dummy/files.ts';
+export type { FollowScenario } from './dummy/follow.ts';
+export { DummyFollow, followFixtures } from './dummy/follow.ts';
 export type { DummyModel, DummyOptions } from './dummy/index.ts';
 export { createDummyModel } from './dummy/index.ts';
 export type { NetworkScenario, TailnetScenario } from './dummy/network.ts';

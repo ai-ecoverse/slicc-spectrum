@@ -427,7 +427,13 @@ export class SliccComposer extends ModelElement {
       model.agent.on('messages', update),
       model.agent.on('message', update),
       model.settings.on('settings', update),
+      ...(model.follow ? [model.follow.on('follow', update)] : []),
     ];
+  }
+
+  #held(): string | null {
+    const state = this.model?.follow?.state();
+    return state?.link === 'reconnecting' ? state.owner : null;
   }
 
   #switch(id: string): void {
@@ -470,7 +476,7 @@ export class SliccComposer extends ModelElement {
     const model = this.model;
     const text = this.value.trim();
     const attachments = this.attachments.filter((attachment) => !attachment.error);
-    if (!model || (!text && attachments.length === 0)) return;
+    if (!model || (!text && attachments.length === 0) || this.#held()) return;
     const command = text.match(/^\/(\w+)(?:\s+(.*))?$/);
     const known = command && available(model).find((candidate) => candidate.name === command[1]);
     this.value = '';
@@ -911,6 +917,7 @@ export class SliccComposer extends ModelElement {
     const suggestion = this.model?.agent.suggestion(this.#agent);
     const canSend = !!this.value.trim() || this.attachments.some((attachment) => !attachment.error);
     const speech = 'SpeechRecognition' in globalThis || 'webkitSpeechRecognition' in globalThis;
+    const held = this.#held();
     return html`<div class="column">
         ${this.#queue()}
         ${this.#popup()}
@@ -922,7 +929,8 @@ export class SliccComposer extends ModelElement {
           max-rows="10"
           animate-loader
           ?generating=${busy && !canSend}
-          placeholder=${suggestion ? `${suggestion}  (Tab)` : `Message ${agent?.name ?? ''}`}
+          ?disabled=${!!held}
+          placeholder=${held ? `Reconnecting to ${held}…` : suggestion ? `${suggestion}  (Tab)` : `Message ${agent?.name ?? ''}`}
           .value=${live(this.value)}
           @keydown=${this.#keys}
           @swc-prompt-field-input=${this.#input}

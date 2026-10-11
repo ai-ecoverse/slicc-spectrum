@@ -1,8 +1,9 @@
 import { createDummyModel } from '/dist/slicc-dummy.js';
-import { confirm } from '/dist/slicc-ui.js';
+import { confirm, surfaces } from '/dist/slicc-ui.js';
 
 const params = new URLSearchParams(location.search);
 const delay = Number(params.get('delay') ?? 30);
+const follow = params.get('follow') ?? 'off';
 const model = createDummyModel({
   delay,
   storage: localStorage,
@@ -10,13 +11,14 @@ const model = createDummyModel({
   packages: params.get('packages') ?? 'off',
   confirm,
   mounts: params.get('mounts') ?? 'off',
-  network: params.get('network') ?? 'limited',
+  network: follow === 'off' ? (params.get('network') ?? 'limited') : 'off',
   tailnet: params.get('tailnet') ?? undefined,
   links: params.get('links') ?? undefined,
   changes: params.get('changes') ?? 'files',
   notices: params.get('notices') ?? 'off',
   tabs: params.get('tabs') ?? 'off',
   approvals: params.get('approvals') ?? 'off',
+  follow,
   browser: params.get('browser') ?? 'idle',
 });
 if (params.has('color')) model.settings.update({ color: params.get('color') });
@@ -24,6 +26,16 @@ const app = document.querySelector('slicc-app');
 if (params.has('fonts')) app.fontBase = params.get('fonts') || null;
 if (params.has('vf')) app.variableFont = params.get('vf') || null;
 if (params.has('grammars')) app.grammarBase = params.get('grammars');
+if (model.follow) {
+  const followed = new Set(['agents', 'chat', 'terminal', 'settings']);
+  app.surfaces = surfaces.filter((surface) => followed.has(surface.id));
+  const leave = model.follow.leave.bind(model.follow);
+  model.follow.leave = async () => {
+    await leave();
+    params.delete('follow');
+    location.search = params.toString();
+  };
+}
 app.model = model;
 window.model = model;
 window.app = app;

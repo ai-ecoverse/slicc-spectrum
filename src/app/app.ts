@@ -6,11 +6,12 @@ import type { Agent, SliccModel, Sprinkle, UpdatesPort } from '../model/types.ts
 import { changesOf, shared, ThemedElement } from './base.ts';
 import { prompt } from './confirm.ts';
 import { Dips, dipType } from './dips.ts';
+import { followPage, terminalsAllowed } from './follow.ts';
 import { defaultFontBase, defaultVariableFont, installFonts } from './fonts.ts';
 import { deleteCone } from './freezer.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
 import { agentTitle, untitled, watchTitles } from './names.ts';
-import { networkHealth, networkIcon, networkLabel, remoteLight } from './network.ts';
+import { networkHealth, networkIcon, networkLabel, networkStatus, remoteLight } from './network.ts';
 import {
   chatAgent,
   chats,
@@ -31,6 +32,7 @@ import {
   sprinkleSurface,
   surface,
   surfaces,
+  terminalPanels,
 } from './panels.ts';
 import { installProperties } from './properties.ts';
 import { alone, tabsLight } from './tabs.ts';
@@ -371,6 +373,14 @@ export class SliccApp extends ThemedElement {
       ...(model.updates ? [model.updates.on('items', update)] : []),
       ...(model.network ? [model.network.on('network', update)] : []),
       ...(model.tabs ? [model.tabs.on('tabs', update)] : []),
+      ...(model.follow
+        ? [
+            model.follow.on('follow', () => {
+              this.#followed(model);
+              update();
+            }),
+          ]
+        : []),
     ];
   }
 
@@ -511,6 +521,13 @@ export class SliccApp extends ThemedElement {
     this.#prune();
     const agent = this.#active();
     if (agent && this.#offers('chat')) openChat(dock, agent, this.screen, false, false);
+  }
+
+  #followed(model: SliccModel): void {
+    if (!this.#started) return;
+    const dock = this.dock;
+    dock.factories = this.#factories(model);
+    if (!terminalsAllowed(model)) for (const id of terminalPanels(dock)) dock.close(id);
   }
 
   #start(model: SliccModel): void {
@@ -823,7 +840,10 @@ export class SliccApp extends ThemedElement {
   }
 
   #available(model = this.model): readonly Surface[] {
-    return this.surfaces.filter((item) => item.id !== 'network' || model?.network);
+    const terminals = terminalsAllowed(model);
+    return this.surfaces.filter(
+      (item) => (item.id !== 'network' || model?.network) && (item.id !== 'terminal' || terminals)
+    );
   }
 
   #updatesIndicator(): TemplateResult | typeof nothing {
@@ -851,10 +871,10 @@ export class SliccApp extends ThemedElement {
   #remoteIndicator(): TemplateResult | typeof nothing {
     const port = this.model?.network;
     if (!port || !this.#offers('network')) return nothing;
-    const light = remoteLight(port.status());
+    const light = remoteLight(networkStatus(port));
     if (!light) return nothing;
     return html`<swc-action-button id="remote" quiet size="s" data-remote=${light.mode} accessible-label=${light.tooltip} @click=${() => this.show('network')}>
-        <swc-status-light size="s" variant="info">${this.screen === 'phone' ? nothing : light.text}</swc-status-light>
+        <swc-status-light size="s" variant=${light.variant}>${this.screen === 'phone' ? nothing : light.text}</swc-status-light>
       </swc-action-button>
       <swc-tooltip for="remote" placement="bottom">${light.tooltip}</swc-tooltip>`;
   }
@@ -862,7 +882,7 @@ export class SliccApp extends ThemedElement {
   #networkIndicator(): TemplateResult | typeof nothing {
     const port = this.model?.network;
     if (!port || !this.#offers('network')) return nothing;
-    const status = port.status();
+    const status = networkStatus(port);
     const [variant, state] = networkHealth[status.health];
     const label = networkLabel(status);
     const content =
@@ -888,8 +908,9 @@ export class SliccApp extends ThemedElement {
     const cones = (this.model?.agent.list() ?? []).filter((agent) => agent.kind === 'cone');
     const rails = this.#rails();
     const lonely = this.model?.tabs?.state().role === 'alone';
+    const paused = followPage(this.model?.follow?.state());
     return html`<div class=${`swc-theme swc-theme--sizeM swc-theme--${color}`}><sp-theme system="spectrum-two" color=${color} scale="medium">
-      <div class="shell" ?data-alone=${lonely}>
+      <div class="shell" ?data-alone=${lonely || !!paused}>
         <header>
           <span class="brand">slicc</span>
           ${
@@ -919,6 +940,7 @@ export class SliccApp extends ThemedElement {
           }
           <span class="spacer"></span>
           <div class="status" role="status"><slot name="status"></slot></div>
+          ${this.model?.follow ? html`<slicc-follow .model=${this.model} ?compact=${this.screen === 'phone'}></slicc-follow>` : nothing}
           ${this.#tabsIndicator()}
           ${this.#updatesIndicator()}
           ${this.#remoteIndicator()}
@@ -951,6 +973,7 @@ export class SliccApp extends ThemedElement {
           ${this.#headerButton('theme', color === 'dark' ? 'Switch to light theme' : 'Switch to dark theme', html`<swc-icon-contrast slot="icon"></swc-icon-contrast>`, () => this.toggleColor())}
         </header>
         ${lonely ? html`<div class="alone" role="status" data-tabs="alone"><p>${alone}</p></div>` : nothing}
+        ${paused && !lonely ? html`<div class="alone" data-follow=${paused.kind}><slicc-follow page .model=${this.model}></slicc-follow></div>` : nothing}
         <main>
           ${rails.left}
           <slicc-dock empty-text="All panels are closed. Open one from a rail or View." @layout-change=${this.#save}

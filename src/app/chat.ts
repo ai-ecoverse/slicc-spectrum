@@ -16,6 +16,7 @@ import type {
 } from '../model/types.ts';
 import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
 import type { SliccComposer } from './composer.ts';
+import { watchOnly } from './follow.ts';
 import {
   assistant,
   day,
@@ -122,8 +123,16 @@ export class SliccChat extends ThemedElement {
         min-width: calc(var(--swc-spacing-400) * 4);
         margin-inline-start: auto;
       }
-      header .frozen {
+      header .frozen,
+      header .model {
         color: var(--swc-neutral-content-color-default);
+      }
+      .watch-only {
+        margin: 0;
+        padding: var(--swc-spacing-200) var(--swc-spacing-300);
+        border-block-start: var(--swc-border-width-100) solid var(--swc-gray-200);
+        font-size: var(--swc-font-size-100);
+        color: var(--swc-neutral-subdued-content-color-default);
       }
       .log {
         flex: 1;
@@ -196,6 +205,7 @@ export class SliccChat extends ThemedElement {
       }),
       model.agent.on('agents', () => this.requestUpdate()),
       ...(model.tabs ? [model.tabs.on('tabs', () => this.requestUpdate())] : []),
+      ...(model.follow ? [model.follow.on('follow', () => this.requestUpdate())] : []),
       model.agent.on('messages', (agentId) => {
         if (agentId === this.#id()) this.#refresh(this.#sent(agentId));
       }),
@@ -345,7 +355,10 @@ export class SliccChat extends ThemedElement {
     const model = this.model as SliccModel;
     const last = messages.at(-1);
     const suggestion =
-      last?.role === 'assistant' && !agent.frozen && !model.agent.busy(agent.id)
+      last?.role === 'assistant' &&
+      !agent.frozen &&
+      !watchOnly(model) &&
+      !model.agent.busy(agent.id)
         ? model.agent.suggestion(agent.id)
         : null;
     for (const message of messages) {
@@ -379,6 +392,12 @@ export class SliccChat extends ThemedElement {
         <swc-button size="s" variant="secondary" fill-style="outline" data-action="thaw" @click=${() => model.agent.thaw(agent.id)}>Thaw</swc-button>
         ${meter}`;
     }
+    if (watchOnly(model)) {
+      const label = model.settings.models().find((option) => option.id === agent.model)?.label;
+      return html`${statusLight(agent.status)}
+        <span class="model" data-model>${label ?? agent.model}</span>
+        ${meter}`;
+    }
     return html`${statusLight(agent.status)}
       <sp-picker size="s" quiet label="Model" value=${agent.model} @change=${(event: Event) => model.agent.setModel(agent.id, (event.target as HTMLInputElement).value)}>
         ${chatModels(model.settings.models()).map((option) => html`<sp-menu-item value=${option.id}>${option.label}<span slot="description">${option.provider}</span></sp-menu-item>`)}
@@ -398,7 +417,8 @@ export class SliccChat extends ThemedElement {
     this.#handlers.color = this.color;
     this.#handlers.model = this.model ?? null;
     const agent = this.#agent();
-    this.#handlers.readOnly = !!agent?.frozen;
+    const watch = watchOnly(this.model);
+    this.#handlers.readOnly = !!agent?.frozen || !!watch;
     const messages = agent ? (this.model?.agent.messages(agent.id) ?? []) : [];
     this.#tail = messages.at(-1)?.id ?? '';
     return html`
@@ -428,7 +448,13 @@ export class SliccChat extends ThemedElement {
           }
         </div>
       </div>
-      ${this.model && !agent?.frozen ? html`<slicc-composer .model=${this.model} .agent=${this.agent}></slicc-composer>` : nothing}
+      ${
+        watch
+          ? html`<p class="watch-only" role="note" data-follow="watch">${watch}</p>`
+          : this.model && !agent?.frozen
+            ? html`<slicc-composer .model=${this.model} .agent=${this.agent}></slicc-composer>`
+            : nothing
+      }
     `;
   }
 }
