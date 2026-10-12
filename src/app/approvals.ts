@@ -98,52 +98,63 @@ function protects(path: string, whole: boolean): boolean {
   );
 }
 
+const command = (word: string) => word.split('/').pop() ?? '';
+
+function moved(cwds: Set<string>, word: string): string | null {
+  for (const cwd of [...cwds]) {
+    const next = absolute(cwd, word);
+    if (protects(next, false) || cwds.size >= 64) return next;
+    cwds.add(next);
+  }
+  return null;
+}
+
+function touched(cwds: Set<string>, word: string, whole: boolean): string | null {
+  for (const candidate of candidates(word))
+    for (const cwd of cwds) {
+      const path = absolute(cwd, candidate);
+      if (protects(path, whole)) return path;
+    }
+  return null;
+}
+
+function scan(words: string[], cwds: Set<string>, whole: boolean): string | null {
+  let cd = false;
+  for (const [index, word] of words.entries()) {
+    let hit: string | null = null;
+    if (index === 0 || words[index - 1] === '-c') cd = ['cd', 'pushd'].includes(command(word));
+    else if (!cd) hit = touched(cwds, word, whole);
+    else if (!word.startsWith('-')) {
+      cd = false;
+      hit = moved(cwds, word);
+    }
+    if (hit) return hit;
+  }
+  return null;
+}
+
 export function secretRules(approval: Approval): string | null {
-  let cwd = absolute('/', approval.cwd ?? '/');
-  if (protects(cwd, false)) return cwd;
-  const name = (word: string) => word.split('/').pop() ?? '';
-  const parts = approval.command.replace(/\\\n/g, '').split(/([;&|\n()`])/);
-  const segments = parts
-    .filter((_, index) => index % 2 === 0)
+  const start = absolute('/', approval.cwd ?? '/');
+  if (protects(start, false)) return start;
+  const cwds = new Set([start]);
+  const segments = approval.command
+    .replace(/\\\n/g, '')
+    .split(/[;&|\n()`]/)
     .map((segment) =>
       segment
         .split(/[\s<>=,]+/)
         .map((word) => word.replace(/['"\\]/g, ''))
         .filter(Boolean)
     );
-  const whole = segments.some((words) => words.length > 0 && !readOnly.includes(name(words[0])));
-  const outer: string[] = [];
-  let quoted = false;
-  for (const [at, part] of parts.entries()) {
-    if (at % 2) {
-      const opens = part === '(' || (part === '`' && !quoted);
-      if (part === '`') quoted = !quoted;
-      if (opens) outer.push(cwd);
-      else if (part === ')' || part === '`') cwd = outer.pop() ?? cwd;
-      continue;
-    }
-    const words = segments[at / 2];
-    let cd = false;
-    for (const [index, word] of words.entries()) {
-      if (index === 0 || words[index - 1] === '-c') {
-        cd = ['cd', 'pushd'].includes(name(word));
-      } else if (cd) {
-        if (word.startsWith('-')) continue;
-        cd = false;
-        cwd = absolute(cwd, word);
-        if (protects(cwd, false)) return cwd;
-      } else {
-        for (const candidate of candidates(word)) {
-          const path = absolute(cwd, candidate);
-          if (protects(path, whole)) return path;
-        }
-      }
-    }
+  const whole = segments.some((words) => words.length > 0 && !readOnly.includes(command(words[0])));
+  for (const words of segments) {
+    const hit = scan(words, cwds, whole);
+    if (hit) return hit;
   }
   const named = segments
     .flat()
     .find((word) => !/^[-/]/.test(word) && /fnox|secrets-policy/.test(word));
-  return named ? absolute(cwd, named) : null;
+  return named ? absolute([...cwds].pop() ?? start, named) : null;
 }
 
 export function waiting(model: SliccModel | null, now: number): Approval[] {
