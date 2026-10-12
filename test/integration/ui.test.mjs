@@ -4267,29 +4267,92 @@ async function secretsPage(t, params) {
   return page;
 }
 
-const noValues = () => {
-  const root = window.settingsPart('slicc-secrets').shadowRoot;
-  const buttons = [...root.querySelectorAll('slicc-vault-button')].map(
-    (button) => button.shadowRoot.innerHTML
-  );
+const sample = 'tide-sample-value-0042';
+
+const valueRules = (value) => {
+  const roots = [document];
+  const fields = [];
+  const leaks = [];
+  const shownProxy = [];
+  for (let index = 0; index < roots.length; index++) {
+    const root = roots[index];
+    for (const node of root.querySelectorAll('*')) {
+      if (node.shadowRoot) roots.push(node.shadowRoot);
+      if (node.localName === 'iframe' && node.contentDocument) roots.push(node.contentDocument);
+      for (const attr of node.attributes) {
+        if (value && attr.value.includes(value)) leaks.push(`${node.localName}[${attr.name}]`);
+      }
+      if (node.localName === 'input') {
+        const field = node.dataset.field ?? node.name ?? '';
+        if (/^(value|password|passphrase|repeat)$/.test(field) || node.type === 'password')
+          fields.push({
+            field,
+            type: node.type,
+            value: node.value,
+            autocomplete: node.getAttribute('autocomplete'),
+            toggle: !!node
+              .closest('label, .field, form, [data-form], dialog')
+              ?.querySelector('[data-action*=reveal], [data-action*=show], [aria-label*=Show i]'),
+          });
+        if (value && node.value.includes(value))
+          leaks.push(`input[${node.dataset.field ?? node.name}]`);
+      }
+    }
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+      if (value && text.textContent.includes(value)) leaks.push('text');
+      if (/fnox_proxy_/.test(text.textContent) && text.parentElement?.localName !== 'script')
+        shownProxy.push(text.textContent.trim().slice(0, 60));
+    }
+  }
   return {
-    fields: root.querySelectorAll('input, textarea, sp-textfield, swc-textfield, [contenteditable]')
-      .length,
-    proxy: /fnox_proxy_/.test(root.innerHTML + buttons.join('')),
+    masked: fields.every((field) => field.type === 'password' && field.autocomplete === 'off'),
+    toggles: fields.filter((field) => field.toggle).length,
+    filled: fields.filter((field) => field.value !== '').map((field) => field.field),
+    leaks,
+    proxy: shownProxy,
+    console: window.consoleLog.filter((line) => value && line.includes(value)).length,
   };
 };
 
+async function clean(page, value = sample) {
+  const rules = await page.evaluate(valueRules, value);
+  assert.deepEqual(rules, {
+    masked: true,
+    toggles: 0,
+    filled: [],
+    leaks: [],
+    proxy: [],
+    console: 0,
+  });
+  assert.equal(
+    page.errors.some((error) => error.includes(value)),
+    false
+  );
+}
+
+const part = (selector) => window.settingsPart('slicc-secrets', selector);
+
+async function fill(page, selector, text) {
+  await page.evaluate((target) => {
+    const input = window.settingsPart('slicc-secrets', target);
+    input.focus();
+    return true;
+  }, selector);
+  await page.insert(text);
+}
+
 async function views(page, name, target, setup) {
-  for (const [suffix, color, width] of [
-    ['light', 'light', 1280],
-    ['dark', 'dark', 1280],
-    ['narrow', 'light', 420],
+  for (const [suffix, color, width, height] of [
+    ['420-light', 'light', 420, 860],
+    ['1280-dark', 'dark', 1280, 1800],
+    ['1280-light', 'light', 1280, 1800],
   ]) {
     await page.evaluate((value) => {
       window.model.settings.update({ color: value });
       return true;
     }, color);
-    await sized(page, width);
+    await sized(page, width, height);
     await shown(
       page,
       'settings',
@@ -4323,53 +4386,225 @@ test('settings list the secrets by name, with rules, exits and reveals, but no v
       ['BUOY_OLD_TOKEN', 'removed'],
     ]
   );
-  assert.deepEqual(await page.evaluate(noValues), { fields: 0, proxy: false });
-  await views(page, 'secrets');
-  assert.equal(
-    await page.evaluate(() => window.settingsPart('slicc-secrets', 'details[data-removed]').open),
-    false
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [
+        ...window.settingsPart('slicc-secrets').shadowRoot.querySelectorAll('.head [data-action]'),
+      ].map((node) => node.dataset.action)
+    ),
+    ['lock', 'protect']
   );
+  await clean(page);
+  await views(page, 'secrets-list');
   await views(page, 'secrets-removed', 'details[data-removed]', () =>
     page.evaluate(() => {
       window.settingsPart('slicc-secrets', 'details[data-removed]').open = true;
       return true;
     })
   );
+  assert.deepEqual(page.errors, []);
+});
+
+async function form(page, action, kind) {
+  await page.evaluate(
+    (button, name) => {
+      if (!window.settingsPart('slicc-secrets', `[data-form=${name}]`))
+        window.settingsPart('slicc-secrets', button).click();
+      return true;
+    },
+    action,
+    kind
+  );
+  await page.until(
+    (name) => !!window.settingsPart('slicc-secrets', `[data-form=${name}] input`),
+    kind
+  );
+}
+
+async function save(page, name, value, fail) {
+  await form(page, '[data-action=add-secret]', 'add');
+  await page.evaluate(() => {
+    window.settingsPart('slicc-secrets', '[data-form=add] [data-field=name]').value = '';
+    return true;
+  });
+  await fill(page, '[data-form=add] [data-field=name]', name);
+  await fill(page, '[data-form=add] [data-field=value]', value);
+  await page.evaluate((code) => {
+    if (code) window.model.vault.fail(code, 'vault is locked');
+    window.settingsPart('slicc-secrets', '[data-form] [data-action=save]').click();
+    return true;
+  }, fail);
+  await page.until(
+    () =>
+      !!window.settingsPart('slicc-secrets', '[data-error=form]') ||
+      !!window.settingsPart('slicc-secrets', '[data-said=saved]')
+  );
+}
+
+const said = (selector) =>
+  window.settingsPart('slicc-secrets', selector)?.textContent.replace(/\s+/g, ' ').trim();
+
+test('Add secret refuses a short value, saves a real one and never shows it', async (t) => {
+  const page = await secretsPage(t, { vault: 'secrets' });
+  await form(page, '[data-action=add-secret]', 'add');
+  await clean(page);
+  await views(page, 'secrets-add', '.head', () => form(page, '[data-action=add-secret]', 'add'));
+  await views(page, 'secrets-short-value', '.head', () => save(page, 'tide_token', 'tide42'));
+  assert.equal(
+    await page.evaluate(said, '[data-error=form]'),
+    "Values shorter than 8 bytes can't be protected from the model"
+  );
+  await clean(page, 'tide42');
+  await views(page, 'secrets-vault-error', '.head', () =>
+    save(page, 'tide_token', sample, 'EACCES')
+  );
+  assert.equal(await page.evaluate(said, '[data-error=form]'), 'Unlock the vault first');
+  await clean(page);
+  await sized(page, 1280);
+  await save(page, 'tide_token', sample);
+  assert.equal(await page.evaluate(said, '[data-said=saved]'), 'Saved TIDE_TOKEN in the vault');
+  assert.deepEqual(await page.evaluate(() => window.model.vault.puts), [{ name: 'TIDE_TOKEN' }]);
+  await clean(page);
+  assert.deepEqual(page.errors, []);
+});
+
+test('Replace value rotates a secret in place, with the narrow layout tidy', async (t) => {
+  const page = await secretsPage(t, { vault: 'secrets' });
+  const open = () => form(page, '[data-secret=HARBOR_API_KEY] [data-action=replace]', 'replace');
+  let narrow = null;
+  await views(page, 'secrets-replace', '[data-secret=HARBOR_API_KEY]', async () => {
+    await open();
+    const measured = await page.evaluate(() => {
+      const row = window.settingsPart('slicc-secrets', '[data-secret=HARBOR_API_KEY]');
+      const box = row.querySelector('[data-form]').getBoundingClientRect();
+      const whole = row.getBoundingClientRect();
+      return innerWidth > 480
+        ? null
+        : { full: Math.abs(box.width - whole.width) < 2, inside: box.right <= innerWidth };
+    });
+    narrow ??= measured;
+  });
+  assert.deepEqual(narrow, { full: true, inside: true });
+  await sized(page, 1280);
+  await open();
+  await fill(page, '[data-form=replace] [data-field=value]', sample);
+  await page.evaluate(() =>
+    window.settingsPart('slicc-secrets', '[data-form] [data-action=save]').click()
+  );
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-said=saved]'));
+  assert.deepEqual(await page.evaluate(() => window.model.vault.puts), [
+    { name: 'HARBOR_API_KEY' },
+  ]);
+  await clean(page);
+  assert.deepEqual(page.errors, []);
+});
+
+async function picked(page) {
+  await form(page, '[data-action=import]', 'import');
+  await page.evaluate(() => {
+    if (window.settingsPart('slicc-secrets', '[data-picks]')) return true;
+    const data = new DataTransfer();
+    data.items.add(new File(['invented bundle bytes'], 'harbor.slicc-vault'));
+    const input = window.settingsPart('slicc-secrets', '[data-form=import] [data-field=file]');
+    input.files = data.files;
+    input.dispatchEvent(new Event('change'));
+    window.settingsPart('slicc-secrets', '[data-form] [data-action=read]').click();
+    return true;
+  });
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-picks]'));
+}
+
+async function imported(page) {
+  if (await page.evaluate(() => !!window.settingsPart('slicc-secrets', '[data-said=imported]')))
+    return;
+  await picked(page);
+  await page.evaluate(() => {
+    window.settingsPart('slicc-secrets', '[data-pick=KELP_WEBHOOK_SECRET]').click();
+    return true;
+  });
+  await page.until(
+    () =>
+      window.settingsPart('slicc-secrets', '[data-action=import-picked]')?.textContent.trim() ===
+      'Import 2'
+  );
+  await page.evaluate(() =>
+    window.settingsPart('slicc-secrets', '[data-action=import-picked]').click()
+  );
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-said=imported]'));
+}
+
+test('Import offers a pick of what the file holds, then imports the chosen secrets', async (t) => {
+  const page = await secretsPage(t, { vault: 'secrets' });
+  await picked(page);
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.settingsPart('slicc-secrets').shadowRoot.querySelectorAll('[data-candidate]')].map(
+        (row) => [row.dataset.candidate, row.querySelector('input').checked]
+      )
+    ),
+    [
+      ['LAGOON_API_KEY', true],
+      ['HARBOR_API_KEY', true],
+      ['KELP_WEBHOOK_SECRET', true],
+    ]
+  );
+  await views(page, 'secrets-import-pick', '[data-form=import]', () => picked(page));
+  await sized(page, 1280);
+  await imported(page);
+  assert.equal(await page.evaluate(said, '[data-said=imported]'), 'Imported 2, skipped 1');
+  await clean(page);
+  await views(page, 'secrets-import-done', null, () => imported(page));
+  assert.deepEqual(page.errors, []);
+});
+
+test('Export asks for a passphrase twice and confirms before it downloads', async (t) => {
+  const page = await secretsPage(t, { vault: 'secrets' });
+  const open = () => form(page, '[data-tools] [data-action=export]', 'export');
+  await views(page, 'secrets-export', '[data-form=export]', open);
+  await sized(page, 1280);
   await page.evaluate(() => {
     window.model.settings.update({ color: 'light' });
     return true;
   });
-  await sized(page, 1280);
-  await shown(
-    page,
-    'settings',
-    () => !!window.settingsPart('slicc-secrets', 'section[data-vault]')
-  );
+  await open();
+  await fill(page, '[data-form=export] [data-field=passphrase]', sample);
+  await fill(page, '[data-form=export] [data-field=repeat]', sample);
   await page.evaluate(() =>
-    window
-      .settingsPart(
-        'slicc-secrets',
-        '[data-secret=PIER_PUBLISH_TOKEN] slicc-vault-button',
-        'swc-button'
-      )
-      .click()
+    window.settingsPart('slicc-secrets', '[data-form] [data-action=download]').click()
   );
-  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-popup=done]'));
-  assert.equal(
+  await page.until(() => !!window.deep('slicc-confirm'));
+  await clean(page);
+  assert.match(
     await page.evaluate(() =>
-      window
-        .settingsPart('slicc-secrets', '[data-popup=done]')
-        .textContent.replace(/\s+/g, ' ')
-        .trim()
+      window.deep('slicc-confirm').shadowRoot.textContent.replace(/\s+/g, ' ')
     ),
-    'Saved PIER_PUBLISH_TOKEN in the vault.'
+    /Export your secrets\? The file holds every value, encrypted with your passphrase\. Keep it somewhere safe\./
   );
-  assert.deepEqual(await page.evaluate(noValues), { fields: 0, proxy: false });
-  await page.evaluate(() => {
-    window.settingsPart('slicc-secrets').scrollIntoView({ block: 'start' });
-    return true;
-  });
-  await shot(page, 'secrets-saved');
+  await shot(page, 'secrets-export-confirm-1280-light');
+  await page.evaluate(() =>
+    window.deep('slicc-confirm').shadowRoot.querySelector('[data-cancel]').click()
+  );
+  await page.until(() => !window.deep('slicc-confirm'));
+  assert.equal(await page.evaluate(() => window.model.vault.exported), 0);
+  await clean(page);
+  assert.deepEqual(page.errors, []);
+});
+
+test('refused rules and policy changes show in Secrets and its activity log', async (t) => {
+  const page = await secretsPage(t, { vault: 'policy' });
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-refused]'));
+  await clean(page);
+  await views(page, 'secrets-refused', '#secrets-refused');
+  await views(page, 'secrets-policy-log', '.audit-head');
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window
+          .settingsPart('slicc-secrets')
+          .shadowRoot.querySelectorAll('.audit li[data-type=policy] [data-change]').length
+    ),
+    3
+  );
   assert.deepEqual(page.errors, []);
 });
 
@@ -4381,15 +4616,13 @@ test('the secrets activity log lists uses and reveals, pages back and filters to
     );
   const before = await page.evaluate(seqs);
   assert.equal(before[0].startsWith('12:'), true);
-  await views(page, 'secrets-activity', '.audit-head');
   await page.evaluate(() => window.settingsPart('slicc-secrets', '[data-action=older]').click());
   await page.until(() => !window.settingsPart('slicc-secrets', '[data-action=older]'));
   const all = await page.evaluate(seqs);
   assert.equal(all.length > before.length, true);
   assert.equal(all.at(-1).startsWith('3:'), true);
   await page.evaluate(() => {
-    const toggle = window.settingsPart('slicc-secrets', '[data-action=reveals]');
-    toggle.click();
+    window.settingsPart('slicc-secrets', '[data-action=reveals]').click();
     return true;
   });
   await page.until(() =>
@@ -4398,19 +4631,7 @@ test('the secrets activity log lists uses and reveals, pages back and filters to
     )
   );
   assert.ok((await page.evaluate(seqs)).length > 0);
-  assert.deepEqual(await page.evaluate(noValues), { fields: 0, proxy: false });
-  await views(page, 'secrets-reveals', '.audit-head', async () => {
-    await page.evaluate(() => {
-      const toggle = window.settingsPart('slicc-secrets', '[data-action=reveals]');
-      if (!toggle.checked) toggle.click();
-      return true;
-    });
-    await page.until(() =>
-      [...window.settingsPart('slicc-secrets').shadowRoot.querySelectorAll('ol.audit li')].every(
-        (row) => row.dataset.type === 'materialize'
-      )
-    );
-  });
+  await clean(page);
   assert.deepEqual(page.errors, []);
 });
 
@@ -4420,32 +4641,40 @@ test('with no secrets yet, settings say how secrets arrive', async (t) => {
     await page.evaluate(() => !!window.settingsPart('slicc-secrets', '[data-empty]')),
     true
   );
-  assert.deepEqual(await page.evaluate(noValues), { fields: 0, proxy: false });
-  await views(page, 'secrets-empty');
+  await clean(page);
   assert.deepEqual(page.errors, []);
 });
 
-test('a widened secret rule shows a notice until it is acknowledged', async (t) => {
-  const page = await secretsPage(t, { vault: 'notice' });
-  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-notice]'));
-  assert.equal(
-    await page.evaluate(() =>
-      window.settingsPart('slicc-secrets', '[data-notice]').getAttribute('role')
-    ),
-    'alert'
-  );
-  assert.deepEqual(await page.evaluate(noValues), { fields: 0, proxy: false });
-  await views(page, 'secrets-notice');
+test('Secrets says it waits for the vault until the vault answers', async (t) => {
+  const page = await secretsPage(t, { vault: 'waiting' });
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-availability=waiting]'));
+  await views(page, 'secrets-waiting');
+  await page.evaluate(() => {
+    window.model.vault.arrive();
+    return true;
+  });
+  await page.until(() => !window.settingsPart('slicc-secrets', '[data-availability]'));
+  assert.deepEqual(page.errors, []);
+});
+
+test('a due backup reminder offers Export backup and Not now', async (t) => {
+  const page = await secretsPage(t, { vault: 'backup' });
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-backup]'));
+  await views(page, 'secrets-backup');
   await page.evaluate(() =>
-    window.settingsPart('slicc-secrets', '[data-notice] [data-action=acknowledge]').click()
+    window.settingsPart('slicc-secrets', '[data-action=dismiss-backup]').click()
   );
-  await page.until(() => !window.settingsPart('slicc-secrets', '[data-notice]'));
-  assert.equal(await page.evaluate(() => window.model.vault.acknowledged.length), 1);
+  await page.until(() => !window.settingsPart('slicc-secrets', '[data-backup]'));
+  assert.equal(await page.evaluate(() => window.model.vault.status().backupReminder), 'dismissed');
   assert.deepEqual(page.errors, []);
 });
 
-test('a locked vault offers Unlock and shows waiting requests as untrusted agent text', async (t) => {
+test('a locked vault offers Unlock, says to unlock to continue and shows requests as untrusted text', async (t) => {
   const page = await secretsPage(t, { vault: 'locked' });
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-value-request').later('request-reef');
+    return true;
+  });
   await page.until(() => !!window.settingsPart('slicc-secrets', '[data-request]'));
   assert.equal(
     await page.evaluate(() => window.settingsPart('slicc-secrets', 'section').dataset.vault),
@@ -4457,22 +4686,207 @@ test('a locked vault offers Unlock and shows waiting requests as untrusted agent
     ),
     /^From the agent, not checked by SLICC: /
   );
-  assert.deepEqual(await page.evaluate(noValues), { fields: 0, proxy: false });
+  assert.equal(
+    await page.evaluate(() =>
+      window.settingsPart('slicc-secrets', '[data-availability=unlock]').textContent.trim()
+    ),
+    'Unlock the vault to continue'
+  );
+  await clean(page);
   await views(page, 'secrets-locked');
   await page.evaluate(() => {
     window.model.settings.update({ color: 'light' });
     return true;
   });
   await page.evaluate(() =>
-    window.settingsPart('slicc-secrets', '[data-request] slicc-vault-button', 'swc-button').click()
+    window.settingsPart('slicc-secrets', '.head slicc-vault-button', 'swc-button').click()
   );
-  await page.until(() => !window.settingsPart('slicc-secrets', '[data-request]'));
   await page.until(
     () => window.settingsPart('slicc-secrets', 'section').dataset.vault === 'unlocked'
   );
-  assert.deepEqual(await page.evaluate(noValues), { fields: 0, proxy: false });
+  await clean(page);
   assert.deepEqual(page.errors, []);
 });
+
+async function valueDialog(t, color, width) {
+  const page = await open(t, { vault: 'request', color });
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: width ?? 1280,
+    height: width ? 860 : 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await page.until(() => !!window.$('slicc-app', 'slicc-value-request', 'dialog[data-request]'));
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const shown = await page.evaluate(() => {
+    const root = window.$('slicc-app', 'slicc-value-request').shadowRoot;
+    const box = root.querySelector('dialog').getBoundingClientRect();
+    return {
+      title: root.querySelector('#title').textContent.replace(/\s+/g, ' ').trim(),
+      asked: root.querySelector('[data-asked]').textContent.trim(),
+      actions: [...root.querySelectorAll('swc-button')].map((button) => button.dataset.action),
+      inside: box.left >= 0 && box.right <= innerWidth,
+    };
+  });
+  assert.deepEqual(shown, {
+    title: 'Enter a value for TIDE_STATION_TOKEN',
+    asked: 'Asked by fnox',
+    actions: ['later', 'cancel-request', 'save'],
+    inside: true,
+  });
+  await shot(page, `value-request-${width ?? 1280}-${color}`);
+  return page;
+}
+
+test('fnox set asks for the value in a dialog, in light', async (t) => {
+  const page = await valueDialog(t, 'light');
+  await page.evaluate(() => {
+    const vault = window.model.vault;
+    const status = vault.status();
+    status.waiting.push({
+      id: 'request-kelp',
+      kind: 'value',
+      name: 'KELP_WEBHOOK_SECRET',
+      uid: 1001,
+      tag: null,
+      createdAt: Date.now() + 1,
+      expiresAt: Date.now() + 240_000,
+    });
+    vault.emit('status', status);
+    return true;
+  });
+  await page.until(() => !!window.$('slicc-app', 'slicc-value-request', '[data-more]'));
+  assert.equal(
+    await page.evaluate(() =>
+      window.$('slicc-app', 'slicc-value-request', '[data-more]').textContent.trim()
+    ),
+    '1 more waiting'
+  );
+  await shot(page, 'value-request-more-1280-light');
+  const focus = await page.evaluate(() => window.focused());
+  assert.match(focus, /slicc-value-request > input/, focus);
+  await page.insert(sample);
+  await page.press('Enter');
+  await page.until(
+    () => window.$('slicc-app', 'slicc-value-request', 'dialog')?.dataset.request === 'request-kelp'
+  );
+  assert.deepEqual(await page.evaluate(() => window.model.vault.puts), [
+    { name: 'TIDE_STATION_TOKEN', request: 'request-tide' },
+  ]);
+  await clean(page);
+  await page.evaluate(() =>
+    window.$('slicc-app', 'slicc-value-request', '[data-action=later]').click()
+  );
+  await page.until(() => !window.$('slicc-app', 'slicc-value-request', 'dialog'));
+  await clean(page);
+  assert.deepEqual(page.errors, []);
+});
+
+test('fnox set asks for the value in a dialog, in dark', async (t) => {
+  const page = await valueDialog(t, 'dark');
+  assert.deepEqual(page.errors, []);
+});
+
+test('the fnox set dialog fits a narrow window', async (t) => {
+  const page = await valueDialog(t, 'light', 420);
+  assert.deepEqual(page.errors, []);
+});
+
+async function shareSecret(t, vault, color, width) {
+  const page = await open(t, { vault, color });
+  if (width) {
+    await page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height: 860,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await page.until(() => window.app.getAttribute('screen') === 'phone');
+    await new Promise((resolve) => setTimeout(resolve, 600));
+  }
+  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer'));
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').openPopup('secret');
+    return true;
+  });
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'form.secret')
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await shot(
+    page,
+    `composer-secret-${vault === 'off' ? 'no-vault' : 'vault'}-${width ?? 1280}-${color}`
+  );
+  return page;
+}
+
+for (const [color, width] of [['light'], ['dark'], ['light', 420]]) {
+  test(`share a secret without a vault attaches the name only, ${color}${width ? ` at ${width}` : ''}`, async (t) => {
+    const page = await shareSecret(t, 'off', color, width);
+    assert.equal(
+      await page.evaluate(
+        () =>
+          !!window.$(
+            'slicc-app',
+            'slicc-dock',
+            'slicc-chat',
+            'slicc-composer',
+            'form.secret input[type=password]'
+          )
+      ),
+      false
+    );
+    assert.deepEqual(page.errors, []);
+  });
+
+  test(`share a secret with a vault puts the value in the vault, ${color}${width ? ` at ${width}` : ''}`, async (t) => {
+    const page = await shareSecret(t, 'secrets', color, width);
+    await page.evaluate(() => {
+      window
+        .$(
+          'slicc-app',
+          'slicc-dock',
+          'slicc-chat',
+          'slicc-composer',
+          'form.secret input[name=name]'
+        )
+        .focus();
+      return true;
+    });
+    await page.insert('tide token');
+    await page.evaluate(() => {
+      window
+        .$(
+          'slicc-app',
+          'slicc-dock',
+          'slicc-chat',
+          'slicc-composer',
+          'form.secret input[name=value]'
+        )
+        .focus();
+      return true;
+    });
+    await page.insert(sample);
+    await page.evaluate(() =>
+      window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '[data-action=share-secret]')
+        .click()
+    );
+    await page.until(
+      () =>
+        window.$(
+          'slicc-app',
+          'slicc-dock',
+          'slicc-chat',
+          'slicc-composer',
+          'swc-upload-attachment[data-kind=secret] [slot=title]'
+        )?.textContent === 'TIDE_TOKEN'
+    );
+    assert.deepEqual(await page.evaluate(() => window.model.vault.puts), [{ name: 'TIDE_TOKEN' }]);
+    await clean(page);
+    assert.deepEqual(page.errors, []);
+  });
+}
 
 async function secretRulesDialog(t, color, width) {
   const page = await open(t, { approvals: 'secrets', color });
