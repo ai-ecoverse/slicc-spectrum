@@ -4473,3 +4473,41 @@ test('a locked vault offers Unlock and shows waiting requests as untrusted agent
   assert.deepEqual(await page.evaluate(noValues), { fields: 0, proxy: false });
   assert.deepEqual(page.errors, []);
 });
+
+async function secretRulesDialog(t, color, width) {
+  const page = await open(t, { approvals: 'secrets', color });
+  if (width)
+    await page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height: 800,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+  await page.until(() => !!window.$('slicc-app', 'slicc-approvals', '[data-secret-rules]'));
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const dialog = await page.evaluate(() => {
+    const root = window.$('slicc-app', 'slicc-approvals').shadowRoot;
+    const box = root.querySelector('[data-secret-rules]').getBoundingClientRect();
+    return {
+      notice: root.querySelector('[data-secret-rules]').dataset.secretRules,
+      actions: [...root.querySelectorAll('swc-button')].map((button) => button.dataset.action),
+      inside: box.left >= 0 && box.right <= innerWidth,
+    };
+  });
+  assert.deepEqual(dialog, {
+    notice: '/etc/fnox/config.toml',
+    actions: ['deny', 'once'],
+    inside: true,
+  });
+  await shot(page, `sudo-secret-rules-${color}${width ? `-${width}` : ''}`);
+  assert.deepEqual(page.errors, []);
+}
+
+test('a sudo request that changes secret rules is flagged, in light and dark', async (t) => {
+  await secretRulesDialog(t, 'light');
+  await secretRulesDialog(t, 'dark');
+});
+
+test('the secret rules flag fits a narrow window', async (t) => {
+  await secretRulesDialog(t, 'light', 420);
+});

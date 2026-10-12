@@ -31,6 +31,42 @@ export function sudo(approval: Approval): string {
   return `sudo ${as}${approval.command}`;
 }
 
+const rulePaths = ['/etc/fnox', '/etc/fnox/config.toml', '/etc/slicc/secrets-policy.toml'];
+const ruleParents = ['/', '/etc', '/etc/slicc'];
+
+function absolute(cwd: string, word: string): string {
+  const parts: string[] = [];
+  for (const part of `${word.startsWith('/') ? '' : cwd}/${word}`.split('/')) {
+    if (part === '..') parts.pop();
+    else if (part && part !== '.') parts.push(part);
+  }
+  return `/${parts.join('/')}`;
+}
+
+function pattern(path: string): RegExp {
+  const escaped = path.replace(/[.+^${}()|\\]/g, '\\$&');
+  return new RegExp(`^${escaped.replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]')}$`);
+}
+
+export function secretRules(approval: Approval): string | null {
+  const cwd = approval.cwd ?? '/';
+  const words = approval.command.split(/[\s'"`;&|<>()=,]+/).filter(Boolean);
+  const whole =
+    ['mv', 'rm', 'ln'].includes(words[0]?.split('/').pop() ?? '') ||
+    words.some((word) => /^(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)$/.test(word));
+  const inside = (path: string) => path === '/etc/fnox' || path.startsWith('/etc/fnox/');
+  if (inside(absolute('/', cwd))) return absolute('/', cwd);
+  for (const word of words.slice(1)) {
+    if (word.startsWith('-')) continue;
+    const path = absolute(cwd, word);
+    const glob = /[*?]/.test(word) ? pattern(path) : null;
+    if (glob ? rulePaths.some((rule) => glob.test(rule)) : inside(path) || rulePaths.includes(path))
+      return path;
+    if (whole && ruleParents.includes(path)) return path;
+  }
+  return null;
+}
+
 export function waiting(model: SliccModel | null, now: number): Approval[] {
   return [...(model?.approvals?.list() ?? [])]
     .filter((approval) => approval.expiresAt > now)
@@ -105,6 +141,27 @@ export class SliccApprovals extends ModelElement {
       .timer {
         margin-block-start: var(--swc-spacing-300);
         font-variant-numeric: tabular-nums;
+      }
+      .rules {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--swc-spacing-100);
+        margin-block-start: var(--swc-spacing-200);
+        padding: var(--swc-spacing-200) var(--swc-spacing-300);
+        border-radius: var(--swc-corner-radius-medium-default);
+        background: var(--swc-notice-subtle-background-color-default);
+        --swc-icon-color: var(--swc-icon-color-notice);
+      }
+      .rules swc-icon-alert-triangle {
+        flex: none;
+        margin-block-start: 0.15em;
+      }
+      .rules p {
+        margin: 0;
+      }
+      .rules code {
+        font-family: var(--swc-code-font-family-stack);
+        overflow-wrap: anywhere;
       }
       .problem {
         display: flex;
@@ -288,6 +345,8 @@ export class SliccApprovals extends ModelElement {
     const [approval, ...rest] = held ? [held, ...list.filter(({ id }) => id !== held.id)] : list;
     if (!approval) return nothing;
     const failure = this.failure?.id === approval.id ? this.failure.message : '';
+    const rules = secretRules(approval);
+    const always = approval.always && !rules;
     return this.#dialog(
       approval,
       approval.id,
@@ -295,12 +354,13 @@ export class SliccApprovals extends ModelElement {
           <h2 id="title" slot="heading">Allow sudo?</h2>
           ${this.#request(approval)}
           ${approval.cwd ? html`<p class="cwd">In ${approval.cwd}</p>` : nothing}
-          ${approval.always ? html`<p class="hint">Always allow lets ${approval.requester.name} run exactly this command with sudo without asking again.</p>` : nothing}
+          ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p><strong>This changes secret rules.</strong> It names <code>${rules}</code>, where SLICC keeps which secrets programs may use and where they may be sent. Allow it only if you asked for this change.</p></div>` : nothing}
+          ${always ? html`<p class="hint">Always allow lets ${approval.requester.name} run exactly this command with sudo without asking again.</p>` : nothing}
           ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : nothing}
           <p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>
           ${rest.length ? html`<p class="more" data-more>${rest.length === 1 ? '1 more request is waiting.' : `${rest.length} more requests are waiting.`}</p>` : nothing}
           ${this.#button(approval, 'deny', 'Deny', 'secondary')}
-          ${approval.always ? this.#button(approval, 'always', 'Always allow', 'secondary') : nothing}
+          ${always ? this.#button(approval, 'always', 'Always allow', 'secondary') : nothing}
           ${this.#button(approval, 'once', 'Allow once', 'accent')}
         </sp-alert-dialog>`
     );

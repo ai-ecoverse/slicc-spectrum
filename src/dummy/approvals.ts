@@ -16,7 +16,8 @@ export type ApprovalScenario =
   | 'fail'
   | 'soon'
   | 'elsewhere'
-  | 'withdrawn';
+  | 'withdrawn'
+  | 'secrets';
 
 const minutes = 60_000;
 
@@ -50,6 +51,19 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
     expiresAt: now + 5 * minutes,
     always: false,
   };
+  if (scenario === 'secrets')
+    return [
+      {
+        id: 'sudo-rules',
+        kind: 'sudo',
+        requester: { kind: 'agent', name: 'docs-pass', agentId: 'scoop-docs' },
+        command: 'cp fnox.toml /etc/fnox/config.toml',
+        cwd: '/home/cone/harbor',
+        createdAt: now,
+        expiresAt: now + 5 * minutes,
+        always: true,
+      },
+    ];
   if (scenario === 'user') return [user];
   if (scenario === 'many') return [agent, user, cache];
   if (scenario === 'elsewhere' || scenario === 'withdrawn') return [agent, user];
