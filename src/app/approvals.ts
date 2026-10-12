@@ -140,6 +140,31 @@ function unglob(command: string): string {
   return next === command ? command : unglob(next);
 }
 
+function quoted(segment: string): string[] {
+  const words: string[] = [];
+  let word = '';
+  let quote = '';
+  for (let index = 0; index < segment.length; index++) {
+    const char = segment[index];
+    if (quote) {
+      if (char === quote) quote = '';
+      else word += char;
+    } else if (char === "'" || char === '"') quote = char;
+    else if (char === '\\') word += segment[++index] ?? '';
+    else if (/[\s<>=]/.test(char)) {
+      words.push(word);
+      word = '';
+    } else word += char;
+  }
+  return [...words, word];
+}
+
+function commas(words: string[]): string[] {
+  return words
+    .flatMap((word) => (word.includes(',') ? [word, ...word.split(',')] : [word]))
+    .filter(Boolean);
+}
+
 function scan(words: string[], cwds: Set<string>, whole: boolean): string | null {
   let cd = false;
   for (const [index, word] of words.entries()) {
@@ -163,13 +188,11 @@ export function secretRules(approval: Approval): string | null {
   const cwds = new Set([start]);
   const segments = unglob(ansi(approval.command.replace(/\\\n/g, '')))
     .split(/[;&|\n()`]/)
-    .map((segment) =>
-      segment
-        .split(/[\s<>=]+/)
-        .map((word) => word.replace(/['"\\]/g, ''))
-        .flatMap((word) => (word.includes(',') ? [word, ...word.split(',')] : [word]))
-        .filter(Boolean)
-    );
+    .flatMap((segment) => {
+      const naive = commas(segment.split(/[\s<>=]+/).map((word) => word.replace(/['"\\]/g, '')));
+      const aware = commas(quoted(segment));
+      return aware.join('\n') === naive.join('\n') ? [naive] : [naive, aware];
+    });
   const whole = segments.some((words) => words.length > 0 && !readOnly.includes(command(words[0])));
   for (const words of segments) {
     const hit = scan(words, cwds, whole);
