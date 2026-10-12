@@ -199,7 +199,7 @@ export class SliccMonitor extends ModelElement {
       .toggle {
         all: unset;
         box-sizing: border-box;
-        flex: 1;
+        flex: 1 1 auto;
         min-width: 0;
         display: flex;
         align-items: center;
@@ -225,7 +225,7 @@ export class SliccMonitor extends ModelElement {
         transform: scaleX(-1);
       }
       .line .name {
-        flex: 1;
+        flex: 1 1 auto;
         min-width: 0;
       }
       .line .num {
