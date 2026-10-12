@@ -76,7 +76,8 @@ function candidates(word: string): string[] {
   if (word.startsWith('--')) return [];
   if (!word.startsWith('-')) return [word];
   const slash = word.indexOf('/');
-  return [word.slice(2), ...(slash > 2 ? [word.slice(slash)] : [])].filter(Boolean);
+  const cluster = Array.from(word.slice(2), (_, index) => word.slice(index + 2));
+  return [...cluster, ...(slash > 2 ? [word.slice(slash)] : [])];
 }
 
 function protects(path: string, whole: boolean): boolean {
@@ -99,28 +100,40 @@ function protects(path: string, whole: boolean): boolean {
 
 export function secretRules(approval: Approval): string | null {
   let cwd = absolute('/', approval.cwd ?? '/');
-  const words = approval.command
-    .split(/[\s`;&|<>()=,]+/)
-    .map((word) => word.replace(/['"\\]/g, ''))
-    .filter(Boolean);
-  const name = (word: string) => word.split('/').pop() ?? '';
-  const whole = approval.command.split(/[;&|\n]|\$\(|`/).some((segment) => {
-    const first = segment.trim().split(/\s+/)[0];
-    return !!first && !readOnly.includes(name(first));
-  });
   if (protects(cwd, false)) return cwd;
-  for (const [index, word] of words.entries()) {
-    if (index > 0 && name(words[index - 1]) === 'cd' && !word.startsWith('-')) {
-      cwd = absolute(cwd, word);
-      if (protects(cwd, false)) return cwd;
-      continue;
-    }
-    for (const candidate of candidates(word)) {
-      const path = absolute(cwd, candidate);
-      if (index > 0 && protects(path, whole)) return path;
+  const name = (word: string) => word.split('/').pop() ?? '';
+  const segments = approval.command
+    .replace(/\\\n/g, '')
+    .split(/[;&|\n()`]/)
+    .map((segment) =>
+      segment
+        .split(/[\s<>=,]+/)
+        .map((word) => word.replace(/['"\\]/g, ''))
+        .filter(Boolean)
+    );
+  const whole = segments.some((words) => words.length > 0 && !readOnly.includes(name(words[0])));
+  for (const words of segments) {
+    let cd = false;
+    for (const [index, word] of words.entries()) {
+      if (index === 0 || words[index - 1] === '-c') {
+        cd = ['cd', 'pushd'].includes(name(word));
+      } else if (cd) {
+        if (word.startsWith('-')) continue;
+        cd = false;
+        cwd = absolute(cwd, word);
+        if (protects(cwd, false)) return cwd;
+      } else {
+        for (const candidate of candidates(word)) {
+          const path = absolute(cwd, candidate);
+          if (protects(path, whole)) return path;
+        }
+      }
     }
   }
-  return null;
+  const named = segments
+    .flat()
+    .find((word) => !/^[-/]/.test(word) && /fnox|secrets-policy/.test(word));
+  return named ? absolute(cwd, named) : null;
 }
 
 export function waiting(model: SliccModel | null, now: number): Approval[] {
