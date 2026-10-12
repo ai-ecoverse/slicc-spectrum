@@ -39,6 +39,10 @@ function absolute(cwd: string, word: string): string {
   for (const part of `${word.startsWith('/') ? '' : cwd}/${word}`.split('/')) {
     if (part === '..') parts.pop();
     else if (part && part !== '.') parts.push(part);
+    const alias = parts.join('/').match(/^proc\/([^/]+)\/(?:task\/[^/]+\/)?(root|cwd)$/);
+    if (alias?.[2] === 'root') parts.length = 0;
+    else if (alias && /^(?:self|thread-self)$/.test(alias[1]))
+      parts.splice(0, parts.length, ...cwd.split('/').filter(Boolean));
   }
   return `/${parts.join('/')}`;
 }
@@ -54,6 +58,11 @@ function pattern(path: string): RegExp {
     .replace(/\u0002/g, '.*');
   return new RegExp(`^${source}$`);
 }
+
+const opaque = /^\/(?:proc\/[^/]+\/(?:task\/[^/]+\/)?(?:cwd|fd|map_files)|dev\/fd)(?:\/|$)/;
+
+export const certain = (rules: string) =>
+  rules.startsWith('/') && !opaque.test(rules) && !rules.endsWith('…');
 
 const readOnly = [
   'cat',
@@ -86,6 +95,7 @@ function candidates(word: string): string[] {
 function protects(path: string, whole: boolean): boolean {
   const inside = (candidate: string) =>
     candidate === '/etc/fnox' || candidate.startsWith('/etc/fnox/');
+  if (opaque.test(path)) return true;
   if (/[[{$]/.test(path)) {
     const prefix = path.slice(0, path.search(/[*?[{$]/));
     return inside(prefix) || rulePaths.some((rule) => rule.startsWith(prefix));
@@ -130,19 +140,39 @@ function ansi(command: string): string {
   const escape =
     /\\(?:x([0-9a-fA-F]{1,2})|u([0-9a-fA-F]{1,4})|U([0-9a-fA-F]{1,8})|([0-7]{1,3})|([\s\S]))/g;
   return command
-    .replace(/\$'((?:[^'\\]|\\[\s\S])*)'/g, (_, body: string) =>
-      body.replace(escape, (_match, hex, short, long, octal, plain) => {
-        if (octal) return String.fromCharCode(Number.parseInt(octal, 8));
-        if (plain) return plain;
-        return String.fromCodePoint(Math.min(Number.parseInt(hex ?? short ?? long, 16), 0x10ffff));
-      })
+    .replace(
+      /\$'((?:[^'\\]|\\[\s\S])*)'/g,
+      (_, body: string) =>
+        `'${body
+          .replace(escape, (_match, hex, short, long, octal, plain) => {
+            if (octal) return String.fromCharCode(Number.parseInt(octal, 8));
+            if (plain) return plain;
+            return String.fromCodePoint(
+              Math.min(Number.parseInt(hex ?? short ?? long, 16), 0x10ffff)
+            );
+          })
+          .replace(/'/g, "'\\''")}'`
     )
     .replace(/\$"/g, '"');
 }
 
 function unglob(command: string): string {
-  const next = command.replace(/[?*+@!]\([^()]*\)/g, '*');
-  return next === command ? command : unglob(next);
+  const chars = Array.from(command);
+  const close = new Map<number, number>();
+  const open: number[] = [];
+  for (const [index, char] of chars.entries()) {
+    if (char === '(') open.push(index);
+    else if (char === ')' && open.length) close.set(open.pop() as number, index);
+  }
+  const out: string[] = [];
+  for (let index = 0; index < chars.length; index++) {
+    const end = close.get(index);
+    if (end !== undefined && /^[?*+@!]$/.test(out.at(-1) ?? '')) {
+      out[out.length - 1] = '*';
+      index = end;
+    } else out.push(chars[index]);
+  }
+  return out.join('');
 }
 
 const separators = /[;&|\n()`]/;
@@ -217,6 +247,7 @@ function scan(words: string[], cwds: Set<string>, whole: boolean): string | null
 }
 
 export function secretRules(approval: Approval): string | null {
+  if (approval.command.length > 4096) return `${approval.command.slice(0, 40)}…`;
   const start = absolute('/', approval.cwd ?? '/');
   if (protects(start, false)) return start;
   const cwds = new Set([start]);
@@ -532,7 +563,7 @@ export class SliccApprovals extends ModelElement {
           <h2 id="title" slot="heading">Allow sudo?</h2>
           ${this.#request(approval)}
           ${approval.cwd ? html`<p class="cwd">In ${approval.cwd}</p>` : nothing}
-          ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${rules.startsWith('/') ? html`<strong>This changes secret rules.</strong> It names <code>${rules}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${rules}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>` : nothing}
+          ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${certain(rules) ? html`<strong>This changes secret rules.</strong> It names <code>${rules}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${rules}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>` : nothing}
           ${always ? html`<p class="hint">Always allow lets ${approval.requester.name} run exactly this command with sudo without asking again.</p>` : nothing}
           ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : nothing}
           <p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>
