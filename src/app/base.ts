@@ -78,6 +78,7 @@ export function resolveColor(scheme: ColorScheme, prefersDark: boolean): Color {
 
 interface Paint {
   scheme: string;
+  priority: string;
   tones: Map<HTMLMetaElement, string>;
   holds: Map<object, Color | null>;
 }
@@ -104,6 +105,7 @@ function apply(doc: Document, paint: Paint, color: Color): void {
 export function holdDocument(doc: Document): DocumentHold {
   const paint = paints.get(doc) ?? {
     scheme: doc.documentElement.style.colorScheme,
+    priority: doc.documentElement.style.getPropertyPriority('color-scheme'),
     tones: new Map(),
     holds: new Map(),
   };
@@ -122,7 +124,7 @@ export function holdDocument(doc: Document): DocumentHold {
       if (left.length) return apply(doc, paint, left[left.length - 1] as Color);
       if (paint.holds.size) return;
       paints.delete(doc);
-      doc.documentElement.style.colorScheme = paint.scheme;
+      doc.documentElement.style.setProperty('color-scheme', paint.scheme, paint.priority);
       for (const [meta, tone] of paint.tones) meta.content = tone;
     },
   };
