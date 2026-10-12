@@ -15,6 +15,7 @@ import type {
   ImportResult,
   LinkedDevice,
   PendingRequest,
+  PolicyEntry,
   RefusedRule,
   RevealEntry,
   SecretView,
@@ -40,6 +41,7 @@ import {
   type PopupDetail,
   ruleLine,
   take,
+  widening,
 } from './vault.ts';
 
 const kinds = { secret: null, grant: 'Sign-in', model: 'Model key', mcp: 'MCP server' } as const;
@@ -106,6 +108,12 @@ export function revealed(
   return html`Revealed to programs ${when}, last by ${who(last)} with <code>${last.argv}</code>`;
 }
 
+export function changes(entry: PolicyEntry, devices: readonly LinkedDevice[]): string[][] {
+  if (entry.changes)
+    return entry.changes.map((change) => [change.kind, changeLine(change, devices)]);
+  return (entry.widened ?? []).map((change) => [change.kind, widening(change, devices)]);
+}
+
 export function auditLine(entry: AuditEntry, devices: readonly LinkedDevice[]): TemplateResult {
   switch (entry.type) {
     case 'inject':
@@ -120,7 +128,7 @@ export function auditLine(entry: AuditEntry, devices: readonly LinkedDevice[]): 
     case 'restore':
       return html`Restored`;
     default:
-      return html`<code>${entry.file}</code> ${entry.accepted ? 'changed' : 'changed and was refused'}${(entry.changes ?? []).map((change) => html`<span class="change" data-change=${change.kind}>${changeLine(change, devices)}</span>`)}${entry.warning ? html`<span class="warning" data-warning>${entry.warning}</span>` : nothing}${entry.accepted ? html`<span class="hint" data-hint>If you didn’t mean this, change the file back with sudo.</span>` : nothing}`;
+      return html`<code>${entry.file}</code> ${entry.accepted ? 'changed' : 'changed and was refused'}${changes(entry, devices).map(([kind, line]) => html`<span class="change" data-change=${kind}>${line}</span>`)}${entry.warning ? html`<span class="warning" data-warning>${entry.warning}</span>` : nothing}${entry.accepted ? html`<span class="hint" data-hint>If you didn’t mean this, change the file back with sudo.</span>` : nothing}`;
   }
 }
 

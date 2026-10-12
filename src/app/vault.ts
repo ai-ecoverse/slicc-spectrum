@@ -13,6 +13,7 @@ import type {
   SliccModel,
   VaultButton,
   VaultPort,
+  Widening,
 } from '../model/types.ts';
 import { isVaultFailure } from '../model/values.ts';
 
@@ -70,7 +71,7 @@ function lower(line: string): string {
   return `${line[0].toLowerCase()}${line.slice(1)}`;
 }
 
-function mode(exec: ExecMode): string {
+function mode(exec: ExecMode | ExecGrant): string {
   return lower(execLine(exec) ?? 'Never revealed to commands');
 }
 
@@ -91,6 +92,23 @@ const codeTexts: Partial<Record<string, string>> = {
   EACCES: 'Unlock the vault first',
   ENOTSUP: 'This arrives with a later vault version',
 };
+
+export function widening(change: Widening, devices: readonly LinkedDevice[]): string {
+  switch (change.kind) {
+    case 'rule':
+      return `${change.secret} may now be sent to ${ruleLine(change.rule)}`;
+    case 'methods':
+      return `${change.secret} may now use ${list(change.methods)} on ${change.domain}`;
+    case 'paths':
+      return `${change.secret} may now reach ${list(change.paths)} on ${change.domain}`;
+    case 'exec':
+      return `${change.secret} is now ${mode(change.grant)}`;
+    case 'exit':
+      return `${change.secret} may now leave through ${exitLabel(change.exit, devices)}`;
+    default:
+      return `The limit ${change.field} rose from ${change.from} to ${change.to}`;
+  }
+}
 
 export function failureText(error: unknown): string {
   const text = isVaultFailure(error) ? codeTexts[error.code] : undefined;

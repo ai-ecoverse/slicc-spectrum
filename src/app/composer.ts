@@ -641,15 +641,18 @@ export class SliccComposer extends ThemedElement {
       const problem = nameProblem(clean) ?? valueProblem(value);
       this.secretError = problem;
       if (problem) return;
+      const agent = this.#agent;
+      const mine = () => this.#agent === agent && this.model?.vault === vault;
       this.sharing = true;
       try {
         await vault.put(clean, value);
       } catch (error) {
-        this.secretError = failureText(error);
+        if (mine()) this.secretError = failureText(error);
         return;
       } finally {
         this.sharing = false;
       }
+      if (!mine()) return;
     }
     this.secretError = null;
     this.attachments = [
