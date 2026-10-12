@@ -593,7 +593,7 @@ export type TrayRole = 'none' | 'leader' | 'follower';
 export interface Follower {
   id: string;
   name: string;
-  device: 'browser' | 'phone' | 'extension';
+  device: 'browser' | 'phone' | 'extension' | 'cli';
   since: number;
 }
 
