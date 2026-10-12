@@ -201,6 +201,7 @@ Paths are the agent's: `/shared/…` and `/home/…`, nothing else. A refusal or
 - `panel list [--json]` lists the panels the caller can reach, open or not, with their state (`active`, `shown`, `open` or `closed`) and why one is busy. `--json` prints `PanelInfo`s: `id`, `title`, `kind` (`surface`, `chat`, `terminal`, `sprinkle`, `file`, `diff`), home `side`, `agent`, `open`, `visible`, `active` and `busy`.
 - `panel open <id> [place] [--section <name>]` shows a panel without moving keyboard focus. `panel focus <id> [place] [--section <name>]` also gives it focus.
 - `panel close <id>`, `panel move <id> <place>` (a closed panel opens there) and `panel reset` (the default layout).
+- `panel tabs` and `--tab <tab>` are the agent's: it lists the SLICC tabs it can send the command to, and sends it to the one named instead of the one showing the caller's cone. It strips `--tab` before `panelCommand` runs; the help text names both so `panel --help` tells the whole story.
 - A place is `left`, `center` or `right` (a group on that side as the layout is now, with the chats' column as the center, or a new one beside its neighbours), or `--left`, `--right`, `--above`, `--below` or `--within <id>`.
 - Ids are the surface ids (`files`, `changes`, `terminal`, `monitor`, `settings`, …), `chat:<agent>`, `terminal:<id>`, `sprinkle:<id>`, `file:<path>` and `diff:<path>`. `chat` is the caller's cone's chat (without a caller, the selected thread's), `terminal` the active terminal, else the latest open one, else the newest, and a sprinkle can be named by its name alone.
 
