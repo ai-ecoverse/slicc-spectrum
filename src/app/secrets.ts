@@ -354,6 +354,7 @@ export class SliccSecrets extends ThemedElement {
   }
 
   protected willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed);
     const before = changed.get('model') as SliccModel | null | undefined;
     if (!changed.has('model') || before?.vault === this.model?.vault) return;
     this.older = [];
@@ -368,19 +369,34 @@ export class SliccSecrets extends ThemedElement {
     clearTimeout(this.#tick);
     const now = Date.now();
     const next = Math.min(
+      now + 60_000,
       ...(this.model?.vault?.list()?.secrets ?? [])
         .map((secret) => secret.expiresAt ?? Number.POSITIVE_INFINITY)
         .filter((at) => at > now)
     );
-    if (next !== Number.POSITIVE_INFINITY)
-      this.#tick = setTimeout(() => this.requestUpdate(), Math.min(next - now, 60_000));
+    this.#tick = setTimeout(() => this.requestUpdate(), next - now);
+  }
+
+  #listed(vault: VaultPort): void {
+    const head = vault.list()?.audit ?? [];
+    const last = head[head.length - 1];
+    if (this.older.length && last && last.seq > this.older[0].seq + 1) {
+      this.older = [];
+      this.more = null;
+    }
+    this.requestUpdate();
   }
 
   protected subscribe(model: SliccModel): Array<() => void> {
     const update = () => this.requestUpdate();
     return [
       ...super.subscribe(model),
-      ...(model.vault ? [model.vault.on('status', update), model.vault.on('list', update)] : []),
+      ...(model.vault
+        ? [
+            model.vault.on('status', update),
+            model.vault.on('list', () => this.#listed(model.vault as VaultPort)),
+          ]
+        : []),
       ...(model.network ? [model.network.on('network', update)] : []),
     ];
   }
@@ -419,9 +435,9 @@ export class SliccSecrets extends ThemedElement {
     try {
       await vault.acknowledge(notice.id);
     } catch (error) {
-      this.failure = (error as Error).message;
+      if (this.model?.vault === vault) this.failure = (error as Error).message;
     } finally {
-      this.acking = null;
+      if (this.model?.vault === vault) this.acking = null;
     }
   }
 
