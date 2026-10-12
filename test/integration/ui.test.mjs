@@ -2483,6 +2483,58 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
         .shadowRoot.querySelector('.alert[data-severity=error]')
   );
   await shot(page, 'monitor-light');
+  const narrow = await page.evaluate(async () => {
+    const host = window.$('slicc-app', 'slicc-dock').content('monitor');
+    host.style.width = '200px';
+    await new Promise(requestAnimationFrame);
+    const root = host.shadowRoot;
+    const edge = host.getBoundingClientRect().right;
+    const button = root.querySelector('.bar swc-action-button').getBoundingClientRect();
+    const [title, time] = [...root.querySelectorAll('.bar strong, .bar strong + span')].map(
+      (part) => part.getBoundingClientRect()
+    );
+    const lines = (node, from, to) => {
+      const range = document.createRange();
+      range.setStart(node, from);
+      range.setEnd(node, to);
+      return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
+    };
+    const split = [...root.querySelectorAll('.section[data-id=changes] .row swc-status-light')]
+      .flatMap((light) => [...light.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE))
+      .flatMap((node) =>
+        [...node.textContent.matchAll(/[^/\s]+/g)]
+          .filter((word) => lines(node, word.index, word.index + word[0].length) > 1)
+          .map((word) => word[0])
+      );
+    const rows = root.querySelectorAll('.section[data-id=changes] .row').length;
+    return {
+      inside: button.right <= edge + 0.5,
+      wrapped: time.top > title.top,
+      clear: time.right <= button.left,
+      split,
+      rows,
+    };
+  });
+  assert.deepEqual(narrow, {
+    inside: true,
+    wrapped: true,
+    clear: true,
+    split: [],
+    rows: narrow.rows,
+  });
+  assert.ok(narrow.rows > 0);
+  await shot(page, 'monitor-narrow');
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock')
+      .content('monitor')
+      .shadowRoot.querySelector('.section[data-id=changes]')
+      .scrollIntoView({ block: 'end' })
+  );
+  await shot(page, 'monitor-narrow-changes');
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-dock').content('monitor').style.width = '';
+  });
 
   await page.evaluate(() => window.$('slicc-app', '.rail.left [data-surface=freezer]').click());
   await page.until(
