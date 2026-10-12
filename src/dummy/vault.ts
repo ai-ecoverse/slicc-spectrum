@@ -272,7 +272,6 @@ export function vaultNotice(now = Date.now()): PolicyNotice {
         domain: 'packages.pier.example',
         methods: ['PUT', 'DELETE'],
       },
-      { kind: 'page-transit', exit: 'device:link-quay' },
     ],
   };
 }
@@ -307,31 +306,11 @@ export function vaultFixtures(
         : [],
     notices: notices.length,
   };
-  const transit = scenario === 'notice' ? ['device:link-quay' as const] : [];
   const list: VaultList = {
     secrets: empty ? [] : vaultSecrets(now),
     notices,
     audit: empty ? [] : vaultAudit(now),
     auditMore: !empty,
-    exits: {
-      file: '/etc/slicc/secrets-policy.toml',
-      sha256: empty ? null : '4e07408562bedb8b60ce05c1decfe3ad',
-      pageTransit: empty ? [] : ['tailscale', 'device:link-pier', ...transit],
-      secrets: empty
-        ? []
-        : [
-            {
-              name: 'HARBOR_API_KEY',
-              exits: ['tailscale', 'device:link-pier', ...transit],
-            },
-          ],
-      devices: empty
-        ? []
-        : [
-            { device: 'link-pier', secrets: ['HARBOR_API_KEY'] },
-            ...(transit.length ? [{ device: 'link-quay', secrets: ['HARBOR_API_KEY'] }] : []),
-          ],
-    },
   };
   return { status, list };
 }

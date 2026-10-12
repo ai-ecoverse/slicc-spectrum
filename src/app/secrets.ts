@@ -366,6 +366,8 @@ export class SliccSecrets extends ThemedElement {
     }
   `;
 
+  #pushed: PolicyNotice[] = [];
+
   disconnectedCallback(): void {
     super.disconnectedCallback();
     clearTimeout(this.#tick);
@@ -383,6 +385,7 @@ export class SliccSecrets extends ThemedElement {
     this.popup = null;
     this.acking = new Set();
     this.failure = null;
+    this.#pushed = [];
   }
 
   protected updated(): void {
@@ -399,12 +402,18 @@ export class SliccSecrets extends ThemedElement {
   }
 
   #listed(vault: VaultPort): void {
+    this.#pushed = [];
     const head = vault.list()?.audit ?? [];
     const last = head[head.length - 1];
     if (this.older.length && last && last.seq > this.older[0].seq + 1) {
       this.older = [];
       this.more = null;
     }
+    this.requestUpdate();
+  }
+
+  #noticed(notice: PolicyNotice): void {
+    this.#pushed = [...this.#pushed.filter((item) => item.id !== notice.id), notice];
     this.requestUpdate();
   }
 
@@ -416,6 +425,7 @@ export class SliccSecrets extends ThemedElement {
         ? [
             model.vault.on('status', update),
             model.vault.on('list', () => this.#listed(model.vault as VaultPort)),
+            model.vault.on('notice', (notice) => this.#noticed(notice)),
           ]
         : []),
       ...(model.network ? [model.network.on('network', update)] : []),
@@ -447,7 +457,7 @@ export class SliccSecrets extends ThemedElement {
       this.older = merged(this.older, page.audit);
       this.more = page.more;
     } catch (error) {
-      if (this.model?.vault === vault) this.failure = (error as Error).message;
+      if (this.model?.vault === vault && this.isConnected) this.failure = (error as Error).message;
     } finally {
       if (this.model?.vault === vault) this.loading = false;
     }
@@ -459,6 +469,7 @@ export class SliccSecrets extends ThemedElement {
     this.failure = null;
     try {
       await vault.acknowledge(notice.id);
+      this.#pushed = this.#pushed.filter((item) => item.id !== notice.id);
     } catch (error) {
       if (this.model?.vault === vault) this.failure = (error as Error).message;
     } finally {
@@ -638,7 +649,11 @@ export class SliccSecrets extends ThemedElement {
     const current = vault.list();
     const devices = devicesOf(this.model);
     const entries = merged(current?.audit ?? [], this.older);
-    const notices = current?.notices.filter((notice) => !notice.acknowledged) ?? [];
+    const listed = current?.notices ?? [];
+    const notices = [
+      ...listed,
+      ...this.#pushed.filter((notice) => !listed.some((item) => item.id === notice.id)),
+    ].filter((notice) => !notice.acknowledged);
     return html`<section aria-labelledby="secrets" data-vault=${status ? (status.locked ? 'locked' : 'unlocked') : 'loading'}>
       <div class="head">
         <h2 id="secrets">Secrets</h2>

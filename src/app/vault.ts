@@ -1,10 +1,9 @@
-import { css, html, LitElement, type PropertyValues, type TemplateResult } from 'lit';
+import { css, LitElement, type PropertyValues } from 'lit';
 import type {
   ButtonConfig,
   ButtonEvent,
   ExecGrant,
   ExitName,
-  ExitPolicyView,
   LinkedDevice,
   PopupIntent,
   PopupResult,
@@ -16,18 +15,12 @@ import type {
   Widening,
 } from '../model/types.ts';
 
-export const transitExits: ReadonlySet<string> = new Set(['tailscale', 'local-link']);
-
-export function isTransit(exit: ExitName): boolean {
-  return transitExits.has(exit) || exit.startsWith('device:');
-}
-
 const exitNames: Record<string, string> = {
   'vault-direct': 'Straight from the vault',
   'local-proxy': 'Local proxy',
   'cli-v': 'Local SLICC, direct',
   tailscale: 'Tailscale',
-  'local-link': 'Linked slicc, through this page',
+  'local-link': 'Linked SLICC, through this page',
 };
 
 export function devicesOf(model: SliccModel | null): readonly LinkedDevice[] {
@@ -72,31 +65,9 @@ export function widening(change: Widening, devices: readonly LinkedDevice[]): st
       return `${change.secret}: ${execLine(change.grant).toLowerCase()}`;
     case 'exit':
       return `${change.secret} may now leave through ${exitLabel(change.exit, devices)}`;
-    case 'page-transit':
-      return `Secrets may now pass through this page to ${exitLabel(change.exit, devices)}`;
     default:
       return `The limit ${change.field} rose from ${change.from} to ${change.to}`;
   }
-}
-
-export function carried(exits: ExitPolicyView, exit: ExitName): string[] {
-  const device = exit.startsWith('device:') ? exit.slice('device:'.length) : null;
-  const names = new Set(
-    exits.secrets.filter((secret) => secret.exits.includes(exit)).map((secret) => secret.name)
-  );
-  for (const entry of exits.devices)
-    if (entry.device === device) for (const name of entry.secrets) names.add(name);
-  return [...names].sort();
-}
-
-export function transitLine(
-  exits: ExitPolicyView,
-  devices: readonly LinkedDevice[]
-): TemplateResult {
-  if (!exits.pageTransit.length)
-    return html`No secret passes through this page. Secrets leave straight from the vault, or through a local proxy or slicc.`;
-  const through = list(exits.pageTransit.map((exit) => exitLabel(exit, devices)));
-  return html`Secrets may pass through this page to ${through}, because <code>${exits.file}</code> allows it.`;
 }
 
 export function tabbables(
@@ -118,7 +89,7 @@ export function tabbables(
     }
     if (
       child.tabIndex >= 0 &&
-      !(child as HTMLButtonElement).disabled &&
+      !child.matches(':disabled, fieldset[disabled] *') &&
       style.visibility !== 'hidden'
     )
       out.push(child);

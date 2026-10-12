@@ -19,7 +19,6 @@ import type {
   AccessKey,
   BrowserAutomation,
   DeviceAccess,
-  ExitName,
   LinkedDevice,
   LinkedFolder,
   LinkState,
@@ -42,7 +41,6 @@ import { ago } from './freezer.ts';
 import { qrCode } from './qr.ts';
 import { command, copyText, reach, reachStyles } from './reach.ts';
 import { connectionLabel, connectionVariant } from './tray.ts';
-import { carried, transitLine } from './vault.ts';
 
 export { command } from './reach.ts';
 
@@ -747,7 +745,6 @@ export class SliccNetwork extends ModelElement {
     return [
       model.tray.on('status', update),
       ...(model.network ? [model.network.on('network', update)] : []),
-      ...(model.vault ? [model.vault.on('list', update)] : []),
     ];
   }
 
@@ -1144,7 +1141,6 @@ export class SliccNetwork extends ModelElement {
       }
       <span class="where">${device.host ? html`<code>${device.host}</code>` : nothing}<span>${device.address ? html`<code>${device.address}</code> · ` : nothing}${device.mode === 'local' ? 'This computer' : 'Remote'}${device.kind === 'seven' ? ' · Follower' : ''}</span></span>
       ${device.policy ? html`<span class="muted" data-policy>Reaches ${device.policy}.</span>` : nothing}
-      ${this.#carries(`device:${device.id}`)}
       ${
         device.browsers?.length
           ? html`<span class="muted" data-browsers>${device.browsers.length === 1 ? 'Browser' : 'Browsers'}: ${device.browsers.map((item, index) => html`${index ? ', ' : ''}${item.name} (<code>${item.runtime}</code>)`)}</span>`
@@ -1309,26 +1305,12 @@ export class SliccNetwork extends ModelElement {
           : nothing
       }
       ${this.#tailnetBody(port, status, tailnet)}
-      ${tailnet.state === 'off' ? nothing : this.#carries('tailscale')}
       ${
         this.tailnetError
           ? html`<div class="error" role="alert" data-error="tailnet-action"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.tailnetError}</span></div>`
           : nothing
       }
     </section>`;
-  }
-
-  #carries(exit: ExitName): TemplateResult | typeof nothing {
-    const exits = this.model?.vault?.list()?.exits;
-    const names = exits ? carried(exits, exit) : [];
-    if (!names.length) return nothing;
-    return html`<span class="muted" data-secrets=${names.join(' ')}>May carry ${names.map((name, index) => html`${index ? (index === names.length - 1 ? ' and ' : ', ') : ''}<code>${name}</code>`)} through this page.</span>`;
-  }
-
-  #transit(status: NetworkStatus): TemplateResult | typeof nothing {
-    const exits = this.model?.vault?.list()?.exits;
-    if (!exits) return nothing;
-    return html`<p data-transit=${exits.pageTransit.length ? 'some' : 'none'}>${transitLine(exits, status.links?.devices ?? [])}</p>`;
   }
 
   #state(port: NetworkPort, status: NetworkStatus): TemplateResult {
@@ -1346,7 +1328,6 @@ export class SliccNetwork extends ModelElement {
           ? html`<p data-browser=${automationOf(status.browser)}>${browserLine(status.browser, status.links, status.route)}${status.browser.detail ? html` <span class="detail">${status.browser.detail}</span>` : nothing}</p>`
           : nothing
       }
-      ${this.#transit(status)}
       ${
         port.check
           ? html`<div class="actions"><swc-button size="m" variant="secondary" data-action="check" ?pending=${this.checking} @click=${() => this.check()}>Check again</swc-button></div>`

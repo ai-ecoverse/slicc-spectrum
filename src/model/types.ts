@@ -1002,7 +1002,6 @@ export type Widening =
   | { kind: 'paths'; secret: string; domain: string; paths: string[] }
   | { kind: 'exec'; secret: string; grant: ExecGrant }
   | { kind: 'exit'; secret: string; exit: ExitName }
-  | { kind: 'page-transit'; exit: ExitName }
   | { kind: 'limits'; field: string; from: number; to: number };
 
 export type PolicyFile = '/etc/fnox/config.toml' | '/etc/slicc/secrets-policy.toml';
@@ -1077,20 +1076,11 @@ export interface AuditPage {
   next?: number;
 }
 
-export interface ExitPolicyView {
-  file: '/etc/slicc/secrets-policy.toml';
-  sha256: string | null;
-  pageTransit: ExitName[];
-  secrets: { name: string; exits: ExitName[] }[];
-  devices: { device: DeviceId; secrets: string[] }[];
-}
-
 export interface VaultList {
   secrets: SecretView[];
   notices: PolicyNotice[];
   audit: AuditEntry[];
   auditMore: boolean;
-  exits: ExitPolicyView;
 }
 
 export type PopupIntent =
