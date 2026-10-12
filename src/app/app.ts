@@ -4,7 +4,7 @@ import { keyed } from 'lit/directives/keyed.js';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import type { PanelParams, SerializedDockview, SliccDock } from '../components/dock.ts';
 import type { Agent, SliccModel, Sprinkle, UpdatesPort } from '../model/types.ts';
-import { changesOf, holdDocument, paintDocument, shared, ThemedElement } from './base.ts';
+import { changesOf, type DocumentHold, holdDocument, shared, ThemedElement } from './base.ts';
 import { prompt } from './confirm.ts';
 import { Dips, dipType } from './dips.ts';
 import { followPage, terminalsAllowed } from './follow.ts';
@@ -127,7 +127,7 @@ export class SliccApp extends ThemedElement {
   #saving = false;
   #updatesPort: UpdatesPort | undefined;
   #unlock!: () => void;
-  #release!: () => void;
+  #hold!: DocumentHold;
   #updatesVisibility: UpdateVisibility | null = null;
 
   constructor() {
@@ -407,7 +407,7 @@ export class SliccApp extends ThemedElement {
     this.#fonts();
     installProperties(this.ownerDocument);
     this.#unlock = lockOverscroll(this.ownerDocument);
-    this.#release = holdDocument(this.ownerDocument);
+    this.#hold = holdDocument(this.ownerDocument);
     this.#painted = '';
     this.requestUpdate();
     this.#resize = new ResizeObserver(() => this.#measure());
@@ -418,7 +418,7 @@ export class SliccApp extends ThemedElement {
     super.disconnectedCallback();
     this.ownerDocument.removeEventListener('keydown', this.#keydown, true);
     this.#unlock();
-    this.#release();
+    this.#hold.release();
     this.#resize?.disconnect();
   }
 
@@ -475,7 +475,7 @@ export class SliccApp extends ThemedElement {
       finishTransitions(root);
       requestAnimationFrame(() => finishTransitions(root));
     }
-    if (this.#painted !== color) paintDocument(this.ownerDocument, color);
+    if (this.#painted !== color) this.#hold.paint(color);
     this.#painted = color;
     if (!this.model) return;
     const layout = this.#started !== this.screen;

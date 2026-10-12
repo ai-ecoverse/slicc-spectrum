@@ -77,33 +77,19 @@ export function resolveColor(scheme: ColorScheme, prefersDark: boolean): Color {
 }
 
 interface Paint {
-  count: number;
   scheme: string;
   tones: Map<HTMLMetaElement, string>;
+  holds: Map<object, Color | null>;
+}
+
+export interface DocumentHold {
+  paint(color: Color): void;
+  release(): void;
 }
 
 const paints = new WeakMap<Document, Paint>();
 
-export function holdDocument(doc: Document): () => void {
-  const paint = paints.get(doc) ?? {
-    count: 0,
-    scheme: doc.documentElement.style.colorScheme,
-    tones: new Map(),
-  };
-  paints.set(doc, paint);
-  paint.count += 1;
-  return () => {
-    paint.count -= 1;
-    if (paint.count > 0) return;
-    paints.delete(doc);
-    doc.documentElement.style.colorScheme = paint.scheme;
-    for (const [meta, tone] of paint.tones) meta.content = tone;
-  };
-}
-
-export function paintDocument(doc: Document, color: Color): void {
-  const paint = paints.get(doc);
-  if (!paint) return;
+function apply(doc: Document, paint: Paint, color: Color): void {
   doc.documentElement.style.colorScheme = color;
   const metas = [...doc.head.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
   for (const meta of metas) if (!paint.tones.has(meta)) paint.tones.set(meta, meta.content);
@@ -113,6 +99,33 @@ export function paintDocument(doc: Document, color: Color): void {
   if (!own) return;
   const tone = paint.tones.get(own) as string;
   for (const meta of metas) meta.content = tone;
+}
+
+export function holdDocument(doc: Document): DocumentHold {
+  const paint = paints.get(doc) ?? {
+    scheme: doc.documentElement.style.colorScheme,
+    tones: new Map(),
+    holds: new Map(),
+  };
+  paints.set(doc, paint);
+  const key = {};
+  paint.holds.set(key, null);
+  return {
+    paint(color) {
+      paint.holds.delete(key);
+      paint.holds.set(key, color);
+      apply(doc, paint, color);
+    },
+    release() {
+      paint.holds.delete(key);
+      const left = [...paint.holds.values()].filter((color) => color !== null);
+      if (left.length) return apply(doc, paint, left[left.length - 1] as Color);
+      if (paint.holds.size) return;
+      paints.delete(doc);
+      doc.documentElement.style.colorScheme = paint.scheme;
+      for (const [meta, tone] of paint.tones) meta.content = tone;
+    },
+  };
 }
 
 export class ThemedElement extends ModelElement {
