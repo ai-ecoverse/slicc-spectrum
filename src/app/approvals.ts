@@ -103,6 +103,11 @@ function protects(path: string, whole: boolean): boolean {
 
 const command = (word: string) => word.split('/').pop() ?? '';
 
+const trusted = (word: string) =>
+  readOnly.includes(word.replace(/^\/(?:usr\/)?bin\/(?=[^/]+$)/, ''));
+
+const expansion = /\$\([^)]*\)?|\$\{[^}]*\}?|\$[\w@*#?$!-]*|`[^`]*`?/;
+
 function moved(cwds: Set<string>, word: string): string | null {
   for (const cwd of [...cwds]) {
     const next = absolute(cwd, word);
@@ -223,7 +228,7 @@ export function secretRules(approval: Approval): string | null {
     .split(separators)
     .map((segment) => commas(quoted(unshield(segment))));
   const segments = JSON.stringify(aware) === JSON.stringify(plain) ? plain : [...plain, ...aware];
-  const whole = segments.some((words) => words.length > 0 && !readOnly.includes(command(words[0])));
+  const whole = segments.some((words) => words.length > 0 && !trusted(words[0]));
   for (const words of segments) {
     const hit = scan(words, cwds, whole);
     if (hit) return hit;
@@ -231,7 +236,12 @@ export function secretRules(approval: Approval): string | null {
   const named = segments
     .flat()
     .find((word) => !/^[-/]/.test(word) && /fnox|secrets-policy/.test(word));
-  return named ? absolute([...cwds].pop() ?? start, named) : null;
+  if (named) return absolute([...cwds].pop() ?? start, named);
+  const home = segments.flat().find((word) => /^~.*\/\.\.(?:\/|$)/.test(word));
+  if (home) return home;
+  return segments.flat().some((word) => word.includes('$')) || text.includes('`')
+    ? (text.match(expansion) as RegExpMatchArray)[0]
+    : null;
 }
 
 export function waiting(model: SliccModel | null, now: number): Approval[] {
@@ -522,7 +532,7 @@ export class SliccApprovals extends ModelElement {
           <h2 id="title" slot="heading">Allow sudo?</h2>
           ${this.#request(approval)}
           ${approval.cwd ? html`<p class="cwd">In ${approval.cwd}</p>` : nothing}
-          ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p><strong>This changes secret rules.</strong> It names <code>${rules}</code>, where SLICC keeps which secrets programs may use and where they may be sent. Allow it only if you asked for this change.</p></div>` : nothing}
+          ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${rules.startsWith('/') ? html`<strong>This changes secret rules.</strong> It names <code>${rules}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${rules}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>` : nothing}
           ${always ? html`<p class="hint">Always allow lets ${approval.requester.name} run exactly this command with sudo without asking again.</p>` : nothing}
           ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : nothing}
           <p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>
