@@ -221,6 +221,7 @@ export class SliccApprovals extends ModelElement {
   async decide(approval: Approval, decision: ApprovalDecision): Promise<void> {
     const port = this.model?.approvals;
     if (!port?.decide || this.busy || (decision !== 'deny' && !this.#armed)) return;
+    if (decision === 'always' && secretRules(approval)) return;
     this.busy = decision;
     this.failure = null;
     this.#pending.add(approval.id);

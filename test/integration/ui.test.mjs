@@ -4490,12 +4490,14 @@ async function secretRulesDialog(t, color, width) {
     const box = root.querySelector('[data-secret-rules]').getBoundingClientRect();
     return {
       notice: root.querySelector('[data-secret-rules]').dataset.secretRules,
+      always: window.model.approvals.list()[0].always,
       actions: [...root.querySelectorAll('swc-button')].map((button) => button.dataset.action),
       inside: box.left >= 0 && box.right <= innerWidth,
     };
   });
   assert.deepEqual(dialog, {
     notice: '/etc/fnox/config.toml',
+    always: true,
     actions: ['deny', 'once'],
     inside: true,
   });
@@ -4503,8 +4505,11 @@ async function secretRulesDialog(t, color, width) {
   assert.deepEqual(page.errors, []);
 }
 
-test('a sudo request that changes secret rules is flagged, in light and dark', async (t) => {
+test('a sudo request that changes secret rules is flagged, in light', async (t) => {
   await secretRulesDialog(t, 'light');
+});
+
+test('a sudo request that changes secret rules is flagged, in dark', async (t) => {
   await secretRulesDialog(t, 'dark');
 });
 
