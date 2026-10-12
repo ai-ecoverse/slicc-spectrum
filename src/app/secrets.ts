@@ -369,6 +369,8 @@ export class SliccSecrets extends ThemedElement {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     clearTimeout(this.#tick);
+    this.older = [];
+    this.more = null;
   }
 
   protected willUpdate(changed: PropertyValues): void {
@@ -385,6 +387,7 @@ export class SliccSecrets extends ThemedElement {
 
   protected updated(): void {
     clearTimeout(this.#tick);
+    if (!this.isConnected) return;
     const now = Date.now();
     const next = Math.min(
       now + 60_000,
@@ -609,7 +612,7 @@ export class SliccSecrets extends ThemedElement {
       ${
         shown.length
           ? html`<ol class="audit" aria-labelledby="secrets-audit">${shown.map((entry) => this.#entry(entry, devices))}</ol>`
-          : html`<p class="muted" data-audit-empty>${this.reveals ? 'No program has been given a secret.' : 'Nothing has used a secret yet.'}</p>`
+          : html`<p class="muted" data-audit-empty>${this.reveals ? (more ? 'No reveals in the activity loaded so far.' : 'No program has been given a secret.') : 'Nothing has used a secret yet.'}</p>`
       }
       ${
         more
