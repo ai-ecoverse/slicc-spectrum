@@ -1,5 +1,5 @@
 import { clock } from '../dummy/clock.ts';
-import { DummySettings } from '../dummy/settings.ts';
+import { DummySettings, dummySettingsKey } from '../dummy/settings.ts';
 import type { TerminalKernel } from '../kernel-backend.ts';
 import type { Settings, SliccModel } from '../model/types.ts';
 import { KernelFiles, type KernelFilesOptions } from './files.ts';
@@ -26,6 +26,8 @@ export interface KernelModel extends SliccModel {
   terminals: KernelTerminals;
 }
 
+export const settingsKey = 'slicc-agent.settings';
+
 const defaults: Settings = {
   color: 'system',
   model: '',
@@ -39,7 +41,10 @@ export function idleModel(storage: Storage | null = null): Omit<SliccModel, 'fil
   return {
     agent: new IdleAgent(),
     browser: new IdleBrowser(),
-    settings: new DummySettings(defaults, [], [], storage, clock(0)),
+    settings: new DummySettings(defaults, [], [], storage, clock(0), [
+      settingsKey,
+      dummySettingsKey,
+    ]),
     memory: new IdleMemory(),
     monitor: new IdleMonitor(),
     sprinkles: new IdleSprinkles(),

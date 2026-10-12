@@ -76,6 +76,67 @@ export function resolveColor(scheme: ColorScheme, prefersDark: boolean): Color {
   return scheme;
 }
 
+interface Paint {
+  scheme: string;
+  priority: string;
+  tones: Map<HTMLMetaElement, string>;
+  holds: Map<object, Color | null>;
+}
+
+export interface DocumentHold {
+  paint(color: Color): void;
+  release(): void;
+}
+
+const paints = new WeakMap<Document, Paint>();
+
+function schemeOf(media: string): Color | null {
+  const query = media.replace(/\s/g, '').toLowerCase();
+  const scheme = query.match(/prefers-color-scheme:(light|dark)/)?.[1] as Color | undefined;
+  if (!scheme) return null;
+  if (!query.startsWith('not')) return scheme;
+  return scheme === 'dark' ? 'light' : 'dark';
+}
+
+function apply(doc: Document, paint: Paint, color: Color): void {
+  doc.documentElement.style.colorScheme = color;
+  const metas = [...doc.head.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
+  for (const meta of metas) if (!paint.tones.has(meta)) paint.tones.set(meta, meta.content);
+  const own = metas.find((meta) => schemeOf(meta.media ?? '') === color);
+  if (!own) return;
+  const tone = paint.tones.get(own) as string;
+  for (const meta of metas) meta.content = tone;
+}
+
+export function holdDocument(doc: Document): DocumentHold {
+  const paint = paints.get(doc) ?? {
+    scheme: doc.documentElement.style.colorScheme,
+    priority: doc.documentElement.style.getPropertyPriority('color-scheme'),
+    tones: new Map(),
+    holds: new Map(),
+  };
+  paints.set(doc, paint);
+  const key = {};
+  paint.holds.set(key, null);
+  return {
+    paint(color) {
+      if (!paint.holds.has(key)) return;
+      paint.holds.delete(key);
+      paint.holds.set(key, color);
+      apply(doc, paint, color);
+    },
+    release() {
+      if (!paint.holds.delete(key)) return;
+      const left = [...paint.holds.values()].filter((color) => color !== null);
+      if (left.length) return apply(doc, paint, left[left.length - 1] as Color);
+      if (paint.holds.size) return;
+      paints.delete(doc);
+      doc.documentElement.style.setProperty('color-scheme', paint.scheme, paint.priority);
+      for (const [meta, tone] of paint.tones) meta.content = tone;
+    },
+  };
+}
+
 export class ThemedElement extends ModelElement {
   #media: MediaQueryList | null = globalThis.matchMedia?.('(prefers-color-scheme: dark)') ?? null;
   #change = () => this.requestUpdate();
