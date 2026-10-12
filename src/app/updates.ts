@@ -62,7 +62,7 @@ const packageActions: Record<PackageAction, string> = {
 
 function packageLight(item: PackageItem): readonly [string, string] | null {
   if (item.pin && item.state === 'installed')
-    return ['positive', item.pin.base === null ? 'Added' : 'Pinned'];
+    return item.pin.base === null ? ['positive', 'Added'] : ['neutral', 'Pinned'];
   if (item.pin?.base && item.state === 'removing') return ['info', 'Unpinning'];
   return packageStates[item.state];
 }
