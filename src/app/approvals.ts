@@ -102,9 +102,9 @@ export function secretRules(approval: Approval): string | null {
   let cwd = absolute('/', approval.cwd ?? '/');
   if (protects(cwd, false)) return cwd;
   const name = (word: string) => word.split('/').pop() ?? '';
-  const segments = approval.command
-    .replace(/\\\n/g, '')
-    .split(/[;&|\n()`]/)
+  const parts = approval.command.replace(/\\\n/g, '').split(/([;&|\n()`])/);
+  const segments = parts
+    .filter((_, index) => index % 2 === 0)
     .map((segment) =>
       segment
         .split(/[\s<>=,]+/)
@@ -112,7 +112,17 @@ export function secretRules(approval: Approval): string | null {
         .filter(Boolean)
     );
   const whole = segments.some((words) => words.length > 0 && !readOnly.includes(name(words[0])));
-  for (const words of segments) {
+  const outer: string[] = [];
+  let quoted = false;
+  for (const [at, part] of parts.entries()) {
+    if (at % 2) {
+      const opens = part === '(' || (part === '`' && !quoted);
+      if (part === '`') quoted = !quoted;
+      if (opens) outer.push(cwd);
+      else if (part === ')' || part === '`') cwd = outer.pop() ?? cwd;
+      continue;
+    }
+    const words = segments[at / 2];
     let cd = false;
     for (const [index, word] of words.entries()) {
       if (index === 0 || words[index - 1] === '-c') {
