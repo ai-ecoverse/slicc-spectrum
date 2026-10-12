@@ -82,6 +82,7 @@ export function changeLine(change: PolicyChange, devices: readonly LinkedDevice[
     case 'exec':
       return `${change.secret} was ${mode(change.from)}, now ${mode(change.to)}`;
     case 'exits':
+      if (change.to?.length === 0) return `${change.secret} now has no exit`;
       return `${change.secret} now leaves through ${change.to ? list(change.to.map((exit) => exitLabel(exit, devices))) : 'any exit'}`;
     default:
       return `The limit ${change.field} changed from ${change.from} to ${change.to}`;

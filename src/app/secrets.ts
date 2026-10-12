@@ -666,6 +666,17 @@ export class SliccSecrets extends ThemedElement {
     const problem = nameProblem(name) ?? valueProblem(value);
     this.problem = problem;
     if (problem) return;
+    if (form.kind === 'add' && vault.list()?.secrets.some((secret) => secret.name === name)) {
+      this.busy = true;
+      const sure = await confirm({
+        title: `Replace ${name}?`,
+        body: 'A secret with this name exists. Saving replaces its value, and its placeholder stays.',
+        action: 'Replace',
+        variant: 'confirmation',
+      });
+      if (this.model?.vault === vault) this.busy = false;
+      if (!sure || !this.#mine(vault)) return;
+    }
     this.busy = true;
     try {
       await vault.put?.(name, value);
