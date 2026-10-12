@@ -76,6 +76,20 @@ export function resolveColor(scheme: ColorScheme, prefersDark: boolean): Color {
   return scheme;
 }
 
+const tones = new WeakMap<HTMLMetaElement, string>();
+
+export function paintDocument(doc: Document, color: Color): void {
+  doc.documentElement.style.colorScheme = color;
+  const metas = [...doc.head.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
+  for (const meta of metas) if (!tones.has(meta)) tones.set(meta, meta.content);
+  const own = metas.find((meta) =>
+    meta.media.replace(/\s/g, '').includes(`prefers-color-scheme:${color}`)
+  );
+  if (!own) return;
+  const tone = tones.get(own) as string;
+  for (const meta of metas) meta.content = tone;
+}
+
 export class ThemedElement extends ModelElement {
   #media: MediaQueryList | null = globalThis.matchMedia?.('(prefers-color-scheme: dark)') ?? null;
   #change = () => this.requestUpdate();

@@ -4,7 +4,7 @@ import { keyed } from 'lit/directives/keyed.js';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import type { PanelParams, SerializedDockview, SliccDock } from '../components/dock.ts';
 import type { Agent, SliccModel, Sprinkle, UpdatesPort } from '../model/types.ts';
-import { changesOf, shared, ThemedElement } from './base.ts';
+import { changesOf, paintDocument, shared, ThemedElement } from './base.ts';
 import { prompt } from './confirm.ts';
 import { Dips, dipType } from './dips.ts';
 import { followPage, terminalsAllowed } from './follow.ts';
@@ -470,6 +470,7 @@ export class SliccApp extends ThemedElement {
       finishTransitions(root);
       requestAnimationFrame(() => finishTransitions(root));
     }
+    if (this.#painted !== color) paintDocument(this.ownerDocument, color);
     this.#painted = color;
     if (!this.model) return;
     const layout = this.#started !== this.screen;

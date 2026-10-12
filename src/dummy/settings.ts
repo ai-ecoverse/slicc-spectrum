@@ -9,7 +9,7 @@ import type {
 } from '../model/types.ts';
 import type { Clock } from './clock.ts';
 
-const key = 'slicc-ui.settings';
+export const dummySettingsKey = 'slicc-ui.settings';
 
 export class DummySettings extends Emitter<SettingsEvents> implements SettingsPort {
   #settings: Settings;
@@ -17,6 +17,7 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   #models: readonly ModelOption[];
   #storage: Storage | null;
   #clock: Clock;
+  #keys: readonly string[];
   #signIns = new Map<string, { before: AccountStatus; stop: () => void }>();
 
   constructor(
@@ -24,9 +25,11 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
     models: readonly ModelOption[],
     accounts: readonly Account[],
     storage: Storage | null,
-    clock: Clock
+    clock: Clock,
+    keys: readonly string[] = [dummySettingsKey]
   ) {
     super();
+    this.#keys = keys;
     this.#storage = storage;
     this.#clock = clock;
     this.#models = models;
@@ -36,7 +39,10 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
 
   #load(): Partial<Settings> {
     try {
-      return JSON.parse(this.#storage?.getItem(key) ?? '{}');
+      const saved = this.#keys
+        .map((key) => this.#storage?.getItem(key))
+        .find((value) => value != null);
+      return JSON.parse(saved ?? '{}');
     } catch {
       return {};
     }
@@ -48,7 +54,7 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
 
   update(patch: Partial<Settings>): void {
     this.#settings = { ...this.#settings, ...patch };
-    this.#storage?.setItem(key, JSON.stringify(this.#settings));
+    this.#storage?.setItem(this.#keys[0], JSON.stringify(this.#settings));
     this.emit('settings', this.get());
   }
 
