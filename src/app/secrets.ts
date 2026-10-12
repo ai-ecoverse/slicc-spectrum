@@ -373,6 +373,7 @@ export class SliccSecrets extends ThemedElement {
     clearTimeout(this.#tick);
     this.older = [];
     this.more = null;
+    this.#pushed = [];
   }
 
   protected willUpdate(changed: PropertyValues): void {
@@ -469,9 +470,10 @@ export class SliccSecrets extends ThemedElement {
     this.failure = null;
     try {
       await vault.acknowledge(notice.id);
-      this.#pushed = this.#pushed.filter((item) => item.id !== notice.id);
+      if (this.model?.vault === vault)
+        this.#pushed = this.#pushed.filter((item) => item.id !== notice.id);
     } catch (error) {
-      if (this.model?.vault === vault) this.failure = (error as Error).message;
+      if (this.model?.vault === vault && this.isConnected) this.failure = (error as Error).message;
     } finally {
       if (this.model?.vault === vault)
         this.acking = new Set([...this.acking].filter((id) => id !== notice.id));

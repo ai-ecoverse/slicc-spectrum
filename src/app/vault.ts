@@ -82,7 +82,7 @@ export function tabbables(
     }
     const style = getComputedStyle(child);
     if (child.hidden || child.inert || style.display === 'none') continue;
-    if (child instanceof HTMLDetailsElement && !child.open) {
+    if (child.localName === 'details' && !(child as HTMLDetailsElement).open) {
       const summary = child.querySelector(':scope > summary');
       if (summary) out.push(summary as HTMLElement);
       continue;
