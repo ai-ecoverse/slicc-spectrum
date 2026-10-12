@@ -43,27 +43,12 @@ function absolute(cwd: string, word: string): string {
   return `/${parts.join('/')}`;
 }
 
-function pattern(path: string, classes = true): RegExp {
-  let source = '';
-  for (let index = 0; index < path.length; index++) {
-    const char = path[index];
-    const end = classes && char === '[' ? path.indexOf(']', index + 2) : -1;
-    if (end > 0) {
-      const body = path
-        .slice(index + 1, end)
-        .replace(/^!/, '^')
-        .replace(/\\/g, '\\\\');
-      source += `[${body}]`;
-      index = end;
-    } else if (char === '*') source += '[^/]*';
-    else if (char === '?') source += '[^/]';
-    else source += char.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  }
-  try {
-    return new RegExp(`^${source}$`);
-  } catch {
-    return pattern(path, false);
-  }
+function pattern(path: string): RegExp {
+  const source = path
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '[^/]*')
+    .replace(/\?/g, '[^/]');
+  return new RegExp(`^${source}$`);
 }
 
 const readOnly = [
@@ -97,7 +82,11 @@ function candidates(word: string): string[] {
 function protects(path: string, whole: boolean): boolean {
   const inside = (candidate: string) =>
     candidate === '/etc/fnox' || candidate.startsWith('/etc/fnox/');
-  if (!/[*?[]/.test(path))
+  if (/[[{$]/.test(path)) {
+    const prefix = path.slice(0, path.search(/[*?[{$]/));
+    return inside(prefix) || rulePaths.some((rule) => rule.startsWith(prefix));
+  }
+  if (!/[*?]/.test(path))
     return inside(path) || rulePaths.includes(path) || (whole && ruleParents.includes(path));
   const glob = pattern(path);
   const top = path.split('/').slice(0, 3).join('/');
@@ -110,7 +99,10 @@ function protects(path: string, whole: boolean): boolean {
 
 export function secretRules(approval: Approval): string | null {
   let cwd = absolute('/', approval.cwd ?? '/');
-  const words = approval.command.split(/[\s'"`;&|<>()=,]+/).filter(Boolean);
+  const words = approval.command
+    .split(/[\s`;&|<>()=,]+/)
+    .map((word) => word.replace(/['"\\]/g, ''))
+    .filter(Boolean);
   const name = (word: string) => word.split('/').pop() ?? '';
   const whole = approval.command.split(/[;&|\n]|\$\(|`/).some((segment) => {
     const first = segment.trim().split(/\s+/)[0];
