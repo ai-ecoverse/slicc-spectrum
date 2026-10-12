@@ -726,7 +726,7 @@ export class SliccSecrets extends ThemedElement {
       variant: 'confirmation',
       trigger,
     });
-    if (!sure) return;
+    if (!sure || !this.#mine(vault)) return;
     if (this.form?.kind === 'replace' && this.form.name === name) this.open(null);
     await this.#act(vault, `remove:${name}`, async () => vault.remove?.(name, kind));
   }
@@ -787,6 +787,7 @@ export class SliccSecrets extends ThemedElement {
     this.problem = null;
     try {
       let bytes: Uint8Array | null = new Uint8Array(await file.arrayBuffer());
+      if (!this.#mine(vault)) return;
       const call = vault.import?.(this.importKind, bytes, {
         ...(password ? { password } : {}),
         ...(pick ? { pick } : {}),
