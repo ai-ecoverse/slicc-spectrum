@@ -46,8 +46,12 @@ function absolute(cwd: string, word: string): string {
 function pattern(path: string): RegExp {
   const source = path
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*\//g, '\u0001')
+    .replace(/\*\*/g, '\u0002')
     .replace(/\*/g, '[^/]*')
-    .replace(/\?/g, '[^/]');
+    .replace(/\?/g, '[^/]')
+    .replace(/\u0001/g, '(?:.*/)?')
+    .replace(/\u0002/g, '.*');
   return new RegExp(`^${source}$`);
 }
 
@@ -118,6 +122,20 @@ function touched(cwds: Set<string>, word: string, whole: boolean): string | null
   return null;
 }
 
+function ansi(command: string): string {
+  const escape =
+    /\\(?:x([0-9a-fA-F]{1,2})|u([0-9a-fA-F]{1,4})|U([0-9a-fA-F]{1,8})|([0-7]{1,3})|([\s\S]))/g;
+  return command
+    .replace(/\$'((?:[^'\\]|\\[\s\S])*)'/g, (_, body: string) =>
+      body.replace(escape, (_match, hex, short, long, octal, plain) => {
+        if (octal) return String.fromCharCode(Number.parseInt(octal, 8));
+        if (plain) return plain;
+        return String.fromCodePoint(Math.min(Number.parseInt(hex ?? short ?? long, 16), 0x10ffff));
+      })
+    )
+    .replace(/\$"/g, '"');
+}
+
 function unglob(command: string): string {
   const next = command.replace(/[?*+@!]\([^()]*\)/g, '*');
   return next === command ? command : unglob(next);
@@ -144,7 +162,7 @@ export function secretRules(approval: Approval): string | null {
   const start = absolute('/', approval.cwd ?? '/');
   if (protects(start, false)) return start;
   const cwds = new Set([start]);
-  const segments = unglob(approval.command.replace(/\\\n/g, ''))
+  const segments = unglob(ansi(approval.command.replace(/\\\n/g, '')))
     .split(/[;&|\n()`]/)
     .map((segment) =>
       segment
