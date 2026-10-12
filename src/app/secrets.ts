@@ -603,6 +603,7 @@ export class SliccSecrets extends ThemedElement {
       ...(model.vault
         ? [
             model.vault.on('status', update),
+            model.vault.on('availability', update),
             model.vault.on('list', () => this.#listed(model.vault as VaultPort)),
           ]
         : []),
