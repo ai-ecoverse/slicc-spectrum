@@ -69,7 +69,6 @@ const readOnly = [
   'pwd',
   'readlink',
   'realpath',
-  'rg',
   'stat',
   'tail',
   'tree',
