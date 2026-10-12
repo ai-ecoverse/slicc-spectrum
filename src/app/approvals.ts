@@ -118,6 +118,11 @@ function touched(cwds: Set<string>, word: string, whole: boolean): string | null
   return null;
 }
 
+function unglob(command: string): string {
+  const next = command.replace(/[?*+@!]\([^()]*\)/g, '*');
+  return next === command ? command : unglob(next);
+}
+
 function scan(words: string[], cwds: Set<string>, whole: boolean): string | null {
   let cd = false;
   for (const [index, word] of words.entries()) {
@@ -139,8 +144,7 @@ export function secretRules(approval: Approval): string | null {
   const start = absolute('/', approval.cwd ?? '/');
   if (protects(start, false)) return start;
   const cwds = new Set([start]);
-  const segments = approval.command
-    .replace(/\\\n/g, '')
+  const segments = unglob(approval.command.replace(/\\\n/g, ''))
     .split(/[;&|\n()`]/)
     .map((segment) =>
       segment
