@@ -122,8 +122,10 @@ function scan(words: string[], cwds: Set<string>, whole: boolean): string | null
   let cd = false;
   for (const [index, word] of words.entries()) {
     let hit: string | null = null;
-    if (index === 0 || words[index - 1] === '-c') cd = ['cd', 'pushd'].includes(command(word));
-    else if (!cd) hit = touched(cwds, word, whole);
+    if (index === 0 || words[index - 1] === '-c') {
+      cd = ['cd', 'pushd'].includes(command(word));
+      hit = touched(cwds, word, whole);
+    } else if (!cd) hit = touched(cwds, word, whole);
     else if (!word.startsWith('-')) {
       cd = false;
       hit = moved(cwds, word);
