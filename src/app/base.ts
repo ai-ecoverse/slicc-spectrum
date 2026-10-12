@@ -76,17 +76,42 @@ export function resolveColor(scheme: ColorScheme, prefersDark: boolean): Color {
   return scheme;
 }
 
-const tones = new WeakMap<HTMLMetaElement, string>();
+interface Paint {
+  count: number;
+  scheme: string;
+  tones: Map<HTMLMetaElement, string>;
+}
+
+const paints = new WeakMap<Document, Paint>();
+
+export function holdDocument(doc: Document): () => void {
+  const paint = paints.get(doc) ?? {
+    count: 0,
+    scheme: doc.documentElement.style.colorScheme,
+    tones: new Map(),
+  };
+  paints.set(doc, paint);
+  paint.count += 1;
+  return () => {
+    paint.count -= 1;
+    if (paint.count > 0) return;
+    paints.delete(doc);
+    doc.documentElement.style.colorScheme = paint.scheme;
+    for (const [meta, tone] of paint.tones) meta.content = tone;
+  };
+}
 
 export function paintDocument(doc: Document, color: Color): void {
+  const paint = paints.get(doc);
+  if (!paint) return;
   doc.documentElement.style.colorScheme = color;
   const metas = [...doc.head.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
-  for (const meta of metas) if (!tones.has(meta)) tones.set(meta, meta.content);
+  for (const meta of metas) if (!paint.tones.has(meta)) paint.tones.set(meta, meta.content);
   const own = metas.find((meta) =>
     meta.media.replace(/\s/g, '').includes(`prefers-color-scheme:${color}`)
   );
   if (!own) return;
-  const tone = tones.get(own) as string;
+  const tone = paint.tones.get(own) as string;
   for (const meta of metas) meta.content = tone;
 }
 
