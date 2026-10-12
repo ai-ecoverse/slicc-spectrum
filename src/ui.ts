@@ -31,6 +31,17 @@ export type { ConfirmOptions, ConfirmVariant, PromptOptions } from './app/confir
 export { confirm, prompt } from './app/confirm.ts';
 export type { GrammarKind } from './app/grammars.ts';
 export { grammarBase, setGrammarBase } from './app/grammars.ts';
+export type {
+  PanelCaller,
+  PanelInfo,
+  PanelKind,
+  PanelOpenOptions,
+  PanelOutput,
+  PanelPlace,
+  PanelResult,
+  PanelsHost,
+} from './app/panel-command.ts';
+export { Panels, panelCommand } from './app/panel-command.ts';
 export type { Placement, Surface } from './app/panels.ts';
 export { surfaces } from './app/panels.ts';
 export type { CodeColor, DiffStyle } from './components/code-view.ts';

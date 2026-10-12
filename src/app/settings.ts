@@ -269,6 +269,12 @@ export class SliccSettings extends ModelElement {
     this.model?.settings.cancel?.(account.id);
   }
 
+  get busyReason(): string | null {
+    const accounts = this.model?.settings.accounts() ?? [];
+    if (accounts.some((account) => this.#signingIn(account))) return 'signing in';
+    return this.entering === null ? null : 'a key is being entered';
+  }
+
   #signingIn(account: Account): boolean {
     return (
       account.status === 'signing-in' ||
