@@ -100,6 +100,21 @@ export class SliccMonitor extends ModelElement {
     shared,
     panelCss,
     css`
+      .bar {
+        padding-block: var(--swc-spacing-50);
+      }
+      .heading {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        column-gap: var(--swc-spacing-100);
+        white-space: normal;
+      }
+      .bar swc-action-button {
+        flex: none;
+      }
       .body {
         flex: 1;
         min-height: 0;
@@ -249,7 +264,7 @@ export class SliccMonitor extends ModelElement {
       }
       .row swc-status-light {
         min-width: 0;
-        overflow-wrap: anywhere;
+        overflow-wrap: break-word;
       }
       .row .badges {
         grid-column: 2;
@@ -270,7 +285,7 @@ export class SliccMonitor extends ModelElement {
         padding-inline-start: var(--swc-spacing-300);
         color: var(--swc-neutral-subdued-content-color-default);
         font-size: var(--swc-font-size-75);
-        overflow-wrap: anywhere;
+        overflow-wrap: break-word;
       }
     `,
   ];
@@ -324,7 +339,7 @@ export class SliccMonitor extends ModelElement {
   #row(row: MonitorRow): TemplateResult {
     const depth = indent(row.depth);
     return html`<li class="row" data-id=${row.id ?? nothing} data-status=${row.status} data-depth=${depth || nothing} style=${depth ? `--depth: ${depth}` : nothing}>
-      <swc-status-light size="s" variant=${rowLights[row.status]}><span class="sr">${rowSpoken[row.status]}: </span>${row.name}</swc-status-light>
+      <swc-status-light size="s" variant=${rowLights[row.status]}><span class="sr">${rowSpoken[row.status]}: </span>${row.name.split(/(?<=\/)/).map((part, i) => (i ? html`<wbr>${part}` : part))}</swc-status-light>
       <span class="badges">${(row.badges ?? []).map((badge) => html`<swc-badge size="s" variant="neutral" subtle>${badge}</swc-badge>`)}</span>
       ${row.meta ? html`<span class="meta">${row.meta}</span>` : nothing}
     </li>`;
@@ -370,8 +385,7 @@ export class SliccMonitor extends ModelElement {
   render(): TemplateResult {
     const snapshot = this.model?.monitor.snapshot();
     return html`<div class="bar">
-        <strong>Live monitor</strong><span>${snapshot ? `Updated ${new Date(snapshot.updatedAt).toISOString().slice(11, 19)} UTC` : 'No data'}</span>
-        <span class="spacer"></span>
+        <span class="heading"><strong>Live monitor</strong><span>${snapshot ? `Updated ${new Date(snapshot.updatedAt).toISOString().slice(11, 19)} UTC` : 'No data'}</span></span>
         <swc-action-button size="s" quiet @click=${() => this.model?.monitor.resync()}><swc-icon-refresh slot="icon"></swc-icon-refresh>Re-sync</swc-action-button>
       </div>
       <div class="body">
