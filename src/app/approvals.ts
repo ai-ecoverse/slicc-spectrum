@@ -166,8 +166,9 @@ export function secretRules(approval: Approval): string | null {
     .split(/[;&|\n()`]/)
     .map((segment) =>
       segment
-        .split(/[\s<>=,]+/)
+        .split(/[\s<>=]+/)
         .map((word) => word.replace(/['"\\]/g, ''))
+        .flatMap((word) => (word.includes(',') ? [word, ...word.split(',')] : [word]))
         .filter(Boolean)
     );
   const whole = segments.some((words) => words.length > 0 && !readOnly.includes(command(words[0])));
