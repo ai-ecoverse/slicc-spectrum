@@ -85,7 +85,8 @@ const readOnly = [
 ];
 
 function candidates(word: string): string[] {
-  if (word.startsWith('--')) return [];
+  if (word === '--') return [];
+  if (word.startsWith('--')) return [word];
   if (!word.startsWith('-')) return [word];
   const slash = word.indexOf('/');
   const cluster = Array.from(word.slice(2), (_, index) => word.slice(index + 2));
@@ -266,7 +267,7 @@ export function secretRules(approval: Approval): string | null {
   }
   const named = segments
     .flat()
-    .find((word) => !/^[-/]/.test(word) && /fnox|secrets-policy/.test(word));
+    .find((word) => !word.startsWith('/') && /fnox|secrets-policy/.test(word));
   if (named) return absolute([...cwds].pop() ?? start, named);
   const home = segments.flat().find((word) => /^~.*\/\.\.(?:\/|$)/.test(word));
   if (home) return home;
