@@ -208,7 +208,7 @@ export class SliccVaultButton extends LitElement {
     } else if (event.event === 'label') {
       element.title = event.label;
     } else if (event.event === 'focus') {
-      const order = tabbables(document, this);
+      const order = tabbables(this.ownerDocument, this);
       const at = order.indexOf(null);
       order[event.direction === 'next' ? at + 1 : at - 1]?.focus();
     } else if (event.event === 'popup') {
