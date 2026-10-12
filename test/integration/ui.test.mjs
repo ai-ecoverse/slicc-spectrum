@@ -539,6 +539,43 @@ test('a running reply stops with Escape', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
+test('a terminal answers color queries with a single theme throughout a theme switch', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.$('slicc-app', '.rail.right [data-surface=terminal]').click());
+  await page.until(() => window.screen().includes('$'));
+  const answers = await page.evaluate(async () => {
+    const term = window.terminal().shadowRoot.querySelector('slicc-terminal');
+    const send = term.send.bind(term);
+    const seen = [];
+    term.send = (reply) => seen.push(reply);
+    const ask = () => {
+      const start = seen.length;
+      term.write('\x1b]10;?;?\x07');
+      return seen.slice(start).join('');
+    };
+    const out = [ask()];
+    window.$('slicc-app', 'header swc-action-button#theme').click();
+    out.push(ask());
+    for (let i = 0; i < 4; i++) {
+      await Promise.resolve();
+      out.push(ask());
+    }
+    for (let i = 0; i < 3; i++) {
+      await new Promise(requestAnimationFrame);
+      out.push(ask());
+    }
+    term.send = send;
+    return out;
+  });
+  const light = '\x1b]10;rgb:2929/2929/2929\x07\x1b]11;rgb:ffff/ffff/ffff\x07';
+  const dark = '\x1b]10;rgb:dbdb/dbdb/dbdb\x07\x1b]11;rgb:2222/2222/2222\x07';
+  assert.equal(answers[0], light);
+  assert.equal(answers.at(-1), dark);
+  for (const answer of answers)
+    assert.ok(answer === light || answer === dark, JSON.stringify(answer));
+  assert.deepEqual(page.errors, []);
+});
+
 test('the theme switches between light and dark and survives a reload', async (t) => {
   const page = await open(t);
   const surface = () => [
