@@ -2,7 +2,7 @@ import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
-import { css, html, nothing, type TemplateResult } from 'lit';
+import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import type {
   AuditEntry,
   ButtonConfig,
@@ -141,6 +141,7 @@ export class SliccSecrets extends ThemedElement {
   declare popup: PopupDetail | null;
   declare acking: string | null;
   declare failure: string | null;
+  #tick: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
     super();
@@ -347,6 +348,34 @@ export class SliccSecrets extends ThemedElement {
     }
   `;
 
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    clearTimeout(this.#tick);
+  }
+
+  protected willUpdate(changed: PropertyValues): void {
+    const before = changed.get('model') as SliccModel | null | undefined;
+    if (!changed.has('model') || before?.vault === this.model?.vault) return;
+    this.older = [];
+    this.more = null;
+    this.loading = false;
+    this.popup = null;
+    this.acking = null;
+    this.failure = null;
+  }
+
+  protected updated(): void {
+    clearTimeout(this.#tick);
+    const now = Date.now();
+    const next = Math.min(
+      ...(this.model?.vault?.list()?.secrets ?? [])
+        .map((secret) => secret.expiresAt ?? Number.POSITIVE_INFINITY)
+        .filter((at) => at > now)
+    );
+    if (next !== Number.POSITIVE_INFINITY)
+      this.#tick = setTimeout(() => this.requestUpdate(), Math.min(next - now, 60_000));
+  }
+
   protected subscribe(model: SliccModel): Array<() => void> {
     const update = () => this.requestUpdate();
     return [
@@ -374,12 +403,13 @@ export class SliccSecrets extends ThemedElement {
     this.failure = null;
     try {
       const page = await vault.audit(entries[entries.length - 1]?.seq);
+      if (this.model?.vault !== vault) return;
       this.older = merged(this.older, page.audit);
       this.more = page.more;
     } catch (error) {
-      this.failure = (error as Error).message;
+      if (this.model?.vault === vault) this.failure = (error as Error).message;
     } finally {
-      this.loading = false;
+      if (this.model?.vault === vault) this.loading = false;
     }
   }
 
