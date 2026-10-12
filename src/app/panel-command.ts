@@ -285,9 +285,12 @@ const help = `usage: panel <command>
   close <id>                 close a panel
   move <id> <place>          move an open panel
   reset                      restore the default layout
+  tabs                       the tabs panel can reach (answered by the agent)
 
 place: left | center | right, or --left | --right | --above | --below | --within <id>
 open and focus also take --section <name>, e.g. panel open settings --section accounts
+--tab <tab> sends the command to that tab instead of the one showing your cone;
+            see panel tabs
 
 ids: the ones panel list shows, e.g. files, changes, terminal, monitor, settings,
      chat (your cone's chat), chat:<agent>, terminal:<n>, sprinkle:<name>,
