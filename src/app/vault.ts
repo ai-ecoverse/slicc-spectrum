@@ -109,6 +109,12 @@ export function tabbables(
       out.push(null);
       continue;
     }
+    if (child.hidden) continue;
+    if (child instanceof HTMLDetailsElement && !child.open) {
+      const summary = child.querySelector(':scope > summary');
+      if (summary) out.push(summary as HTMLElement);
+      continue;
+    }
     if (child.tabIndex >= 0 && !(child as HTMLButtonElement).disabled) out.push(child);
     if (child.shadowRoot) tabbables(child.shadowRoot, stop, out);
     tabbables(child, stop, out);

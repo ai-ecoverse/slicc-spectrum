@@ -139,7 +139,7 @@ export class SliccSecrets extends ThemedElement {
   declare loading: boolean;
   declare reveals: boolean;
   declare popup: PopupDetail | null;
-  declare acking: string | null;
+  declare acking: ReadonlySet<string>;
   declare failure: string | null;
   #tick: ReturnType<typeof setTimeout> | undefined;
 
@@ -150,7 +150,7 @@ export class SliccSecrets extends ThemedElement {
     this.loading = false;
     this.reveals = false;
     this.popup = null;
-    this.acking = null;
+    this.acking = new Set();
     this.failure = null;
   }
 
@@ -381,7 +381,7 @@ export class SliccSecrets extends ThemedElement {
     this.more = null;
     this.loading = false;
     this.popup = null;
-    this.acking = null;
+    this.acking = new Set();
     this.failure = null;
   }
 
@@ -454,14 +454,16 @@ export class SliccSecrets extends ThemedElement {
   }
 
   async acknowledge(vault: VaultPort, notice: PolicyNotice): Promise<void> {
-    this.acking = notice.id;
+    if (this.acking.has(notice.id)) return;
+    this.acking = new Set([...this.acking, notice.id]);
     this.failure = null;
     try {
       await vault.acknowledge(notice.id);
     } catch (error) {
       if (this.model?.vault === vault) this.failure = (error as Error).message;
     } finally {
-      if (this.model?.vault === vault) this.acking = null;
+      if (this.model?.vault === vault)
+        this.acking = new Set([...this.acking].filter((id) => id !== notice.id));
     }
   }
 
@@ -496,7 +498,7 @@ export class SliccSecrets extends ThemedElement {
       <span class="title"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>Rules widened in <code>${notice.file}</code> ${since(notice.at)}</span></span>
       <ul>${notice.widened.map((change) => html`<li>${widening(change, devices)}</li>`)}</ul>
       <span>If you didn’t mean this, change the file back with sudo.</span>
-      <div class="actions"><swc-button size="s" variant="secondary" data-action="acknowledge" ?pending=${this.acking === notice.id} @click=${() => this.acknowledge(vault, notice)}>Acknowledge</swc-button></div>
+      <div class="actions"><swc-button size="s" variant="secondary" data-action="acknowledge" ?pending=${this.acking.has(notice.id)} @click=${() => this.acknowledge(vault, notice)}>Acknowledge</swc-button></div>
     </div>`;
   }
 
