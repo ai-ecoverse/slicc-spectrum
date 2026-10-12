@@ -109,13 +109,19 @@ export function tabbables(
       out.push(null);
       continue;
     }
-    if (child.hidden) continue;
+    const style = getComputedStyle(child);
+    if (child.hidden || child.inert || style.display === 'none') continue;
     if (child instanceof HTMLDetailsElement && !child.open) {
       const summary = child.querySelector(':scope > summary');
       if (summary) out.push(summary as HTMLElement);
       continue;
     }
-    if (child.tabIndex >= 0 && !(child as HTMLButtonElement).disabled) out.push(child);
+    if (
+      child.tabIndex >= 0 &&
+      !(child as HTMLButtonElement).disabled &&
+      style.visibility !== 'hidden'
+    )
+      out.push(child);
     if (child.shadowRoot) tabbables(child.shadowRoot, stop, out);
     tabbables(child, stop, out);
   }
