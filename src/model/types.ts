@@ -221,12 +221,18 @@ export interface Outgoing {
   mode?: SendMode;
 }
 
+export interface AgentHold {
+  reason: 'waiting' | 'locked';
+  held: number;
+}
+
 export interface AgentEvents {
   agents: readonly Agent[];
   active: string;
   message: { agentId: string; message: Message };
   messages: string;
   frozen: readonly FrozenCone[];
+  hold: AgentHold | null;
 }
 
 export interface AgentPort extends Subscribable<AgentEvents> {
@@ -257,6 +263,7 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   rewind?(agentId: string, messageId: string): Promise<Outgoing | null>;
   drop?(agentId: string): Promise<void>;
   createCone?(name: string): Promise<Agent>;
+  hold?(): AgentHold | null;
 }
 
 export interface SlashCommand {

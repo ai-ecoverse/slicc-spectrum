@@ -1,4 +1,4 @@
-import type { SliccModel } from '../model/types.ts';
+import type { AgentHold, SliccModel } from '../model/types.ts';
 import { DummyAgent } from './agent.ts';
 import { type ApprovalScenario, DummyApprovals } from './approvals.ts';
 import { type BrowserScenario, browserHistory, DummyBrowser, drive } from './browser.ts';
@@ -46,6 +46,7 @@ export interface DummyOptions {
   approvals?: ApprovalScenario | 'off';
   follow?: FollowScenario | 'off';
   vault?: VaultScenario | 'off';
+  hold?: AgentHold['reason'] | 'off';
   browser?: BrowserScenario;
   sprinkles?: 'builtin' | 'cones';
   monitor?: 'dummy' | 'agent';
@@ -78,6 +79,7 @@ export function createDummyModel({
   approvals = 'off',
   follow = 'off',
   vault = 'off',
+  hold = 'off',
   browser: scenario = 'idle',
   sprinkles = 'builtin',
   monitor = 'dummy',
@@ -106,6 +108,7 @@ export function createDummyModel({
     stop(agentId);
     browser.release(agentId);
   };
+  if (hold !== 'off') agent.setHold({ reason: hold, held: 2 });
   if (scenario === 'driving') void browser.run(drive);
   const base = {
     agent,
@@ -147,6 +150,9 @@ export function createDummyModel({
     ...(follow === 'off' ? {} : { follow: new DummyFollow(follow, time) }),
     ...(vault === 'off' ? {} : { vault: new DummyVault(vault, time) }),
   };
+  base.vault?.on('status', (status) => {
+    if (!status.locked && agent.hold()?.reason === 'locked') agent.setHold(null);
+  });
   return {
     ...base,
     monitor: new DummyMonitor(base, monitor === 'agent' ? agentSections : undefined),
