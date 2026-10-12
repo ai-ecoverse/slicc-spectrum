@@ -43,10 +43,49 @@ function absolute(cwd: string, word: string): string {
   return `/${parts.join('/')}`;
 }
 
-function pattern(path: string): RegExp {
-  const escaped = path.replace(/[.+^${}()|\\]/g, '\\$&');
-  return new RegExp(`^${escaped.replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]')}$`);
+function pattern(path: string, classes = true): RegExp {
+  let source = '';
+  for (let index = 0; index < path.length; index++) {
+    const char = path[index];
+    const end = classes && char === '[' ? path.indexOf(']', index + 2) : -1;
+    if (end > 0) {
+      const body = path
+        .slice(index + 1, end)
+        .replace(/^!/, '^')
+        .replace(/\\/g, '\\\\');
+      source += `[${body}]`;
+      index = end;
+    } else if (char === '*') source += '[^/]*';
+    else if (char === '?') source += '[^/]';
+    else source += char.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  try {
+    return new RegExp(`^${source}$`);
+  } catch {
+    return pattern(path, false);
+  }
 }
+
+const readOnly = [
+  'cat',
+  'cd',
+  'df',
+  'diff',
+  'du',
+  'echo',
+  'file',
+  'grep',
+  'head',
+  'ls',
+  'pwd',
+  'readlink',
+  'realpath',
+  'rg',
+  'stat',
+  'tail',
+  'tree',
+  'wc',
+];
 
 function candidates(word: string): string[] {
   if (word.startsWith('--')) return [];
@@ -73,9 +112,10 @@ export function secretRules(approval: Approval): string | null {
   let cwd = absolute('/', approval.cwd ?? '/');
   const words = approval.command.split(/[\s'"`;&|<>()=,]+/).filter(Boolean);
   const name = (word: string) => word.split('/').pop() ?? '';
-  const whole =
-    words.some((word) => ['mv', 'rm', 'rmdir', 'ln'].includes(name(word))) ||
-    words.some((word) => /^(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)$/.test(word));
+  const whole = approval.command.split(/[;&|\n]|\$\(|`/).some((segment) => {
+    const first = segment.trim().split(/\s+/)[0];
+    return !!first && !readOnly.includes(name(first));
+  });
   if (protects(cwd, false)) return cwd;
   for (const [index, word] of words.entries()) {
     if (index > 0 && name(words[index - 1]) === 'cd' && !word.startsWith('-')) {
