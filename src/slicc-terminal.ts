@@ -5,6 +5,7 @@ import {
   type TerminalSession,
   type TerminalSignal,
 } from './backend.ts';
+import { ColorQueries, colorReply } from './color-query.ts';
 import { adopt } from './styles.ts';
 
 const encoder = new TextEncoder();
@@ -27,6 +28,7 @@ export class SliccTerminal extends HTMLElement {
   #attempt = 0;
   #batching = false;
   #pasting = false;
+  #queries = new ColorQueries();
   #ready = Promise.withResolvers<this>();
 
   constructor() {
@@ -104,7 +106,7 @@ export class SliccTerminal extends HTMLElement {
   }
 
   write(data: string | Uint8Array): void {
-    this.#term?.write(data);
+    this.#output(data);
   }
 
   send(data: string | Uint8Array): void {
@@ -164,6 +166,7 @@ export class SliccTerminal extends HTMLElement {
     if (!backend) return this.#announce();
     const queue: Uint8Array[] = [];
     this.#queue = queue;
+    this.#queries = new ColorQueries();
     let ended = false;
     const current = () => generation === this.#generation && attempt === this.#attempt;
     const live = () => !ended && current();
@@ -173,7 +176,7 @@ export class SliccTerminal extends HTMLElement {
       session = await backend.open(
         {
           output: (data) => {
-            if (live()) this.#term?.write(data);
+            if (live()) this.#output(data);
           },
           exit: (status) => {
             if (!live()) return;
@@ -199,6 +202,24 @@ export class SliccTerminal extends HTMLElement {
     if (size.cols !== this.cols || size.rows !== this.rows) session.resize(this.cols, this.rows);
     for (const bytes of queue) session.write(bytes);
     this.#announce();
+  }
+
+  #output(data: string | Uint8Array): void {
+    const term = this.#term;
+    if (!term) return;
+    const part = (from: number, to?: number) =>
+      typeof data === 'string' ? data.slice(from, to) : data.subarray(from, to);
+    let from = 0;
+    for (const { at, codes, end } of this.#queries.scan(data)) {
+      term.write(part(from, at));
+      from = at;
+      const style = getComputedStyle(term.element);
+      for (const code of codes) {
+        const reply = colorReply(code, code === 10 ? style.color : style.backgroundColor, end);
+        if (reply) this.send(reply);
+      }
+    }
+    if (from < data.length) term.write(from ? part(from) : data);
   }
 
   #batch(change: () => void): void {

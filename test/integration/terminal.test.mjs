@@ -320,6 +320,34 @@ test('custom properties theme the terminal, and it works inside a shadow root', 
   assert.deepEqual(page.errors, []);
 });
 
+test('OSC 10 and 11 color queries are answered from the current theme, before later replies', async (t) => {
+  const { page } = await mounted(t);
+  await page.until(
+    () => window.backend.text !== undefined && window.terminal.querySelector('.wterm')
+  );
+  const ask = (text) =>
+    page.evaluate(async (query) => {
+      const before = window.backend.bytes.length;
+      window.backend.emit(query);
+      await new Promise(requestAnimationFrame);
+      return new TextDecoder().decode(Uint8Array.from(window.backend.bytes.slice(before)));
+    }, text);
+  const replies = await ask('\x1b]11;?\x1b\\\x1b[c');
+  assert.match(replies, /^\x1b\]11;rgb:1d1d\/1d1d\/1d1d\x1b\\\x1b\[\?/);
+  assert.equal(
+    await ask('\x1b]10;?;?\x07'),
+    '\x1b]10;rgb:d4d4/d4d4/d4d4\x07\x1b]11;rgb:1d1d/1d1d/1d1d\x07'
+  );
+  await page.evaluate(() => {
+    window.terminal.style.setProperty('--slicc-terminal-background', 'rgb(248, 248, 248)');
+    window.terminal.style.setProperty('--slicc-terminal-foreground', 'oklch(0.3 0 0)');
+  });
+  await page.evaluate(() => window.backend.emit('\x1b]1'));
+  assert.equal(await ask('1;?\x07'), '\x1b]11;rgb:f8f8/f8f8/f8f8\x07');
+  assert.match(await ask('\x1b]10;?\x07'), /^\x1b\]10;rgb:([0-9a-f]{4})\/\1\/\1\x07$/);
+  assert.deepEqual(page.errors, []);
+});
+
 test('an element without a backend still mounts and accepts local writes', async (t) => {
   const page = await chrome.page(t);
   await page.goto('/');
