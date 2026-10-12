@@ -406,7 +406,7 @@ export class SliccSecrets extends ThemedElement {
     this.#pushed = [];
     const head = vault.list()?.audit ?? [];
     const last = head[head.length - 1];
-    if (this.older.length && last && last.seq > this.older[0].seq + 1) {
+    if (this.older.length && (!last || last.seq > this.older[0].seq + 1)) {
       this.older = [];
       this.more = null;
     }

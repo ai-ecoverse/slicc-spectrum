@@ -47,10 +47,14 @@ export function ruleLine(rule: Rule): string {
   return `${rule.domain}, in ${rule.header}, ${methods}, ${paths}`;
 }
 
+export function shellWord(word: string): string {
+  return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replace(/'/g, "'\\''")}'`;
+}
+
 export function execLine(grant: ExecGrant): string {
   if (grant === false) return 'Never revealed to programs';
   if (grant === true) return 'Revealed to any program that asks';
-  return `Revealed only to ${list(grant.argv.map((argv) => argv.join(' ')))}`;
+  return `Revealed only to ${list(grant.argv.map((argv) => argv.map(shellWord).join(' ')))}`;
 }
 
 export function widening(change: Widening, devices: readonly LinkedDevice[]): string {
@@ -87,6 +91,17 @@ function disabled(element: HTMLElement): boolean {
   return false;
 }
 
+function reachable(element: HTMLElement): boolean {
+  const radio = element as HTMLInputElement;
+  if (radio.localName !== 'input' || radio.type !== 'radio' || !radio.name) return true;
+  const root = radio.getRootNode() as ParentNode;
+  const group = Array.from(root.querySelectorAll<HTMLInputElement>('input[type=radio]')).filter(
+    (other) => other.name === radio.name && other.form === radio.form
+  );
+  const checked = group.find((other) => other.checked);
+  return checked ? checked === radio : radio === group[0] || radio === group.at(-1);
+}
+
 export function tabbables(
   root: ParentNode,
   stop: Element,
@@ -110,7 +125,13 @@ export function tabbables(
         out.push(summary);
       continue;
     }
-    if (child.tabIndex >= 0 && !disabled(child) && style.visibility !== 'hidden') out.push(child);
+    if (
+      child.tabIndex >= 0 &&
+      !disabled(child) &&
+      style.visibility !== 'hidden' &&
+      reachable(child)
+    )
+      out.push(child);
     if (child.shadowRoot) tabbables(child.shadowRoot, stop, out);
     tabbables(child, stop, out);
   }
