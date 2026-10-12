@@ -32,6 +32,8 @@ Web components for SLICC: `<slicc-terminal>`, and SLICC's app UI on [Spectrum We
 
 Events, all `CustomEvent`s with the payload in `detail`: `ready` `{cols, rows}`, `resize` `{cols, rows}`, `exit` `{status}`, `title` `{title}`, `bell` `{count}`, `error` `{error}`.
 
+It answers OSC 10 and OSC 11 color queries (`ESC ] 10 ; ? ST` and `ESC ] 11 ; ? ST`) with the foreground and background it shows at that moment, as `rgb:rrrr/gggg/bbbb`, so command-line tools can tell a light theme from a dark one and follow a theme switch. The answer reaches the backend before replies to anything that comes later in the output.
+
 Removing the element closes the session and destroys the screen. Adding it again mounts a fresh screen and opens a new session on the same backend.
 
 ## Backend interface
