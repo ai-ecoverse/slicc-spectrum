@@ -99,7 +99,7 @@
     "@types/node": "26.6.4",
     "@wterm/core": "0.5.4",
     "@wterm/dom": "0.5.4",
-    "dockview-core": "8.4.0",
+    "dockview-core": "8.4.1",
     "esbuild": "0.28.2",
     "happy-dom": "20.14.5",
     "lefthook": "2.1.17",
