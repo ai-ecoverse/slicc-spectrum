@@ -75,15 +75,20 @@ function startOfDay(now: number): number {
 export function revealed(
   name: string,
   entries: readonly AuditEntry[],
-  now = Date.now()
+  now = Date.now(),
+  more = false
 ): TemplateResult | null {
   const reveals = entries.filter(
     (entry): entry is RevealEntry => entry.type === 'materialize' && entry.name === name
   );
   if (!reveals.length) return null;
   const [last] = reveals;
-  const today = reveals.filter((entry) => entry.at >= startOfDay(now)).length;
-  const when = today ? `${today} ${today === 1 ? 'time' : 'times'} today` : since(last.at, now);
+  const start = startOfDay(now);
+  const today = reveals.filter((entry) => entry.at >= start).length;
+  const partial = more && (entries[entries.length - 1]?.at ?? 0) >= start;
+  const when = today
+    ? `${partial ? 'at least ' : ''}${today} ${today === 1 ? 'time' : 'times'} today`
+    : since(last.at, now);
   return html`Revealed to programs ${when}, last by ${who(last)} with <code>${last.argv}</code>`;
 }
 
@@ -460,10 +465,11 @@ export class SliccSecrets extends ThemedElement {
   #secret(
     secret: SecretView,
     entries: readonly AuditEntry[],
-    devices: readonly LinkedDevice[]
+    devices: readonly LinkedDevice[],
+    more: boolean
   ): TemplateResult {
     const kind = kinds[secret.kind];
-    const reveal = revealed(secret.name, entries);
+    const reveal = revealed(secret.name, entries, Date.now(), more);
     return html`<li class="secret" data-secret=${secret.name} data-state=${secret.state}>
       <div class="name">
         <code>${secret.name}</code>
@@ -559,7 +565,7 @@ export class SliccSecrets extends ThemedElement {
         !current
           ? html`<p class="muted" data-loading>Loading secrets…</p>`
           : current.secrets.length
-            ? html`<ul class="secrets" aria-labelledby="secrets">${current.secrets.map((secret) => this.#secret(secret, entries, devices))}</ul>`
+            ? html`<ul class="secrets" aria-labelledby="secrets">${current.secrets.map((secret) => this.#secret(secret, entries, devices, this.more ?? current.auditMore))}</ul>`
             : html`<p data-empty>No secrets yet. When an agent or program needs one, it asks here, and you enter the value in the vault.</p>`
       }
       <p class="muted" data-policy>Rules live in <code>/etc/fnox/config.toml</code> and <code>/etc/slicc/secrets-policy.toml</code>. Change them with sudo; SLICC asks you before every change.</p>

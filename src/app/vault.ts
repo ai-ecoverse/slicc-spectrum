@@ -99,6 +99,23 @@ export function transitLine(
   return html`Secrets may pass through this page to ${through}, because <code>${exits.file}</code> allows it.`;
 }
 
+export function tabbables(
+  root: ParentNode,
+  stop: Element,
+  out: Array<HTMLElement | null> = []
+): Array<HTMLElement | null> {
+  for (const child of Array.from(root.children) as HTMLElement[]) {
+    if (child === stop) {
+      out.push(null);
+      continue;
+    }
+    if (child.tabIndex >= 0 && !(child as HTMLButtonElement).disabled) out.push(child);
+    if (child.shadowRoot) tabbables(child.shadowRoot, stop, out);
+    tabbables(child, stop, out);
+  }
+  return out;
+}
+
 export interface PopupDetail {
   intent: PopupIntent;
   state: PopupState;
@@ -133,6 +150,11 @@ export class SliccVaultButton extends LitElement {
     super();
     this.vault = null;
     this.config = null;
+  }
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.requestUpdate();
   }
 
   disconnectedCallback(): void {
@@ -185,6 +207,10 @@ export class SliccVaultButton extends LitElement {
       element.style.margin = `${-event.inset}px`;
     } else if (event.event === 'label') {
       element.title = event.label;
+    } else if (event.event === 'focus') {
+      const order = tabbables(document, this);
+      const at = order.indexOf(null);
+      order[event.direction === 'next' ? at + 1 : at - 1]?.focus();
     } else if (event.event === 'popup') {
       const { intent, state, result } = event;
       this.dispatchEvent(
