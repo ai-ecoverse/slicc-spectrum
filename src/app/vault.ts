@@ -61,8 +61,10 @@ export function widening(change: Widening, devices: readonly LinkedDevice[]): st
       return `${change.secret} may now use ${list(change.methods)} on ${change.domain}`;
     case 'paths':
       return `${change.secret} may now reach ${list(change.paths)} on ${change.domain}`;
-    case 'exec':
-      return `${change.secret}: ${execLine(change.grant).toLowerCase()}`;
+    case 'exec': {
+      const line = execLine(change.grant);
+      return `${change.secret}: ${line[0].toLowerCase()}${line.slice(1)}`;
+    }
     case 'exit':
       return `${change.secret} may now leave through ${exitLabel(change.exit, devices)}`;
     default:
@@ -99,7 +101,12 @@ export function tabbables(
     if (!shown(child, style)) continue;
     if (child.localName === 'details' && !(child as HTMLDetailsElement).open) {
       const summary = child.querySelector<HTMLElement>(':scope > summary');
-      if (summary && shown(summary) && getComputedStyle(summary).visibility !== 'hidden')
+      if (
+        summary &&
+        shown(summary) &&
+        getComputedStyle(summary).visibility !== 'hidden' &&
+        !(summary.hasAttribute('tabindex') && summary.tabIndex < 0)
+      )
         out.push(summary);
       continue;
     }
@@ -108,6 +115,12 @@ export function tabbables(
     tabbables(child, stop, out);
   }
   return out;
+}
+
+export function sequential(order: Array<HTMLElement | null>): Array<HTMLElement | null> {
+  const rank = (element: HTMLElement | null) =>
+    element && element.tabIndex > 0 ? element.tabIndex : Number.POSITIVE_INFINITY;
+  return [...order].sort((a, b) => rank(a) - rank(b) || 0);
 }
 
 export interface PopupDetail {
@@ -202,7 +215,7 @@ export class SliccVaultButton extends LitElement {
     } else if (event.event === 'label') {
       element.title = event.label;
     } else if (event.event === 'focus') {
-      const order = tabbables(this.ownerDocument, this);
+      const order = sequential(tabbables(this.ownerDocument, this));
       const at = order.indexOf(null);
       order[event.direction === 'next' ? at + 1 : at - 1]?.focus();
     } else if (event.event === 'popup') {
