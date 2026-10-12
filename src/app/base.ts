@@ -114,12 +114,13 @@ export function holdDocument(doc: Document): DocumentHold {
   paint.holds.set(key, null);
   return {
     paint(color) {
+      if (!paint.holds.has(key)) return;
       paint.holds.delete(key);
       paint.holds.set(key, color);
       apply(doc, paint, color);
     },
     release() {
-      paint.holds.delete(key);
+      if (!paint.holds.delete(key)) return;
       const left = [...paint.holds.values()].filter((color) => color !== null);
       if (left.length) return apply(doc, paint, left[left.length - 1] as Color);
       if (paint.holds.size) return;
