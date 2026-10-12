@@ -90,13 +90,19 @@ export interface DocumentHold {
 
 const paints = new WeakMap<Document, Paint>();
 
+function schemeOf(media: string): Color | null {
+  const query = media.replace(/\s/g, '').toLowerCase();
+  const scheme = query.match(/prefers-color-scheme:(light|dark)/)?.[1] as Color | undefined;
+  if (!scheme) return null;
+  if (!query.startsWith('not')) return scheme;
+  return scheme === 'dark' ? 'light' : 'dark';
+}
+
 function apply(doc: Document, paint: Paint, color: Color): void {
   doc.documentElement.style.colorScheme = color;
   const metas = [...doc.head.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
   for (const meta of metas) if (!paint.tones.has(meta)) paint.tones.set(meta, meta.content);
-  const own = metas.find((meta) =>
-    meta.media.replace(/\s/g, '').includes(`prefers-color-scheme:${color}`)
-  );
+  const own = metas.find((meta) => schemeOf(meta.media ?? '') === color);
   if (!own) return;
   const tone = paint.tones.get(own) as string;
   for (const meta of metas) meta.content = tone;
