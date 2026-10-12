@@ -48,21 +48,45 @@ function pattern(path: string): RegExp {
   return new RegExp(`^${escaped.replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]')}$`);
 }
 
+function candidates(word: string): string[] {
+  if (word.startsWith('--')) return [];
+  if (!word.startsWith('-')) return [word];
+  const slash = word.indexOf('/');
+  return [word.slice(2), ...(slash > 2 ? [word.slice(slash)] : [])].filter(Boolean);
+}
+
+function protects(path: string, whole: boolean): boolean {
+  const inside = (candidate: string) =>
+    candidate === '/etc/fnox' || candidate.startsWith('/etc/fnox/');
+  if (!/[*?[]/.test(path))
+    return inside(path) || rulePaths.includes(path) || (whole && ruleParents.includes(path));
+  const glob = pattern(path);
+  const top = path.split('/').slice(0, 3).join('/');
+  return (
+    rulePaths.some((rule) => glob.test(rule)) ||
+    (top !== path && pattern(top).test('/etc/fnox')) ||
+    (whole && ruleParents.some((parent) => glob.test(parent)))
+  );
+}
+
 export function secretRules(approval: Approval): string | null {
-  const cwd = approval.cwd ?? '/';
+  let cwd = absolute('/', approval.cwd ?? '/');
   const words = approval.command.split(/[\s'"`;&|<>()=,]+/).filter(Boolean);
+  const name = (word: string) => word.split('/').pop() ?? '';
   const whole =
-    ['mv', 'rm', 'ln'].includes(words[0]?.split('/').pop() ?? '') ||
+    words.some((word) => ['mv', 'rm', 'rmdir', 'ln'].includes(name(word))) ||
     words.some((word) => /^(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)$/.test(word));
-  const inside = (path: string) => path === '/etc/fnox' || path.startsWith('/etc/fnox/');
-  if (inside(absolute('/', cwd))) return absolute('/', cwd);
-  for (const word of words.slice(1)) {
-    if (word.startsWith('-')) continue;
-    const path = absolute(cwd, word);
-    const glob = /[*?]/.test(word) ? pattern(path) : null;
-    if (glob ? rulePaths.some((rule) => glob.test(rule)) : inside(path) || rulePaths.includes(path))
-      return path;
-    if (whole && ruleParents.includes(path)) return path;
+  if (protects(cwd, false)) return cwd;
+  for (const [index, word] of words.entries()) {
+    if (index > 0 && name(words[index - 1]) === 'cd' && !word.startsWith('-')) {
+      cwd = absolute(cwd, word);
+      if (protects(cwd, false)) return cwd;
+      continue;
+    }
+    for (const candidate of candidates(word)) {
+      const path = absolute(cwd, candidate);
+      if (index > 0 && protects(path, whole)) return path;
+    }
   }
   return null;
 }
