@@ -5,7 +5,7 @@ import {
   type TerminalSession,
   type TerminalSignal,
 } from './backend.ts';
-import { ColorQueries, colorReply } from './color-query.ts';
+import { ColorQueries, colorReply, themeColors } from './color-query.ts';
 import { adopt } from './styles.ts';
 
 const encoder = new TextEncoder();
@@ -213,10 +213,10 @@ export class SliccTerminal extends HTMLElement {
     for (const { at, codes, end } of this.#queries.scan(data)) {
       term.write(part(from, at));
       from = at;
-      const style = getComputedStyle(term.element);
+      const colors = themeColors(term.element);
       for (const code of codes) {
-        const reply = colorReply(code, code === 10 ? style.color : style.backgroundColor, end);
-        if (reply) this.send(reply);
+        const rgb = colors[code];
+        if (rgb) this.send(colorReply(code, rgb, end));
       }
     }
     if (from < data.length) term.write(from ? part(from) : data);
