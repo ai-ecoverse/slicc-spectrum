@@ -1,5 +1,6 @@
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/close-button/swc-close-button.js';
+import '@adobe/spectrum-wc/components/progress-circle/swc-progress-circle.js';
 import '@adobe/spectrum-wc/patterns/ai-toolkit/prompt-field/swc-prompt-field.js';
 import '@adobe/spectrum-wc/patterns/ai-toolkit/upload-attachment/swc-upload-attachment.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
@@ -17,7 +18,7 @@ import type {
   Thinking,
   UserMessage,
 } from '../model/types.ts';
-import { chatModels, ModelElement, shared } from './base.ts';
+import { chatModels, shared, ThemedElement } from './base.ts';
 import { size } from './messages.ts';
 
 export const limit = 25 * 1024 * 1024;
@@ -149,9 +150,9 @@ export function trigger(
 
 type Field = HTMLElement & { updateComplete: Promise<boolean> };
 
-export class SliccComposer extends ModelElement {
+export class SliccComposer extends ThemedElement {
   static properties = {
-    ...ModelElement.properties,
+    ...ThemedElement.properties,
     value: { state: true },
     attachments: { state: true },
     popup: { state: true },
@@ -215,6 +216,31 @@ export class SliccComposer extends ModelElement {
         background: var(--swc-neutral-subtle-background-color-default);
         border: var(--swc-border-width-100) dashed var(--swc-gray-300);
         color: var(--swc-neutral-content-color-default);
+      }
+      .hold {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--swc-spacing-100);
+        margin: 0 0 var(--swc-spacing-100);
+        padding: var(--swc-spacing-75) var(--swc-spacing-100) var(--swc-spacing-75) var(--swc-spacing-200);
+        border-radius: var(--swc-corner-radius-medium-default);
+        background: var(--swc-informative-subtle-background-color-default);
+        color: var(--swc-neutral-content-color-default);
+      }
+      .hold[data-hold='locked'] {
+        background: var(--swc-notice-subtle-background-color-default);
+      }
+      .hold swc-icon-lock,
+      .hold swc-progress-circle {
+        flex: none;
+      }
+      .hold .text {
+        flex: 1;
+        min-inline-size: 12em;
+      }
+      .hold .held {
+        color: var(--swc-neutral-subdued-content-color-default);
       }
       .queued swc-icon-clock {
         flex: none;
@@ -420,9 +446,11 @@ export class SliccComposer extends ModelElement {
     });
     const update = () => this.requestUpdate();
     return [
+      ...super.subscribe(model),
       model.agent.on('active', (id) => {
         if (!this.agent) this.#switch(id);
       }),
+      model.agent.on('hold', update),
       model.agent.on('agents', update),
       model.agent.on('messages', update),
       model.agent.on('message', update),
@@ -888,6 +916,27 @@ export class SliccComposer extends ModelElement {
     </div>`;
   }
 
+  #hold(): TemplateResult | typeof nothing {
+    const hold = this.model?.agent.hold?.();
+    if (!hold) return nothing;
+    const locked = hold.reason === 'locked';
+    const vault = this.model?.vault;
+    const held = hold.held === 1 ? '1 tool result held' : `${hold.held} tool results held`;
+    return html`<div class="hold" role="status" data-hold=${hold.reason}>
+      ${locked ? html`<swc-icon-lock size="s" aria-hidden="true"></swc-icon-lock>` : html`<swc-progress-circle size="s" label="Waiting" aria-hidden="true"></swc-progress-circle>`}
+      <span class="text">${locked ? 'Unlock the vault to continue' : 'Waiting for the vault'}${hold.held ? html`<span class="held"> · ${held}</span>` : nothing}</span>
+      ${
+        locked && vault
+          ? html`<slicc-vault-button
+              data-action="unlock-vault"
+              .vault=${vault}
+              .config=${{ intent: { kind: 'unlock' }, label: 'Unlock', size: 's', variant: 'accent', theme: this.color }}
+            ></slicc-vault-button>`
+          : nothing
+      }
+    </div>`;
+  }
+
   #queue(): TemplateResult | typeof nothing {
     const queued = this.model?.agent.queue(this.#agent) ?? [];
     if (queued.length === 0) return nothing;
@@ -919,6 +968,7 @@ export class SliccComposer extends ModelElement {
     const speech = 'SpeechRecognition' in globalThis || 'webkitSpeechRecognition' in globalThis;
     const held = this.#held();
     return html`<div class="column">
+        ${this.#hold()}
         ${this.#queue()}
         ${this.#popup()}
         <swc-prompt-field

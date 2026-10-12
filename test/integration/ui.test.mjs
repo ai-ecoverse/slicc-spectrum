@@ -4516,3 +4516,67 @@ test('a sudo request that changes secret rules is flagged, in dark', async (t) =
 test('the secret rules flag fits a narrow window', async (t) => {
   await secretRulesDialog(t, 'light', 420);
 });
+
+async function vaultHold(t, hold, color, width) {
+  const page = await open(t, { hold, vault: hold === 'locked' ? 'locked' : 'off', color });
+  if (width)
+    await page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height: 800,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.hold')
+  );
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const shown = await page.evaluate(() => {
+    const element = window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.hold');
+    const box = element.getBoundingClientRect();
+    const button = element.querySelector('slicc-vault-button');
+    const field = element.parentElement.querySelector('swc-prompt-field');
+    return {
+      hold: element.dataset.hold,
+      role: element.getAttribute('role'),
+      text: element.querySelector('.text').textContent.trim(),
+      button: button?.dataset.action ?? null,
+      above: box.bottom <= field.getBoundingClientRect().top,
+      inside: box.left >= 0 && box.right <= innerWidth,
+    };
+  });
+  assert.deepEqual(shown, {
+    hold,
+    role: 'status',
+    text: `${hold === 'locked' ? 'Unlock the vault to continue' : 'Waiting for the vault'} · 2 tool results held`,
+    button: hold === 'locked' ? 'unlock-vault' : null,
+    above: true,
+    inside: true,
+  });
+  await shot(page, `vault-hold-${hold}-${color}${width ? `-${width}` : ''}`);
+  return page;
+}
+
+test('a vault hold waits above the composer', async (t) => {
+  const page = await vaultHold(t, 'waiting', 'light');
+  assert.deepEqual(page.errors, []);
+});
+
+test('a locked vault hold offers Unlock above the composer, in light', async (t) => {
+  const page = await vaultHold(t, 'locked', 'light');
+  assert.deepEqual(page.errors, []);
+});
+
+test('a locked vault hold offers Unlock above the composer, in dark', async (t) => {
+  const page = await vaultHold(t, 'locked', 'dark');
+  assert.deepEqual(page.errors, []);
+});
+
+test('a locked vault hold fits a narrow window and clears once unlocked', async (t) => {
+  const page = await vaultHold(t, 'locked', 'light', 420);
+  await page.evaluate(() => window.model.vault.answer({ kind: 'unlock' }).then(() => true));
+  await page.until(
+    () => !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.hold')
+  );
+  assert.equal(await page.evaluate(() => window.model.agent.hold()), null);
+  assert.deepEqual(page.errors, []);
+});

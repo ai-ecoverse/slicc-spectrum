@@ -20,6 +20,7 @@ const model = createDummyModel({
   approvals: params.get('approvals') ?? 'off',
   follow,
   vault: params.get('vault') ?? 'off',
+  hold: params.get('hold') ?? 'off',
   browser: params.get('browser') ?? 'idle',
   sprinkles: params.get('sprinkles') ?? 'builtin',
   monitor: params.get('monitor') ?? 'dummy',

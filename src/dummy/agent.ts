@@ -2,6 +2,7 @@ import { Emitter } from '../model/emitter.ts';
 import type {
   Agent,
   AgentEvents,
+  AgentHold,
   AgentPort,
   AgentStatus,
   AssistantMessage,
@@ -37,6 +38,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   #messages = new Map<string, Message[]>();
   #queues = new Map<string, UserMessage[]>();
   #frozen: FrozenCone[] = [];
+  #hold: AgentHold | null = null;
   #ice = new Map<string, Array<{ agent: Agent; messages: Message[] }>>();
   #suggestions = new Map<string, string>();
   #runs = new Map<string, Run>();
@@ -534,6 +536,15 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
       createdAt: Date.now(),
       ...(body ? { body } : {}),
     });
+  }
+
+  hold(): AgentHold | null {
+    return this.#hold && { ...this.#hold };
+  }
+
+  setHold(hold: AgentHold | null): void {
+    this.#hold = hold && { ...hold };
+    this.emit('hold', this.hold());
   }
 
   frozen(): readonly FrozenCone[] {
