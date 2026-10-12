@@ -107,6 +107,15 @@ export class Panels {
     return ago < userCloseWindow ? ago : null;
   }
 
+  recentClose(): { id: string; ago: number } | null {
+    const dock = this.#host.dock();
+    for (const id of this.#closed.keys()) {
+      const ago = this.closedAgo(id);
+      if (ago !== null && !dock.has(id)) return { id, ago };
+    }
+    return null;
+  }
+
   typing(): boolean {
     return this.#host.typing();
   }
@@ -239,7 +248,8 @@ export class Panels {
     if (!dock.has(id)) return unknown(id);
     if (this.#host.screen() === 'phone')
       return ok(`phones show one panel at a time, so ${id} stays where it is`);
-    if (info.busy) return refused(`${id} is busy: ${info.busy}`);
+    const busy = info.open ? info.busy : (this.find(id)?.busy ?? null);
+    if (busy) return refused(`${id} is busy: ${busy}`);
     const target: Placement =
       typeof place === 'string'
         ? destination(dock, id, place, this.#host.screen())
@@ -366,7 +376,7 @@ function resolve(
     const picked =
       terminals.find((info) => info.active) ??
       terminals.filter((info) => info.open).at(-1) ??
-      terminals[0];
+      terminals.at(-1);
     return picked?.id ?? null;
   }
   if (reachable.some((info) => info.id === raw)) return raw;
@@ -406,7 +416,14 @@ interface Scope {
 
 function act(scope: Scope, parsed: Parsed): PanelOutput {
   const { panels, reachable, cone } = scope;
-  if (parsed.verb === 'reset') return done(panels.reset());
+  if (parsed.verb === 'reset') {
+    const recent = scope.agent ? panels.recentClose() : null;
+    if (recent)
+      return refusedOutput(
+        `the user closed ${recent.id} ${Math.round(recent.ago / 1000)} s ago; ask before resetting the layout`
+      );
+    return done(panels.reset());
+  }
   const raw = parsed.id as string;
   const id = resolve(panels, raw, reachable, cone);
   if (!id) return done(unknown(raw));
