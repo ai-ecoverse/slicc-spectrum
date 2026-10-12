@@ -193,7 +193,8 @@ function shield(text: string): string {
   let quote = '';
   for (let index = 0; index < text.length; index++) {
     const char = text[index];
-    if (quote) {
+    if (quote === '"' && char === '\\') out += hide(char) + hide(text[++index] ?? '');
+    else if (quote) {
       out += char === quote ? char : hide(char);
       if (char === quote) quote = '';
     } else if (char === "'" || char === '"') {
@@ -211,7 +212,9 @@ function quoted(segment: string): string[] {
   let quote = '';
   for (let index = 0; index < segment.length; index++) {
     const char = segment[index];
-    if (quote) {
+    if (quote === '"' && char === '\\' && /["\\$`\n]/.test(segment[index + 1] ?? ''))
+      word += segment[++index];
+    else if (quote) {
       if (char === quote) quote = '';
       else word += char;
     } else if (char === "'" || char === '"') quote = char;
@@ -269,7 +272,7 @@ export function secretRules(approval: Approval): string | null {
     .flat()
     .find((word) => !word.startsWith('/') && /fnox|secrets-policy/.test(word));
   if (named) return absolute([...cwds].pop() ?? start, named);
-  const home = segments.flat().find((word) => /^~.*\/\.\.(?:\/|$)/.test(word));
+  const home = segments.flat().find((word) => /^~(?:[+-](?:\/|$)|.*\/\.\.(?:\/|$))/.test(word));
   if (home) return home;
   return segments.flat().some((word) => word.includes('$')) || text.includes('`')
     ? (text.match(expansion) as RegExpMatchArray)[0]
