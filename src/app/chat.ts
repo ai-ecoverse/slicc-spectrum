@@ -281,6 +281,15 @@ export class SliccChat extends ThemedElement {
     return this.agent || (this.model?.agent.active() ?? '');
   }
 
+  get busyReason(): string | null {
+    const open = (this.model?.agent.messages(this.#id()) ?? []).some((message) =>
+      ('parts' in message ? message.parts : []).some(
+        (part) => part.type === 'question' && part.question.state === 'open'
+      )
+    );
+    return open ? 'a question waits for an answer' : null;
+  }
+
   #agent(): Agent | undefined {
     const id = this.#id();
     return this.model?.agent.list().find((agent) => agent.id === id);

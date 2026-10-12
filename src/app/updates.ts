@@ -177,6 +177,12 @@ export class SliccUpdates extends ModelElement {
     this.problems = new Map();
   }
 
+  get busyReason(): string | null {
+    const packages = this.model?.updates?.packages?.() ?? [];
+    const running = this.busy.size > 0 || packages.some((item) => packageRunning.has(item.state));
+    return running ? 'a package is installing' : null;
+  }
+
   static styles = [
     css`
       :host {

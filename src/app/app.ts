@@ -13,6 +13,7 @@ import { deleteCone } from './freezer.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
 import { agentTitle, untitled, watchTitles } from './names.ts';
 import { networkHealth, networkIcon, networkLabel, networkStatus, remoteLight } from './network.ts';
+import { Panels } from './panel-command.ts';
 import {
   chatAgent,
   chats,
@@ -25,6 +26,7 @@ import {
   openDocument,
   openSprinkle,
   openSurface,
+  openTerminal,
   type Placement,
   type ScreenClass,
   type Surface,
@@ -33,6 +35,7 @@ import {
   sprinkleSurface,
   surface,
   surfaces,
+  terminalOf,
   terminalPanels,
 } from './panels.ts';
 import { installProperties } from './properties.ts';
@@ -106,6 +109,13 @@ export function finishTransitions(root: ShadowRoot): void {
     if (element.shadowRoot) finishTransitions(element.shadowRoot);
 }
 
+function editable(node: EventTarget | null | undefined): node is HTMLElement {
+  return (
+    node instanceof HTMLElement &&
+    (node.isContentEditable || node.tagName === 'TEXTAREA' || node.tagName === 'INPUT')
+  );
+}
+
 export class SliccApp extends ThemedElement {
   static properties = {
     ...ThemedElement.properties,
@@ -118,6 +128,17 @@ export class SliccApp extends ThemedElement {
   layoutKey = 'slicc-ui.layout.v2';
   readonly dips = new Dips();
   readonly terminalPanels = new TerminalPanels();
+  readonly panels = new Panels({
+    dock: () => this.dock,
+    screen: () => this.screen,
+    model: () => this.model,
+    surfaces: () => this.#available(),
+    sprinkles: () => this.#sprinkles(),
+    open: (id, focus, section) => this.#open(id, focus, section),
+    reset: () => this.resetLayout(),
+    typing: () => this.#typing(),
+  });
+  #typedAt = Number.NEGATIVE_INFINITY;
   #fontBase: string | null = defaultFontBase;
   #variableFont: string | null = defaultVariableFont;
   #resize: ResizeObserver | null = null;
@@ -477,12 +498,15 @@ export class SliccApp extends ThemedElement {
     }
     if (this.#painted !== color) this.#hold.paint(color);
     this.#painted = color;
-    if (!this.model) return;
-    const layout = this.#started !== this.screen;
-    if (layout) this.#start(this.model);
-    else if (changed.has('model')) this.#rebind(this.model);
-    this.#updates(layout);
-    this.#retitle();
+    const model = this.model;
+    if (!model) return;
+    this.panels.quietly(() => {
+      const layout = this.#started !== this.screen;
+      if (layout) this.#start(model);
+      else if (changed.has('model')) this.#rebind(model);
+      this.#updates(layout);
+      this.#retitle();
+    });
   }
 
   #retitle(): void {
@@ -557,7 +581,10 @@ export class SliccApp extends ThemedElement {
     if (!this.#started) return;
     const dock = this.dock;
     dock.factories = this.#factories(model);
-    if (!terminalsAllowed(model)) for (const id of terminalPanels(dock)) dock.close(id);
+    if (!terminalsAllowed(model))
+      this.panels.quietly(() => {
+        for (const id of terminalPanels(dock)) dock.close(id);
+      });
   }
 
   #start(model: SliccModel): void {
@@ -614,11 +641,13 @@ export class SliccApp extends ThemedElement {
     const dock = this.renderRoot.querySelector('slicc-dock') as SliccDock | null;
     if (!dock || !this.#started) return;
     const known = new Set(this.model?.agent.list().map((agent) => agent.id));
-    for (const id of chats(dock)) {
-      if (!known.has(chatAgent(id) as string)) dock.close(id);
-    }
-    if (this.model && this.#offers('terminal'))
-      this.terminalPanels.sync(dock, this.model.terminals, this.screen);
+    this.panels.quietly(() => {
+      for (const id of chats(dock)) {
+        if (!known.has(chatAgent(id) as string)) dock.close(id);
+      }
+      if (this.model && this.#offers('terminal'))
+        this.terminalPanels.sync(dock, this.model.terminals, this.screen);
+    });
   }
 
   #activated(event: Event): void {
@@ -631,7 +660,9 @@ export class SliccApp extends ThemedElement {
 
   resetLayout(): void {
     const terminals = this.model?.terminals.list();
-    defaultLayout(this.dock, this.screen, this.#active(), this.#available(), terminals);
+    this.panels.quietly(() =>
+      defaultLayout(this.dock, this.screen, this.#active(), this.#available(), terminals)
+    );
     this.#save();
   }
 
@@ -641,14 +672,32 @@ export class SliccApp extends ThemedElement {
   }
 
   show(id: string, section?: string): void {
-    const agent = this.#active();
-    if (id === 'chat' && agent && this.#offers('chat')) {
-      openChat(this.dock, agent, this.screen);
+    this.#open(id, true, section);
+  }
+
+  #open(id: string, focus: boolean, section?: string): void {
+    const agent =
+      id === 'chat'
+        ? this.#active()
+        : this.model?.agent.list().find((candidate) => `chat:${candidate.id}` === id);
+    if (agent && this.#offers('chat')) {
+      openChat(this.dock, agent, this.screen, focus);
       return;
     }
     const sprinkle = this.#sprinkles().find((candidate) => `sprinkle:${candidate.id}` === id);
     if (sprinkle) {
-      openSprinkle(this.dock, sprinkle, this.screen);
+      this.dips.detach(sprinkle.id);
+      openSprinkle(this.dock, sprinkle, this.screen, null, focus);
+      return;
+    }
+    const terminal = this.model?.terminals.list().find((info) => info.id === terminalOf(id));
+    if (terminal && this.#offers('terminal')) {
+      this.#reveal(openTerminal(this.dock, terminal, this.screen), focus);
+      return;
+    }
+    const document = id.match(/^(file|diff):(.+)$/);
+    if (document) {
+      openDocument(this.dock, document[1] as DocumentKind, document[2], this.screen, focus);
       return;
     }
     const item = surface(id, this.#available());
@@ -659,11 +708,25 @@ export class SliccApp extends ThemedElement {
     }
     openSurface(this.dock, item, this.screen);
     if (id === 'updates') this.dock.api.getPanel(id)?.api.updateParameters({ boot: false });
-    this.dock.focusPanel(id);
+    this.#reveal(id, focus);
     if (section)
       (
         this.dock.content(id) as (HTMLElement & { reveal?(name: string): void }) | undefined
       )?.reveal?.(section);
+  }
+
+  #reveal(id: string, focus: boolean): void {
+    if (focus) this.dock.focusPanel(id);
+    else this.dock.reveal(id);
+  }
+
+  #typing(): boolean {
+    if (Date.now() - this.#typedAt < 3000) return true;
+    let active = this.ownerDocument.activeElement;
+    while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+    if (!editable(active)) return false;
+    const value = 'value' in active ? String(active.value) : active.textContent;
+    return (value ?? '').trim() !== '';
   }
 
   #sprinkle(id: string): Sprinkle | undefined {
@@ -803,6 +866,7 @@ export class SliccApp extends ThemedElement {
   }
 
   #keydown = (event: KeyboardEvent) => {
+    if (editable(event.composedPath()[0])) this.#typedAt = Date.now();
     if (!event.altKey || event.ctrlKey || event.metaKey) return;
     const digit = event.code.match(/^Digit([1-9])$/)?.[1] ?? event.key.match(/^[1-9]$/)?.[0];
     const surface = digit ? this.#available()[Number(digit) - 1] : undefined;
@@ -1030,6 +1094,7 @@ export class SliccApp extends ThemedElement {
         <main>
           ${rails.left}
           <slicc-dock empty-text="All panels are closed. Open one from a rail or View." @layout-change=${this.#save}
+            @panel-close=${(event: Event) => this.panels.closed((event as CustomEvent<{ id: string }>).detail.id)}
             @active-panel-change=${this.#activated}
             @external-drop=${this.#dropped}
             @detach-sprinkle=${(event: Event) => this.#detach((event as CustomEvent<{ id: string }>).detail.id, null, true)}

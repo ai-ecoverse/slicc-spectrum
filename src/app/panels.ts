@@ -1,4 +1,4 @@
-import type { PanelParams, SliccDock } from '../components/dock.ts';
+import type { IDockviewPanel, PanelParams, SliccDock } from '../components/dock.ts';
 import type { SliccModel, Sprinkle, TerminalInfo } from '../model/types.ts';
 import type { ModelElement } from './base.ts';
 import { basename } from './files.ts';
@@ -160,8 +160,12 @@ function sideOf(id: string): Side {
   return surface(terminalOf(id) === null ? id : 'terminal')?.side ?? 'center';
 }
 
-function first(dock: SliccDock, side: Side): string | undefined {
-  return dock.api.panels.find((panel) => sideOf(panel.id) === side)?.id;
+type Sider = (panel: IDockviewPanel) => Side;
+
+const home: Sider = (panel) => sideOf(panel.id);
+
+function first(dock: SliccDock, side: Side, sider: Sider, except?: string): string | undefined {
+  return dock.api.panels.find((panel) => panel.id !== except && sider(panel) === side)?.id;
 }
 
 const neighbours: Record<Side, Array<[Side, Direction]>> = {
@@ -179,17 +183,56 @@ const neighbours: Record<Side, Array<[Side, Direction]>> = {
   ],
 };
 
-export function placement(dock: SliccDock, side: Side, screen: ScreenClass): Placement {
+function place(
+  dock: SliccDock,
+  side: Side,
+  screen: ScreenClass,
+  sider: Sider,
+  except?: string
+): Placement {
   const anchor = (id: string | undefined, direction: Direction): Placement | null =>
     id ? { position: { referencePanel: id, direction } } : null;
   if (screen === 'phone') return anchor(dock.api.panels[0]?.id, 'within') ?? {};
-  const same = anchor(first(dock, side), 'within');
+  const same = anchor(first(dock, side, sider, except), 'within');
   if (same) return same;
   for (const [other, direction] of neighbours[side]) {
-    const found = anchor(first(dock, other), direction);
+    const found = anchor(first(dock, other, sider, except), direction);
     if (found) return found;
   }
   return {};
+}
+
+export function placement(dock: SliccDock, side: Side, screen: ScreenClass): Placement {
+  return place(dock, side, screen, home);
+}
+
+type GridNode = { type: 'leaf'; data: { views: string[] } } | { type: 'branch'; data: GridNode[] };
+
+function views(node: GridNode): string[] {
+  return node.type === 'leaf' ? node.data.views : node.data.flatMap(views);
+}
+
+export function destination(
+  dock: SliccDock,
+  id: string,
+  side: Side,
+  screen: ScreenClass
+): Placement {
+  const { grid } = dock.api.toJSON();
+  const root = grid.root as GridNode;
+  const columns =
+    String(grid.orientation) === 'HORIZONTAL' && root.type === 'branch'
+      ? root.data.map(views)
+      : [views(root)];
+  const middle = columns.findIndex((ids) =>
+    ids.some((other) => other !== id && sideOf(other) === 'center')
+  );
+  const current: Sider = (panel) => {
+    if (middle < 0) return home(panel);
+    const at = columns.findIndex((ids) => ids.includes(panel.id));
+    return at < middle ? 'left' : at > middle ? 'right' : 'center';
+  };
+  return place(dock, side, screen, current, id);
 }
 
 export function openSurface(dock: SliccDock, item: Surface, screen: ScreenClass): void {
@@ -248,7 +291,8 @@ export function openDocument(
   dock: SliccDock,
   kind: DocumentKind,
   path: string,
-  screen: ScreenClass
+  screen: ScreenClass,
+  focus = true
 ): string {
   const id = `${kind}:${path}`;
   if (!dock.has(id)) {
@@ -267,7 +311,8 @@ export function openDocument(
       ...place,
     });
   }
-  dock.focusPanel(id);
+  if (focus) dock.focusPanel(id);
+  else dock.reveal(id);
   return id;
 }
 
@@ -361,7 +406,8 @@ export function openSprinkle(
   dock: SliccDock,
   sprinkle: Sprinkle,
   screen: ScreenClass,
-  place: Placement | null = null
+  place: Placement | null = null,
+  focus = true
 ): string {
   const id = `sprinkle:${sprinkle.id}`;
   if (!dock.has(id)) {
@@ -373,6 +419,7 @@ export function openSprinkle(
       ...(place ?? placement(dock, 'right', screen)),
     });
   }
-  dock.focusPanel(id);
+  if (focus) dock.focusPanel(id);
+  else dock.reveal(id);
   return id;
 }

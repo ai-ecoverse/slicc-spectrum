@@ -192,6 +192,20 @@ A sprinkle's frame gets `window.slicc` with `name` and `lick(event)`. When the m
 
 Paths are the agent's: `/shared/…` and `/home/…`, nothing else. A refusal or a missing file rejects with an `Error`. There is no `exec`: a sprinkle that needs a command asks its cone with `slicc.lick()`. Without `call`, none of the four exist, so guard them (`typeof slicc.readFile === 'function'`) and fall back.
 
+### Panel command
+
+`panelCommand(app, argv, caller)`, exported from `dist/slicc-ui.js`, runs `panel` for an agent or a terminal, so the agent can arrange the UI. It returns `{ stdout, stderr, code }`. A leading `panel` in `argv` is dropped. `caller` is `{ agentId, cone?, readOnly? }`: `agentId` is the calling cone or scoop, or `null` for the user at a terminal; `cone` is the caller's cone when the agent already knows it (otherwise the `parentId` chain of `agentId` finds it).
+
+- `panel list [--json]` lists the panels the caller can reach, open or not, with their state (`active`, `shown`, `open` or `closed`) and why one is busy. `--json` prints `PanelInfo`s: `id`, `title`, `kind` (`surface`, `chat`, `terminal`, `sprinkle`, `file`, `diff`), home `side`, `agent`, `open`, `visible`, `active` and `busy`.
+- `panel open <id> [place] [--section <name>]` shows a panel without moving keyboard focus. `panel focus <id> [place] [--section <name>]` also gives it focus.
+- `panel close <id>`, `panel move <id> <place>` (a closed panel opens there) and `panel reset` (the default layout).
+- A place is `left`, `center` or `right` (a group on that side as the layout is now, with the chats' column as the center, or a new one beside its neighbours), or `--left`, `--right`, `--above`, `--below` or `--within <id>`.
+- Ids are the surface ids (`files`, `changes`, `terminal`, `monitor`, `settings`, …), `chat:<agent>`, `terminal:<id>`, `sprinkle:<id>`, `file:<path>` and `diff:<path>`. `chat` is the caller's cone's chat (without a caller, the selected thread's), `terminal` the latest terminal, and a sprinkle can be named by its name alone.
+
+Exit codes: 0 done, 1 no such panel, 2 usage (with the help text), 5 refused. 3 and 4 are left to the agent's transport.
+
+With an `agentId` or a `cone`, the caller reaches the shared surfaces, the chats of its cone and its scoops, its cone's sprinkles and the built-in ones; anything else is reported as missing. With `readOnly` (a page that only follows), everything but `list` and `--help` is refused. The command refuses (code 5) to close a terminal (its shell would stop), the last chat, or a busy panel, and to move or reset while a panel is busy. A panel element tells it is busy with a `busyReason` string: Settings while signing in or entering a key, Install / Update while a package installs, a chat while a question waits. For an agent, it also refuses to reopen a panel the user closed in the last 60 seconds, and while the user is typing (a key in a text field in the last 3 seconds, or a focused field with text), `focus` only shows the panel. On a phone, `move` changes nothing. `app.panels` (`Panels`) is the controller under the command, with `list()`, `find(id)`, `open(id, { place, section })`, `focus`, `close`, `move(id, place)` and `reset()`, each returning `{ code, message }` and without the agent-only rules. Agent changes are saved with the layout.
+
 ### Model
 
 `SliccModel` (`src/model/types.ts`) has one port per future backend, so adapters can replace the dummy without UI changes. Every port is subscribable with `on(type, listener)`, which returns an unsubscribe function.
