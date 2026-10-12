@@ -4325,6 +4325,16 @@ test('settings list the secrets by name, with rules, exits and reveals, but no v
   );
   assert.deepEqual(await page.evaluate(noValues), { fields: 0, proxy: false });
   await views(page, 'secrets');
+  assert.equal(
+    await page.evaluate(() => window.settingsPart('slicc-secrets', 'details[data-removed]').open),
+    false
+  );
+  await views(page, 'secrets-removed', 'details[data-removed]', () =>
+    page.evaluate(() => {
+      window.settingsPart('slicc-secrets', 'details[data-removed]').open = true;
+      return true;
+    })
+  );
   await page.evaluate(() => {
     window.model.settings.update({ color: 'light' });
     return true;

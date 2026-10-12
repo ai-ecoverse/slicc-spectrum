@@ -25,7 +25,7 @@ export function isTransit(exit: ExitName): boolean {
 const exitNames: Record<string, string> = {
   'vault-direct': 'Straight from the vault',
   'local-proxy': 'Local proxy',
-  'cli-v': 'Local slicc, direct',
+  'cli-v': 'Local SLICC, direct',
   tailscale: 'Tailscale',
   'local-link': 'Linked slicc, through this page',
 };

@@ -271,6 +271,20 @@ export class SliccSecrets extends ThemedElement {
     .secret slicc-vault-button {
       align-self: start;
     }
+    .removed {
+      margin-top: var(--swc-spacing-200);
+      border-top: var(--swc-border-width-100) solid var(--swc-gray-200);
+      padding-top: var(--swc-spacing-200);
+    }
+    .removed summary {
+      cursor: pointer;
+      font-size: var(--swc-font-size-75);
+      color: var(--swc-neutral-subdued-content-color-default);
+    }
+    .removed .secret dl,
+    .removed .secret .name code {
+      color: var(--swc-neutral-subdued-content-color-default);
+    }
     dl {
       grid-column: 1 / -1;
       display: grid;
@@ -335,6 +349,10 @@ export class SliccSecrets extends ThemedElement {
     @container (max-width: 480px) {
       .secret {
         grid-template-columns: minmax(0, 1fr);
+      }
+      .secret slicc-vault-button {
+        order: 1;
+        justify-self: start;
       }
       dl {
         grid-template-columns: minmax(0, 1fr);
@@ -516,6 +534,7 @@ export class SliccSecrets extends ThemedElement {
   ): TemplateResult {
     const kind = kinds[secret.kind];
     const reveal = revealed(secret.name, entries, Date.now(), more);
+    const gone = secret.state === 'removed';
     return html`<li class="secret" data-secret=${secret.name} data-state=${secret.state}>
       <div class="name">
         <code>${secret.name}</code>
@@ -524,9 +543,9 @@ export class SliccSecrets extends ThemedElement {
       </div>
       ${this.#action(secret)}
       <dl>
-        <dt>Sent to</dt>
+        <dt>${gone ? 'Was sent to' : 'Sent to'}</dt>
         <dd data-rules>${secret.rules.length ? secret.rules.map((rule, index) => html`${index ? html`<br />` : nothing}${ruleLine(rule)}`) : 'Nowhere yet: no rule names it'}</dd>
-        <dt>Leaves through</dt>
+        <dt>${gone ? 'Left through' : 'Leaves through'}</dt>
         <dd data-exits>${list(secret.exits.map((exit) => exitLabel(exit, devices)))}</dd>
         <dt>Programs</dt>
         <dd data-exec>${execLine(secret.exec)}${reveal ? html`<br />${reveal}` : nothing}</dd>
@@ -537,6 +556,26 @@ export class SliccSecrets extends ThemedElement {
         ${secret.removedAt ? html`<dt>Removed</dt><dd>${since(secret.removedAt)}</dd>` : nothing}
       </dl>
     </li>`;
+  }
+
+  #secrets(
+    list: VaultList,
+    entries: readonly AuditEntry[],
+    devices: readonly LinkedDevice[]
+  ): TemplateResult {
+    const more = this.more ?? list.auditMore;
+    const row = (secret: SecretView) => this.#secret(secret, entries, devices, more);
+    const live = list.secrets.filter((secret) => secret.state !== 'removed');
+    const removed = list.secrets.filter((secret) => secret.state === 'removed');
+    return html`${live.length ? html`<ul class="secrets" aria-labelledby="secrets">${live.map(row)}</ul>` : nothing}
+      ${
+        removed.length
+          ? html`<details class="removed" data-removed>
+              <summary>Removed (${removed.length})</summary>
+              <ul class="secrets">${removed.map(row)}</ul>
+            </details>`
+          : nothing
+      }`;
   }
 
   #entry(entry: AuditEntry, devices: readonly LinkedDevice[]): TemplateResult {
@@ -611,7 +650,7 @@ export class SliccSecrets extends ThemedElement {
         !current
           ? html`<p class="muted" data-loading>Loading secrets…</p>`
           : current.secrets.length
-            ? html`<ul class="secrets" aria-labelledby="secrets">${current.secrets.map((secret) => this.#secret(secret, entries, devices, this.more ?? current.auditMore))}</ul>`
+            ? this.#secrets(current, entries, devices)
             : html`<p data-empty>No secrets yet. When an agent or program needs one, it asks here, and you enter the value in the vault.</p>`
       }
       <p class="muted" data-policy>Rules live in <code>/etc/fnox/config.toml</code> and <code>/etc/slicc/secrets-policy.toml</code>. Change them with sudo; SLICC asks you before every change.</p>
