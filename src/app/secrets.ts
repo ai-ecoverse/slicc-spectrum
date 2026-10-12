@@ -441,7 +441,7 @@ export class SliccSecrets extends ThemedElement {
     try {
       const before = entries[entries.length - 1]?.seq;
       const page = await vault.audit(before);
-      if (this.model?.vault !== vault) return;
+      if (this.model?.vault !== vault || !this.isConnected) return;
       const shown = merged(vault.list()?.audit ?? [], this.older);
       if (shown[shown.length - 1]?.seq !== before) return;
       this.older = merged(this.older, page.audit);
