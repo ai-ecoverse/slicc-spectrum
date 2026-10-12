@@ -140,6 +140,35 @@ function unglob(command: string): string {
   return next === command ? command : unglob(next);
 }
 
+const separators = /[;&|\n()`]/;
+
+function hide(char: string): string {
+  return separators.test(char) ? String.fromCharCode(0xe000 + char.charCodeAt(0)) : char;
+}
+
+function unshield(segment: string): string {
+  return segment.replace(/[\ue000-\ue07f]/g, (char) =>
+    String.fromCharCode(char.charCodeAt(0) - 0xe000)
+  );
+}
+
+function shield(text: string): string {
+  let out = '';
+  let quote = '';
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (quote) {
+      out += char === quote ? char : hide(char);
+      if (char === quote) quote = '';
+    } else if (char === "'" || char === '"') {
+      quote = char;
+      out += char;
+    } else if (char === '\\') out += char + hide(text[++index] ?? '');
+    else out += char;
+  }
+  return out;
+}
+
 function quoted(segment: string): string[] {
   const words: string[] = [];
   let word = '';
@@ -186,13 +215,14 @@ export function secretRules(approval: Approval): string | null {
   const start = absolute('/', approval.cwd ?? '/');
   if (protects(start, false)) return start;
   const cwds = new Set([start]);
-  const segments = unglob(ansi(approval.command.replace(/\\\n/g, '')))
-    .split(/[;&|\n()`]/)
-    .flatMap((segment) => {
-      const naive = commas(segment.split(/[\s<>=]+/).map((word) => word.replace(/['"\\]/g, '')));
-      const aware = commas(quoted(segment));
-      return aware.join('\n') === naive.join('\n') ? [naive] : [naive, aware];
-    });
+  const text = unglob(ansi(approval.command.replace(/\\\n/g, '')));
+  const plain = text
+    .split(separators)
+    .map((segment) => commas(segment.split(/[\s<>=]+/).map((word) => word.replace(/['"\\]/g, ''))));
+  const aware = shield(text)
+    .split(separators)
+    .map((segment) => commas(quoted(unshield(segment))));
+  const segments = JSON.stringify(aware) === JSON.stringify(plain) ? plain : [...plain, ...aware];
   const whole = segments.some((words) => words.length > 0 && !readOnly.includes(command(words[0])));
   for (const words of segments) {
     const hit = scan(words, cwds, whole);
