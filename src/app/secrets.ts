@@ -436,8 +436,11 @@ export class SliccSecrets extends ThemedElement {
     this.loading = true;
     this.failure = null;
     try {
-      const page = await vault.audit(entries[entries.length - 1]?.seq);
+      const before = entries[entries.length - 1]?.seq;
+      const page = await vault.audit(before);
       if (this.model?.vault !== vault) return;
+      const shown = merged(vault.list()?.audit ?? [], this.older);
+      if (shown[shown.length - 1]?.seq !== before) return;
       this.older = merged(this.older, page.audit);
       this.more = page.more;
     } catch (error) {
