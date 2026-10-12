@@ -706,7 +706,7 @@ export class SliccApp extends ThemedElement {
       if (this.model) this.terminalPanels.show(this.dock, this.model.terminals, this.screen);
       return;
     }
-    openSurface(this.dock, item, this.screen);
+    openSurface(this.dock, item, this.screen, focus);
     if (id === 'updates') this.dock.api.getPanel(id)?.api.updateParameters({ boot: false });
     this.#reveal(id, focus);
     if (section)

@@ -224,9 +224,10 @@ export function destination(
     String(grid.orientation) === 'HORIZONTAL' && root.type === 'branch'
       ? root.data.map(views)
       : [views(root)];
-  const middle = columns.findIndex((ids) =>
-    ids.some((other) => other !== id && sideOf(other) === 'center')
-  );
+  const holds = (test: (other: string) => boolean): number =>
+    columns.findIndex((ids) => ids.some((other) => other !== id && test(other)));
+  const chat = holds((other) => chatAgent(other) !== null);
+  const middle = chat < 0 ? holds((other) => sideOf(other) === 'center') : chat;
   const current: Sider = (panel) => {
     if (middle < 0) return home(panel);
     const at = columns.findIndex((ids) => ids.includes(panel.id));
@@ -235,7 +236,12 @@ export function destination(
   return place(dock, side, screen, current, id);
 }
 
-export function openSurface(dock: SliccDock, item: Surface, screen: ScreenClass): void {
+export function openSurface(
+  dock: SliccDock,
+  item: Surface,
+  screen: ScreenClass,
+  focus = true
+): void {
   if (dock.has(item.id)) return;
   const place = placement(dock, item.side, screen);
   const fresh = place.position?.direction !== 'within';
@@ -243,6 +249,7 @@ export function openSurface(dock: SliccDock, item: Surface, screen: ScreenClass)
     id: item.id,
     component: item.id,
     title: item.title,
+    inactive: !focus,
     ...place,
     ...(fresh && item.width && screen !== 'phone' ? { initialWidth: item.width } : {}),
   });
@@ -308,6 +315,7 @@ export function openDocument(
       component: kind,
       title: documents[kind].title(path),
       params: { path },
+      inactive: !focus,
       ...place,
     });
   }
@@ -416,6 +424,7 @@ export function openSprinkle(
       component: 'sprinkle',
       title: sprinkle.title,
       params: { sprinkle: sprinkle.id },
+      inactive: !focus,
       ...(place ?? placement(dock, 'right', screen)),
     });
   }
