@@ -4242,11 +4242,15 @@ async function sized(page, width, height = 1800) {
 }
 
 async function shown(page, surface, ready) {
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  await page.evaluate((id) => {
-    window.app.show(id);
-    return true;
-  }, surface);
+  for (let attempt = 0; attempt < 20; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await page.evaluate((id) => {
+      window.app.show(id);
+      return true;
+    }, surface);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    if (await page.evaluate(ready)) return;
+  }
   await page.until(ready);
 }
 
@@ -4275,7 +4279,7 @@ const noValues = () => {
   };
 };
 
-async function views(page, name, target) {
+async function views(page, name, target, setup) {
   for (const [suffix, color, width] of [
     ['light', 'light', 1280],
     ['dark', 'dark', 1280],
@@ -4291,6 +4295,7 @@ async function views(page, name, target) {
       'settings',
       () => !!window.settingsPart('slicc-secrets', 'section[data-vault]')
     );
+    if (setup) await setup();
     await page.evaluate((selector) => {
       const host = window.settingsPart('slicc-secrets');
       (selector ? host.shadowRoot.querySelector(selector) : host).scrollIntoView({
@@ -4384,7 +4389,18 @@ test('the secrets activity log lists uses and reveals, pages back and filters to
   );
   assert.ok((await page.evaluate(seqs)).length > 0);
   assert.deepEqual(await page.evaluate(noValues), { fields: 0, proxy: false });
-  await views(page, 'secrets-reveals', '.audit-head');
+  await views(page, 'secrets-reveals', '.audit-head', async () => {
+    await page.evaluate(() => {
+      const toggle = window.settingsPart('slicc-secrets', '[data-action=reveals]');
+      if (!toggle.checked) toggle.click();
+      return true;
+    });
+    await page.until(() =>
+      [...window.settingsPart('slicc-secrets').shadowRoot.querySelectorAll('ol.audit li')].every(
+        (row) => row.dataset.type === 'materialize'
+      )
+    );
+  });
   assert.deepEqual(page.errors, []);
 });
 
