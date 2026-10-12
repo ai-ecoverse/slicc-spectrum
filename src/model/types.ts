@@ -921,6 +921,241 @@ export interface FollowPort extends Subscribable<{ follow: FollowState }> {
   retry?(): Promise<void>;
 }
 
+export type DeviceId = string;
+
+export type RecordKind = 'secret' | 'grant' | 'model' | 'mcp';
+
+export type RecordState = 'active' | 'inert' | 'removed';
+
+export type RecordSource =
+  | 'popup'
+  | 'process'
+  | `jerk:${string}@${DeviceId}`
+  | `oauth:${string}`
+  | `import:${string}`;
+
+export type LockMode = 'auto' | 'passkey' | 'passphrase';
+
+export type RequestKind = 'value' | 'oauth' | 'jerk-seal';
+
+export type ExitName =
+  | 'vault-direct'
+  | 'local-proxy'
+  | 'cli-v'
+  | 'tailscale'
+  | 'local-link'
+  | `device:${DeviceId}`;
+
+export type ExecGrant = boolean | { argv: string[][] };
+
+export interface Rule {
+  domain: string;
+  header: string;
+  methods: string[];
+  paths: string[];
+}
+
+export interface SecretView {
+  name: string;
+  kind: RecordKind;
+  placeholder: string;
+  state: RecordState;
+  source: RecordSource;
+  sourceDevice: DeviceId | null;
+  provider?: string;
+  account?: string;
+  domains: string[];
+  rules: Rule[];
+  exits: ExitName[];
+  exec: ExecGrant;
+  createdAt: number;
+  usedAt?: number;
+  expiresAt?: number;
+  removedAt?: number;
+}
+
+export interface PendingRequest {
+  id: string;
+  kind: RequestKind;
+  name?: string;
+  provider?: string;
+  prompt?: string;
+  uid: number;
+  tag: string | null;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface VaultStatus {
+  version: string;
+  protocol: 1;
+  origin: string;
+  locked: boolean;
+  lock: LockMode;
+  waiting: PendingRequest[];
+  notices: number;
+}
+
+export type Widening =
+  | { kind: 'rule'; secret: string; rule: Rule }
+  | { kind: 'methods'; secret: string; domain: string; methods: string[] }
+  | { kind: 'paths'; secret: string; domain: string; paths: string[] }
+  | { kind: 'exec'; secret: string; grant: ExecGrant }
+  | { kind: 'exit'; secret: string; exit: ExitName }
+  | { kind: 'page-transit'; exit: ExitName }
+  | { kind: 'limits'; field: string; from: number; to: number };
+
+export type PolicyFile = '/etc/fnox/config.toml' | '/etc/slicc/secrets-policy.toml';
+
+export interface PolicyNotice {
+  id: string;
+  at: number;
+  file: PolicyFile;
+  sha256: string;
+  widened: Widening[];
+  acknowledged: boolean;
+}
+
+interface AuditBase {
+  seq: number;
+  id: string;
+  at: number;
+  name: string;
+  uid: number | null;
+  tag: string | null;
+}
+
+export interface InjectionEntry extends AuditBase {
+  type: 'inject' | 'forward';
+  domain: string;
+  method: string;
+  path: string;
+  rule: Rule;
+  exit: ExitName;
+}
+
+export interface RevealEntry extends AuditBase {
+  type: 'materialize';
+  grant: ExecGrant;
+  path: string;
+  argv: string;
+  argvSha256: string;
+  cwd: string;
+  pid: number;
+  ppid: number;
+  ticket: string;
+  consumed: boolean;
+}
+
+export interface SealEntry extends AuditBase {
+  type: 'seal';
+  source: RecordSource;
+  rotated: boolean;
+}
+
+export interface RemoveEntry extends AuditBase {
+  type: 'remove' | 'restore';
+}
+
+export interface PolicyEntry {
+  type: 'policy';
+  seq: number;
+  id: string;
+  at: number;
+  file: PolicyFile;
+  sha256: string;
+  accepted: boolean;
+  widened: Widening[];
+  warning?: string;
+}
+
+export type AuditEntry = InjectionEntry | RevealEntry | SealEntry | RemoveEntry | PolicyEntry;
+
+export interface AuditPage {
+  audit: AuditEntry[];
+  more: boolean;
+  next?: number;
+}
+
+export interface ExitPolicyView {
+  file: '/etc/slicc/secrets-policy.toml';
+  sha256: string | null;
+  pageTransit: ExitName[];
+  secrets: { name: string; exits: ExitName[] }[];
+  devices: { device: DeviceId; secrets: string[] }[];
+}
+
+export interface VaultList {
+  secrets: SecretView[];
+  notices: PolicyNotice[];
+  audit: AuditEntry[];
+  auditMore: boolean;
+  exits: ExitPolicyView;
+}
+
+export type PopupIntent =
+  | { kind: 'unlock' }
+  | { kind: 'enter'; name: string; request?: string }
+  | { kind: 'request'; request: string }
+  | { kind: 'import'; format?: 'bundle' | 'keepass' | 'six' }
+  | { kind: 'export' }
+  | { kind: 'signin'; provider: string; request?: string }
+  | { kind: 'manage'; name?: string };
+
+export type PopupState = 'opened' | 'done' | 'cancelled' | 'closed' | 'blocked';
+
+export interface PopupResult {
+  name: string;
+  placeholder: string;
+  state: RecordState;
+}
+
+export interface ButtonConfig {
+  intent: PopupIntent | 'auto';
+  label?: string;
+  size?: 's' | 'm' | 'l';
+  variant?: 'accent' | 'primary' | 'secondary';
+  treatment?: 'fill' | 'outline';
+  quiet?: boolean;
+  scale?: 'medium' | 'large';
+  theme?: 'light' | 'dark';
+  dir?: 'ltr' | 'rtl';
+  lang?: string;
+  disabled?: boolean;
+}
+
+export type ButtonMessage =
+  | { type: 'slicc-vault'; v: 1; op: 'button'; button: ButtonConfig }
+  | { type: 'slicc-vault'; v: 1; op: 'focus' };
+
+export type ButtonEvent = { type: 'slicc-vault'; v: 1 } & (
+  | { event: 'ready' }
+  | { event: 'size'; width: number; height: number; inset: number }
+  | { event: 'label'; label: string }
+  | { event: 'focus'; direction: 'next' | 'previous' }
+  | { event: 'popup'; intent: PopupIntent; state: PopupState; result?: PopupResult }
+);
+
+export interface VaultButton {
+  element: HTMLElement;
+  post(message: ButtonMessage): void;
+  listen(listener: (event: ButtonEvent) => void): () => void;
+}
+
+export interface VaultEvents {
+  status: VaultStatus;
+  list: VaultList;
+  notice: PolicyNotice;
+}
+
+export interface VaultPort extends Subscribable<VaultEvents> {
+  status(): VaultStatus | null;
+  list(): VaultList | null;
+  audit(before?: number, limit?: number): Promise<AuditPage>;
+  acknowledge(notice: string): Promise<void>;
+  button(): VaultButton;
+}
+
 export interface SliccModel {
   agent: AgentPort;
   files: FilePort;
@@ -938,4 +1173,5 @@ export interface SliccModel {
   tabs?: TabsPort;
   approvals?: ApprovalsPort;
   follow?: FollowPort;
+  vault?: VaultPort;
 }

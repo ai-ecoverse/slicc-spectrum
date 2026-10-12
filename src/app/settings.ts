@@ -407,6 +407,7 @@ export class SliccSettings extends ModelElement {
               <div class="accounts" data-group="mcp">${servers.map((account) => this.#account(account))}</div>`
           : nothing
       }
+      ${this.model?.vault ? html`<slicc-secrets .model=${this.model}></slicc-secrets>` : nothing}
     </div>`;
   }
 }

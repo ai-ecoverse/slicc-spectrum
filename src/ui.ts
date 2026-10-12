@@ -15,11 +15,13 @@ import { SliccMemory } from './app/memory.ts';
 import { SliccMonitor } from './app/monitor.ts';
 import { SliccNetwork } from './app/network.ts';
 import { SliccNotices } from './app/notices.ts';
+import { SliccSecrets } from './app/secrets.ts';
 import { SliccSettings } from './app/settings.ts';
 import { SliccSprinkle } from './app/sprinkle.ts';
 import { SliccTerminalPanel } from './app/terminals.ts';
 import { SliccTray } from './app/tray.ts';
 import { SliccUpdates } from './app/updates.ts';
+import { SliccVaultButton } from './app/vault.ts';
 import { defineCodeViews, SliccCodeView, SliccDiffView } from './components/code-view.ts';
 import { defineDock, SliccDock } from './components/dock.ts';
 import { defineFileTree, SliccFileTree } from './components/file-tree.ts';
@@ -70,7 +72,9 @@ export {
   SliccNetwork,
   SliccNotices,
   SliccPrompt,
+  SliccSecrets,
   SliccUpdates,
+  SliccVaultButton,
 };
 
 const elements: Record<string, CustomElementConstructor> = {
@@ -95,6 +99,8 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-network': SliccNetwork,
   'slicc-notices': SliccNotices,
   'slicc-approvals': SliccApprovals,
+  'slicc-secrets': SliccSecrets,
+  'slicc-vault-button': SliccVaultButton,
   'slicc-confirm': SliccConfirm,
   'slicc-prompt': SliccPrompt,
   'slicc-app': SliccApp,
