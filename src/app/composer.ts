@@ -20,6 +20,7 @@ import type {
 } from '../model/types.ts';
 import { chatModels, shared, ThemedElement } from './base.ts';
 import { size } from './messages.ts';
+import type { PopupDetail } from './vault.ts';
 
 export const limit = 25 * 1024 * 1024;
 
@@ -157,12 +158,14 @@ export class SliccComposer extends ThemedElement {
     attachments: { state: true },
     popup: { state: true },
     dictating: { state: true },
+    blocked: { state: true },
     agent: {},
   };
   declare value: string;
   declare attachments: Attachment[];
   declare popup: Popup | null;
   declare dictating: boolean;
+  declare blocked: boolean;
   declare agent: string;
   #drafts = new Map<string, { value: string; attachments: Attachment[] }>();
   #history = -1;
@@ -178,6 +181,7 @@ export class SliccComposer extends ThemedElement {
     this.attachments = [];
     this.popup = null;
     this.dictating = false;
+    this.blocked = false;
     this.agent = '';
   }
 
@@ -238,6 +242,13 @@ export class SliccComposer extends ThemedElement {
       .hold .text {
         flex: 1;
         min-inline-size: 12em;
+      }
+      .hold .blocked {
+        flex-basis: 100%;
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-75);
+        color: var(--swc-negative-content-color-default);
       }
       .hold .held {
         color: var(--swc-neutral-subdued-content-color-default);
@@ -450,7 +461,10 @@ export class SliccComposer extends ThemedElement {
       model.agent.on('active', (id) => {
         if (!this.agent) this.#switch(id);
       }),
-      model.agent.on('hold', update),
+      model.agent.on('hold', (hold) => {
+        if (hold?.reason !== 'locked') this.blocked = false;
+        update();
+      }),
       model.agent.on('agents', update),
       model.agent.on('messages', update),
       model.agent.on('message', update),
@@ -931,7 +945,15 @@ export class SliccComposer extends ThemedElement {
               data-action="unlock-vault"
               .vault=${vault}
               .config=${{ intent: { kind: 'unlock' }, label: 'Unlock', size: 's', variant: 'accent', theme: this.color }}
+              @vault-popup=${(event: CustomEvent<PopupDetail>) => {
+                this.blocked = event.detail.state === 'blocked';
+              }}
             ></slicc-vault-button>`
+          : nothing
+      }
+      ${
+        locked && this.blocked
+          ? html`<span class="blocked" role="alert" data-popup="blocked"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>The browser blocked the vault window. Allow pop-ups for this site, then try again.</span>`
           : nothing
       }
     </div>`;
