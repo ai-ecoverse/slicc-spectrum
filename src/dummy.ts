@@ -28,3 +28,13 @@ export type {
   UpdateScenario,
 } from './dummy/updates.ts';
 export { DummyUpdates, packageFixtures, updateFixtures } from './dummy/updates.ts';
+export type { VaultScenario } from './dummy/vault.ts';
+export {
+  DummyVault,
+  DummyVaultButton,
+  vaultAudit,
+  vaultFixtures,
+  vaultNotice,
+  vaultOlder,
+  vaultSecrets,
+} from './dummy/vault.ts';

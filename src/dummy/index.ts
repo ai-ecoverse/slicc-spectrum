@@ -28,6 +28,7 @@ import {
   type PackageScenario,
   type UpdateScenario,
 } from './updates.ts';
+import { DummyVault, type VaultScenario } from './vault.ts';
 
 export interface DummyOptions {
   delay?: number;
@@ -44,6 +45,7 @@ export interface DummyOptions {
   tabs?: TabsScenario | 'off';
   approvals?: ApprovalScenario | 'off';
   follow?: FollowScenario | 'off';
+  vault?: VaultScenario | 'off';
   browser?: BrowserScenario;
   sprinkles?: 'builtin' | 'cones';
   monitor?: 'dummy' | 'agent';
@@ -57,6 +59,7 @@ export interface DummyModel extends SliccModel {
   tabs?: DummyTabs;
   approvals?: DummyApprovals;
   follow?: DummyFollow;
+  vault?: DummyVault;
 }
 
 export function createDummyModel({
@@ -74,6 +77,7 @@ export function createDummyModel({
   tabs = 'off',
   approvals = 'off',
   follow = 'off',
+  vault = 'off',
   browser: scenario = 'idle',
   sprinkles = 'builtin',
   monitor = 'dummy',
@@ -141,6 +145,7 @@ export function createDummyModel({
     ...(tabs === 'off' ? {} : { tabs: new DummyTabs(tabs, time) }),
     ...(approvals === 'off' ? {} : { approvals: new DummyApprovals(approvals, time) }),
     ...(follow === 'off' ? {} : { follow: new DummyFollow(follow, time) }),
+    ...(vault === 'off' ? {} : { vault: new DummyVault(vault, time) }),
   };
   return {
     ...base,
