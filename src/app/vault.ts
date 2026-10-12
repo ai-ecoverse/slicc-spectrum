@@ -70,6 +70,21 @@ export function widening(change: Widening, devices: readonly LinkedDevice[]): st
   }
 }
 
+function shown(element: HTMLElement, style = getComputedStyle(element)): boolean {
+  return !element.hidden && !element.inert && style.display !== 'none';
+}
+
+function disabled(element: HTMLElement): boolean {
+  if (element.matches(':disabled')) return true;
+  if (!element.matches('button, input, select, textarea')) return false;
+  let fieldset = element.closest('fieldset[disabled]');
+  while (fieldset) {
+    if (!fieldset.querySelector(':scope > legend')?.contains(element)) return true;
+    fieldset = fieldset.parentElement?.closest('fieldset[disabled]') ?? null;
+  }
+  return false;
+}
+
 export function tabbables(
   root: ParentNode,
   stop: Element,
@@ -81,18 +96,14 @@ export function tabbables(
       continue;
     }
     const style = getComputedStyle(child);
-    if (child.hidden || child.inert || style.display === 'none') continue;
+    if (!shown(child, style)) continue;
     if (child.localName === 'details' && !(child as HTMLDetailsElement).open) {
-      const summary = child.querySelector(':scope > summary');
-      if (summary) out.push(summary as HTMLElement);
+      const summary = child.querySelector<HTMLElement>(':scope > summary');
+      if (summary && shown(summary) && getComputedStyle(summary).visibility !== 'hidden')
+        out.push(summary);
       continue;
     }
-    if (
-      child.tabIndex >= 0 &&
-      !child.matches(':disabled, fieldset[disabled] *') &&
-      style.visibility !== 'hidden'
-    )
-      out.push(child);
+    if (child.tabIndex >= 0 && !disabled(child) && style.visibility !== 'hidden') out.push(child);
     if (child.shadowRoot) tabbables(child.shadowRoot, stop, out);
     tabbables(child, stop, out);
   }
