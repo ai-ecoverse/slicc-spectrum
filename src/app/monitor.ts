@@ -5,6 +5,7 @@ import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
+import '@adobe/spectrum-wc-icons/swc-icon-copy.js';
 import { css, html, nothing, svg, type TemplateResult } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import type {
@@ -17,6 +18,7 @@ import type {
 } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
 import { panelCss } from './files.ts';
+import { copyText } from './reach.ts';
 
 export function sparkline(points: readonly number[], width = 120, height = 28): string {
   if (points.length < 2) return '';
@@ -88,12 +90,15 @@ export class SliccMonitor extends ModelElement {
   static properties = {
     ...ModelElement.properties,
     expanded: { state: true },
+    copied: { state: true },
   };
   declare expanded: Record<string, boolean>;
+  declare copied: { id: string; done: boolean } | null;
 
   constructor() {
     super();
     this.expanded = {};
+    this.copied = null;
   }
 
   static styles = [
@@ -193,6 +198,31 @@ export class SliccMonitor extends ModelElement {
       .alert .detail {
         display: block;
         color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .alert > div {
+        min-width: 0;
+      }
+      .alert .command {
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-100);
+        margin-block-start: var(--swc-spacing-75);
+        padding-inline-start: var(--swc-spacing-100);
+        border-radius: var(--swc-corner-radius-medium-default);
+        background: var(--swc-background-layer-1-color);
+      }
+      .alert code {
+        flex: 1;
+        min-width: 0;
+        overflow-x: auto;
+        white-space: nowrap;
+        font-family: var(--swc-code-font-family-stack);
+        font-size: var(--swc-font-size-75);
+        color: var(--swc-code-color);
+      }
+      .alert .uncopied {
+        display: block;
+        color: var(--swc-negative-content-color-default);
       }
       .sections {
         display: grid;
@@ -326,8 +356,23 @@ export class SliccMonitor extends ModelElement {
     const error = alert.severity === 'error';
     return html`<li class="alert" data-severity=${alert.severity}>
       ${error ? html`<swc-icon-alert-diamond size="s" aria-hidden="true"></swc-icon-alert-diamond>` : html`<swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>`}
-      <div><span class="sr">${error ? 'Error: ' : 'Warning: '}</span><strong>${alert.title}</strong><span class="detail">${alert.detail}</span></div>
+      <div><span class="sr">${error ? 'Error: ' : 'Warning: '}</span><strong>${alert.title}</strong><span class="detail">${alert.detail}</span>${
+        alert.command ? this.#command(alert.id, alert.command) : nothing
+      }</div>
     </li>`;
+  }
+
+  #command(id: string, text: string): TemplateResult {
+    const copied = this.copied?.id === id ? this.copied : null;
+    return html`<div class="command" data-command><code>${text}</code><swc-action-button size="s" quiet data-action="copy-command" accessible-label=${copied?.done ? 'Copied' : 'Copy command'} @click=${() => this.#copy(id, text)}><swc-icon-copy slot="icon"></swc-icon-copy>${copied?.done ? 'Copied' : 'Copy'}</swc-action-button></div>${
+      copied && !copied.done
+        ? html`<span class="uncopied" role="alert" data-error="copy">Couldn’t copy. Select the command and copy it.</span>`
+        : nothing
+    }`;
+  }
+
+  async #copy(id: string, text: string): Promise<void> {
+    this.copied = { id, done: await copyText(text) };
   }
 
   #open(id: string): void {

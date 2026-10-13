@@ -21,6 +21,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-edit.js';
 import '@adobe/spectrum-wc-icons/swc-icon-file.js';
 import '@adobe/spectrum-wc-icons/swc-icon-file-text.js';
 import '@adobe/spectrum-wc-icons/swc-icon-globe-grid.js';
+import '@adobe/spectrum-wc-icons/swc-icon-info-circle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-lock.js';
 import '@adobe/spectrum-wc-icons/swc-icon-plugin.js';
 import '@adobe/spectrum-wc-icons/swc-icon-search.js';
@@ -44,6 +45,7 @@ import type {
   SystemMessage,
   ToolCall,
   ToolMessage,
+  ToolNote,
   ToolStatus,
   UserMessage,
 } from '../model/types.ts';
@@ -256,6 +258,17 @@ function body(call: ToolCall, color: 'light' | 'dark'): TemplateResult | typeof 
   return html`<pre class="input">${call.input}</pre>`;
 }
 
+function notes(list: readonly ToolNote[]): TemplateResult {
+  return html`<ul class="notes">${list.map(
+    (note) =>
+      html`<li data-note data-severity=${note.severity}>${
+        note.severity === 'info'
+          ? html`<swc-icon-info-circle size="s" aria-hidden="true"></swc-icon-info-circle>`
+          : html`<swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>`
+      }<span>${note.text}</span></li>`
+  )}</ul>`;
+}
+
 export function tool(call: ToolCall, color: 'light' | 'dark' = 'light'): TemplateResult {
   const kind = toolKind(call.name);
   return html`<details class="tool" data-status=${call.status} data-tool=${call.name} data-kind=${kind.id}>
@@ -273,6 +286,7 @@ export function tool(call: ToolCall, color: 'light' | 'dark' = 'light'): Templat
     <div class="call">
       ${body(call, color)}
       ${call.output ? html`<pre class="output">${call.output}</pre>` : nothing}
+      ${call.notes?.length ? notes(call.notes) : nothing}
       ${call.image ? html`<img class="shot" src=${call.image} alt=${call.title} />` : nothing}
     </div>
   </details>`;
@@ -996,6 +1010,33 @@ export const messageCss = css`
     margin: 0;
     max-block-size: calc(var(--swc-spacing-1000) * 2.5);
     overflow: auto;
+  }
+  .call > pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .notes {
+    display: flex;
+    flex-direction: column;
+    gap: var(--swc-spacing-75);
+    margin: var(--swc-spacing-100) 0 0;
+    padding: 0;
+    list-style: none;
+    color: var(--swc-neutral-subdued-content-color-default);
+  }
+  .notes li {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--swc-spacing-75);
+    overflow-wrap: anywhere;
+  }
+  .notes swc-icon-alert-triangle,
+  .notes swc-icon-info-circle {
+    flex: none;
+    margin-block-start: var(--swc-spacing-50);
+  }
+  .notes [data-severity='error'] {
+    color: var(--swc-negative-content-color-default);
   }
   .call > pre.input:has(+ pre.output) {
     margin-block-end: calc(-1 * var(--swc-spacing-100));

@@ -185,6 +185,17 @@ export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort 
         },
       ],
       alerts: [
+        ...(this.#extra.length
+          ? [
+              {
+                id: 'runaway-cpu-433',
+                title: 'quiet-otter is using a lot of CPU',
+                detail: '97% of one core for 3 minutes. To stop it, run:',
+                severity: 'warn' as const,
+                command: 'kill -- -433',
+              },
+            ]
+          : []),
         ...agents
           .filter((candidate) => candidate.contextFill >= 0.8)
           .map((candidate) => ({
