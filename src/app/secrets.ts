@@ -235,6 +235,7 @@ export class SliccSecrets extends ThemedElement {
   declare picked: ReadonlySet<string>;
   declare again: boolean;
   #tick: ReturnType<typeof setTimeout> | undefined;
+  #offline = false;
 
   constructor() {
     super();
@@ -654,8 +655,10 @@ export class SliccSecrets extends ThemedElement {
     ) as HTMLInputElement;
   }
 
-  #mine(vault: VaultPort): boolean {
-    return this.model?.vault === vault && this.isConnected;
+  #mine(vault: VaultPort, form?: SecretForm | null): boolean {
+    return (
+      this.model?.vault === vault && this.isConnected && (form === undefined || this.form === form)
+    );
   }
 
   async save(vault: VaultPort): Promise<void> {
@@ -675,16 +678,16 @@ export class SliccSecrets extends ThemedElement {
         variant: 'confirmation',
       });
       if (this.model?.vault === vault) this.busy = false;
-      if (!sure || !this.#mine(vault)) return;
+      if (!sure || !this.#mine(vault, form)) return;
     }
     this.busy = true;
     try {
       await vault.put?.(name, value);
-      if (!this.#mine(vault)) return;
+      if (!this.#mine(vault, form)) return;
       this.form = null;
       this.said = { kind: 'saved', name };
     } catch (error) {
-      if (this.#mine(vault)) this.problem = failureText(error);
+      if (this.#mine(vault, form)) this.problem = failureText(error);
     } finally {
       if (this.model?.vault === vault) this.busy = false;
     }
@@ -772,6 +775,7 @@ export class SliccSecrets extends ThemedElement {
   }
 
   async read(vault: VaultPort): Promise<void> {
+    const form = this.form;
     const password = take(this.#field('password'));
     const file = this.#field('file').files?.[0];
     if (this.busy) return;
@@ -795,7 +799,7 @@ export class SliccSecrets extends ThemedElement {
       });
       bytes = null;
       const result = (await call) as ImportResult;
-      if (!this.#mine(vault)) return;
+      if (!this.#mine(vault, form)) return;
       if (result.stage === 'pick') {
         this.candidates = result.candidates;
         this.picked = new Set(result.candidates.map((item) => item.name));
@@ -810,7 +814,7 @@ export class SliccSecrets extends ThemedElement {
         skipped: result.skipped.length,
       };
     } catch (error) {
-      if (this.#mine(vault)) this.problem = failureText(error);
+      if (this.#mine(vault, form)) this.problem = failureText(error);
     } finally {
       if (this.model?.vault === vault) this.busy = false;
     }
@@ -824,6 +828,7 @@ export class SliccSecrets extends ThemedElement {
   }
 
   async exportAll(vault: VaultPort, trigger: HTMLElement | null = null): Promise<void> {
+    const form = this.form;
     const passphrase = take(this.#field('passphrase'));
     const repeat = take(this.#field('repeat'));
     if (this.busy) return;
@@ -842,17 +847,17 @@ export class SliccSecrets extends ThemedElement {
       variant: 'confirmation',
       trigger,
     });
-    if (!sure || !this.#mine(vault)) return;
+    if (!sure || !this.#mine(vault, form)) return;
     this.busy = true;
     try {
       const bytes = (await vault.export?.(passphrase)) as Uint8Array;
-      if (!this.#mine(vault)) return;
+      if (!this.#mine(vault, form)) return;
       const file = filename();
       download(bytes, file, this.renderRoot);
       this.form = null;
       this.said = { kind: 'exported', file };
     } catch (error) {
-      if (this.#mine(vault)) this.problem = failureText(error);
+      if (this.#mine(vault, form)) this.problem = failureText(error);
     } finally {
       if (this.model?.vault === vault) this.busy = false;
     }
@@ -999,8 +1004,8 @@ export class SliccSecrets extends ThemedElement {
           : nothing
       }
       <div class="actions">
-        ${request.kind === 'value' && vault.put ? html`<swc-button size="m" variant="accent" data-action="answer" @click=${() => this.answer(request.id)}>Enter value</swc-button>` : nothing}
-        ${vault.cancel ? html`<swc-button size="m" variant="secondary" fill-style="outline" data-action="cancel-request" ?pending=${this.acting.has(`cancel:${request.id}`)} @click=${() => this.cancelRequest(vault, request.id)}>Cancel request</swc-button>` : nothing}
+        ${request.kind === 'value' && vault.put && !this.#offline ? html`<swc-button size="m" variant="accent" data-action="answer" @click=${() => this.answer(request.id)}>Enter value</swc-button>` : nothing}
+        ${vault.cancel && !this.#offline ? html`<swc-button size="m" variant="secondary" fill-style="outline" data-action="cancel-request" ?pending=${this.acting.has(`cancel:${request.id}`)} @click=${() => this.cancelRequest(vault, request.id)}>Cancel request</swc-button>` : nothing}
         <span class="muted">Expires ${until(request.expiresAt)}</span>
       </div>
     </div>`;
@@ -1019,6 +1024,7 @@ export class SliccSecrets extends ThemedElement {
   }
 
   #controls(vault: VaultPort, secret: SecretView): TemplateResult | typeof nothing {
+    if (this.#offline) return nothing;
     const { name } = secret;
     if (secret.state === 'removed')
       return vault.restore
@@ -1044,7 +1050,7 @@ export class SliccSecrets extends ThemedElement {
     const reveal = revealed(secret.name, entries, Date.now(), more);
     const exec = execLine(secret.exec, secret.execArgv);
     const gone = secret.state === 'removed';
-    const form = this.form;
+    const form = this.#offline ? null : this.form;
     return html`<li class="secret" data-secret=${secret.name} data-state=${secret.state}>
       <div class="name">
         <code>${secret.name}</code>
@@ -1055,7 +1061,7 @@ export class SliccSecrets extends ThemedElement {
       <dl>
         <dt>${gone ? 'Was sent to' : 'Sent to'}</dt>
         <dd data-rules>${secret.rules.length ? secret.rules.map((rule, index) => html`${index ? html`<br />` : nothing}${ruleLine(rule)}`) : 'Nowhere yet: no rule names it'}</dd>
-        ${secret.exits ? html`<dt>${gone ? 'Left through' : 'Leaves through'}</dt><dd data-exits>${list(secret.exits.map((exit) => exitLabel(exit, devices)))}</dd>` : nothing}
+        ${secret.exits ? html`<dt>${gone ? 'Left through' : 'Leaves through'}</dt><dd data-exits>${secret.exits.length ? list(secret.exits.map((exit) => exitLabel(exit, devices))) : 'No exit'}</dd>` : nothing}
         ${exec || reveal ? html`<dt>Programs</dt><dd data-exec>${exec}${exec && reveal ? html`<br />` : nothing}${reveal}</dd>` : nothing}
         <dt>From</dt>
         <dd data-source>${sourceLine(secret, devices)}</dd>
@@ -1146,15 +1152,14 @@ export class SliccSecrets extends ThemedElement {
     return html`<p role="status" data-said="exported">Exported to <code>${said.file}</code></p>`;
   }
 
-  #availability(vault: VaultPort, status: VaultStatus | null): TemplateResult | typeof nothing {
-    const state = vault.availability?.() ?? (status ? 'ready' : 'waiting');
-    if (state === 'connecting' || state === 'waiting')
+  #availability(): TemplateResult | typeof nothing {
+    if (this.#offline)
       return html`<p class="availability" role="status" data-availability="waiting"><swc-progress-circle size="s" indeterminate label="Waiting for the vault" aria-hidden="true"></swc-progress-circle><span>Waiting for the vault</span></p>`;
     return nothing;
   }
 
   #backup(vault: VaultPort, status: VaultStatus | null): TemplateResult | typeof nothing {
-    if (status?.backupReminder !== 'due') return nothing;
+    if (status?.backupReminder !== 'due' || this.#offline) return nothing;
     return html`<div class="box info" role="region" aria-labelledby="secrets-backup" data-backup>
       <span class="title" id="secrets-backup"><swc-icon-info-circle size="s" aria-hidden="true"></swc-icon-info-circle><span>Export a backup of your secrets. Clearing this site's data loses every value.</span></span>
       <div class="actions">
@@ -1166,6 +1171,8 @@ export class SliccSecrets extends ThemedElement {
 
   #header(vault: VaultPort, status: VaultStatus | null): TemplateResult | typeof nothing {
     if (!status) return nothing;
+    if (this.#offline)
+      return html`<swc-status-light size="m" variant="neutral">Waiting</swc-status-light>`;
     return html`<swc-status-light size="m" variant=${status.locked ? 'notice' : 'positive'}>${status.locked ? 'Locked' : 'Unlocked'}</swc-status-light><span class="muted">${lockModes[status.lock]}</span>
       <span class="controls">${
         status.locked
@@ -1173,6 +1180,25 @@ export class SliccSecrets extends ThemedElement {
           : html`${vault.lock ? html`<swc-button size="m" variant="secondary" fill-style="outline" data-action="lock" ?pending=${this.acting.has('lock')} @click=${() => this.lockVault(vault)}>Lock</swc-button>` : nothing}
             ${this.#button({ intent: { kind: 'protect' }, label: status.lock === 'auto' ? 'Protect with a passkey' : 'Change protection' }, 'protect')}`
       }</span>`;
+  }
+
+  #tools(vault: VaultPort, locked: boolean): TemplateResult | typeof nothing {
+    if (this.#offline) return nothing;
+    const form = this.form;
+    const tool = (kind: SecretForm['kind'], label: string, variant = 'secondary') =>
+      html`<swc-button size="m" variant=${variant} data-action=${kind === 'add' ? 'add-secret' : kind} aria-expanded=${form?.kind === kind ? 'true' : 'false'} @click=${() => this.open(form?.kind === kind ? null : ({ kind } as SecretForm))}>${label}</swc-button>`;
+    return html`${
+      vault.put || vault.import || vault.export
+        ? html`<div class="row" data-tools>
+            ${vault.put ? tool('add', 'Add secret', 'accent') : nothing}
+            ${vault.import ? tool('import', 'Import…') : nothing}
+            ${vault.export ? tool('export', 'Export…') : nothing}
+          </div>`
+        : nothing
+    }
+      ${form?.kind === 'add' ? this.#valueForm(vault, form, locked) : nothing}
+      ${form?.kind === 'import' ? this.#importForm(vault, locked) : nothing}
+      ${form?.kind === 'export' ? this.#exportForm(vault, locked) : nothing}`;
   }
 
   render(): TemplateResult | typeof nothing {
@@ -1183,32 +1209,23 @@ export class SliccSecrets extends ThemedElement {
     const devices = devicesOf(this.model);
     const entries = merged(current?.audit ?? [], this.older);
     const locked = !!status?.locked;
-    const form = this.form;
-    const tool = (kind: SecretForm['kind'], label: string, variant = 'secondary') =>
-      html`<swc-button size="m" variant=${variant} data-action=${kind === 'add' ? 'add-secret' : kind} aria-expanded=${form?.kind === kind ? 'true' : 'false'} @click=${() => this.open(form?.kind === kind ? null : ({ kind } as SecretForm))}>${label}</swc-button>`;
+    const state = vault.availability?.() ?? (status ? 'ready' : 'waiting');
+    this.#offline = state === 'connecting' || state === 'waiting';
+    if (this.#offline && this.form) clearValues(this.renderRoot);
+    const now = Date.now();
+    const waiting = (status?.waiting ?? []).filter((request) => request.expiresAt > now);
     return html`<section aria-labelledby="secrets" data-vault=${status ? (status.locked ? 'locked' : 'unlocked') : 'loading'}>
       <div class="head">
         <h2 id="secrets">Secrets</h2>
         ${this.#header(vault, status)}
       </div>
       <p class="muted">Agents and programs use secrets by name. SLICC sends each value only where its rules allow, so agents never see it.</p>
-      ${this.#availability(vault, status)}
+      ${this.#availability()}
       ${this.#feedback()}
       ${this.failure ? this.#error(this.failure, 'vault') : nothing}
-      ${status?.waiting.length ? html`<h3>Waiting for you</h3>${status.waiting.map((request) => this.#request(vault, request))}` : nothing}
+      ${waiting.length ? html`<h3>Waiting for you</h3>${waiting.map((request) => this.#request(vault, request))}` : nothing}
       ${this.#backup(vault, status)}
-      ${
-        vault.put || vault.import || vault.export
-          ? html`<div class="row" data-tools>
-              ${vault.put ? tool('add', 'Add secret', 'accent') : nothing}
-              ${vault.import ? tool('import', 'Import…') : nothing}
-              ${vault.export ? tool('export', 'Export…') : nothing}
-            </div>`
-          : nothing
-      }
-      ${form?.kind === 'add' ? this.#valueForm(vault, form, locked) : nothing}
-      ${form?.kind === 'import' ? this.#importForm(vault, locked) : nothing}
-      ${form?.kind === 'export' ? this.#exportForm(vault, locked) : nothing}
+      ${this.#tools(vault, locked)}
       ${
         !current
           ? html`<p class="muted" data-loading>Loading secrets…</p>`

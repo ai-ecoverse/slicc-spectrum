@@ -638,7 +638,9 @@ export class SliccComposer extends ThemedElement {
       .replace(/[^A-Z0-9_]/g, '_');
     if (!clean || this.sharing) return;
     const vault = this.model?.vault;
-    const exists = !!vault?.list()?.secrets.some((secret) => secret.name === clean);
+    const exists = !!vault
+      ?.list()
+      ?.secrets.some((secret) => secret.name === clean && secret.state !== 'removed');
     if (field && vault?.put && !(exists && value === '')) {
       const problem = nameProblem(clean) ?? valueProblem(value);
       this.secretError = problem;
