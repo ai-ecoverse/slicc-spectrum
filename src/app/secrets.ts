@@ -658,7 +658,10 @@ export class SliccSecrets extends ThemedElement {
 
   #mine(vault: VaultPort, form?: SecretForm | null): boolean {
     return (
-      this.model?.vault === vault && this.isConnected && (form === undefined || this.form === form)
+      this.model?.vault === vault &&
+      this.isConnected &&
+      !away(vault) &&
+      (form === undefined || this.form === form)
     );
   }
 
@@ -794,7 +797,7 @@ export class SliccSecrets extends ThemedElement {
     this.problem = null;
     try {
       let bytes: Uint8Array | null = new Uint8Array(await file.arrayBuffer());
-      if (!this.#mine(vault) || this.importKind !== kind) return;
+      if (!this.#mine(vault, form) || this.importKind !== kind) return;
       const call = vault.import?.(kind, bytes, {
         ...(password ? { password } : {}),
         ...(pick ? { pick } : {}),
