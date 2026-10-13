@@ -943,6 +943,7 @@ export type RecordKind = 'secret' | 'grant' | 'model' | 'mcp';
 export type RecordState = 'active' | 'inert' | 'removed';
 
 export type RecordSource =
+  | 'settings'
   | 'popup'
   | 'process'
   | `jerk:${string}@${DeviceId}`
@@ -953,7 +954,28 @@ export type LockMode = 'auto' | 'passkey' | 'passphrase';
 
 export type RequestKind = 'value' | 'oauth' | 'jerk-seal';
 
+export type RequestState = 'pending' | 'done' | 'cancelled' | 'expired';
+
+export type ErrorCode =
+  | 'EINVAL'
+  | 'ENOENT'
+  | 'EACCES'
+  | 'EEXIST'
+  | 'EAGAIN'
+  | 'ETIMEDOUT'
+  | 'ENOTCONN'
+  | 'ENOTSUP';
+
+export interface VaultError {
+  code: ErrorCode;
+  message: string;
+}
+
+export type VaultFailure = Error & VaultError;
+
 export type ExitName =
+  | 'page'
+  | 'proxy'
   | 'vault-direct'
   | 'local-proxy'
   | 'cli-v'
@@ -963,11 +985,19 @@ export type ExitName =
 
 export type ExecGrant = boolean | { argv: string[][] };
 
+export type ExecMode = false | 'any' | 'argv' | 'shell';
+
 export interface Rule {
   domain: string;
   header: string;
   methods: string[];
   paths: string[];
+}
+
+export interface RefusedRule {
+  secret: string;
+  rule: Rule;
+  reason: string;
 }
 
 export interface SecretView {
@@ -981,8 +1011,9 @@ export interface SecretView {
   account?: string;
   domains: string[];
   rules: Rule[];
-  exits: ExitName[];
-  exec: ExecGrant;
+  exits?: ExitName[];
+  exec: ExecMode | ExecGrant;
+  execArgv?: string[][];
   createdAt: number;
   usedAt?: number;
   expiresAt?: number;
@@ -1001,15 +1032,28 @@ export interface PendingRequest {
   expiresAt: number;
 }
 
+export interface ScrubState {
+  needed: boolean;
+  version: number;
+  ready: boolean;
+}
+
+export type BackupReminder = 'due' | 'dismissed' | null;
+
 export interface VaultStatus {
   version: string;
   protocol: 1;
   origin: string;
   locked: boolean;
   lock: LockMode;
+  scrub?: ScrubState;
   waiting: PendingRequest[];
-  notices: number;
+  notices?: number;
+  exportedAt?: number | null;
+  backupReminder?: BackupReminder;
 }
+
+export type Availability = 'connecting' | 'waiting' | 'locked' | 'ready';
 
 export type Widening =
   | { kind: 'rule'; secret: string; rule: Rule }
@@ -1017,6 +1061,12 @@ export type Widening =
   | { kind: 'paths'; secret: string; domain: string; paths: string[] }
   | { kind: 'exec'; secret: string; grant: ExecGrant }
   | { kind: 'exit'; secret: string; exit: ExitName }
+  | { kind: 'limits'; field: string; from: number; to: number };
+
+export type PolicyChange =
+  | { kind: 'rule'; secret: string; rule: Rule; change: 'added' | 'removed' }
+  | { kind: 'exec'; secret: string; from: ExecMode; to: ExecMode }
+  | { kind: 'exits'; secret: string; from: ExitName[] | null; to: ExitName[] | null }
   | { kind: 'limits'; field: string; from: number; to: number };
 
 export type PolicyFile = '/etc/fnox/config.toml' | '/etc/slicc/secrets-policy.toml';
@@ -1050,7 +1100,8 @@ export interface InjectionEntry extends AuditBase {
 
 export interface RevealEntry extends AuditBase {
   type: 'materialize';
-  grant: ExecGrant;
+  grant?: ExecGrant;
+  exec?: ExecMode;
   path: string;
   argv: string;
   argvSha256: string;
@@ -1071,6 +1122,11 @@ export interface RemoveEntry extends AuditBase {
   type: 'remove' | 'restore';
 }
 
+export interface RefreshEntry extends AuditBase {
+  type: 'refresh';
+  grant?: string;
+}
+
 export interface PolicyEntry {
   type: 'policy';
   seq: number;
@@ -1079,11 +1135,18 @@ export interface PolicyEntry {
   file: PolicyFile;
   sha256: string;
   accepted: boolean;
-  widened: Widening[];
+  widened?: Widening[];
+  changes?: PolicyChange[];
   warning?: string;
 }
 
-export type AuditEntry = InjectionEntry | RevealEntry | SealEntry | RemoveEntry | PolicyEntry;
+export type AuditEntry =
+  | InjectionEntry
+  | RevealEntry
+  | SealEntry
+  | RemoveEntry
+  | RefreshEntry
+  | PolicyEntry;
 
 export interface AuditPage {
   audit: AuditEntry[];
@@ -1091,15 +1154,51 @@ export interface AuditPage {
   next?: number;
 }
 
+export interface ExitPolicyView {
+  file: '/etc/slicc/secrets-policy.toml';
+  sha256: string | null;
+  restricted: { name: string; exits: ExitName[] }[];
+}
+
 export interface VaultList {
   secrets: SecretView[];
-  notices: PolicyNotice[];
+  notices?: PolicyNotice[];
+  refused?: RefusedRule[];
   audit: AuditEntry[];
   auditMore: boolean;
+  exits?: ExitPolicyView;
 }
+
+export interface SealResult {
+  name: string;
+  placeholder: string;
+  state: RecordState;
+}
+
+export type ImportKind = 'bundle' | 'keepass' | 'six';
+
+export interface ImportCandidate {
+  name: string;
+  kind?: RecordKind;
+  exists: boolean;
+  suggestedRules?: string;
+  refused?: string;
+}
+
+export type ImportPick = string | { name: string; kind: RecordKind };
+
+export type ImportResult =
+  | { stage: 'pick'; candidates: ImportCandidate[] }
+  | {
+      stage: 'done';
+      imported: SealResult[];
+      skipped: string[];
+      reasons?: Record<string, string>;
+    };
 
 export type PopupIntent =
   | { kind: 'unlock' }
+  | { kind: 'protect' }
   | { kind: 'enter'; name: string; request?: string }
   | { kind: 'request'; request: string }
   | { kind: 'import'; format?: 'bundle' | 'keepass' | 'six' }
@@ -1151,13 +1250,27 @@ export interface VaultEvents {
   status: VaultStatus;
   list: VaultList;
   notice: PolicyNotice;
+  availability: Availability;
 }
 
 export interface VaultPort extends Subscribable<VaultEvents> {
   status(): VaultStatus | null;
   list(): VaultList | null;
   audit(before?: number, limit?: number): Promise<AuditPage>;
-  acknowledge(notice: string): Promise<void>;
+  acknowledge?(notice: string): Promise<void>;
+  availability?(): Availability;
+  put?(name: string, value: string, request?: string): Promise<SealResult>;
+  cancel?(request: string): Promise<RequestState>;
+  remove?(name: string, kind?: RecordKind): Promise<SealResult>;
+  restore?(name: string, kind?: RecordKind): Promise<SealResult>;
+  import?(
+    kind: ImportKind,
+    bytes: Uint8Array,
+    options?: { password?: string; pick?: ImportPick[] }
+  ): Promise<ImportResult>;
+  export?(passphrase: string): Promise<Uint8Array>;
+  lock?(): Promise<void>;
+  dismissBackupReminder?(): Promise<void>;
   button(): VaultButton;
 }
 

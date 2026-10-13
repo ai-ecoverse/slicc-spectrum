@@ -36,5 +36,7 @@ export {
   vaultFixtures,
   vaultNotice,
   vaultOlder,
+  vaultPolicy,
+  vaultRefused,
   vaultSecrets,
 } from './dummy/vault.ts';

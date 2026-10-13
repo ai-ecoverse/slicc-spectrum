@@ -3,10 +3,11 @@ import type {
   ButtonConfig,
   ButtonEvent,
   ExecGrant,
+  ExecMode,
   ExitName,
   LinkedDevice,
+  PolicyChange,
   PopupIntent,
-  PopupResult,
   PopupState,
   Rule,
   SliccModel,
@@ -14,8 +15,11 @@ import type {
   VaultPort,
   Widening,
 } from '../model/types.ts';
+import { isVaultFailure } from '../model/values.ts';
 
 const exitNames: Record<string, string> = {
+  page: 'This page',
+  proxy: 'Local proxy',
   'vault-direct': 'Straight from the vault',
   'local-proxy': 'Local proxy',
   'cli-v': 'Local SLICC, direct',
@@ -51,11 +55,44 @@ export function shellWord(word: string): string {
   return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replace(/'/g, "'\\''")}'`;
 }
 
-export function execLine(grant: ExecGrant): string {
-  if (grant === false) return 'Never revealed to programs';
-  if (grant === true) return 'Revealed to any program that asks';
-  return `Revealed only to ${list(grant.argv.map((argv) => argv.map(shellWord).join(' ')))}`;
+export function execLine(
+  exec: ExecMode | ExecGrant,
+  argv: readonly string[][] = []
+): string | null {
+  if (typeof exec === 'object') return execLine('argv', exec.argv);
+  if (exec === 'any' || exec === true) return 'Revealed to any command';
+  if (exec === 'shell') return 'Revealed in every bash';
+  if (exec === false) return null;
+  if (!argv.length) return 'Revealed only to listed commands';
+  return `Revealed only to ${list(argv.map((words) => words.map(shellWord).join(' ')))}`;
 }
+
+function lower(line: string): string {
+  return `${line[0].toLowerCase()}${line.slice(1)}`;
+}
+
+function mode(exec: ExecMode | ExecGrant): string {
+  return lower(execLine(exec) ?? 'Never revealed to commands');
+}
+
+export function changeLine(change: PolicyChange, devices: readonly LinkedDevice[]): string {
+  switch (change.kind) {
+    case 'rule':
+      return `${change.secret} ${change.change === 'added' ? 'may now' : 'may no longer'} be sent to ${ruleLine(change.rule)}`;
+    case 'exec':
+      return `${change.secret} was ${mode(change.from)}, now ${mode(change.to)}`;
+    case 'exits':
+      if (change.to?.length === 0) return `${change.secret} now has no exit`;
+      return `${change.secret} now leaves through ${change.to ? list(change.to.map((exit) => exitLabel(exit, devices))) : 'any exit'}`;
+    default:
+      return `The limit ${change.field} changed from ${change.from} to ${change.to}`;
+  }
+}
+
+const codeTexts: Partial<Record<string, string>> = {
+  EACCES: 'Unlock the vault first',
+  ENOTSUP: 'This arrives with a later vault version',
+};
 
 export function widening(change: Widening, devices: readonly LinkedDevice[]): string {
   switch (change.kind) {
@@ -65,16 +102,83 @@ export function widening(change: Widening, devices: readonly LinkedDevice[]): st
       return `${change.secret} may now use ${list(change.methods)} on ${change.domain}`;
     case 'paths':
       return `${change.secret} may now reach ${list(change.paths)} on ${change.domain}`;
-    case 'exec': {
-      const line = execLine(change.grant);
-      return `${change.secret}: ${line[0].toLowerCase()}${line.slice(1)}`;
-    }
+    case 'exec':
+      return `${change.secret} is now ${mode(change.grant)}`;
     case 'exit':
       return `${change.secret} may now leave through ${exitLabel(change.exit, devices)}`;
     default:
       return `The limit ${change.field} rose from ${change.from} to ${change.to}`;
   }
 }
+
+export function failureText(error: unknown): string {
+  const text = isVaultFailure(error) ? codeTexts[error.code] : undefined;
+  return text ?? (error instanceof Error ? error.message : 'The vault did not answer');
+}
+
+export function fieldOf(error: unknown, field: string): string | null {
+  return isVaultFailure(error) && error.code === 'EINVAL' ? field : null;
+}
+
+export function away(vault: VaultPort): boolean {
+  const state = vault.availability?.() ?? (vault.status() ? 'ready' : 'waiting');
+  return state === 'connecting' || state === 'waiting';
+}
+
+export function take(input: HTMLInputElement): string {
+  const value = input.value;
+  input.value = '';
+  return value;
+}
+
+export function clearValues(root: ParentNode): void {
+  for (const input of root.querySelectorAll<HTMLInputElement>('input[type=password]'))
+    input.value = '';
+}
+
+export const fieldStyles = css`
+  .field {
+    display: grid;
+    gap: var(--swc-spacing-75);
+    min-width: 0;
+  }
+  .field > span {
+    font-size: var(--swc-font-size-75);
+    color: var(--swc-neutral-subdued-content-color-default);
+  }
+  .field input:not([type='checkbox']) {
+    box-sizing: border-box;
+    inline-size: 100%;
+    font: inherit;
+    min-height: var(--swc-component-height-100);
+    padding: 0 var(--swc-spacing-100);
+    border: var(--swc-border-width-100) solid var(--swc-gray-400);
+    border-radius: var(--swc-corner-radius-small-default);
+    background: var(--swc-background-layer-2-color);
+    color: inherit;
+  }
+  .field input[aria-invalid='true'] {
+    border-color: var(--swc-negative-border-color-default);
+  }
+  .field input[type='file'] {
+    padding: var(--swc-spacing-75) var(--swc-spacing-100);
+  }
+  .field input[type='file']::file-selector-button {
+    font: inherit;
+    font-weight: var(--swc-bold-font-weight);
+    margin-inline-end: var(--swc-spacing-200);
+    padding: var(--swc-spacing-50) var(--swc-spacing-300);
+    border: none;
+    border-radius: var(--swc-corner-radius-full);
+    background: var(--swc-gray-200);
+    color: inherit;
+  }
+  .field input:focus-visible,
+  input[type='checkbox']:focus-visible {
+    outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+    outline-offset: var(--swc-focus-ring-gap);
+  }
+`;
 
 function shown(element: HTMLElement, style = getComputedStyle(element)): boolean {
   return !element.hidden && !element.inert && style.display !== 'none';
@@ -147,7 +251,6 @@ export function sequential(order: Array<HTMLElement | null>): Array<HTMLElement 
 export interface PopupDetail {
   intent: PopupIntent;
   state: PopupState;
-  result?: PopupResult;
 }
 
 export class SliccVaultButton extends LitElement {
@@ -240,10 +343,10 @@ export class SliccVaultButton extends LitElement {
       const at = order.indexOf(null);
       order[event.direction === 'next' ? at + 1 : at - 1]?.focus();
     } else if (event.event === 'popup') {
-      const { intent, state, result } = event;
+      const { intent, state } = event;
       this.dispatchEvent(
         new CustomEvent<PopupDetail>('vault-popup', {
-          detail: { intent, state, ...(result ? { result } : {}) },
+          detail: { intent, state },
           bubbles: true,
           composed: true,
         })

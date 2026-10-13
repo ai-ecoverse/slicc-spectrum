@@ -21,6 +21,7 @@ import { SliccSprinkle } from './app/sprinkle.ts';
 import { SliccTerminalPanel } from './app/terminals.ts';
 import { SliccTray } from './app/tray.ts';
 import { SliccUpdates } from './app/updates.ts';
+import { SliccValueRequest } from './app/value-request.ts';
 import { SliccVaultButton } from './app/vault.ts';
 import { defineCodeViews, SliccCodeView, SliccDiffView } from './components/code-view.ts';
 import { defineDock, SliccDock } from './components/dock.ts';
@@ -52,6 +53,7 @@ export type { GitStatusEntry } from './components/file-tree.ts';
 export type { Listener, Subscribable } from './model/emitter.ts';
 export { Emitter } from './model/emitter.ts';
 export type * from './model/types.ts';
+export { isVaultFailure } from './model/values.ts';
 export {
   SliccAgents,
   SliccApp,
@@ -74,6 +76,7 @@ export {
   SliccPrompt,
   SliccSecrets,
   SliccUpdates,
+  SliccValueRequest,
   SliccVaultButton,
 };
 
@@ -101,6 +104,7 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-approvals': SliccApprovals,
   'slicc-secrets': SliccSecrets,
   'slicc-vault-button': SliccVaultButton,
+  'slicc-value-request': SliccValueRequest,
   'slicc-confirm': SliccConfirm,
   'slicc-prompt': SliccPrompt,
   'slicc-app': SliccApp,

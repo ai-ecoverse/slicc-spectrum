@@ -1108,6 +1108,7 @@ export class SliccApp extends ThemedElement {
         ${rails.bottom}
       </div>
       <slicc-approvals .model=${this.model}></slicc-approvals>
+      <slicc-value-request .model=${this.model}></slicc-value-request>
     </sp-theme></div>`;
   }
 }

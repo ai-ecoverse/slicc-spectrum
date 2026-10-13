@@ -17,10 +17,13 @@ import type {
   SliccModel,
   Thinking,
   UserMessage,
+  VaultPort,
 } from '../model/types.ts';
+import { nameProblem, valueProblem } from '../model/values.ts';
 import { chatModels, shared, ThemedElement } from './base.ts';
+import { confirm } from './confirm.ts';
 import { size } from './messages.ts';
-import type { PopupDetail } from './vault.ts';
+import { away, clearValues, failureText, fieldOf, type PopupDetail, take } from './vault.ts';
 
 export const limit = 25 * 1024 * 1024;
 
@@ -151,6 +154,11 @@ export function trigger(
 
 type Field = HTMLElement & { updateComplete: Promise<boolean> };
 
+export function blocked(vault: VaultPort): string | null {
+  if (away(vault)) return 'Waiting for the vault';
+  return vault.status()?.locked ? 'Unlock the vault first' : null;
+}
+
 export class SliccComposer extends ThemedElement {
   static properties = {
     ...ThemedElement.properties,
@@ -159,6 +167,9 @@ export class SliccComposer extends ThemedElement {
     popup: { state: true },
     dictating: { state: true },
     blocked: { state: true },
+    sharing: { state: true },
+    secretError: { state: true },
+    secretField: { state: true },
     agent: {},
   };
   declare value: string;
@@ -166,6 +177,9 @@ export class SliccComposer extends ThemedElement {
   declare popup: Popup | null;
   declare dictating: boolean;
   declare blocked: boolean;
+  declare sharing: boolean;
+  declare secretError: string | null;
+  declare secretField: string | null;
   declare agent: string;
   #drafts = new Map<string, { value: string; attachments: Attachment[] }>();
   #history = -1;
@@ -182,6 +196,9 @@ export class SliccComposer extends ThemedElement {
     this.popup = null;
     this.dictating = false;
     this.blocked = false;
+    this.sharing = false;
+    this.secretError = null;
+    this.secretField = null;
     this.agent = '';
   }
 
@@ -389,6 +406,14 @@ export class SliccComposer extends ThemedElement {
         gap: var(--swc-spacing-100);
         padding: var(--swc-spacing-100);
       }
+      .secret .field {
+        display: grid;
+        gap: var(--swc-spacing-75);
+      }
+      .secret .field > span {
+        font-size: var(--swc-font-size-75);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
       .secret input {
         font: inherit;
         min-height: var(--swc-component-height-100);
@@ -398,12 +423,23 @@ export class SliccComposer extends ThemedElement {
         background: var(--swc-background-layer-2-color);
         color: inherit;
       }
+      .secret input[aria-invalid='true'] {
+        border-color: var(--swc-negative-border-color-default);
+      }
       .secret input:focus-visible {
         outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
         outline-offset: var(--swc-focus-ring-gap);
       }
       .secret swc-button {
         justify-self: start;
+      }
+      .secret-error {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--swc-spacing-75);
+        color: var(--swc-negative-content-color-default);
+        font-size: var(--swc-font-size-75);
+        --swc-icon-color: var(--swc-negative-content-color-default);
       }
       sp-menu {
         min-width: 240px;
@@ -416,6 +452,7 @@ export class SliccComposer extends ThemedElement {
 
   protected willUpdate(changed: PropertyValues<this>): void {
     super.willUpdate(changed);
+    if (changed.has('popup') && this.popup?.kind !== 'secret') clearValues(this.renderRoot);
     if (changed.has('agent') && this.agent && this.model && this.agent !== this.#agent) {
       this.#switch(this.agent);
     }
@@ -428,6 +465,11 @@ export class SliccComposer extends ThemedElement {
 
   protected firstUpdated(): void {
     this.#wire();
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    clearValues(this.renderRoot);
   }
 
   protected updated(changed: Map<string, unknown>): void {
@@ -470,6 +512,9 @@ export class SliccComposer extends ThemedElement {
       model.agent.on('message', update),
       model.settings.on('settings', update),
       ...(model.follow ? [model.follow.on('follow', update)] : []),
+      ...(model.vault
+        ? [model.vault.on('availability', update), model.vault.on('status', update)]
+        : []),
     ];
   }
 
@@ -608,12 +653,20 @@ export class SliccComposer extends ThemedElement {
     ];
   }
 
-  shareSecret(name: string): void {
+  async shareSecret(name: string, field: HTMLInputElement | null = null): Promise<void> {
     const clean = name
       .trim()
       .toUpperCase()
       .replace(/[^A-Z0-9_]/g, '_');
-    if (!clean) return;
+    if (this.sharing) return;
+    if (!clean) {
+      if (field) this.#refuse('Enter a name', 'name', true);
+      return;
+    }
+    const value = field ? take(field) : '';
+    const vault = this.model?.vault;
+    if (field && vault?.put && !(await this.#store(vault, clean, value))) return;
+    this.#refuse(null);
     this.attachments = [
       ...this.attachments,
       {
@@ -625,6 +678,55 @@ export class SliccComposer extends ThemedElement {
       },
     ];
     this.popup = null;
+  }
+
+  #refuse(text: string | null, field: string | null = null, focus = false): void {
+    this.secretError = text;
+    this.secretField = text ? field : null;
+    if (focus && text && field)
+      void this.updateComplete.then(() =>
+        this.renderRoot.querySelector<HTMLInputElement>(`form.secret input[name=${field}]`)?.focus()
+      );
+  }
+
+  async #store(vault: VaultPort, clean: string, value: string): Promise<boolean> {
+    if (blocked(vault)) {
+      this.#refuse(blocked(vault));
+      return false;
+    }
+    const exists = !!vault
+      .list()
+      ?.secrets.some((secret) => secret.name === clean && secret.state !== 'removed');
+    if (exists && value === '') return true;
+    const bad = nameProblem(clean);
+    const problem = bad ?? valueProblem(value);
+    this.#refuse(problem, bad ? 'name' : 'value', true);
+    if (problem) return false;
+    const agent = this.#agent;
+    const mine = () => this.#agent === agent && this.model?.vault === vault;
+    this.sharing = true;
+    try {
+      if (exists) {
+        const sure = await confirm({
+          title: `Replace ${clean}?`,
+          body: 'A secret with this name exists. Sharing replaces its value, and its placeholder stays.',
+          action: 'Replace',
+          variant: 'confirmation',
+        });
+        if (!sure || !mine()) return false;
+        if (blocked(vault)) {
+          this.#refuse(blocked(vault));
+          return false;
+        }
+      }
+      await vault.put?.(clean, value);
+      return mine();
+    } catch (error) {
+      if (mine()) this.#refuse(failureText(error), fieldOf(error, 'value'));
+      return false;
+    } finally {
+      this.sharing = false;
+    }
   }
 
   #choices(kind: PopupKind, query: string): Choice[] {
@@ -681,6 +783,9 @@ export class SliccComposer extends ThemedElement {
   }
 
   openPopup(kind: 'file' | 'secret'): void {
+    clearValues(this.renderRoot);
+    this.secretError = null;
+    this.secretField = null;
     this.popup = {
       kind,
       start: 0,
@@ -877,17 +982,32 @@ export class SliccComposer extends ThemedElement {
     const popup = this.popup;
     if (!popup) return nothing;
     if (popup.kind === 'secret') {
+      const vault = this.model?.vault;
+      const valued = !!vault?.put && !blocked(vault);
+      const waiting = vault?.put ? blocked(vault) : null;
+      if (!valued) clearValues(this.renderRoot);
       const submit = (event: Event) => {
         event.preventDefault();
         const form = event.currentTarget as HTMLFormElement;
-        this.shareSecret((form.elements.namedItem('name') as HTMLInputElement).value);
+        void this.shareSecret(
+          (form.elements.namedItem('name') as HTMLInputElement).value,
+          form.elements.namedItem('value') as HTMLInputElement | null
+        );
       };
-      return html`<form class="popup secret" @submit=${submit} @keydown=${(event: KeyboardEvent) => event.key === 'Escape' && ((this.popup = null))}>
+      const close = (event: KeyboardEvent) => {
+        if (event.key !== 'Escape') return;
+        clearValues(this.renderRoot);
+        this.popup = null;
+      };
+      const bad = (name: string) => (this.secretField === name ? 'true' : nothing);
+      const described = (name: string) => (this.secretField === name ? 'secret-error' : nothing);
+      return html`<form class="popup secret" data-vault=${valued ? 'on' : 'off'} @submit=${submit} @keydown=${close} @input=${() => (this.secretField = null)}>
         <strong>Share a secret</strong>
-        <span class="lead">The value goes to the secret store; the agent only sees its name.</span>
-        <input name="name" placeholder="Name, e.g. API_TOKEN" aria-label="Secret name" />
-        <input name="value" type="password" placeholder="Value" aria-label="Secret value" autocomplete="off" />
-        <swc-button size="s" variant="accent" @click=${(event: Event) => (event.currentTarget as HTMLElement).closest('form')?.requestSubmit()}>Share</swc-button>
+        <span class="lead">${valued ? 'The value goes to the vault; the agent only sees its name. Leave the value empty to share a secret the vault already has.' : waiting === 'Unlock the vault first' ? 'The vault is locked. You can share the name now and add the value once it is unlocked.' : waiting ? 'Waiting for the vault. You can share the name now and add the value in Settings › Secrets later.' : 'Add the value in Settings › Secrets. The agent only sees the name.'}</span>
+        <label class="field"><span>Name</span><input name="name" placeholder="API_TOKEN" autocomplete="off" spellcheck="false" aria-invalid=${bad('name')} aria-describedby=${described('name')} /></label>
+        ${valued ? html`<label class="field"><span>Value</span><input name="value" type="password" autocomplete="off" spellcheck="false" aria-invalid=${bad('value')} aria-describedby=${described('value')} /></label>` : nothing}
+        ${this.secretError ? html`<span class="secret-error" role="alert" id="secret-error" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.secretError}</span></span>` : nothing}
+        <swc-button size="s" variant="accent" data-action="share-secret" ?pending=${this.sharing} @click=${(event: Event) => (event.currentTarget as HTMLElement).closest('form')?.requestSubmit()}>Share</swc-button>
       </form>`;
     }
     const title = {

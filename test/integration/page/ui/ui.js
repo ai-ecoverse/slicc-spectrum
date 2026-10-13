@@ -1,6 +1,23 @@
 import { createDummyModel } from '/dist/slicc-dummy.js';
 import { confirm, surfaces } from '/dist/slicc-ui.js';
 
+window.consoleLog = [];
+for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
+  const original = console[level].bind(console);
+  console[level] = (...args) => {
+    const shown = (arg) => {
+      if (arg instanceof Error) return arg.stack;
+      try {
+        return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+      } catch {
+        return String(arg);
+      }
+    };
+    window.consoleLog.push(args.map(shown).join(' '));
+    original(...args);
+  };
+}
+
 const params = new URLSearchParams(location.search);
 const delay = Number(params.get('delay') ?? 30);
 const follow = params.get('follow') ?? 'off';
@@ -80,6 +97,18 @@ window.drag = async (source, target, x, y) => {
   fire(target, 'drop');
   fire(source, 'dragend');
   await wait();
+};
+
+window.deep = (selector) => {
+  const roots = [document];
+  for (let index = 0; index < roots.length; index++) {
+    const found = roots[index].querySelector(selector);
+    if (found) return found;
+    for (const node of roots[index].querySelectorAll('*')) {
+      if (node.shadowRoot) roots.push(node.shadowRoot);
+    }
+  }
+  return null;
 };
 
 window.settingsPart = (...path) => window.$('slicc-app', 'slicc-dock', 'slicc-settings', ...path);
