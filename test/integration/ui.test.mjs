@@ -1283,7 +1283,7 @@ test('without git, Changes says what it needs and the rail has no count', async 
           .shadowRoot.querySelectorAll('[data-command]'),
       ].map((row) => row.dataset.command)
     ),
-    ['pnpm add -g @ai-ecoverse/wasm-git', 'git init']
+    ['pnpm add -g @ai-ecoverse/wasm-git', 'git init', 'curl -fsSL https://get.sliccy.ai/slicc | sh']
   );
   await shot(page, 'changes-no-git');
   await page.evaluate(() => window.$('slicc-app', 'slicc-dock').close('changes'));

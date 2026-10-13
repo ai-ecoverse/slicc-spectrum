@@ -343,8 +343,10 @@ export class SliccChanges extends ModelElement {
     }
   }
 
-  #unavailable(text: string): TemplateResult {
-    const { parts, codes } = commands(text);
+  #unavailable(text: string, extra: readonly string[]): TemplateResult {
+    const found = commands(text);
+    const { parts } = found;
+    const codes = [...new Set([...found.codes, ...extra])];
     return html`<div class="unavailable">
       <p data-unavailable>${parts.map((part) => (typeof part === 'string' ? part : html`<code>${part.code}</code>`))}</p>
       ${codes.map(
@@ -366,7 +368,7 @@ export class SliccChanges extends ModelElement {
   render(): TemplateResult {
     const port = this.model ? changesOf(this.model) : null;
     const unavailable = port?.unavailable?.() ?? null;
-    if (unavailable) return this.#unavailable(unavailable);
+    if (unavailable) return this.#unavailable(unavailable, port?.commands?.() ?? []);
     const changes = port?.changes() ?? [];
     return html`<div class="bar">
         <span class="summary">${changes.length} pending ${changes.length === 1 ? 'change' : 'changes'}</span>

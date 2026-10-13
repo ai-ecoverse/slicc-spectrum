@@ -6,6 +6,8 @@ export type ChangesScenario = 'files' | 'git' | 'nogit';
 
 export const repos = ['/workspace/harbor', '/workspace/skills'];
 
+export const linkCommand = 'curl -fsSL https://get.sliccy.ai/slicc | sh';
+
 export const noGit =
   'Changes needs git, and git isn’t installed. Install it with `pnpm add -g @ai-ecoverse/wasm-git`, then run `git init` in a folder under /home, or clone with slicc-node or the extension connected.';
 
@@ -43,5 +45,9 @@ export class DummyChanges implements ChangesPort {
 
   unavailable(): string | null {
     return this.#git ? null : noGit;
+  }
+
+  commands(): readonly string[] {
+    return this.#git ? [] : [linkCommand, 'git init'];
   }
 }
