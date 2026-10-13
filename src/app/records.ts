@@ -25,7 +25,7 @@ const envNames: Record<string, string> = {
   'github-copilot': 'COPILOT_GITHUB_TOKEN',
 };
 
-const upper = (text: string) => text.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+export const upper = (text: string) => text.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
 export function serverOf(account: Account): string {
   return account.id.replace(/^mcp:/, '');

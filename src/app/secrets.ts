@@ -18,6 +18,7 @@ import type {
   LinkedDevice,
   PendingRequest,
   PolicyEntry,
+  PutOptions,
   RefusedRule,
   RevealEntry,
   SecretView,
@@ -97,6 +98,12 @@ const accountLights: Record<AccountStatus, readonly [string, string]> = {
   'signing-in': ['info', 'Signing in'],
   disconnected: ['neutral', 'Not connected'],
 };
+
+export function putOptions(secret: SecretView): PutOptions | undefined {
+  if (secret.kind === 'model') return { kind: 'model', provider: secret.provider };
+  if (secret.kind === 'mcp') return { kind: 'mcp', server: secret.server };
+  return undefined;
+}
 
 export function agentUse(secret: SecretView): boolean {
   return secret.kind === 'model' || (secret.kind === 'mcp' && secret.rules.length === 0);
@@ -216,7 +223,7 @@ export function download(bytes: Uint8Array, name: string, root: Node): void {
 
 export type SecretForm =
   | { kind: 'add' }
-  | { kind: 'replace'; name: string }
+  | { kind: 'replace'; name: string; options?: PutOptions }
   | { kind: 'import' }
   | { kind: 'export' };
 
@@ -773,7 +780,7 @@ export class SliccSecrets extends ThemedElement {
     }
     this.busy = true;
     try {
-      await vault.put?.(name, value);
+      await vault.put?.(name, value, undefined, form.kind === 'replace' ? form.options : undefined);
       if (!this.#mine(vault, form)) return;
       this.form = null;
       this.said = { kind: 'saved', name };
@@ -1151,7 +1158,7 @@ export class SliccSecrets extends ThemedElement {
     const replace = vault.put && replaceable(secret);
     if (!replace && !vault.remove) return nothing;
     return html`<div class="buttons">
-      ${replace ? html`<swc-button size="s" variant="secondary" data-action="replace" @click=${() => this.open({ kind: 'replace', name })}>Replace value</swc-button>` : nothing}
+      ${replace ? html`<swc-button size="s" variant="secondary" data-action="replace" @click=${() => this.open({ kind: 'replace', name, options: putOptions(secret) })}>Replace value</swc-button>` : nothing}
       ${vault.remove ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="remove" ?pending=${this.acting.has(`remove:${name}`)} @click=${(event: Event) => this.removeSecret(vault, secret, event.currentTarget as HTMLElement)}>Remove</swc-button>` : nothing}
     </div>`;
   }

@@ -2,11 +2,11 @@ import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
-import type { Account, Settings, SliccModel, VaultPort } from '../model/types.ts';
+import type { Account, RecordKind, Settings, SliccModel, VaultPort } from '../model/types.ts';
 import { isVaultFailure, valueProblem } from '../model/values.ts';
 import { chatModels, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
-import { recordKind, recordName, serverOf } from './records.ts';
+import { recordKind, recordName, serverOf, upper as upperName } from './records.ts';
 import { clearValues, failureText, fieldStyles, type PopupDetail, take } from './vault.ts';
 
 const accountStatus = {
@@ -27,6 +27,14 @@ const keptNames = { 'api-key': 'Key kept in the vault', token: 'Token kept in th
 
 const kept = (account: Account) =>
   account.auth === 'api-key' ? keptNames[account.secret ?? 'api-key'] : 'Kept in the vault';
+
+async function gone(vault: VaultPort, name: string, kind: RecordKind): Promise<void> {
+  try {
+    await vault.remove?.(name, kind);
+  } catch (error) {
+    if (!isVaultFailure(error) || error.code !== 'ENOENT') throw error;
+  }
+}
 
 export class SliccSettings extends ThemedElement {
   static properties = {
@@ -467,16 +475,42 @@ export class SliccSettings extends ThemedElement {
         <swc-button size="m" variant="secondary" data-action="cancel" @click=${() => this.#cancel()}>Cancel</swc-button>`;
   }
 
+  #inVault(account: Account): boolean {
+    const vault = this.model?.vault;
+    if (account.store !== 'vault' || account.status !== 'connected' || !vault) return false;
+    return account.auth !== 'api-key' || !!vault.put;
+  }
+
+  #records(account: Account, vault: VaultPort): Array<[string, RecordKind]> {
+    if (account.auth === 'api-key') return [[recordName(account), recordKind(account)]];
+    const server = serverOf(account);
+    const names = (vault.list()?.secrets ?? [])
+      .filter(
+        (secret) => secret.kind === 'mcp' && secret.server === server && secret.state !== 'removed'
+      )
+      .map((secret) => secret.name);
+    const tokens = names.length ? names : [`${upperName(server)}_ACCESS_TOKEN`];
+    return tokens.flatMap(
+      (name): Array<[string, RecordKind]> => [
+        [name, 'mcp'],
+        [`${name}_GRANT`, 'grant'],
+      ]
+    );
+  }
+
   async #disconnect(account: Account): Promise<void> {
     const model = this.model;
     const vault = model?.vault;
-    const stored = account.auth === 'api-key' && account.store === 'vault' && vault?.remove;
-    const body = `Agents can’t use ${account.provider} until you connect it again.${stored ? ' You can restore its key from Removed in Secrets for 30 days.' : ''}`;
+    const vaulted = account.store === 'vault' && !!vault?.remove;
+    const key = vaulted && account.auth === 'api-key';
+    const signIn = vaulted && account.auth !== 'api-key' && account.group === 'mcp';
+    const stored = key || signIn ? vault : undefined;
+    const body = `Agents can’t use ${account.provider} until you connect it again.${key ? ' You can restore its key from Removed in Secrets for 30 days.' : ''}`;
     const title = `Disconnect ${account.provider}?`;
     if (!(await confirm({ title, body, action: 'Disconnect', variant: 'confirmation' }))) return;
     clearValues(this.renderRoot);
     if (this.model !== model) return;
-    if (stored && !(await this.#forget(account, vault))) return;
+    if (stored && !(await this.#forget(account, stored))) return;
     if (this.model === model) model?.settings.disconnect(account.id);
   }
 
@@ -484,10 +518,9 @@ export class SliccSettings extends ThemedElement {
     this.#busy(account.id, true);
     this.failure = null;
     try {
-      await vault.remove?.(recordName(account), recordKind(account));
+      for (const [name, kind] of this.#records(account, vault)) await gone(vault, name, kind);
       return true;
     } catch (error) {
-      if (isVaultFailure(error) && error.code === 'ENOENT') return true;
       if (this.model?.vault === vault)
         this.failure = { id: account.id, message: failureText(error) };
       return false;
@@ -574,7 +607,7 @@ export class SliccSettings extends ThemedElement {
     return html`<div class="account" data-id=${account.id}>
       <span class="provider">${account.provider}</span>
       <span class="identity">${account.identity}${
-        account.store === 'vault' && account.status === 'connected'
+        this.#inVault(account)
           ? html`<span class="kept" data-store="vault">${account.identity ? ' · ' : ''}${kept(account)}</span>`
           : nothing
       }</span>
