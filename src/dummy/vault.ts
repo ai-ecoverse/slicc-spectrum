@@ -595,7 +595,7 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
         name,
         kind: 'secret',
         placeholder: `fnox_proxy_new${String(this.#serial).padStart(5, '0')}`,
-        state: 'active',
+        state: 'inert',
         source,
         sourceDevice: null,
         domains: [],

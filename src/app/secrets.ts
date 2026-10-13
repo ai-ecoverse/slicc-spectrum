@@ -777,6 +777,7 @@ export class SliccSecrets extends ThemedElement {
 
   async read(vault: VaultPort): Promise<void> {
     const form = this.form;
+    const kind = this.importKind;
     const password = take(this.#field('password'));
     const file = this.#field('file').files?.[0];
     if (this.busy) return;
@@ -793,14 +794,14 @@ export class SliccSecrets extends ThemedElement {
     this.problem = null;
     try {
       let bytes: Uint8Array | null = new Uint8Array(await file.arrayBuffer());
-      if (!this.#mine(vault)) return;
-      const call = vault.import?.(this.importKind, bytes, {
+      if (!this.#mine(vault) || this.importKind !== kind) return;
+      const call = vault.import?.(kind, bytes, {
         ...(password ? { password } : {}),
         ...(pick ? { pick } : {}),
       });
       bytes = null;
       const result = (await call) as ImportResult;
-      if (!this.#mine(vault, form)) return;
+      if (!this.#mine(vault, form) || this.importKind !== kind) return;
       if (result.stage === 'pick') {
         this.candidates = result.candidates;
         this.picked = new Set(result.candidates.map((item) => item.name));
