@@ -126,6 +126,13 @@ export function readFile(file: Blob): Promise<string> {
   });
 }
 
+export const linger = 60_000;
+
+export function release(attachments: readonly Attachment[]): void {
+  for (const attachment of attachments)
+    if (attachment.url?.startsWith('blob:')) URL.revokeObjectURL(attachment.url);
+}
+
 export function filter(items: Choice[], query: string, limit = 8): Choice[] {
   const needle = query.toLowerCase();
   return items
@@ -571,13 +578,15 @@ export class SliccComposer extends ThemedElement {
     this.popup = null;
     this.#history = -1;
     if (known) {
+      release(attachments);
       known.run(model, this.#agent, (command[2] ?? '').trim());
       return;
     }
     const busy = this.#busy();
     const resolved: SendMode =
       mode === 'queue' ? (busy ? 'queue' : 'send') : busy || mode === 'steer' ? 'steer' : 'send';
-    void model.agent.send(this.#agent, { text, attachments, mode: resolved });
+    const later = () => void setTimeout(() => release(attachments), linger);
+    model.agent.send(this.#agent, { text, attachments, mode: resolved }).then(later, later);
   }
 
   #id(): string {
@@ -613,13 +622,14 @@ export class SliccComposer extends ThemedElement {
             : { ...base, kind: 'text', text: content }
         );
       } else {
-        added.push({ ...base, kind: 'file' });
+        added.push({ ...base, kind: 'file', url: URL.createObjectURL(file) });
       }
     }
     this.attachments = [...this.attachments, ...added];
   }
 
   detach(id: string): void {
+    release(this.attachments.filter((attachment) => attachment.id === id));
     this.attachments = this.attachments.filter((attachment) => attachment.id !== id);
   }
 
@@ -894,7 +904,14 @@ export class SliccComposer extends ThemedElement {
   }
 
   async #paste(event: ClipboardEvent): Promise<void> {
-    const files = [...(event.clipboardData?.files ?? [])];
+    const data = event.clipboardData;
+    const listed = [...(data?.files ?? [])];
+    const files = listed.length
+      ? listed
+      : [...(data?.items ?? [])].flatMap((item) => {
+          const file = item.kind === 'file' ? item.getAsFile() : null;
+          return file ? [file] : [];
+        });
     if (files.length === 0) return;
     event.preventDefault();
     await this.addFiles(files);
