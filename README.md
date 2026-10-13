@@ -26,6 +26,7 @@ Web components for SLICC: `<slicc-terminal>`, and SLICC's app UI on [Spectrum We
 | `fit()` | Removes both attributes and fits the grid to the element. |
 | `send(data)` | Sends a string or bytes to the backend, as if typed. |
 | `write(data)` | Writes a string or bytes to the screen without involving the backend. |
+| `redraw(data)` | Writes a string or bytes to the screen only, without answering any terminal query in it (for replaying history). |
 | `signal(name)` | Sends `SIGINT`, `SIGTSTP`, `SIGQUIT` or `SIGHUP` to the backend. |
 | `readText()` | Resolves with the text of the scrollback and the screen. |
 | `focus()` | Focuses the terminal input. |
