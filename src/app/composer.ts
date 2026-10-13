@@ -154,6 +154,11 @@ export function trigger(
 
 type Field = HTMLElement & { updateComplete: Promise<boolean> };
 
+export function blocked(vault: VaultPort): string | null {
+  if (away(vault)) return 'Waiting for the vault';
+  return vault.status()?.locked ? 'Unlock the vault first' : null;
+}
+
 export class SliccComposer extends ThemedElement {
   static properties = {
     ...ThemedElement.properties,
@@ -681,8 +686,8 @@ export class SliccComposer extends ThemedElement {
   }
 
   async #store(vault: VaultPort, clean: string, value: string): Promise<boolean> {
-    if (away(vault)) {
-      this.#refuse('Waiting for the vault');
+    if (blocked(vault)) {
+      this.#refuse(blocked(vault));
       return false;
     }
     const exists = !!vault
@@ -705,8 +710,8 @@ export class SliccComposer extends ThemedElement {
           variant: 'confirmation',
         });
         if (!sure || !mine()) return false;
-        if (away(vault)) {
-          this.#refuse('Waiting for the vault');
+        if (blocked(vault)) {
+          this.#refuse(blocked(vault));
           return false;
         }
       }
@@ -974,8 +979,8 @@ export class SliccComposer extends ThemedElement {
     if (!popup) return nothing;
     if (popup.kind === 'secret') {
       const vault = this.model?.vault;
-      const valued = !!vault?.put && !away(vault);
-      const waiting = !!vault?.put && !valued;
+      const valued = !!vault?.put && !blocked(vault);
+      const waiting = vault?.put ? blocked(vault) : null;
       if (!valued) clearValues(this.renderRoot);
       const submit = (event: Event) => {
         event.preventDefault();
@@ -994,7 +999,7 @@ export class SliccComposer extends ThemedElement {
       const described = (name: string) => (this.secretField === name ? 'secret-error' : nothing);
       return html`<form class="popup secret" data-vault=${valued ? 'on' : 'off'} @submit=${submit} @keydown=${close} @input=${() => (this.secretField = null)}>
         <strong>Share a secret</strong>
-        <span class="lead">${valued ? 'The value goes to the vault; the agent only sees its name. Leave the value empty to share a secret the vault already has.' : waiting ? 'Waiting for the vault. You can share the name now and add the value in Settings › Secrets later.' : 'Add the value in Settings › Secrets. The agent only sees the name.'}</span>
+        <span class="lead">${valued ? 'The value goes to the vault; the agent only sees its name. Leave the value empty to share a secret the vault already has.' : waiting === 'Unlock the vault first' ? 'The vault is locked. You can share the name now and add the value once it is unlocked.' : waiting ? 'Waiting for the vault. You can share the name now and add the value in Settings › Secrets later.' : 'Add the value in Settings › Secrets. The agent only sees the name.'}</span>
         <label class="field"><span>Name</span><input name="name" placeholder="API_TOKEN" autocomplete="off" spellcheck="false" aria-invalid=${bad('name')} aria-describedby=${described('name')} /></label>
         ${valued ? html`<label class="field"><span>Value</span><input name="value" type="password" autocomplete="off" spellcheck="false" aria-invalid=${bad('value')} aria-describedby=${described('value')} /></label>` : nothing}
         ${this.secretError ? html`<span class="secret-error" role="alert" id="secret-error" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.secretError}</span></span>` : nothing}

@@ -706,6 +706,12 @@ export class SliccSecrets extends ThemedElement {
     ) as HTMLInputElement;
   }
 
+  #shut(vault: VaultPort): boolean {
+    if (!vault.status()?.locked) return false;
+    this.#refuse('Unlock the vault first');
+    return true;
+  }
+
   #mine(vault: VaultPort, form?: SecretForm | null): boolean {
     return (
       this.model?.vault === vault &&
@@ -733,7 +739,7 @@ export class SliccSecrets extends ThemedElement {
         variant: 'confirmation',
       });
       if (this.model?.vault === vault) this.busy = false;
-      if (!sure || !this.#mine(vault, form)) return;
+      if (!sure || !this.#mine(vault, form) || this.#shut(vault)) return;
     }
     this.busy = true;
     try {
@@ -852,7 +858,7 @@ export class SliccSecrets extends ThemedElement {
     this.#refuse(null);
     try {
       let bytes: Uint8Array | null = new Uint8Array(await file.arrayBuffer());
-      if (!this.#mine(vault, form) || this.importKind !== kind) return;
+      if (!this.#mine(vault, form) || this.importKind !== kind || this.#shut(vault)) return;
       const call = vault.import?.(kind, bytes, {
         ...(password ? { password } : {}),
         ...(pick ? { pick } : {}),
@@ -913,7 +919,7 @@ export class SliccSecrets extends ThemedElement {
       variant: 'confirmation',
       trigger,
     });
-    if (!sure || !this.#mine(vault, form)) return;
+    if (!sure || !this.#mine(vault, form) || this.#shut(vault)) return;
     this.busy = true;
     try {
       const bytes = (await vault.export?.(passphrase)) as Uint8Array;
