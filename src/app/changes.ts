@@ -16,6 +16,7 @@ import {
   statusLabels,
   statusMark,
 } from './files.ts';
+import { breakable } from './reach.ts';
 
 const layouts = [
   ['unified', 'Unified'],
@@ -138,7 +139,8 @@ export class SliccChanges extends ModelElement {
         background: var(--swc-background-layer-1-color);
       }
       code {
-        overflow-wrap: anywhere;
+        overflow-wrap: break-word;
+        word-break: normal;
         font-family: var(--swc-code-font-family-stack);
         font-size: var(--swc-font-size-75);
         color: var(--swc-code-color);
@@ -351,7 +353,7 @@ export class SliccChanges extends ModelElement {
       <p data-unavailable>${parts.map((part) => (typeof part === 'string' ? part : html`<code>${part.code}</code>`))}</p>
       ${codes.map(
         (code) => html`<div class="command" data-command=${code}>
-          <code>${code}</code>
+          <code>${breakable(code)}</code>
           <swc-action-button size="s" quiet data-action="copy-command" accessible-label=${this.copied === code ? 'Copied' : `Copy ${code}`} @click=${() => this.copy(code)}>
             <swc-icon-copy slot="icon"></swc-icon-copy>${this.copied === code ? 'Copied' : 'Copy'}
           </swc-action-button>

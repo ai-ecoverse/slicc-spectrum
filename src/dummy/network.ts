@@ -31,12 +31,14 @@ export function networkFixtures(scenario: NetworkScenario, now = Date.now()): Ne
   const extensionUrl = 'https://extensions.example/slicc';
   if (scenario === 'ok') {
     return {
-      route: 'proxy',
+      route: 'link',
       health: 'ok',
-      detail: 'slicc-node on localhost:5710 reaches every site.',
+      detail: 'Linked 2 min ago.',
       failures: [],
       extensionUrl,
-      browser: { via: 'proxy', detail: 'Chrome on localhost:9222.' },
+      browser: { via: 'link' },
+      links: { ...linksFixtures('none').links, devices: [linkedDevices[0]] },
+      exit: { kind: 'link', id: 'link-quay' },
     };
   }
   if (scenario === 'limited') {
@@ -360,11 +362,17 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
   }
 
   #with(status: NetworkStatus): NetworkStatus {
-    const linked = this.#links ? { ...status, links: this.#links, exit: this.#exit } : status;
+    const links = this.#links;
+    if (!links) return this.#withTailnet(status);
     const exit = this.#exit;
+    const direct = status.route === 'link' && exit?.kind !== 'link';
+    const base: NetworkStatus = direct
+      ? { ...status, route: 'page', detail: null, browser: { via: null } }
+      : status;
+    const linked = { ...base, links, exit };
     const device =
-      exit?.kind === 'link' ? this.#links?.devices.find((item) => item.id === exit.id) : undefined;
-    const browsing = this.#links?.devices.some(
+      exit?.kind === 'link' ? links.devices.find((item) => item.id === exit.id) : undefined;
+    const browsing = links.devices.some(
       (item) => item.state === 'connected' && item.browsers?.length
     );
     const routed = this.#withTailnet(
@@ -385,6 +393,7 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
       health: 'ok',
       detail: `${exit} carries everything except this computer’s own services.`,
       tailnet,
+      exit: this.#links ? status.exit : null,
     };
   }
 
