@@ -77,7 +77,8 @@ export function exitDevice(status: NetworkStatus): LinkedDevice | undefined {
 }
 
 export function localExit(status: NetworkStatus): boolean {
-  return status.route === 'proxy' || exitDevice(status)?.mode === 'local';
+  if (status.exit?.kind === 'link') return exitDevice(status)?.mode === 'local';
+  return status.route === 'proxy';
 }
 
 export function automationOf(browser: BrowserAutomation): keyof typeof automation {
