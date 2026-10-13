@@ -3,6 +3,7 @@ import { keyed } from 'lit/directives/keyed.js';
 import type { SliccModel, Sprinkle, SprinkleMethod, SprinklePort } from '../model/types.ts';
 import { type Color, ThemedElement } from './base.ts';
 import { Dips, dipsOf, dipType } from './dips.ts';
+import { watchOnly } from './follow.ts';
 import { type FontFile, installedFonts } from './fonts.ts';
 import { icons } from './lucide.ts';
 import theme from './sprinkle-theme.css';
@@ -188,16 +189,19 @@ export class SliccSprinkle extends ThemedElement {
     ...ThemedElement.properties,
     sprinkle: {},
     inline: { type: Boolean, reflect: true },
+    readonly: { type: Boolean, reflect: true },
     height: { state: true },
   };
   declare sprinkle: string;
   declare inline: boolean;
+  declare readonly: boolean;
   declare height: number;
 
   constructor() {
     super();
     this.sprinkle = '';
     this.inline = false;
+    this.readonly = false;
     this.height = 160;
   }
 
@@ -274,6 +278,7 @@ export class SliccSprinkle extends ThemedElement {
     const source = event.source as Window;
     const data = (event.data ?? {}) as FrameMessage;
     if (data.type === 'slicc-lick') {
+      if (this.#readOnly()) return;
       this.model?.sprinkles.send(this.sprinkle, {
         action: data.action,
         data: data.data,
@@ -292,10 +297,18 @@ export class SliccSprinkle extends ThemedElement {
     }
   };
 
+  #readOnly(): boolean {
+    return this.readonly || !!watchOnly(this.model);
+  }
+
   async #call(source: Window, data: FrameMessage): Promise<void> {
     const port = this.model?.sprinkles;
     if (!port?.call || typeof data.method !== 'string' || !sprinkleMethods.has(data.method)) return;
     const method = data.method as SprinkleMethod;
+    if (method === 'setState' && this.#readOnly()) {
+      source.postMessage({ type: 'slicc-result', id: data.id, error: 'read-only' }, '*');
+      return;
+    }
     const args = Array.isArray(data.args) ? data.args : [];
     if (method === 'setState') this.#held.value = args[0] ?? null;
     try {

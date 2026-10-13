@@ -6,6 +6,7 @@ import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Agent, SliccModel } from '../model/types.ts';
 import { ModelElement, percent, shared, statusLabel, statusLight } from './base.ts';
 import { confirm } from './confirm.ts';
+import { watchOnly } from './follow.ts';
 import { deleteCone } from './freezer.ts';
 import { agentTitle, coneLabel, untitled, watchTitles } from './names.ts';
 
@@ -135,6 +136,7 @@ export class SliccAgents extends ModelElement {
       model.agent.on('agents', () => this.requestUpdate()),
       model.agent.on('active', () => this.requestUpdate()),
       watchTitles(model, () => this.requestUpdate()),
+      ...(model.follow ? [model.follow.on('follow', () => this.requestUpdate())] : []),
     ];
   }
 
@@ -179,11 +181,16 @@ export class SliccAgents extends ModelElement {
   }
 
   #droppable(agent: Agent): boolean {
-    return agent.kind === 'scoop' && Boolean(this.model?.agent.drop);
+    return agent.kind === 'scoop' && Boolean(this.model?.agent.drop) && !watchOnly(this.model);
   }
 
   #deletable(agent: Agent): boolean {
-    return agent.kind === 'cone' && !agent.frozen && Boolean(this.model?.agent.freeze);
+    return (
+      agent.kind === 'cone' &&
+      !agent.frozen &&
+      Boolean(this.model?.agent.freeze) &&
+      !watchOnly(this.model)
+    );
   }
 
   async #deleteCone(agent: Agent, trigger: HTMLElement): Promise<void> {

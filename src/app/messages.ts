@@ -455,7 +455,7 @@ function part(
     case 'delegation':
       return delegation(entry, handlers);
     case 'sprinkle':
-      return html`<slicc-sprinkle inline .model=${handlers.model} sprinkle=${entry.sprinkle}></slicc-sprinkle>`;
+      return html`<slicc-sprinkle inline ?readonly=${handlers.readOnly} .model=${handlers.model} sprinkle=${entry.sprinkle}></slicc-sprinkle>`;
     case 'link':
       return host(entry.url) ? nothing : html`<div class="link-text">${entry.title}</div>`;
     default:

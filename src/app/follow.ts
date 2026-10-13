@@ -91,7 +91,7 @@ export function following(model: SliccModel | null | undefined): FollowState | n
 export function watchOnly(model: SliccModel | null | undefined): string {
   const state = following(model);
   if (!state || state.access.control) return '';
-  return `${state.owner} lets this device watch only. To send prompts, allow Control for it on ${state.owner}.`;
+  return `Watch only. To send prompts from this device, allow Control for it on ${state.owner}.`;
 }
 
 export function terminalsAllowed(model: SliccModel | null | undefined): boolean {

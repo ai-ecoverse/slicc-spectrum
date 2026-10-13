@@ -7,7 +7,7 @@ import type { Agent, SliccModel, Sprinkle, UpdatesPort } from '../model/types.ts
 import { changesOf, type DocumentHold, holdDocument, shared, ThemedElement } from './base.ts';
 import { prompt } from './confirm.ts';
 import { Dips, dipType } from './dips.ts';
-import { followPage, terminalsAllowed } from './follow.ts';
+import { followPage, terminalsAllowed, watchOnly } from './follow.ts';
 import { defaultFontBase, defaultVariableFont, installFonts } from './fonts.ts';
 import { deleteCone } from './freezer.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
@@ -890,7 +890,7 @@ export class SliccApp extends ThemedElement {
 
   #deletable(): boolean {
     const cone = this.model?.agent.list().find((agent) => agent.id === this.#cone());
-    return Boolean(cone && !cone.frozen && this.model?.agent.freeze);
+    return Boolean(cone && !cone.frozen && this.model?.agent.freeze && !watchOnly(this.model));
   }
 
   #cone(): string {
