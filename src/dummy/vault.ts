@@ -427,7 +427,8 @@ const candidates: ImportCandidate[] = [
   {
     name: 'MOORING_TOKEN',
     exists: false,
-    refused: 'its placeholder is in use by another embedder of this vault',
+    refused:
+      'another app that uses this vault already has this secret; use it there, or add it here by hand',
   },
 ];
 

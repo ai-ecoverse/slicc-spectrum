@@ -4599,7 +4599,7 @@ for (const [suffix, color, width, height] of passes) {
       ),
       [
         'Imported 4',
-        'Skipped MOORING_TOKEN: its placeholder is in use by another embedder of this vault',
+        'Skipped MOORING_TOKEN: another app that uses this vault already has this secret; use it there, or add it here by hand',
       ]
     );
     const seals = await page.evaluate(() =>
