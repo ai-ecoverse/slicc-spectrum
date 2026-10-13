@@ -191,6 +191,24 @@ const toolShapes: ToolCall[] = [
     status: 'cancelled',
   }),
   tool('k-t14', 'bash', 'Watch the logs', 'wrangler tail --env staging', '', { status: 'running' }),
+  tool(
+    'k-t16',
+    'bash',
+    'Check the staging routes',
+    'wrangler routes list --env staging',
+    'ROUTE                                         ZONE              WORKER                  ENV\nforecast.harbor.example/v2/forecast/*         harbor.example    harbor-forecast-v2      staging\nerror: the route forecast.harbor.example/v2/units/* belongs to another account; ask its owner to release it first',
+    {
+      status: 'error',
+      notes: [
+        { severity: 'error', text: 'Exited with code 5' },
+        {
+          severity: 'warn',
+          text: 'Output truncated: 12 lines and 1,840 bytes dropped from the start',
+        },
+        { severity: 'info', text: 'Full output in /tmp/pi-bash-7f3a.log' },
+      ],
+    }
+  ),
 ];
 
 const licks: Array<[LickChannel, string, string, string | undefined, Partial<Message>]> = [

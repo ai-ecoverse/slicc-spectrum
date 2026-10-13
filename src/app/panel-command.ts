@@ -417,13 +417,17 @@ interface Scope {
   reachable: readonly PanelInfo[];
 }
 
+function closedWhen(ago: number): string {
+  return ago < 5000 ? 'just now' : `${Math.round(ago / 1000)} s ago`;
+}
+
 function act(scope: Scope, parsed: Parsed): PanelOutput {
   const { panels, reachable, cone } = scope;
   if (parsed.verb === 'reset') {
     const recent = scope.agent ? panels.recentClose() : null;
     if (recent)
       return refusedOutput(
-        `the user closed ${recent.id} ${Math.round(recent.ago / 1000)} s ago; ask before resetting the layout`
+        `the user closed ${recent.id} ${closedWhen(recent.ago)}; ask before resetting the layout`
       );
     return done(panels.reset());
   }
@@ -439,9 +443,7 @@ function act(scope: Scope, parsed: Parsed): PanelOutput {
   if (parsed.verb === 'close') return done(panels.close(id));
   const ago = scope.agent && !panels.find(id)?.open ? panels.closedAgo(id) : null;
   if (ago !== null)
-    return refusedOutput(
-      `the user closed ${id} ${Math.round(ago / 1000)} s ago; ask before opening it again`
-    );
+    return refusedOutput(`the user closed ${id} ${closedWhen(ago)}; ask before opening it again`);
   if (parsed.verb === 'move') return done(panels.move(id, place as PanelPlace));
   const options = { place, section: parsed.section };
   if (parsed.verb === 'open') return done(panels.open(id, options));

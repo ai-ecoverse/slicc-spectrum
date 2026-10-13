@@ -20,6 +20,11 @@ export interface Agent {
 
 export type ToolStatus = 'running' | 'done' | 'error' | 'cancelled';
 
+export interface ToolNote {
+  severity: 'error' | 'warn' | 'info';
+  text: string;
+}
+
 export interface ToolCall {
   id: string;
   name: string;
@@ -33,6 +38,7 @@ export interface ToolCall {
   pid?: number;
   meta?: string;
   diff?: { before: string; after: string };
+  notes?: ToolNote[];
 }
 
 export type AttachmentKind = 'image' | 'text' | 'file' | 'secret';
@@ -540,6 +546,8 @@ export interface MonitorAlert {
   title: string;
   detail: string;
   severity: 'warn' | 'error';
+  command?: string;
+  commandLabel?: string;
 }
 
 export interface MonitorSnapshot {
