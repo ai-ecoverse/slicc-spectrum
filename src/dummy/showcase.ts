@@ -201,7 +201,10 @@ const toolShapes: ToolCall[] = [
       status: 'error',
       notes: [
         { severity: 'error', text: 'Exited with code 5' },
-        { severity: 'warn', text: 'Output truncated: 12 lines and 1,840 bytes dropped from the start' },
+        {
+          severity: 'warn',
+          text: 'Output truncated: 12 lines and 1,840 bytes dropped from the start',
+        },
         { severity: 'info', text: 'Full output in /tmp/pi-bash-7f3a.log' },
       ],
     }

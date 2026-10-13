@@ -547,6 +547,7 @@ export interface MonitorAlert {
   detail: string;
   severity: 'warn' | 'error';
   command?: string;
+  commandLabel?: string;
 }
 
 export interface MonitorSnapshot {

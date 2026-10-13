@@ -190,9 +190,10 @@ export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort 
               {
                 id: 'runaway-cpu-433',
                 title: 'quiet-otter is using a lot of CPU',
-                detail: '97% of one core for 3 minutes. To stop it, run:',
+                detail: '97% of one core for 3 minutes.',
                 severity: 'warn' as const,
                 command: 'kill -- -433',
+                commandLabel: 'To stop it, run',
               },
             ]
           : []),

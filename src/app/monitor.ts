@@ -220,6 +220,11 @@ export class SliccMonitor extends ModelElement {
         font-size: var(--swc-font-size-75);
         color: var(--swc-code-color);
       }
+      .alert .lead {
+        display: block;
+        margin-block-start: var(--swc-spacing-75);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
       .alert .uncopied {
         display: block;
         color: var(--swc-negative-content-color-default);
@@ -357,14 +362,16 @@ export class SliccMonitor extends ModelElement {
     return html`<li class="alert" data-severity=${alert.severity}>
       ${error ? html`<swc-icon-alert-diamond size="s" aria-hidden="true"></swc-icon-alert-diamond>` : html`<swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>`}
       <div><span class="sr">${error ? 'Error: ' : 'Warning: '}</span><strong>${alert.title}</strong><span class="detail">${alert.detail}</span>${
-        alert.command ? this.#command(alert.id, alert.command) : nothing
+        alert.command
+          ? this.#command(alert.id, alert.command, alert.commandLabel ?? 'Run')
+          : nothing
       }</div>
     </li>`;
   }
 
-  #command(id: string, text: string): TemplateResult {
+  #command(id: string, text: string, label: string): TemplateResult {
     const copied = this.copied?.id === id ? this.copied : null;
-    return html`<div class="command" data-command><code>${text}</code><swc-action-button size="s" quiet data-action="copy-command" accessible-label=${copied?.done ? 'Copied' : 'Copy command'} @click=${() => this.#copy(id, text)}><swc-icon-copy slot="icon"></swc-icon-copy>${copied?.done ? 'Copied' : 'Copy'}</swc-action-button></div>${
+    return html`<span class="lead">${label}:</span><div class="command" data-command><code>${text}</code><swc-action-button size="s" quiet data-action="copy-command" accessible-label=${copied?.done ? 'Copied' : 'Copy command'} @click=${() => this.#copy(id, text)}><swc-icon-copy slot="icon"></swc-icon-copy>${copied?.done ? 'Copied' : 'Copy'}</swc-action-button></div>${
       copied && !copied.done
         ? html`<span class="uncopied" role="alert" data-error="copy">Couldn’t copy. Select the command and copy it.</span>`
         : nothing
