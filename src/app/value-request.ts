@@ -39,7 +39,10 @@ export class SliccValueRequest extends ThemedElement {
   #trigger: HTMLElement | null = null;
   #timer: ReturnType<typeof setInterval> | null = null;
   #port: VaultPort | undefined;
-  #open = (event: Event) => this.reopen((event as CustomEvent<{ id: string }>).detail.id);
+  #open = (event: Event) => {
+    const { id, vault } = (event as CustomEvent<{ id: string; vault?: VaultPort }>).detail;
+    if (vault === undefined || vault === this.model?.vault) this.reopen(id);
+  };
 
   constructor() {
     super();

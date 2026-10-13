@@ -754,8 +754,9 @@ export class SliccSecrets extends ThemedElement {
   }
 
   answer(id: string): void {
+    const vault = this.model?.vault;
     this.dispatchEvent(
-      new CustomEvent('value-request', { detail: { id }, bubbles: true, composed: true })
+      new CustomEvent('value-request', { detail: { id, vault }, bubbles: true, composed: true })
     );
   }
 

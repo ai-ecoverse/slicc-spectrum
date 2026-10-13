@@ -20,6 +20,7 @@ import type {
 } from '../model/types.ts';
 import { nameProblem, valueProblem } from '../model/values.ts';
 import { chatModels, shared, ThemedElement } from './base.ts';
+import { confirm } from './confirm.ts';
 import { size } from './messages.ts';
 import { clearValues, failureText, type PopupDetail, take } from './vault.ts';
 
@@ -637,13 +638,26 @@ export class SliccComposer extends ThemedElement {
       .replace(/[^A-Z0-9_]/g, '_');
     if (!clean || this.sharing) return;
     const vault = this.model?.vault;
-    if (field && vault?.put) {
+    const exists = !!vault?.list()?.secrets.some((secret) => secret.name === clean);
+    if (field && vault?.put && !(exists && value === '')) {
       const problem = nameProblem(clean) ?? valueProblem(value);
       this.secretError = problem;
       if (problem) return;
       const agent = this.#agent;
       const mine = () => this.#agent === agent && this.model?.vault === vault;
       this.sharing = true;
+      if (exists) {
+        const sure = await confirm({
+          title: `Replace ${clean}?`,
+          body: 'A secret with this name exists. Sharing replaces its value, and its placeholder stays.',
+          action: 'Replace',
+          variant: 'confirmation',
+        });
+        if (!sure || !mine()) {
+          this.sharing = false;
+          return;
+        }
+      }
       try {
         await vault.put(clean, value);
       } catch (error) {
@@ -936,7 +950,7 @@ export class SliccComposer extends ThemedElement {
       };
       return html`<form class="popup secret" data-vault=${valued ? 'on' : 'off'} @submit=${submit} @keydown=${close}>
         <strong>Share a secret</strong>
-        <span class="lead">${valued ? 'The value goes to the vault; the agent only sees its name.' : 'Add the value in Settings › Secrets. The agent only sees the name.'}</span>
+        <span class="lead">${valued ? 'The value goes to the vault; the agent only sees its name. Leave the value empty to share a secret the vault already has.' : 'Add the value in Settings › Secrets. The agent only sees the name.'}</span>
         <input name="name" placeholder="Name, e.g. API_TOKEN" aria-label="Secret name" autocomplete="off" spellcheck="false" />
         ${valued ? html`<input name="value" type="password" placeholder="Value" aria-label="Secret value" autocomplete="off" spellcheck="false" />` : nothing}
         ${this.secretError ? html`<span class="secret-error" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.secretError}</span></span>` : nothing}
