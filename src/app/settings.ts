@@ -28,6 +28,11 @@ const keptNames = { 'api-key': 'Key kept in the vault', token: 'Token kept in th
 const kept = (account: Account) =>
   account.auth === 'api-key' ? keptNames[account.secret ?? 'api-key'] : 'Kept in the vault';
 
+const inVault = (account: Account) =>
+  account.store === 'vault' &&
+  account.status === 'connected' &&
+  (account.auth === 'api-key' || account.group !== 'mcp');
+
 export class SliccSettings extends ThemedElement {
   static properties = {
     ...ThemedElement.properties,
@@ -574,7 +579,7 @@ export class SliccSettings extends ThemedElement {
     return html`<div class="account" data-id=${account.id}>
       <span class="provider">${account.provider}</span>
       <span class="identity">${account.identity}${
-        account.store === 'vault' && account.status === 'connected'
+        inVault(account)
           ? html`<span class="kept" data-store="vault">${account.identity ? ' · ' : ''}${kept(account)}</span>`
           : nothing
       }</span>
