@@ -952,7 +952,7 @@ export type RecordSource =
 
 export type LockMode = 'auto' | 'passkey' | 'passphrase';
 
-export type RequestKind = 'value' | 'oauth' | 'jerk-seal';
+export type RequestKind = 'value' | 'oauth' | 'jerk-seal' | 'jerk' | 'unseal';
 
 export type RequestState = 'pending' | 'done' | 'cancelled' | 'expired';
 
@@ -1122,6 +1122,15 @@ export interface RemoveEntry extends AuditBase {
   type: 'remove' | 'restore';
 }
 
+export interface McpEntry extends AuditBase {
+  type: 'mcp';
+  server: string;
+  domain: string;
+  method: string;
+  path: string;
+  exit: ExitName;
+}
+
 export interface RefreshEntry extends AuditBase {
   type: 'refresh';
   grant?: string;
@@ -1142,6 +1151,7 @@ export interface PolicyEntry {
 
 export type AuditEntry =
   | InjectionEntry
+  | McpEntry
   | RevealEntry
   | SealEntry
   | RemoveEntry

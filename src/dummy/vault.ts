@@ -279,6 +279,20 @@ export function vaultOlder(now = Date.now()): AuditEntry[] {
       uid: 0,
       tag: null,
     },
+    {
+      type: 'mcp',
+      seq: 2,
+      id: 'audit-2',
+      at: now - 7 * day,
+      name: 'DOCS_MCP_TOKEN',
+      uid: 1000,
+      tag: 'cone',
+      server: 'docs',
+      domain: 'docs.example',
+      method: 'POST',
+      path: '/mcp',
+      exit: 'page',
+    },
   ];
 }
 

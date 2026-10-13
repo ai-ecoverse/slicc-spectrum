@@ -4735,7 +4735,13 @@ test('the secrets activity log lists uses and reveals, pages back and filters to
   await page.until(() => !window.settingsPart('slicc-secrets', '[data-action=older]'));
   const all = await page.evaluate(seqs);
   assert.equal(all.length > before.length, true);
-  assert.equal(all.at(-1).startsWith('3:'), true);
+  assert.equal(all.at(-1), '2:mcp');
+  assert.match(
+    await page.evaluate(
+      () => window.settingsPart('slicc-secrets', 'ol.audit li[data-type=mcp]').textContent
+    ),
+    /Sent to the MCP server docs at docs\.example/
+  );
   await page.evaluate(() => {
     window.settingsPart('slicc-secrets', '[data-action=reveals]').click();
     return true;
