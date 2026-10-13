@@ -2188,6 +2188,164 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
   assert.deepEqual(page.errors, []);
 });
 
+async function dropFiles(t, color, width) {
+  const page = await open(t, { color });
+  if (width) {
+    await page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height: 860,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await page.until(() => window.app.getAttribute('screen') === 'phone');
+    await new Promise((resolve) => setTimeout(resolve, 600));
+  }
+  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer'));
+  await page.evaluate(() => {
+    const png = Uint8Array.from(
+      atob(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+      ),
+      (char) => char.charCodeAt(0)
+    );
+    window.dropBytes = [0, 1, 2, 127, 128, 254, 255];
+    window.dropTransfer = () => {
+      const data = new DataTransfer();
+      data.items.add(new File([png], 'harbor.png', { type: 'image/png' }));
+      data.items.add(new File(['tide tables\n'], 'tides.txt', { type: 'text/plain' }));
+      data.items.add(
+        new File([new Uint8Array(window.dropBytes)], 'buoy.bin', {
+          type: 'application/octet-stream',
+        })
+      );
+      return data;
+    };
+    window.drag = (type, target, dataTransfer) =>
+      target.dispatchEvent(
+        new DragEvent(type, {
+          dataTransfer,
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+          clientX: 10,
+          clientY: 10,
+        })
+      );
+    const pane = window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log');
+    const data = window.dropTransfer();
+    window.drag('dragenter', pane, data);
+    window.drag('dragover', pane, data);
+    return true;
+  });
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone[dragged]')
+  );
+  await shot(page, `attach-drop-${width ?? 1280}-${color}`);
+  await page.evaluate(() =>
+    window.drag(
+      'drop',
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log'),
+      window.dropTransfer()
+    )
+  );
+  await page.until(
+    () =>
+      !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone') &&
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').attachments.length === 3
+  );
+  await shot(page, `attach-three-${width ?? 1280}-${color}`);
+  return page;
+}
+
+async function sentAttachments(page, text) {
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').focus();
+    return true;
+  });
+  await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
+  await page.insert(text);
+  await page.press('Enter');
+  await page.until(
+    (text) =>
+      window.model.agent
+        .messages('cone-sliccy')
+        .some((message) => message.role === 'user' && message.text === text),
+    text
+  );
+  return page.evaluate(async (text) => {
+    const message = window.model.agent
+      .messages('cone-sliccy')
+      .find((candidate) => candidate.role === 'user' && candidate.text === text);
+    const binary = message.attachments.find((attachment) => attachment.kind === 'file');
+    const bytes = [...new Uint8Array(await (await fetch(binary.url)).arrayBuffer())];
+    return {
+      kinds: message.attachments.map((attachment) => attachment.kind),
+      names: message.attachments.map((attachment) => attachment.name),
+      image: message.attachments[0].url.slice(0, 22),
+      text: message.attachments[1].text,
+      blob: binary.url.slice(0, 5),
+      bytes,
+      expected: window.dropBytes,
+    };
+  }, text);
+}
+
+test('files dropped on the chat pane and on the composer reach the agent with their content', async (t) => {
+  const page = await dropFiles(t, 'light');
+  const expected = {
+    kinds: ['image', 'text', 'file'],
+    names: ['harbor.png', 'tides.txt', 'buoy.bin'],
+    image: 'data:image/png;base64,',
+    text: 'tide tables\n',
+    blob: 'blob:',
+  };
+  const pane = await sentAttachments(page, 'From the pane');
+  assert.deepEqual(pane.bytes, pane.expected);
+  assert.deepEqual(
+    { ...pane, bytes: undefined, expected: undefined },
+    { ...expected, bytes: undefined, expected: undefined }
+  );
+
+  await page.until(() => window.model.agent.busy('cone-sliccy') === false);
+  await page.evaluate(() => {
+    const textarea = window.$(
+      'slicc-app',
+      'slicc-dock',
+      'slicc-chat',
+      'slicc-composer',
+      'swc-prompt-field',
+      'textarea'
+    );
+    const data = window.dropTransfer();
+    window.drag('dragenter', textarea, data);
+    window.drag('dragover', textarea, data);
+    window.drag('drop', textarea, data);
+    return true;
+  });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').attachments.length === 3
+  );
+  const field = await sentAttachments(page, 'From the composer');
+  assert.deepEqual(field.bytes, field.expected);
+  assert.deepEqual(
+    { ...field, bytes: undefined, expected: undefined },
+    { ...expected, bytes: undefined, expected: undefined }
+  );
+  assert.equal(
+    await page.evaluate(() => !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone')),
+    true
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+for (const [color, width] of [['dark'], ['light', 420]]) {
+  test(`dropping files shows where to drop and attaches them, ${color}${width ? ` at ${width}` : ''}`, async (t) => {
+    const page = await dropFiles(t, color, width);
+    assert.deepEqual(page.errors, []);
+  });
+}
+
 test('the slash popup offers the agent’s prompts and skills and sends them as messages', async (t) => {
   const page = await open(t, { delay: '0' });
   await page.press('2', 'alt');
