@@ -3209,6 +3209,106 @@ test('thread tabs in dark', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
+test('a watch-only follower has no Delete cone or Drop, and its inline sprinkle licks nothing', async (t) => {
+  const page = await open(t, { follow: 'watch' });
+  await page.evaluate(() => {
+    window.welcome = () =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:cone-sliccy')
+        ?.shadowRoot.querySelector('slicc-sprinkle[inline]');
+    window.agentsRow = () => window.$('slicc-app', 'slicc-dock').content('agents')?.shadowRoot;
+    window.lickWelcome = () =>
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'slicc-lick', action: 'onboarding-complete', data: { name: 'Robin' } },
+          source: window.welcome().shadowRoot.querySelector('iframe').contentWindow,
+        })
+      );
+    window.licked = () =>
+      window.model.agent
+        .messages('cone-sliccy')
+        .some(
+          (message) => message.channel === 'sprinkle' && message.text === 'onboarding-complete'
+        );
+    return true;
+  });
+  await page.until(() => window.agentsRow()?.querySelectorAll('li').length > 0);
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.agentsRow().querySelectorAll('[data-action=delete-cone], [data-action=drop]').length
+    ),
+    0
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        !!window.$(
+          'slicc-app',
+          'header sp-menu-item[data-action=delete-cone], header sp-menu-item[data-action=new-cone]'
+        )
+    ),
+    false
+  );
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:cone-sliccy')
+        ?.shadowRoot.querySelector('[data-follow=watch]')
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:cone-sliccy')
+        .shadowRoot.querySelector('[data-follow=watch]')
+        .textContent.trim()
+    ),
+    'Watch only. To send prompts from this device, allow Control for it on SLICC on quay-studio.'
+  );
+  await page.until(() => !!window.welcome()?.shadowRoot.querySelector('iframe'));
+  assert.equal(await page.evaluate(() => window.welcome().hasAttribute('readonly')), true);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.welcome().shadowRoot;
+      return [
+        root.querySelector('iframe').inert,
+        root.querySelector('.handle [data-view-only]')?.textContent.trim(),
+      ];
+    }),
+    [true, 'View only on this device']
+  );
+  await page.evaluate(() => {
+    window.lickWelcome();
+    return true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(await page.evaluate(() => window.licked()), false);
+  await page.evaluate(() => {
+    window.model.follow.setScenario('control');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.agentsRow().querySelectorAll('[data-action=delete-cone], [data-action=drop]').length >
+      0
+  );
+  await page.until(() => !window.welcome()?.hasAttribute('readonly'));
+  await page.until(() => !window.welcome().shadowRoot.querySelector('iframe').inert);
+  assert.equal(
+    await page.evaluate(() => !!window.welcome().shadowRoot.querySelector('[data-view-only]')),
+    false
+  );
+  await page.evaluate(() => {
+    window.lickWelcome();
+    return true;
+  });
+  await page.until(() => window.licked());
+  assert.deepEqual(page.errors, []);
+});
+
 test('a dip drags out of the chat into the dock and lives on as a panel', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {

@@ -7,7 +7,7 @@ import type { Agent, SliccModel, Sprinkle, UpdatesPort } from '../model/types.ts
 import { changesOf, type DocumentHold, holdDocument, shared, ThemedElement } from './base.ts';
 import { prompt } from './confirm.ts';
 import { Dips, dipType } from './dips.ts';
-import { followPage, terminalsAllowed } from './follow.ts';
+import { followPage, terminalsAllowed, watchOnly } from './follow.ts';
 import { defaultFontBase, defaultVariableFont, installFonts } from './fonts.ts';
 import { deleteCone } from './freezer.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
@@ -890,7 +890,11 @@ export class SliccApp extends ThemedElement {
 
   #deletable(): boolean {
     const cone = this.model?.agent.list().find((agent) => agent.id === this.#cone());
-    return Boolean(cone && !cone.frozen && this.model?.agent.freeze);
+    return Boolean(cone && !cone.frozen && this.model?.agent.freeze && !watchOnly(this.model));
+  }
+
+  #creatable(): boolean {
+    return Boolean(this.model?.agent.createCone) && !watchOnly(this.model);
   }
 
   #cone(): string {
@@ -937,6 +941,7 @@ export class SliccApp extends ThemedElement {
       action: 'Create',
       trigger,
       submit: async (name) => {
+        if (watchOnly(this.model)) return;
         created = await create(name);
       },
     });
@@ -1037,13 +1042,13 @@ export class SliccApp extends ThemedElement {
                   html`<sp-picker size="s" label="Agent" value=${this.#cone()} @change=${this.#pick}>
             ${cones.map((agent) => html`<sp-menu-item value=${agent.id}>${agent.name}<span slot="description">${agentTitle(this.model as SliccModel, agent) || untitled}</span></sp-menu-item>`)}
             ${
-              this.model?.agent.createCone
+              this.#creatable()
                 ? html`<sp-menu-divider></sp-menu-divider><sp-menu-item value=${newCone} data-action="new-cone"><swc-icon-add slot="icon"></swc-icon-add>New cone</sp-menu-item>`
                 : nothing
             }
             ${
               this.#deletable()
-                ? html`${this.model?.agent.createCone ? nothing : html`<sp-menu-divider></sp-menu-divider>`}<sp-menu-item value=${deleteActiveCone} data-action="delete-cone"><swc-icon-delete slot="icon"></swc-icon-delete>Delete cone</sp-menu-item>`
+                ? html`${this.#creatable() ? nothing : html`<sp-menu-divider></sp-menu-divider>`}<sp-menu-item value=${deleteActiveCone} data-action="delete-cone"><swc-icon-delete slot="icon"></swc-icon-delete>Delete cone</sp-menu-item>`
                 : nothing
             }
             ${

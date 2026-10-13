@@ -1,8 +1,9 @@
-import { css, html, type PropertyValues, svg, type TemplateResult } from 'lit';
+import { css, html, nothing, type PropertyValues, svg, type TemplateResult } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import type { SliccModel, Sprinkle, SprinkleMethod, SprinklePort } from '../model/types.ts';
 import { type Color, ThemedElement } from './base.ts';
 import { Dips, dipsOf, dipType } from './dips.ts';
+import { watchOnly } from './follow.ts';
 import { type FontFile, installedFonts } from './fonts.ts';
 import { icons } from './lucide.ts';
 import theme from './sprinkle-theme.css';
@@ -183,21 +184,26 @@ export const sprinkleMethods: ReadonlySet<string> = new Set<SprinkleMethod>([
 
 const grip = svg`<svg class="grip" viewBox="0 0 8 14" width="8" height="14" aria-hidden="true">${[2, 7, 12].flatMap((y) => [2, 6].map((x) => svg`<circle cx=${x} cy=${y} r="1.25"></circle>`))}</svg>`;
 
+const plainId = (id: string) => id.replace(/^cone:/, '');
+
 export class SliccSprinkle extends ThemedElement {
   static properties = {
     ...ThemedElement.properties,
     sprinkle: {},
     inline: { type: Boolean, reflect: true },
+    readonly: { type: Boolean, reflect: true },
     height: { state: true },
   };
   declare sprinkle: string;
   declare inline: boolean;
+  declare readonly: boolean;
   declare height: number;
 
   constructor() {
     super();
     this.sprinkle = '';
     this.inline = false;
+    this.readonly = false;
     this.height = 160;
   }
 
@@ -262,6 +268,30 @@ export class SliccSprinkle extends ThemedElement {
       color: var(--spectrum-neutral-subdued-content-color-default);
       font-size: var(--spectrum-font-size-75);
     }
+    .view-only {
+      color: var(--spectrum-neutral-subdued-content-color-default);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding-inline-end: 4px;
+    }
+    .panel {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .panel iframe {
+      flex: 1;
+      min-height: 0;
+    }
+    .bar {
+      display: flex;
+      align-items: center;
+      height: 28px;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--spectrum-gray-200);
+      font-size: var(--spectrum-font-size-75);
+    }
     .note {
       padding: 24px;
       color: var(--spectrum-neutral-subdued-content-color-default);
@@ -274,6 +304,7 @@ export class SliccSprinkle extends ThemedElement {
     const source = event.source as Window;
     const data = (event.data ?? {}) as FrameMessage;
     if (data.type === 'slicc-lick') {
+      if (this.#readOnly()) return;
       this.model?.sprinkles.send(this.sprinkle, {
         action: data.action,
         data: data.data,
@@ -292,10 +323,35 @@ export class SliccSprinkle extends ThemedElement {
     }
   };
 
+  #readOnly(): boolean {
+    return this.readonly || this.#frozen() || !!watchOnly(this.model);
+  }
+
+  #seen = new Set<string>();
+
+  #frozen(): boolean {
+    const owner = this.#data?.agentId;
+    const port = this.model?.agent;
+    if (!port || !owner) return false;
+    const id = plainId(owner);
+    const agents = port.list();
+    const live = agents.find((agent) => plainId(agent.id) === id);
+    if (live) {
+      this.#seen.add(id);
+      return !!live.frozen;
+    }
+    if (port.frozen().some((row) => !row.live && plainId(row.id) === id)) return true;
+    return agents.length > 0 && this.#seen.has(id);
+  }
+
   async #call(source: Window, data: FrameMessage): Promise<void> {
     const port = this.model?.sprinkles;
     if (!port?.call || typeof data.method !== 'string' || !sprinkleMethods.has(data.method)) return;
     const method = data.method as SprinkleMethod;
+    if (method === 'setState' && this.#readOnly()) {
+      source.postMessage({ type: 'slicc-result', id: data.id, error: 'read-only' }, '*');
+      return;
+    }
     const args = Array.isArray(data.args) ? data.args : [];
     if (method === 'setState') this.#held.value = args[0] ?? null;
     try {
@@ -358,6 +414,7 @@ export class SliccSprinkle extends ThemedElement {
       () => globalThis.removeEventListener('message', this.#message),
       model.sprinkles.on('sprinkles', () => this.requestUpdate()),
       this.#dips.on('change', () => this.requestUpdate()),
+      ...(model.follow ? [model.follow.on('follow', () => this.requestUpdate())] : []),
     ];
   }
 
@@ -408,18 +465,26 @@ export class SliccSprinkle extends ThemedElement {
     const bridged = !!this.model?.sprinkles.call;
     if (bridged && !this.#held.ready) return html``;
     const state = bridged ? this.#held : undefined;
+    const watch = !!watchOnly(this.model);
+    const caption = watch
+      ? html`<span class="view-only" data-view-only>View only on this device</span>`
+      : nothing;
     const style = `color-scheme:${this.color};${this.inline ? `height:${this.height}px;` : ''}`;
     const frame = html`${keyed(
       this.#mounts,
-      html`<iframe title=${data.title} sandbox="allow-scripts" style=${style} .srcdoc=${this.#document(data, state)}></iframe>`
+      html`<iframe title=${data.title} sandbox="allow-scripts" ?inert=${watch} style=${style} .srcdoc=${this.#document(data, state)}></iframe>`
     )}`;
-    if (!this.inline) return frame;
+    if (!this.inline)
+      return watch
+        ? html`<div class="panel"><div class="bar">${caption}</div>${frame}</div>`
+        : frame;
     return html`<div class="handle" draggable="true" title="Drag into the dock or a rail to open as a panel" @dragstart=${this.#drag}>
         ${grip}
         <span class="name">${data.title}</span>
         <sp-action-button size="xs" quiet label=${`Open ${data.title} as a panel`} title="Open as a panel" @click=${() => this.#send('detach-sprinkle', data.id)}>
           <swc-icon-open-in slot="icon"></swc-icon-open-in>
         </sp-action-button>
+        ${caption}
       </div>
       <div class="frame">${frame}</div>`;
   }

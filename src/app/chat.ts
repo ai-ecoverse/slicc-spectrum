@@ -398,7 +398,7 @@ export class SliccChat extends ThemedElement {
     if (agent.frozen) {
       return html`<swc-badge size="s" variant="informative" subtle>Frozen</swc-badge>
         <span class="frozen">Read only</span>
-        <swc-button size="s" variant="secondary" fill-style="outline" data-action="thaw" @click=${() => model.agent.thaw(agent.id)}>Thaw</swc-button>
+        ${watchOnly(model) ? nothing : html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="thaw" @click=${() => model.agent.thaw(agent.id)}>Thaw</swc-button>`}
         ${meter}`;
     }
     if (watchOnly(model)) {
