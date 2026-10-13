@@ -4580,3 +4580,57 @@ test('a locked vault hold fits a narrow window and clears once unlocked', async 
   assert.equal(await page.evaluate(() => window.model.agent.hold()), null);
   assert.deepEqual(page.errors, []);
 });
+
+test('a terminal remounted after a phone round trip lays out its history at the fitted width', async (t) => {
+  const page = await open(t);
+  const viewport = (width) =>
+    page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height: 800,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await viewport(1280);
+  await page.evaluate(() => window.$('slicc-app', '.rail.right [data-surface=terminal]').click());
+  await page.until(() => window.screen().includes('user@slicc:/workspace/harbor$'));
+  const words = Array.from({ length: 24 }, (_, i) => `w${String(i).padStart(2, '0')}`).join(' ');
+  await page.evaluate(() => window.terminal().focus());
+  await page.until(() => /slicc-terminal/.test(window.focused()));
+  await page.insert(`echo ${words}`);
+  await page.press('Enter');
+  await page.until(
+    () =>
+      window
+        .screen()
+        .split('\n')
+        .filter((row) => row.endsWith('w23')).length === 2
+  );
+  await page.evaluate(() => {
+    window.laid = (text) => {
+      const cols = window.terminal().screen.cols;
+      const rows = window.screen().split('\n');
+      const chunk = (line) =>
+        Array.from({ length: Math.ceil(line.length / cols) }, (_, i) =>
+          line.slice(i * cols, (i + 1) * cols).trimEnd()
+        );
+      const want = [...chunk(`user@slicc:/workspace/harbor$ echo ${text}`), ...chunk(text)];
+      const at = rows.indexOf(want[0]);
+      return { cols, ok: at >= 0 && want.every((row, i) => rows[at + i] === row), rows };
+    };
+  });
+  assert.equal(await page.evaluate((text) => window.laid(text).ok, words), true);
+  for (let round = 0; round < 2; round++) {
+    await viewport(420);
+    await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+    await page.until(() => !window.terminal());
+    await viewport(1280);
+    await page.until(() => document.querySelector('slicc-app').screen === 'desktop');
+    await page.until(() => window.terminal()?.screen?.cols > 20);
+    const after = await page
+      .within(3000, (text) => window.laid(text).ok, words)
+      .catch(() => page.evaluate((text) => window.laid(text), words));
+    assert.equal(after, true, `round ${round + 1}: ${JSON.stringify(after)}`);
+  }
+  assert.deepEqual(page.errors, []);
+});
