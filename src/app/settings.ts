@@ -490,12 +490,7 @@ export class SliccSettings extends ThemedElement {
       )
       .map((secret) => secret.name);
     const tokens = names.length ? names : [`${upperName(server)}_ACCESS_TOKEN`];
-    return tokens.flatMap(
-      (name): Array<[string, RecordKind]> => [
-        [name, 'mcp'],
-        [`${name}_GRANT`, 'grant'],
-      ]
-    );
+    return tokens.map((name): [string, RecordKind] => [name, 'mcp']);
   }
 
   async #disconnect(account: Account): Promise<void> {
