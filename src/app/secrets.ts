@@ -732,11 +732,15 @@ export class SliccSecrets extends ThemedElement {
   async save(vault: VaultPort): Promise<void> {
     const form = this.form as SecretForm;
     if (this.busy) return;
-    const value = take(this.#field('value'));
     const name = form.kind === 'replace' ? form.name : this.#field('name').value.trim();
     const bad = nameProblem(name);
-    const problem = bad ?? valueProblem(value);
-    this.#refuse(problem, bad ? 'name' : 'value', true);
+    if (bad) {
+      this.#refuse(bad, 'name', true);
+      return;
+    }
+    const value = take(this.#field('value'));
+    const problem = valueProblem(value);
+    this.#refuse(problem, 'value', true);
     if (problem) return;
     if (form.kind === 'add' && vault.list()?.secrets.some((secret) => secret.name === name)) {
       this.busy = true;

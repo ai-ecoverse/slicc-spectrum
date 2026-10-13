@@ -199,9 +199,9 @@ export class SliccValueRequest extends ThemedElement {
   async save(request: PendingRequest): Promise<void> {
     const vault = this.model?.vault as VaultPort;
     if (this.busy) return;
-    const value = take(this.#field('value'));
     const name = request.name ?? this.#field('name').value.trim();
     const bad = nameProblem(name);
+    const value = bad ? '' : take(this.#field('value'));
     const text = bad ?? valueProblem(value);
     const field = bad ? 'name' : 'value';
     this.problem = text ? { id: request.id, text, field } : null;
