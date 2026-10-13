@@ -666,6 +666,7 @@ export class SliccSecrets extends ThemedElement {
   }
 
   open(form: SecretForm | null): void {
+    if (form && this.busy) return;
     clearValues(this.renderRoot);
     this.form = form;
     this.problem = null;
@@ -716,8 +717,8 @@ export class SliccSecrets extends ThemedElement {
 
   async save(vault: VaultPort): Promise<void> {
     const form = this.form as SecretForm;
-    const value = take(this.#field('value'));
     if (this.busy) return;
+    const value = take(this.#field('value'));
     const name = form.kind === 'replace' ? form.name : this.#field('name').value.trim();
     const bad = nameProblem(name);
     const problem = bad ?? valueProblem(value);
@@ -831,9 +832,9 @@ export class SliccSecrets extends ThemedElement {
   async read(vault: VaultPort): Promise<void> {
     const form = this.form;
     const kind = this.importKind;
+    if (this.busy) return;
     const password = take(this.#field('password'));
     const file = this.#field('file').files?.[0];
-    if (this.busy) return;
     if (!file) {
       this.#refuse('Choose a file to import', 'file', true);
       return;
@@ -894,9 +895,9 @@ export class SliccSecrets extends ThemedElement {
 
   async exportAll(vault: VaultPort, trigger: HTMLElement | null = null): Promise<void> {
     const form = this.form;
+    if (this.busy) return;
     const passphrase = take(this.#field('passphrase'));
     const repeat = take(this.#field('repeat'));
-    if (this.busy) return;
     const short = new TextEncoder().encode(passphrase).length < 8;
     const problem = short
       ? 'Passphrases need at least 8 bytes'
@@ -950,7 +951,7 @@ export class SliccSecrets extends ThemedElement {
     return html`<p class="error" role="alert" id=${`error-${id}`} data-error=${id}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${text}</span></p>`;
   }
 
-  #enter(event: KeyboardEvent, run: () => unknown): void {
+  #enter(event: KeyboardEvent, run: () => unknown, locked: boolean): void {
     if (event.key === 'Escape') {
       event.preventDefault();
       this.open(null);
@@ -958,7 +959,7 @@ export class SliccSecrets extends ThemedElement {
     }
     if (event.key !== 'Enter' || (event.target as HTMLElement).localName !== 'input') return;
     event.preventDefault();
-    void run();
+    if (!locked && !this.busy) void run();
   }
 
   #value(label: string, field = 'value'): TemplateResult {
@@ -979,7 +980,7 @@ export class SliccSecrets extends ThemedElement {
   #valueForm(vault: VaultPort, form: SecretForm, locked: boolean): TemplateResult {
     const save = () => this.save(vault);
     const add = form.kind === 'add';
-    return html`<div class="form" data-form=${form.kind} @input=${() => this.#typed()} @keydown=${(event: KeyboardEvent) => this.#enter(event, save)}>
+    return html`<div class="form" data-form=${form.kind} @input=${() => this.#typed()} @keydown=${(event: KeyboardEvent) => this.#enter(event, save, locked)}>
       <strong>${add ? 'Add a secret' : html`Replace the value of <code>${(form as { name: string }).name}</code>`}</strong>
       ${add ? html`<label class="field"><span>Name</span><input type="text" autocomplete="off" spellcheck="false" autocapitalize="characters" data-field="name" placeholder="API_TOKEN" aria-invalid=${this.#bad('name')} aria-describedby=${this.#described('name')} @input=${(event: Event) => this.#upper(event)} /></label>` : nothing}
       ${this.#value(add ? 'Value' : 'New value')}
@@ -997,7 +998,7 @@ export class SliccSecrets extends ThemedElement {
   #importForm(vault: VaultPort, locked: boolean): TemplateResult {
     const read = () => this.read(vault);
     const candidates = this.candidates;
-    return html`<div class="form" data-form="import" @input=${() => this.#typed()} @keydown=${(event: KeyboardEvent) => this.#enter(event, read)}>
+    return html`<div class="form" data-form="import" @input=${() => this.#typed()} @keydown=${(event: KeyboardEvent) => this.#enter(event, read, locked)}>
       <strong>Import secrets</strong>
       <label class="field"><span id="import-kind">Kind</span>
         <sp-picker size="m" label="Kind" aria-labelledby="import-kind" data-field="kind" value=${this.importKind} @change=${(event: Event) => this.#kind(event)}>
@@ -1041,7 +1042,7 @@ export class SliccSecrets extends ThemedElement {
 
   #exportForm(vault: VaultPort, locked: boolean): TemplateResult {
     const run = () => this.exportAll(vault);
-    return html`<div class="form" data-form="export" @input=${() => this.#typed()} @keydown=${(event: KeyboardEvent) => this.#enter(event, run)}>
+    return html`<div class="form" data-form="export" @input=${() => this.#typed()} @keydown=${(event: KeyboardEvent) => this.#enter(event, run, locked)}>
       <strong>Export secrets</strong>
       <span class="muted">The file is sealed with this passphrase. You need it to import the file again.</span>
       ${this.#value('Passphrase', 'passphrase')}

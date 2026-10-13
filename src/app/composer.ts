@@ -705,6 +705,10 @@ export class SliccComposer extends ThemedElement {
           variant: 'confirmation',
         });
         if (!sure || !mine()) return false;
+        if (away(vault)) {
+          this.#refuse('Waiting for the vault');
+          return false;
+        }
       }
       await vault.put?.(clean, value);
       return mine();

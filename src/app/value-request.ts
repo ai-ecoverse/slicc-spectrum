@@ -158,6 +158,7 @@ export class SliccValueRequest extends ThemedElement {
   }
 
   later(id: string): void {
+    if (this.busy) return;
     clearValues(this.renderRoot);
     this.#later.add(id);
     if (this.#front === id) this.#front = '';
@@ -197,8 +198,8 @@ export class SliccValueRequest extends ThemedElement {
 
   async save(request: PendingRequest): Promise<void> {
     const vault = this.model?.vault as VaultPort;
-    const value = take(this.#field('value'));
     if (this.busy) return;
+    const value = take(this.#field('value'));
     const name = request.name ?? this.#field('name').value.trim();
     const bad = nameProblem(name);
     const text = bad ?? valueProblem(value);
@@ -237,8 +238,8 @@ export class SliccValueRequest extends ThemedElement {
 
   async cancelRequest(request: PendingRequest): Promise<void> {
     const vault = this.model?.vault as VaultPort;
-    clearValues(this.renderRoot);
     if (this.busy) return;
+    clearValues(this.renderRoot);
     this.busy = true;
     this.problem = null;
     try {
@@ -281,7 +282,7 @@ export class SliccValueRequest extends ThemedElement {
   #onKey(event: KeyboardEvent, request: PendingRequest): void {
     if (event.key !== 'Enter' || (event.target as HTMLElement).localName !== 'input') return;
     event.preventDefault();
-    void this.save(request);
+    if (!this.model?.vault?.status()?.locked) void this.save(request);
   }
 
   #unlock(vault: VaultPort): TemplateResult {
@@ -343,7 +344,7 @@ export class SliccValueRequest extends ThemedElement {
           ${problem ? html`<p class="problem" role="alert" id="error-request" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${problem}</span></p>` : nothing}
           <p class="timer" data-timer>Expires ${until(request.expiresAt, this.now)}</p>
           ${rest > 0 ? html`<p class="more" data-more>${rest} more waiting</p>` : nothing}
-          <swc-button slot="button" variant="secondary" fill-style="outline" data-action="later" @click=${() => this.later(request.id)}>Later</swc-button>
+          <swc-button slot="button" variant="secondary" fill-style="outline" data-action="later" ?disabled=${this.busy} @click=${() => this.later(request.id)}>Later</swc-button>
           ${vault.cancel ? html`<swc-button slot="button" variant="secondary" fill-style="outline" data-action="cancel-request" ?disabled=${this.busy} @click=${() => this.cancelRequest(request)}>Cancel request</swc-button>` : nothing}
           ${vault.put ? html`<swc-button slot="button" variant="accent" data-action="save" ?pending=${this.busy} ?disabled=${locked} @click=${() => this.save(request)}>Save</swc-button>` : nothing}
         </sp-alert-dialog>
