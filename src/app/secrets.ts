@@ -8,6 +8,8 @@ import '@spectrum-web-components/menu/sp-menu-item.js';
 import '@spectrum-web-components/picker/sp-picker.js';
 import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import type {
+  Account,
+  AccountStatus,
   AuditEntry,
   ButtonConfig,
   ImportCandidate,
@@ -16,6 +18,7 @@ import type {
   LinkedDevice,
   PendingRequest,
   PolicyEntry,
+  PutOptions,
   RefusedRule,
   RevealEntry,
   SecretView,
@@ -87,6 +90,23 @@ export function asking(request: PendingRequest): TemplateResult {
   return request.name
     ? html`${by} asks for <code>${request.name}</code>`
     : html`${by} asks for a value`;
+}
+
+const accountLights: Record<AccountStatus, readonly [string, string]> = {
+  connected: ['positive', 'Active'],
+  expired: ['notice', 'Expired'],
+  'signing-in': ['info', 'Signing in'],
+  disconnected: ['neutral', 'Not connected'],
+};
+
+export function putOptions(secret: SecretView): PutOptions | undefined {
+  if (secret.kind === 'model') return { kind: 'model', provider: secret.provider };
+  if (secret.kind === 'mcp') return { kind: 'mcp', server: secret.server };
+  return undefined;
+}
+
+export function agentUse(secret: SecretView): boolean {
+  return secret.kind === 'model' || (secret.kind === 'mcp' && secret.rules.length === 0);
 }
 
 export function byName(a: SecretView, b: SecretView): number {
@@ -203,7 +223,7 @@ export function download(bytes: Uint8Array, name: string, root: Node): void {
 
 export type SecretForm =
   | { kind: 'add' }
-  | { kind: 'replace'; name: string }
+  | { kind: 'replace'; name: string; options?: PutOptions }
   | { kind: 'import' }
   | { kind: 'export' };
 
@@ -652,6 +672,7 @@ export class SliccSecrets extends ThemedElement {
           ]
         : []),
       ...(model.network ? [model.network.on('network', update)] : []),
+      model.settings.on('accounts', update),
     ];
   }
 
@@ -759,7 +780,7 @@ export class SliccSecrets extends ThemedElement {
     }
     this.busy = true;
     try {
-      await vault.put?.(name, value);
+      await vault.put?.(name, value, undefined, form.kind === 'replace' ? form.options : undefined);
       if (!this.#mine(vault, form)) return;
       this.form = null;
       this.said = { kind: 'saved', name };
@@ -1093,15 +1114,37 @@ export class SliccSecrets extends ThemedElement {
     </div>`;
   }
 
+  #reach(secret: SecretView, gone: boolean): TemplateResult {
+    if (agentUse(secret)) {
+      const use =
+        secret.kind === 'model'
+          ? `Model requests to ${this.#providerName(secret.provider ?? '')}, by the agent`
+          : `Requests to the MCP server ${secret.server}, by the agent`;
+      return html`<dt>Used for</dt><dd data-used-for>${use}</dd>`;
+    }
+    const rules = secret.rules.length
+      ? secret.rules.map((rule, index) => html`${index ? html`<br />` : nothing}${ruleLine(rule)}`)
+      : 'Nowhere yet: no rule names it';
+    return html`<dt>${gone ? 'Was sent to' : 'Sent to'}</dt><dd data-rules>${rules}</dd>`;
+  }
+
+  #account(secret: SecretView): Account | undefined {
+    const id = secret.kind === 'mcp' ? `mcp:${secret.server}` : secret.provider;
+    return this.model?.settings.accounts().find((account) => account.id === id);
+  }
+
   #state(secret: SecretView): TemplateResult {
+    const account = agentUse(secret) ? this.#account(secret) : undefined;
     const [variant, label] =
       secret.state === 'removed'
         ? ['neutral', 'Removed']
         : secret.expiresAt !== undefined && secret.expiresAt <= Date.now()
           ? ['notice', 'Expired']
-          : secret.state === 'inert'
-            ? ['neutral', 'No rule yet']
-            : ['positive', 'Active'];
+          : account
+            ? accountLights[account.status]
+            : secret.state === 'inert' && !agentUse(secret)
+              ? ['neutral', 'No rule yet']
+              : ['positive', 'Active'];
     return html`<swc-status-light size="s" variant=${variant}>${label}</swc-status-light>`;
   }
 
@@ -1115,9 +1158,13 @@ export class SliccSecrets extends ThemedElement {
     const replace = vault.put && replaceable(secret);
     if (!replace && !vault.remove) return nothing;
     return html`<div class="buttons">
-      ${replace ? html`<swc-button size="s" variant="secondary" data-action="replace" @click=${() => this.open({ kind: 'replace', name })}>Replace value</swc-button>` : nothing}
+      ${replace ? html`<swc-button size="s" variant="secondary" data-action="replace" @click=${() => this.open({ kind: 'replace', name, options: putOptions(secret) })}>Replace value</swc-button>` : nothing}
       ${vault.remove ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="remove" ?pending=${this.acting.has(`remove:${name}`)} @click=${(event: Event) => this.removeSecret(vault, secret, event.currentTarget as HTMLElement)}>Remove</swc-button>` : nothing}
     </div>`;
+  }
+
+  #providerName(id: string): string {
+    return this.model?.settings.accounts().find((account) => account.id === id)?.provider ?? id;
   }
 
   #secret(
@@ -1141,17 +1188,18 @@ export class SliccSecrets extends ThemedElement {
       </div>
       ${this.#controls(vault, secret)}
       <dl>
-        <dt>${gone ? 'Was sent to' : 'Sent to'}</dt>
-        <dd data-rules>${secret.rules.length ? secret.rules.map((rule, index) => html`${index ? html`<br />` : nothing}${ruleLine(rule)}`) : 'Nowhere yet: no rule names it'}</dd>
+        ${this.#reach(secret, gone)}
         ${secret.exits ? html`<dt>${gone ? 'Left through' : 'Leaves through'}</dt><dd data-exits>${secret.exits.length ? list(secret.exits.map((exit) => exitLabel(exit, devices))) : 'No exit'}</dd>` : nothing}
         ${exec || reveal ? html`<dt>Programs</dt><dd data-exec>${exec}${exec && reveal ? html`<br />` : nothing}${reveal}</dd>` : nothing}
+        ${secret.kind === 'model' && secret.provider ? html`<dt>Provider</dt><dd data-provider>${this.#providerName(secret.provider)}</dd>` : nothing}
+        ${secret.kind === 'mcp' && secret.server ? html`<dt>Server</dt><dd data-server>${secret.server}</dd>` : nothing}
         <dt>From</dt>
         <dd data-source>${sourceLine(secret, devices)}</dd>
         ${secret.usedAt ? html`<dt>Last used</dt><dd data-used>${since(secret.usedAt)}</dd>` : nothing}
         ${secret.expiresAt ? html`<dt>Expires</dt><dd data-expires>${until(secret.expiresAt)}</dd>` : nothing}
         ${secret.removedAt ? html`<dt>Removed</dt><dd>${since(secret.removedAt)}</dd>` : nothing}
       </dl>
-      ${form?.kind === 'replace' && form.name === secret.name ? this.#valueForm(vault, form, locked) : nothing}
+      ${form?.kind === 'replace' && form.name === secret.name && (form.options?.kind ?? 'secret') === (putOptions(secret)?.kind ?? 'secret') ? this.#valueForm(vault, form, locked) : nothing}
     </li>`;
   }
 

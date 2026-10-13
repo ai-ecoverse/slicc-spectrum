@@ -1,4 +1,4 @@
-import type { AgentHold, SliccModel } from '../model/types.ts';
+import type { Account, AgentHold, SliccModel } from '../model/types.ts';
 import { DummyAgent } from './agent.ts';
 import { type ApprovalScenario, DummyApprovals } from './approvals.ts';
 import { type BrowserScenario, browserHistory, DummyBrowser, drive } from './browser.ts';
@@ -28,7 +28,7 @@ import {
   type PackageScenario,
   type UpdateScenario,
 } from './updates.ts';
-import { DummyVault, type VaultScenario } from './vault.ts';
+import { accountRecords, DummyVault, type VaultScenario } from './vault.ts';
 
 export interface DummyOptions {
   delay?: number;
@@ -46,6 +46,7 @@ export interface DummyOptions {
   approvals?: ApprovalScenario | 'off';
   follow?: FollowScenario | 'off';
   vault?: VaultScenario | 'off';
+  accounts?: 'settings' | 'vault';
   hold?: AgentHold['reason'] | 'off';
   browser?: BrowserScenario;
   sprinkles?: 'builtin' | 'cones';
@@ -61,6 +62,14 @@ export interface DummyModel extends SliccModel {
   approvals?: DummyApprovals;
   follow?: DummyFollow;
   vault?: DummyVault;
+}
+
+export function vaultAccounts(accounts: readonly Account[]): Account[] {
+  return accounts.map((account) =>
+    account.auth === 'api-key' || account.id === 'github'
+      ? { ...account, store: 'vault' as const }
+      : account
+  );
 }
 
 export function createDummyModel({
@@ -79,6 +88,7 @@ export function createDummyModel({
   approvals = 'off',
   follow = 'off',
   vault = 'off',
+  accounts = 'settings',
   hold = 'off',
   browser: scenario = 'idle',
   sprinkles = 'builtin',
@@ -118,7 +128,7 @@ export function createDummyModel({
     settings: new DummySettings(
       fixtures.defaults,
       fixtures.models,
-      fixtures.accounts,
+      accounts === 'vault' ? vaultAccounts(fixtures.accounts) : fixtures.accounts,
       storage,
       time
     ),
@@ -148,7 +158,11 @@ export function createDummyModel({
     ...(tabs === 'off' ? {} : { tabs: new DummyTabs(tabs, time) }),
     ...(approvals === 'off' ? {} : { approvals: new DummyApprovals(approvals, time) }),
     ...(follow === 'off' ? {} : { follow: new DummyFollow(follow, time) }),
-    ...(vault === 'off' ? {} : { vault: new DummyVault(vault, time) }),
+    ...(vault === 'off'
+      ? {}
+      : {
+          vault: new DummyVault(vault, time, accounts === 'vault' ? accountRecords() : []),
+        }),
   };
   base.vault?.on('status', (status) => {
     if (!status.locked && agent.hold()?.reason === 'locked') agent.setHold(null);

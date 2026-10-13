@@ -2,9 +2,12 @@ import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
-import type { Account, Settings, SliccModel } from '../model/types.ts';
-import { chatModels, ModelElement } from './base.ts';
+import type { Account, RecordKind, Settings, SliccModel, VaultPort } from '../model/types.ts';
+import { isVaultFailure, valueProblem } from '../model/values.ts';
+import { chatModels, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
+import { recordKind, recordName, serverOf, upper as upperName } from './records.ts';
+import { clearValues, failureText, fieldStyles, type PopupDetail, take } from './vault.ts';
 
 const accountStatus = {
   connected: ['positive', 'Connected'],
@@ -20,26 +23,45 @@ const popup = (account: Account) => account.group === 'mcp' && account.auth === 
 
 const secretNames = { 'api-key': 'API key', token: 'token' } as const;
 const rejectedNames = { 'api-key': 'API key rejected', token: 'Token rejected' } as const;
+const keptNames = { 'api-key': 'Key kept in the vault', token: 'Token kept in the vault' } as const;
 
-export class SliccSettings extends ModelElement {
+const kept = (account: Account) =>
+  account.auth === 'api-key' ? keptNames[account.secret ?? 'api-key'] : 'Kept in the vault';
+
+async function gone(vault: VaultPort, name: string, kind: RecordKind): Promise<void> {
+  try {
+    await vault.remove?.(name, kind);
+  } catch (error) {
+    if (!isVaultFailure(error) || error.code !== 'ENOENT') throw error;
+  }
+}
+
+export class SliccSettings extends ThemedElement {
   static properties = {
-    ...ModelElement.properties,
+    ...ThemedElement.properties,
     pending: { state: true },
     entering: { state: true },
     failure: { state: true },
+    problem: { state: true },
+    blocked: { state: true },
   };
   declare pending: ReadonlySet<string>;
   declare entering: string | null;
   declare failure: { id: string; message: string } | null;
+  declare problem: { id: string; field: string; message: string } | null;
+  declare blocked: boolean;
 
   constructor() {
     super();
     this.pending = new Set();
     this.entering = null;
     this.failure = null;
+    this.problem = null;
+    this.blocked = false;
   }
 
   static styles = [
+    fieldStyles,
     css`
       :host {
         display: block;
@@ -121,7 +143,25 @@ export class SliccSettings extends ModelElement {
       .key sp-textfield {
         flex: 1 1 auto;
       }
-      .failure {
+      .key.stacked {
+        display: grid;
+        gap: var(--swc-spacing-200);
+        max-width: 420px;
+      }
+      .buttons,
+      .locked {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--swc-spacing-100);
+      }
+      .hint {
+        margin: 0;
+        color: var(--swc-neutral-subdued-content-color-default);
+        font-size: var(--swc-font-size-75);
+      }
+      .failure,
+      .problem {
         display: flex;
         align-items: flex-start;
         gap: var(--swc-spacing-100);
@@ -169,7 +209,12 @@ export class SliccSettings extends ModelElement {
 
   protected subscribe(model: SliccModel): Array<() => void> {
     const update = () => this.requestUpdate();
-    return [model.settings.on('settings', update), model.settings.on('accounts', update)];
+    return [
+      ...super.subscribe(model),
+      model.settings.on('settings', update),
+      model.settings.on('accounts', update),
+      ...(model.vault ? [model.vault.on('status', update)] : []),
+    ];
   }
 
   focus(): void {
@@ -190,19 +235,94 @@ export class SliccSettings extends ModelElement {
 
   #cancelled = new Set<string>();
 
-  async connect(id: string, secret?: string): Promise<void> {
-    this.pending = new Set([...this.pending, id]);
+  #busy(id: string, on: boolean): void {
+    const rest = [...this.pending].filter((candidate) => candidate !== id);
+    this.pending = new Set(on ? [...rest, id] : rest);
+  }
+
+  async connect(id: string, secret?: string, fields?: Record<string, string>): Promise<void> {
+    this.#busy(id, true);
     this.failure = null;
     this.#cancelled.delete(id);
+    const settings = this.model?.settings;
     try {
-      await this.model?.settings.connect(id, secret);
+      await (fields
+        ? settings?.connect(id, secret, fields)
+        : secret === undefined
+          ? settings?.connect(id)
+          : settings?.connect(id, secret));
       if (this.entering === id) this.entering = null;
     } catch (error) {
       if (!this.#cancelled.has(id)) this.failure = { id, message: (error as Error).message };
     } finally {
       this.#cancelled.delete(id);
-      this.pending = new Set([...this.pending].filter((candidate) => candidate !== id));
+      this.#busy(id, false);
     }
+  }
+
+  #vault(account: Account): VaultPort | null {
+    const vault = this.model?.vault;
+    return account.auth === 'api-key' && account.store === 'vault' && vault?.put ? vault : null;
+  }
+
+  async keep(account: Account, value: string, fields?: Record<string, string>): Promise<void> {
+    const model = this.model;
+    const vault = this.#vault(account) as VaultPort;
+    const { id } = account;
+    const problem = valueProblem(value);
+    if (problem) {
+      this.#refuse(id, 'value', problem);
+      return;
+    }
+    if (vault.status()?.locked) return;
+    const options =
+      account.group === 'mcp'
+        ? { kind: 'mcp' as const, server: serverOf(account) }
+        : { kind: 'model' as const, provider: account.id };
+    this.#busy(id, true);
+    this.failure = null;
+    try {
+      await vault.put?.(recordName(account), value, undefined, options);
+    } catch (error) {
+      this.#busy(id, false);
+      if (this.model === model) this.#refuse(id, 'value', failureText(error));
+      return;
+    }
+    if (this.model !== model || this.entering !== id) {
+      this.#busy(id, false);
+      return;
+    }
+    await this.connect(id, undefined, fields);
+  }
+
+  #refuse(id: string, field: string, message: string): void {
+    this.problem = { id, field, message };
+    void this.updateComplete.then(() =>
+      this.renderRoot
+        .querySelector<HTMLElement>(
+          field === 'value'
+            ? '.key input[data-field=value]'
+            : `.key input[data-account-field="${field}"]`
+        )
+        ?.focus()
+    );
+  }
+
+  #fields(form: HTMLElement, account: Account): Record<string, string> | null | undefined {
+    if (!account.fields?.length) return undefined;
+    const values: Record<string, string> = {};
+    for (const field of account.fields) {
+      const input = form.querySelector(
+        `input[data-account-field="${field.name}"]`
+      ) as HTMLInputElement;
+      const value = input.value.trim();
+      if (value) values[field.name] = value;
+      else if (field.required) {
+        this.#refuse(account.id, field.name, `${field.label} can’t be empty`);
+        return null;
+      }
+    }
+    return values;
   }
 
   #start(account: Account): void {
@@ -211,20 +331,35 @@ export class SliccSettings extends ModelElement {
       return;
     }
     this.failure = null;
+    this.problem = null;
     this.entering = account.id;
-    void this.updateComplete.then(() => this.focusOn('.key sp-textfield'));
+    void this.updateComplete.then(() => this.focusOn('.key sp-textfield', '.key input'));
   }
 
-  #submit(event: Event, id: string): void {
+  #submit(event: Event, account: Account): void {
     event.preventDefault();
-    const field = (event.currentTarget as HTMLElement).querySelector(
-      'sp-textfield'
-    ) as HTMLElement & {
+    const form = event.currentTarget as HTMLElement;
+    this.problem = null;
+    if (this.#vault(account)) {
+      const value = take(form.querySelector('input[data-field=value]') as HTMLInputElement);
+      const fields = this.#fields(form, account);
+      if (fields !== null && !this.pending.has(account.id)) void this.keep(account, value, fields);
+      return;
+    }
+    const field = form.querySelector('sp-textfield') as HTMLElement & {
       value: string;
     };
     const secret = field.value.trim();
     field.value = '';
-    if (secret) void this.connect(id, secret);
+    const fields = this.#fields(form, account);
+    if (secret && fields !== null) void this.connect(account.id, secret, fields);
+  }
+
+  #submitOnEnter(event: KeyboardEvent): void {
+    const target = event.target as HTMLElement;
+    if (event.key !== 'Enter' || target.localName !== 'input') return;
+    event.preventDefault();
+    this.#send(event);
   }
 
   #send(event: Event): void {
@@ -236,14 +371,92 @@ export class SliccSettings extends ModelElement {
   }
 
   #cancel(): void {
+    clearValues(this.renderRoot);
     this.entering = null;
     this.failure = null;
+    this.problem = null;
+  }
+
+  #problem(account: Account, field: string): TemplateResult | typeof nothing {
+    const problem = this.problem;
+    if (problem?.id !== account.id || problem.field !== field) return nothing;
+    return html`<div class="problem" id="key-problem" role="alert">
+      <swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>
+      <span>${problem.message}</span>
+    </div>`;
+  }
+
+  #described(account: Account, field: string): string | typeof nothing {
+    return this.problem?.id === account.id && this.problem.field === field
+      ? 'key-problem'
+      : nothing;
+  }
+
+  #invalid(account: Account, field: string): string | typeof nothing {
+    return this.#described(account, field) === nothing ? nothing : 'true';
+  }
+
+  #extra(account: Account): TemplateResult[] {
+    return (account.fields ?? []).map(
+      (field) => html`<label class="field"><span>${field.label}</span><input
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          data-account-field=${field.name}
+          aria-required=${field.required ? 'true' : nothing}
+          aria-invalid=${this.#invalid(account, field.name)}
+          aria-describedby=${this.#described(account, field.name)}
+        /></label>
+        ${this.#problem(account, field.name)}`
+    );
+  }
+
+  #unlock(vault: VaultPort): TemplateResult {
+    return html`<div class="locked" data-locked>
+      <span>Unlock the vault first</span>
+      <slicc-vault-button
+        data-action="unlock"
+        .vault=${vault}
+        .config=${{ intent: { kind: 'unlock' }, label: 'Unlock', size: 'm', variant: 'accent', theme: this.color }}
+        @vault-popup=${(event: CustomEvent<PopupDetail>) => {
+          this.blocked = event.detail.state === 'blocked';
+        }}
+      ></slicc-vault-button>
+    </div>
+    ${this.blocked ? html`<div class="problem" role="alert" data-popup="blocked"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>The browser blocked the vault window. Allow pop-ups for this site, then try again.</span></div>` : nothing}`;
+  }
+
+  #kept(account: Account, vault: VaultPort): TemplateResult {
+    const busy = this.pending.has(account.id);
+    const locked = !!vault.status()?.locked;
+    const name = secretNames[account.secret ?? 'api-key'];
+    return html`<form class="key stacked" data-id=${account.id} data-store="vault" @submit=${(event: Event) => this.#submit(event, account)} @keydown=${(event: KeyboardEvent) => this.#submitOnEnter(event)}>
+        <label class="field"><span>${account.provider} ${name}</span><input
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+          data-field="value"
+          placeholder=${`Paste the ${name}`}
+          aria-invalid=${this.#invalid(account, 'value')}
+          aria-describedby=${this.#described(account, 'value')}
+        /></label>
+        ${this.#problem(account, 'value')}
+        ${this.#extra(account)}
+        ${locked ? this.#unlock(vault) : html`<p class="hint">Saved in the vault</p>`}
+        <div class="buttons">
+          <swc-button size="m" variant="accent" data-action="save" ?pending=${busy} ?disabled=${locked} @click=${(event: Event) => this.#send(event)}>Save</swc-button>
+          <swc-button size="m" variant="secondary" data-action="cancel" @click=${() => this.#cancel()}>Cancel</swc-button>
+        </div>
+      </form>`;
   }
 
   #key(account: Account): TemplateResult | typeof nothing {
     if (this.entering !== account.id) return nothing;
+    const vault = this.#vault(account);
+    if (vault) return this.#kept(account, vault);
     const busy = this.pending.has(account.id);
-    return html`<form class="key" data-id=${account.id} @submit=${(event: Event) => this.#submit(event, account.id)}>
+    const extra = account.fields?.length;
+    return html`<form class=${extra ? 'key stacked' : 'key'} data-id=${account.id} @submit=${(event: Event) => this.#submit(event, account)} @keydown=${(event: KeyboardEvent) => this.#submitOnEnter(event)}>
         <sp-textfield
           size="m"
           type="password"
@@ -252,16 +465,68 @@ export class SliccSettings extends ModelElement {
           placeholder=${`Paste the ${secretNames[account.secret ?? 'api-key']}`}
           @keydown=${(event: KeyboardEvent) => this.#enter(event)}
         ></sp-textfield>
-        <swc-button size="m" variant="accent" data-action="save" ?pending=${busy} @click=${(event: Event) => this.#send(event)}>Save</swc-button>
-        <swc-button size="m" variant="secondary" data-action="cancel" @click=${() => this.#cancel()}>Cancel</swc-button>
+        ${extra ? this.#extra(account) : nothing}
+        ${extra ? html`<div class="buttons">${this.#buttons(busy)}</div>` : this.#buttons(busy)}
       </form>`;
   }
 
+  #buttons(busy: boolean): TemplateResult {
+    return html`<swc-button size="m" variant="accent" data-action="save" ?pending=${busy} @click=${(event: Event) => this.#send(event)}>Save</swc-button>
+        <swc-button size="m" variant="secondary" data-action="cancel" @click=${() => this.#cancel()}>Cancel</swc-button>`;
+  }
+
+  #inVault(account: Account): boolean {
+    const vault = this.model?.vault;
+    if (account.store !== 'vault' || account.status !== 'connected' || !vault) return false;
+    return account.auth !== 'api-key' || !!vault.put;
+  }
+
+  #records(account: Account, vault: VaultPort): Array<[string, RecordKind]> {
+    if (account.auth === 'api-key') return [[recordName(account), recordKind(account)]];
+    const server = serverOf(account);
+    const names = (vault.list()?.secrets ?? [])
+      .filter(
+        (secret) => secret.kind === 'mcp' && secret.server === server && secret.state !== 'removed'
+      )
+      .map((secret) => secret.name);
+    const tokens = names.length ? names : [`${upperName(server)}_ACCESS_TOKEN`];
+    return tokens.flatMap(
+      (name): Array<[string, RecordKind]> => [
+        [name, 'mcp'],
+        [`${name}_GRANT`, 'grant'],
+      ]
+    );
+  }
+
   async #disconnect(account: Account): Promise<void> {
-    const body = `Agents can’t use ${account.provider} until you connect it again.`;
+    const model = this.model;
+    const vault = model?.vault;
+    const vaulted = account.store === 'vault' && !!vault?.remove;
+    const key = vaulted && account.auth === 'api-key';
+    const signIn = vaulted && account.auth !== 'api-key' && account.group === 'mcp';
+    const stored = key || signIn ? vault : undefined;
+    const body = `Agents can’t use ${account.provider} until you connect it again.${key ? ' You can restore its key from Removed in Secrets for 30 days.' : ''}`;
     const title = `Disconnect ${account.provider}?`;
-    if (await confirm({ title, body, action: 'Disconnect', variant: 'confirmation' }))
-      this.model?.settings.disconnect(account.id);
+    if (!(await confirm({ title, body, action: 'Disconnect', variant: 'confirmation' }))) return;
+    clearValues(this.renderRoot);
+    if (this.model !== model) return;
+    if (stored && !(await this.#forget(account, stored))) return;
+    if (this.model === model) model?.settings.disconnect(account.id);
+  }
+
+  async #forget(account: Account, vault: VaultPort): Promise<boolean> {
+    this.#busy(account.id, true);
+    this.failure = null;
+    try {
+      for (const [name, kind] of this.#records(account, vault)) await gone(vault, name, kind);
+      return true;
+    } catch (error) {
+      if (this.model?.vault === vault)
+        this.failure = { id: account.id, message: failureText(error) };
+      return false;
+    } finally {
+      this.#busy(account.id, false);
+    }
   }
 
   #stopSigningIn(account: Account): void {
@@ -298,6 +563,7 @@ export class SliccSettings extends ModelElement {
         variant="secondary"
         data-action="disconnect"
         accessible-label=${`Disconnect ${account.provider}`}
+        ?pending=${this.pending.has(account.id)}
         @click=${() => this.#disconnect(account)}
       >Disconnect</swc-button>`;
     }
@@ -340,7 +606,11 @@ export class SliccSettings extends ModelElement {
         : nothing;
     return html`<div class="account" data-id=${account.id}>
       <span class="provider">${account.provider}</span>
-      <span class="identity">${account.identity}</span>
+      <span class="identity">${account.identity}${
+        this.#inVault(account)
+          ? html`<span class="kept" data-store="vault">${account.identity ? ' · ' : ''}${kept(account)}</span>`
+          : nothing
+      }</span>
       <swc-status-light class="state" variant=${variant}>${label}</swc-status-light>
       ${this.#action(account)}
     </div>

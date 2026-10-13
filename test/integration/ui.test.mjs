@@ -5288,3 +5288,193 @@ test('a terminal remounted after a phone round trip lays out its history at the 
   }
   assert.deepEqual(page.errors, []);
 });
+
+async function accountKey(page, id, value) {
+  await page.evaluate((account) => {
+    if (!window.settingsPart(`form.key[data-id="${account}"]`))
+      window.settingsPart(`.account[data-id="${account}"] swc-button[data-action=connect]`).click();
+    return true;
+  }, id);
+  await page.until(
+    (account) => !!window.settingsPart(`form.key[data-id="${account}"] input[data-field=value]`),
+    id
+  );
+  if (value === undefined) return;
+  await page.evaluate((account) => {
+    window.settingsPart(`form.key[data-id="${account}"] input[data-field=value]`).focus();
+    return true;
+  }, id);
+  await page.insert(value);
+}
+
+async function accountViews(page, name, target, setup) {
+  for (const [suffix, color, width, height] of [
+    ['420-light', 'light', 420, 860],
+    ['1280-dark', 'dark', 1280, 1100],
+    ['1280-light', 'light', 1280, 1100],
+  ]) {
+    await page.evaluate((value) => {
+      window.model.settings.update({ color: value });
+      return true;
+    }, color);
+    await sized(page, width, height);
+    await shown(page, 'settings', () => !!window.settingsPart('.accounts'));
+    if (setup) await setup();
+    await page.evaluate((selector) => {
+      window.settingsPart(selector).scrollIntoView({ block: 'start' });
+      return true;
+    }, target);
+    await shot(page, `${name}-${suffix}`);
+  }
+}
+
+test('Accounts keeps a vault-backed key in the vault and never shows it', async (t) => {
+  const page = await secretsPage(t, { vault: 'secrets', accounts: 'vault' });
+  const sent = await page.evaluate(() => {
+    window.sentToSettings = [];
+    const connect = window.model.settings.connect.bind(window.model.settings);
+    window.model.settings.connect = (...args) => {
+      window.sentToSettings.push(JSON.stringify(args));
+      return connect(...args);
+    };
+    return true;
+  });
+  assert.equal(sent, true);
+  assert.match(
+    await page.evaluate(
+      () => window.settingsPart('.account[data-id=github] .identity').textContent
+    ),
+    /Kept in the vault/
+  );
+  assert.match(
+    await page.evaluate(
+      () => window.settingsPart('.account[data-id="mcp:docs"] .identity').textContent
+    ),
+    /Token kept in the vault/
+  );
+  await accountKey(page, 'openai');
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const input = window.settingsPart('form.key[data-id=openai] input[data-field=value]');
+      return [input.type, input.getAttribute('autocomplete'), input.getAttribute('spellcheck')];
+    }),
+    ['password', 'off', 'false']
+  );
+  await clean(page);
+  await accountViews(page, 'accounts-vault-key', 'h2:nth-of-type(3)', () =>
+    accountKey(page, 'openai')
+  );
+  const short = async () => {
+    await accountKey(page, 'openai', 'tide42');
+    await page.evaluate(() => {
+      window.settingsPart('form.key[data-id=openai] swc-button[data-action=save]').click();
+      return true;
+    });
+    await page.until(() => !!window.settingsPart('form.key[data-id=openai] .problem'));
+  };
+  await short();
+  assert.equal(
+    await page.evaluate(() =>
+      window.settingsPart('form.key[data-id=openai] .problem').textContent.trim()
+    ),
+    "Values shorter than 8 bytes can't be protected from the model"
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window
+        .settingsPart('form.key[data-id=openai] input[data-field=value]')
+        .getAttribute('aria-describedby')
+    ),
+    'key-problem'
+  );
+  await clean(page, 'tide42');
+  await accountViews(page, 'accounts-vault-short-key', 'h2:nth-of-type(3)', short);
+  await clean(page, 'tide42');
+  await accountKey(page, 'openai', sample);
+  await page.evaluate(() => {
+    window.settingsPart('form.key[data-id=openai] swc-button[data-action=save]').click();
+    return true;
+  });
+  await page.until(() =>
+    window
+      .settingsPart('.account[data-id=openai] .identity')
+      ?.textContent.includes('Key kept in the vault')
+  );
+  assert.deepEqual(await page.evaluate(() => window.model.vault.puts), [
+    { name: 'OPENAI_API_KEY', options: { kind: 'model', provider: 'openai' } },
+  ]);
+  assert.deepEqual(await page.evaluate(() => window.sentToSettings), ['["openai"]']);
+  await clean(page);
+  await accountViews(page, 'accounts-vault-connected', 'h2:nth-of-type(3)');
+
+  await accountKey(page, 'mcp:tickets');
+  await accountViews(page, 'accounts-vault-mcp-token', '[data-group=mcp]', () =>
+    accountKey(page, 'mcp:tickets')
+  );
+  await accountKey(page, 'mcp:tickets', sample);
+  await page.evaluate(() => {
+    window.settingsPart('form.key[data-id="mcp:tickets"] swc-button[data-action=save]').click();
+    return true;
+  });
+  await page.until(() =>
+    window
+      .settingsPart('.account[data-id="mcp:tickets"] .identity')
+      ?.textContent.includes('Token kept')
+  );
+  assert.deepEqual(await page.evaluate(() => window.model.vault.puts.at(-1)), {
+    name: 'MCP_TICKETS_TOKEN',
+    options: { kind: 'mcp', server: 'tickets' },
+  });
+  assert.equal(
+    await page.evaluate(
+      (value) => window.sentToSettings.some((args) => args.includes(value)),
+      sample
+    ),
+    false
+  );
+  await clean(page);
+  await page.until(
+    () =>
+      !!window.settingsPart('slicc-secrets', '[data-secret=OPENAI_API_KEY] [data-provider]') &&
+      !!window.settingsPart('slicc-secrets', '[data-secret=MCP_DOCS_TOKEN] [data-server]')
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.settingsPart('slicc-secrets', '[data-secret=OPENAI_API_KEY] [data-used-for]')
+          ?.textContent
+    ),
+    'Model requests to OpenAI, by the agent'
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.settingsPart('slicc-secrets', '[data-secret=MCP_TICKETS_TOKEN] [data-used-for]')
+          ?.textContent
+    ),
+    'Requests to the MCP server tickets, by the agent'
+  );
+  await views(page, 'secrets-model-and-mcp', '[data-secret=MCP_DOCS_TOKEN]');
+
+  await page.evaluate(() => {
+    window.model.vault.lock();
+    return true;
+  });
+  await page.until(() => window.model.vault.status().locked);
+  await page.evaluate(() => {
+    window.model.settings.disconnect('openai');
+    return true;
+  });
+  await page.until(
+    () => !!window.settingsPart('.account[data-id=openai] swc-button[data-action=connect]')
+  );
+  await accountKey(page, 'openai');
+  await page.until(
+    () => !!window.settingsPart('form.key[data-id=openai] [data-locked] slicc-vault-button')
+  );
+  await accountViews(page, 'accounts-vault-locked', 'h2:nth-of-type(3)', () =>
+    accountKey(page, 'openai')
+  );
+  await clean(page);
+  assert.deepEqual(page.errors, []);
+});
