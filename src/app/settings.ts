@@ -270,7 +270,7 @@ export class SliccSettings extends ThemedElement {
     const options =
       account.group === 'mcp'
         ? { kind: 'mcp' as const, server: serverOf(account) }
-        : { kind: 'model' as const, provider: account.provider };
+        : { kind: 'model' as const, provider: account.id };
     this.#busy(id, true);
     this.failure = null;
     try {
