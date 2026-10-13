@@ -941,6 +941,7 @@ export class SliccApp extends ThemedElement {
       action: 'Create',
       trigger,
       submit: async (name) => {
+        if (watchOnly(this.model)) return;
         created = await create(name);
       },
     });

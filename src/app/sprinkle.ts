@@ -1,4 +1,4 @@
-import { css, html, type PropertyValues, svg, type TemplateResult } from 'lit';
+import { css, html, nothing, type PropertyValues, svg, type TemplateResult } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import type { SliccModel, Sprinkle, SprinkleMethod, SprinklePort } from '../model/types.ts';
 import { type Color, ThemedElement } from './base.ts';
@@ -266,6 +266,30 @@ export class SliccSprinkle extends ThemedElement {
       color: var(--spectrum-neutral-subdued-content-color-default);
       font-size: var(--spectrum-font-size-75);
     }
+    .view-only {
+      color: var(--spectrum-neutral-subdued-content-color-default);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding-inline-end: 4px;
+    }
+    .panel {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .panel iframe {
+      flex: 1;
+      min-height: 0;
+    }
+    .bar {
+      display: flex;
+      align-items: center;
+      height: 28px;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--spectrum-gray-200);
+      font-size: var(--spectrum-font-size-75);
+    }
     .note {
       padding: 24px;
       color: var(--spectrum-neutral-subdued-content-color-default);
@@ -306,8 +330,7 @@ export class SliccSprinkle extends ThemedElement {
     const port = this.model?.agent;
     if (!port || !owner) return false;
     const live = port.list().find((agent) => agent.id === owner);
-    if (live) return !!live.frozen;
-    return port.frozen().some((row) => row.id === owner && !row.live);
+    return !live || !!live.frozen;
   }
 
   async #call(source: Window, data: FrameMessage): Promise<void> {
@@ -380,6 +403,7 @@ export class SliccSprinkle extends ThemedElement {
       () => globalThis.removeEventListener('message', this.#message),
       model.sprinkles.on('sprinkles', () => this.requestUpdate()),
       this.#dips.on('change', () => this.requestUpdate()),
+      ...(model.follow ? [model.follow.on('follow', () => this.requestUpdate())] : []),
     ];
   }
 
@@ -430,18 +454,26 @@ export class SliccSprinkle extends ThemedElement {
     const bridged = !!this.model?.sprinkles.call;
     if (bridged && !this.#held.ready) return html``;
     const state = bridged ? this.#held : undefined;
+    const watch = !!watchOnly(this.model);
+    const caption = watch
+      ? html`<span class="view-only" data-view-only>View only on this device</span>`
+      : nothing;
     const style = `color-scheme:${this.color};${this.inline ? `height:${this.height}px;` : ''}`;
     const frame = html`${keyed(
       this.#mounts,
-      html`<iframe title=${data.title} sandbox="allow-scripts" style=${style} .srcdoc=${this.#document(data, state)}></iframe>`
+      html`<iframe title=${data.title} sandbox="allow-scripts" ?inert=${watch} style=${style} .srcdoc=${this.#document(data, state)}></iframe>`
     )}`;
-    if (!this.inline) return frame;
+    if (!this.inline)
+      return watch
+        ? html`<div class="panel"><div class="bar">${caption}</div>${frame}</div>`
+        : frame;
     return html`<div class="handle" draggable="true" title="Drag into the dock or a rail to open as a panel" @dragstart=${this.#drag}>
         ${grip}
         <span class="name">${data.title}</span>
         <sp-action-button size="xs" quiet label=${`Open ${data.title} as a panel`} title="Open as a panel" @click=${() => this.#send('detach-sprinkle', data.id)}>
           <swc-icon-open-in slot="icon"></swc-icon-open-in>
         </sp-action-button>
+        ${caption}
       </div>
       <div class="frame">${frame}</div>`;
   }

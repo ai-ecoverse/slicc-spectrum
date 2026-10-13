@@ -29,8 +29,9 @@ export async function deleteCone(
     variant: 'confirmation',
     trigger,
   });
-  if (ok) model.agent.freeze?.(agent.id);
-  return ok;
+  const allowed = ok && !watchOnly(model);
+  if (allowed) model.agent.freeze?.(agent.id);
+  return allowed;
 }
 
 export const frozenKinds: Record<FrozenKind, readonly ['indigo' | 'seafoam' | 'purple', string]> = {
@@ -116,7 +117,7 @@ export class SliccFreezer extends ModelElement {
       variant: 'destructive',
       trigger,
     });
-    if (ok) this.model?.agent.discard(cone.id);
+    if (ok && !watchOnly(this.model)) this.model?.agent.discard(cone.id);
   }
 
   #named(cone: FrozenCone): string {

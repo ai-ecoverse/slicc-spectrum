@@ -209,7 +209,7 @@ export class SliccAgents extends ModelElement {
       variant: 'destructive',
       trigger,
     });
-    if (!ok) return;
+    if (!ok || watchOnly(this.model)) return;
     const { [agent.id]: _, ...rest } = this.errors;
     this.errors = rest;
     try {

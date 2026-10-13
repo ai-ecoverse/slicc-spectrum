@@ -3270,6 +3270,16 @@ test('a watch-only follower has no Delete cone or Drop, and its inline sprinkle 
   );
   await page.until(() => !!window.welcome()?.shadowRoot.querySelector('iframe'));
   assert.equal(await page.evaluate(() => window.welcome().hasAttribute('readonly')), true);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.welcome().shadowRoot;
+      return [
+        root.querySelector('iframe').inert,
+        root.querySelector('.handle [data-view-only]')?.textContent.trim(),
+      ];
+    }),
+    [true, 'View only on this device']
+  );
   await page.evaluate(() => {
     window.lickWelcome();
     return true;
@@ -3286,6 +3296,11 @@ test('a watch-only follower has no Delete cone or Drop, and its inline sprinkle 
       0
   );
   await page.until(() => !window.welcome()?.hasAttribute('readonly'));
+  await page.until(() => !window.welcome().shadowRoot.querySelector('iframe').inert);
+  assert.equal(
+    await page.evaluate(() => !!window.welcome().shadowRoot.querySelector('[data-view-only]')),
+    false
+  );
   await page.evaluate(() => {
     window.lickWelcome();
     return true;
