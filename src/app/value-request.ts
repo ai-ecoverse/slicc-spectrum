@@ -7,17 +7,21 @@ import type { PendingRequest, SliccModel, VaultPort } from '../model/types.ts';
 import { nameProblem, valueProblem } from '../model/values.ts';
 import { ThemedElement } from './base.ts';
 import { dialogStyles, focused } from './confirm.ts';
-import { prompt, until } from './secrets.ts';
-import { away, clearValues, failureText, fieldStyles, type PopupDetail, take } from './vault.ts';
+import { asking, prompt, until } from './secrets.ts';
+import {
+  away,
+  clearValues,
+  failureText,
+  fieldOf,
+  fieldStyles,
+  type PopupDetail,
+  take,
+} from './vault.ts';
 
 export function valueRequests(vault: VaultPort | undefined, now: number): PendingRequest[] {
   return [...(vault?.status()?.waiting ?? [])]
     .filter((request) => request.kind === 'value' && request.expiresAt > now)
     .sort((a, b) => a.createdAt - b.createdAt);
-}
-
-export function askedBy(request: PendingRequest): string {
-  return `Asked by ${request.tag ?? `uid ${request.uid}`}`;
 }
 
 export class SliccValueRequest extends ThemedElement {
@@ -30,7 +34,7 @@ export class SliccValueRequest extends ThemedElement {
   };
   declare now: number;
   declare busy: boolean;
-  declare problem: { id: string; text: string } | null;
+  declare problem: { id: string; text: string; field?: string } | null;
   declare blocked: boolean;
   #later = new Set<string>();
   #done = new Set<string>();
@@ -59,7 +63,9 @@ export class SliccValueRequest extends ThemedElement {
       :host {
         display: contents;
       }
-      .asked,
+      .asked {
+        margin-block-start: var(--swc-spacing-100);
+      }
       .timer,
       .more,
       .locked {
@@ -85,6 +91,7 @@ export class SliccValueRequest extends ThemedElement {
         display: grid;
         gap: var(--swc-spacing-200);
         margin-block-start: var(--swc-spacing-300);
+        padding: var(--swc-spacing-75);
       }
       .unlock {
         display: flex;
@@ -193,19 +200,39 @@ export class SliccValueRequest extends ThemedElement {
     const value = take(this.#field('value'));
     if (this.busy) return;
     const name = request.name ?? this.#field('name').value.trim();
-    const text = nameProblem(name) ?? valueProblem(value);
-    this.problem = text ? { id: request.id, text } : null;
-    if (text) return;
+    const bad = nameProblem(name);
+    const text = bad ?? valueProblem(value);
+    const field = bad ? 'name' : 'value';
+    this.problem = text ? { id: request.id, text, field } : null;
+    if (text) {
+      void this.updateComplete.then(() => this.#field(field)?.focus());
+      return;
+    }
     this.busy = true;
     try {
       await vault.put?.(name, value, request.id);
       if (!this.#mine(vault)) return;
       this.#done.add(request.id);
     } catch (error) {
-      if (this.#mine(vault)) this.problem = { id: request.id, text: failureText(error) };
+      if (this.#mine(vault)) {
+        const field = fieldOf(error, 'value');
+        this.problem = { id: request.id, text: failureText(error), ...(field ? { field } : {}) };
+      }
     } finally {
       if (this.model?.vault === vault) this.busy = false;
     }
+  }
+
+  #typed(): void {
+    if (this.problem?.field) this.problem = { id: this.problem.id, text: this.problem.text };
+  }
+
+  #aria(
+    field: string,
+    problem: { field?: string } | null
+  ): { invalid: string | typeof nothing; described: string | typeof nothing } {
+    const bad = problem?.field === field;
+    return { invalid: bad ? 'true' : nothing, described: bad ? 'error-request' : nothing };
   }
 
   async cancelRequest(request: PendingRequest): Promise<void> {
@@ -279,7 +306,10 @@ export class SliccValueRequest extends ThemedElement {
     if (!vault || !request) return nothing;
     const locked = !!vault.status()?.locked;
     const rest = queue.length - 1;
-    const problem = this.problem?.id === request.id ? this.problem.text : '';
+    const shown = this.problem?.id === request.id ? this.problem : null;
+    const problem = shown?.text ?? '';
+    const name = this.#aria('name', shown);
+    const field = this.#aria('value', shown);
     return keyed(
       request.id,
       html`<dialog role="alertdialog" aria-labelledby="title" aria-describedby="asked" data-request=${request.id} @cancel=${(
@@ -290,27 +320,27 @@ export class SliccValueRequest extends ThemedElement {
       }}>
         <sp-alert-dialog variant="confirmation">
           <h2 id="title" slot="heading">${request.name ? html`Enter a value for <code>${request.name}</code>` : 'Enter a value'}</h2>
-          <p class="asked" id="asked" data-asked>${askedBy(request)}</p>
+          <p class="asked" id="asked" data-asked>${asking(request)}</p>
           ${request.prompt ? html`<p class="prompt" data-prompt><span class="from">From the agent, not checked by SLICC:</span> <span class="said">${prompt(request.prompt)}</span></p>` : nothing}
           ${
             vault.put
-              ? html`<div class="fields" @keydown=${(event: KeyboardEvent) => this.#onKey(event, request)}>
+              ? html`<div class="fields" @input=${() => this.#typed()} @keydown=${(event: KeyboardEvent) => this.#onKey(event, request)}>
                   ${
                     request.name
                       ? nothing
-                      : html`<label class="field"><span>Name</span><input type="text" autocomplete="off" spellcheck="false" autocapitalize="characters" data-field="name" @input=${(
+                      : html`<label class="field"><span>Name</span><input type="text" autocomplete="off" spellcheck="false" autocapitalize="characters" data-field="name" aria-invalid=${name.invalid} aria-describedby=${name.described} @input=${(
                           event: Event
                         ) => {
                           const input = event.currentTarget as HTMLInputElement;
                           input.value = input.value.toUpperCase();
                         }} /></label>`
                   }
-                  <label class="field"><span>Value</span><input type="password" autocomplete="off" spellcheck="false" data-field="value" /></label>
+                  <label class="field"><span>Value</span><input type="password" autocomplete="off" spellcheck="false" data-field="value" aria-invalid=${field.invalid} aria-describedby=${field.described} /></label>
                 </div>`
               : nothing
           }
           ${locked ? this.#unlock(vault) : nothing}
-          ${problem ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${problem}</span></p>` : nothing}
+          ${problem ? html`<p class="problem" role="alert" id="error-request" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${problem}</span></p>` : nothing}
           <p class="timer" data-timer>Expires ${until(request.expiresAt, this.now)}</p>
           ${rest > 0 ? html`<p class="more" data-more>${rest} more waiting</p>` : nothing}
           <swc-button slot="button" variant="secondary" fill-style="outline" data-action="later" @click=${() => this.later(request.id)}>Later</swc-button>

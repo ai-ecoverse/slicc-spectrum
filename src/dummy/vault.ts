@@ -9,6 +9,7 @@ import type {
   ErrorCode,
   ImportCandidate,
   ImportKind,
+  ImportPick,
   ImportResult,
   PendingRequest,
   PolicyNotice,
@@ -360,7 +361,7 @@ function waiting(scenario: VaultScenario, now: number): PendingRequest[] {
         name: 'TIDE_STATION_TOKEN',
         prompt: 'Token for the tide station API, from the ops vault',
         uid: 1000,
-        tag: 'fnox',
+        tag: 'docs-pass',
         createdAt: now,
         expiresAt: now + 5 * minute,
       },
@@ -385,7 +386,12 @@ export function vaultFixtures(
     waiting: waiting(scenario, now),
     ...(backup ? { backupReminder: 'due' as const, exportedAt: null } : {}),
   };
-  const secrets = empty ? [] : vaultSecrets(now);
+  const quay = { domain: 'quay.harbor.example', header: 'Authorization', methods: [], paths: [] };
+  const secrets = (empty ? [] : vaultSecrets(now)).map((secret) =>
+    policy && secret.name === 'HARBOR_API_KEY'
+      ? { ...secret, domains: [...secret.domains, quay.domain], rules: [...secret.rules, quay] }
+      : secret
+  );
   const list: VaultList = {
     secrets,
     refused: policy ? vaultRefused() : [],
@@ -417,7 +423,15 @@ const candidates: ImportCandidate[] = [
     exists: false,
     suggestedRules: 'Send to hooks.kelp.example in X-Kelp-Signature, and to evil.example too',
   },
+  { name: 'LAGOON_MODEL_KEY', kind: 'model', exists: false },
+  {
+    name: 'MOORING_TOKEN',
+    exists: false,
+    refused: 'its placeholder is in use by another embedder of this vault',
+  },
 ];
+
+const duplicate: ImportCandidate = { name: 'KELP_WEBHOOK_SECRET_2', exists: false };
 
 export class DummyVaultButton implements VaultButton {
   element: HTMLElement;
@@ -474,7 +488,7 @@ export interface DummyImport {
   kind: ImportKind;
   size: number;
   password: boolean;
-  pick?: string[];
+  pick?: ImportPick[];
 }
 
 export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
@@ -566,7 +580,7 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
   #log(name: string, entry: Record<string, unknown>): void {
     const seq = Math.max(0, ...this.#list.audit.map((item) => item.seq)) + 1;
     const audit = [
-      { seq, id: `audit-${seq}`, at: Date.now(), name, uid: 1000, tag: 'cone', ...entry },
+      { seq, id: `audit-${seq}`, at: Date.now(), name, uid: null, tag: null, ...entry },
       ...this.#list.audit,
     ] as AuditEntry[];
     this.#list = { ...this.#list, audit };
@@ -582,18 +596,18 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
     return { name: secret.name, placeholder: secret.placeholder, state: secret.state };
   }
 
-  #seal(name: string, source: SecretView['source']): SealResult {
-    const old = this.#list.secrets.find((item) => item.name === name);
+  #seal(name: string, source: SecretView['source'], kind: RecordKind = 'secret'): SealResult {
+    const old = this.#list.secrets.find((item) => item.name === name && item.kind === kind);
     if (old) {
       const state = old.state === 'removed' ? (old.rules.length ? 'active' : 'inert') : old.state;
       const { removedAt: _, ...kept } = old;
-      return this.#save({ ...kept, state }, true);
+      return this.#save({ ...kept, state, source }, true);
     }
     this.#serial += 1;
     return this.#save(
       {
         name,
-        kind: 'secret',
+        kind,
         placeholder: `fnox_proxy_new${String(this.#serial).padStart(5, '0')}`,
         state: 'inert',
         source,
@@ -664,7 +678,7 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
   async import(
     kind: ImportKind,
     bytes: Uint8Array,
-    options: { password?: string; pick?: string[] } = {}
+    options: { password?: string; pick?: ImportPick[] } = {}
   ): Promise<ImportResult> {
     await this.#time.sleep(5);
     this.#unlocked();
@@ -677,14 +691,21 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
       password: !!options.password,
       ...(pick ? { pick: [...pick] } : {}),
     });
-    if (!pick) return { stage: 'pick', candidates: candidates.map((item) => ({ ...item })) };
-    const names = candidates.map((item) => item.name);
+    const offered = kind === 'keepass' ? [...candidates, duplicate] : candidates;
+    if (!pick) return { stage: 'pick', candidates: offered.map((item) => ({ ...item })) };
+    const chosen = new Map(
+      pick.map((item) =>
+        typeof item === 'string' ? [item, 'secret' as const] : [item.name, item.kind]
+      )
+    );
+    const taken = offered.filter((item) => chosen.has(item.name) && !item.refused);
     return {
       stage: 'done',
-      imported: names
-        .filter((name) => pick.includes(name))
-        .map((name) => this.#seal(name, `import:${kind}`)),
-      skipped: names.filter((name) => !pick.includes(name)),
+      imported: taken.map((item) => this.#seal(item.name, `import:${kind}`, chosen.get(item.name))),
+      skipped: offered.filter((item) => !taken.includes(item)).map((item) => item.name),
+      reasons: Object.fromEntries(
+        offered.flatMap((item) => (item.refused ? [[item.name, item.refused]] : []))
+      ),
     };
   }
 

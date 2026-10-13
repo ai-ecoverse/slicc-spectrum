@@ -37,6 +37,7 @@ import {
   execLine,
   exitLabel,
   failureText,
+  fieldOf,
   fieldStyles,
   list,
   type PopupDetail,
@@ -65,8 +66,29 @@ export function until(at: number, now = Date.now()): string {
 
 export function who(entry: { uid: number | null; tag: string | null }): string {
   if (entry.tag) return entry.tag;
-  if (entry.uid === null) return 'the vault';
+  if (entry.uid === null) return 'you';
   return entry.uid === 0 ? 'root' : `uid ${entry.uid}`;
+}
+
+export function asker(request: PendingRequest): string {
+  if (request.tag) return request.tag;
+  return request.uid === 0
+    ? 'A program running as root'
+    : `A program running as uid ${request.uid}`;
+}
+
+export function asking(request: PendingRequest): TemplateResult {
+  const by = asker(request);
+  if (request.kind === 'oauth') return html`${by} asks you to sign in to ${request.provider}`;
+  if (request.kind === 'jerk-seal')
+    return html`${by} asks for a jerk lease for ${request.provider}`;
+  return request.name
+    ? html`${by} asks for <code>${request.name}</code>`
+    : html`${by} asks for a value`;
+}
+
+export function byName(a: SecretView, b: SecretView): number {
+  return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 }
 
 export function sourceLine(secret: SecretView, devices: readonly LinkedDevice[]): string {
@@ -128,6 +150,10 @@ export function auditLine(entry: AuditEntry, devices: readonly LinkedDevice[]): 
       return html`Removed`;
     case 'restore':
       return html`Restored`;
+    case 'refresh':
+      return entry.grant
+        ? html`Refreshed automatically with the sign-in <code>${entry.grant}</code>`
+        : html`Refreshed automatically`;
     default:
       return html`<code>${entry.file}</code> ${entry.accepted ? 'changed' : 'changed and was refused'}${changes(entry, devices).map(([kind, line]) => html`<span class="change" data-change=${kind}>${line}</span>`)}${entry.warning ? html`<span class="warning" data-warning>${entry.warning}</span>` : nothing}${entry.accepted ? html`<span class="hint" data-hint>If you didn’t mean this, change the file back with sudo.</span>` : nothing}`;
   }
@@ -179,7 +205,7 @@ export type SecretForm =
 
 export type Said =
   | { kind: 'saved'; name: string }
-  | { kind: 'imported'; imported: number; skipped: number }
+  | { kind: 'imported'; imported: number; skipped: { name: string; reason?: string }[] }
   | { kind: 'exported'; file: string };
 
 const importKinds: Record<ImportKind, string> = {
@@ -213,6 +239,7 @@ export class SliccSecrets extends ThemedElement {
     form: { state: true },
     busy: { state: true },
     problem: { state: true },
+    invalid: { state: true },
     said: { state: true },
     acting: { state: true },
     importKind: { state: true },
@@ -229,6 +256,7 @@ export class SliccSecrets extends ThemedElement {
   declare form: SecretForm | null;
   declare busy: boolean;
   declare problem: string | null;
+  declare invalid: string | null;
   declare said: Said | null;
   declare acting: ReadonlySet<string>;
   declare importKind: ImportKind;
@@ -249,6 +277,7 @@ export class SliccSecrets extends ThemedElement {
     this.form = null;
     this.busy = false;
     this.problem = null;
+    this.invalid = null;
     this.said = null;
     this.acting = new Set();
     this.importKind = 'bundle';
@@ -574,6 +603,7 @@ export class SliccSecrets extends ThemedElement {
     this.form = null;
     this.busy = false;
     this.problem = null;
+    this.invalid = null;
     this.said = null;
     this.acting = new Set();
     this.candidates = null;
@@ -639,11 +669,30 @@ export class SliccSecrets extends ThemedElement {
     clearValues(this.renderRoot);
     this.form = form;
     this.problem = null;
+    this.invalid = null;
     this.said = null;
     this.candidates = null;
     this.again = false;
     if (form?.kind === 'import') this.importKind = 'bundle';
     if (form) void this.updateComplete.then(() => this.#focus());
+  }
+
+  #refuse(text: string | null, field: string | null = null, focus = false): void {
+    this.problem = text;
+    this.invalid = text ? field : null;
+    if (focus && text && field) void this.updateComplete.then(() => this.#field(field)?.focus());
+  }
+
+  #typed(): void {
+    this.invalid = null;
+  }
+
+  #bad(field: string): string | typeof nothing {
+    return this.invalid === field ? 'true' : nothing;
+  }
+
+  #described(field: string): string | typeof nothing {
+    return this.invalid === field ? 'error-form' : nothing;
   }
 
   #focus(): void {
@@ -670,8 +719,9 @@ export class SliccSecrets extends ThemedElement {
     const value = take(this.#field('value'));
     if (this.busy) return;
     const name = form.kind === 'replace' ? form.name : this.#field('name').value.trim();
-    const problem = nameProblem(name) ?? valueProblem(value);
-    this.problem = problem;
+    const bad = nameProblem(name);
+    const problem = bad ?? valueProblem(value);
+    this.#refuse(problem, bad ? 'name' : 'value', true);
     if (problem) return;
     if (form.kind === 'add' && vault.list()?.secrets.some((secret) => secret.name === name)) {
       this.busy = true;
@@ -691,7 +741,7 @@ export class SliccSecrets extends ThemedElement {
       this.form = null;
       this.said = { kind: 'saved', name };
     } catch (error) {
-      if (this.#mine(vault, form)) this.problem = failureText(error);
+      if (this.#mine(vault, form)) this.#refuse(failureText(error), fieldOf(error, 'value'));
     } finally {
       if (this.model?.vault === vault) this.busy = false;
     }
@@ -770,12 +820,12 @@ export class SliccSecrets extends ThemedElement {
   #kind(event: Event): void {
     this.importKind = (event.currentTarget as HTMLInputElement).value as ImportKind;
     this.candidates = null;
-    this.problem = null;
+    this.#refuse(null);
   }
 
   #reset(): void {
     this.candidates = null;
-    this.problem = null;
+    this.#refuse(null);
   }
 
   async read(vault: VaultPort): Promise<void> {
@@ -785,16 +835,20 @@ export class SliccSecrets extends ThemedElement {
     const file = this.#field('file').files?.[0];
     if (this.busy) return;
     if (!file) {
-      this.problem = 'Choose a file to import';
+      this.#refuse('Choose a file to import', 'file', true);
       return;
     }
-    const pick = this.candidates ? [...this.picked] : undefined;
+    const pick = this.candidates
+      ?.filter((item) => this.picked.has(item.name))
+      .map((item) =>
+        item.kind && item.kind !== 'secret' ? { name: item.name, kind: item.kind } : item.name
+      );
     if (pick && !pick.length) {
-      this.problem = 'Choose at least one secret to import';
+      this.#refuse('Choose at least one secret to import');
       return;
     }
     this.busy = true;
-    this.problem = null;
+    this.#refuse(null);
     try {
       let bytes: Uint8Array | null = new Uint8Array(await file.arrayBuffer());
       if (!this.#mine(vault, form) || this.importKind !== kind) return;
@@ -807,7 +861,9 @@ export class SliccSecrets extends ThemedElement {
       if (!this.#mine(vault, form) || this.importKind !== kind) return;
       if (result.stage === 'pick') {
         this.candidates = result.candidates;
-        this.picked = new Set(result.candidates.map((item) => item.name));
+        this.picked = new Set(
+          result.candidates.filter((item) => !item.refused).map((item) => item.name)
+        );
         this.again = !!password;
         return;
       }
@@ -816,10 +872,14 @@ export class SliccSecrets extends ThemedElement {
       this.said = {
         kind: 'imported',
         imported: result.imported.length,
-        skipped: result.skipped.length,
+        skipped: result.skipped.map((name) => {
+          const reason = result.reasons?.[name];
+          return reason ? { name, reason } : { name };
+        }),
       };
     } catch (error) {
-      if (this.#mine(vault, form)) this.problem = failureText(error);
+      if (this.#mine(vault, form))
+        this.#refuse(failureText(error), fieldOf(error, password ? 'password' : 'file'));
     } finally {
       if (this.model?.vault === vault) this.busy = false;
     }
@@ -837,13 +897,13 @@ export class SliccSecrets extends ThemedElement {
     const passphrase = take(this.#field('passphrase'));
     const repeat = take(this.#field('repeat'));
     if (this.busy) return;
-    const problem =
-      new TextEncoder().encode(passphrase).length < 8
-        ? 'Passphrases need at least 8 bytes'
-        : passphrase !== repeat
-          ? "The passphrases don't match"
-          : null;
-    this.problem = problem;
+    const short = new TextEncoder().encode(passphrase).length < 8;
+    const problem = short
+      ? 'Passphrases need at least 8 bytes'
+      : passphrase !== repeat
+        ? "The passphrases don't match"
+        : null;
+    this.#refuse(problem, short ? 'passphrase' : 'repeat', true);
     if (problem) return;
     const sure = await confirm({
       title: 'Export your secrets?',
@@ -862,7 +922,7 @@ export class SliccSecrets extends ThemedElement {
       this.form = null;
       this.said = { kind: 'exported', file };
     } catch (error) {
-      if (this.#mine(vault, form)) this.problem = failureText(error);
+      if (this.#mine(vault, form)) this.#refuse(failureText(error), fieldOf(error, 'passphrase'));
     } finally {
       if (this.model?.vault === vault) this.busy = false;
     }
@@ -887,7 +947,7 @@ export class SliccSecrets extends ThemedElement {
   }
 
   #error(text: string, id: string): TemplateResult {
-    return html`<p class="error" role="alert" data-error=${id}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${text}</span></p>`;
+    return html`<p class="error" role="alert" id=${`error-${id}`} data-error=${id}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${text}</span></p>`;
   }
 
   #enter(event: KeyboardEvent, run: () => unknown): void {
@@ -902,7 +962,7 @@ export class SliccSecrets extends ThemedElement {
   }
 
   #value(label: string, field = 'value'): TemplateResult {
-    return html`<label class="field"><span>${label}</span><input type="password" autocomplete="off" spellcheck="false" data-field=${field} /></label>`;
+    return html`<label class="field"><span>${label}</span><input type="password" autocomplete="off" spellcheck="false" data-field=${field} aria-invalid=${this.#bad(field)} aria-describedby=${this.#described(field)} /></label>`;
   }
 
   #actions(locked: boolean, label: string, action: string, run: () => unknown): TemplateResult {
@@ -919,9 +979,9 @@ export class SliccSecrets extends ThemedElement {
   #valueForm(vault: VaultPort, form: SecretForm, locked: boolean): TemplateResult {
     const save = () => this.save(vault);
     const add = form.kind === 'add';
-    return html`<div class="form" data-form=${form.kind} @keydown=${(event: KeyboardEvent) => this.#enter(event, save)}>
+    return html`<div class="form" data-form=${form.kind} @input=${() => this.#typed()} @keydown=${(event: KeyboardEvent) => this.#enter(event, save)}>
       <strong>${add ? 'Add a secret' : html`Replace the value of <code>${(form as { name: string }).name}</code>`}</strong>
-      ${add ? html`<label class="field"><span>Name</span><input type="text" autocomplete="off" spellcheck="false" autocapitalize="characters" data-field="name" placeholder="API_TOKEN" @input=${(event: Event) => this.#upper(event)} /></label>` : nothing}
+      ${add ? html`<label class="field"><span>Name</span><input type="text" autocomplete="off" spellcheck="false" autocapitalize="characters" data-field="name" placeholder="API_TOKEN" aria-invalid=${this.#bad('name')} aria-describedby=${this.#described('name')} @input=${(event: Event) => this.#upper(event)} /></label>` : nothing}
       ${this.#value(add ? 'Value' : 'New value')}
       ${this.#locked(locked)}
       ${this.problem ? this.#error(this.problem, 'form') : nothing}
@@ -937,24 +997,26 @@ export class SliccSecrets extends ThemedElement {
   #importForm(vault: VaultPort, locked: boolean): TemplateResult {
     const read = () => this.read(vault);
     const candidates = this.candidates;
-    return html`<div class="form" data-form="import" @keydown=${(event: KeyboardEvent) => this.#enter(event, read)}>
+    return html`<div class="form" data-form="import" @input=${() => this.#typed()} @keydown=${(event: KeyboardEvent) => this.#enter(event, read)}>
       <strong>Import secrets</strong>
       <label class="field"><span id="import-kind">Kind</span>
         <sp-picker size="m" label="Kind" aria-labelledby="import-kind" data-field="kind" value=${this.importKind} @change=${(event: Event) => this.#kind(event)}>
           ${Object.entries(importKinds).map(([value, label]) => html`<sp-menu-item value=${value}>${label}</sp-menu-item>`)}
         </sp-picker>
       </label>
-      <label class="field"><span>File</span><input type="file" data-field="file" @change=${() => this.#reset()} /></label>
-      <label class="field"><span>${this.again ? 'Password, once more to import' : 'Password, if the file has one'}</span><input type="password" autocomplete="off" spellcheck="false" data-field="password" /></label>
+      <label class="field"><span>File</span><input type="file" data-field="file" aria-invalid=${this.#bad('file')} aria-describedby=${this.#described('file')} @change=${() => this.#reset()} /></label>
+      <label class="field"><span>${this.again ? 'Password, once more to import' : 'Password, if the file has one'}</span><input type="password" autocomplete="off" spellcheck="false" data-field="password" aria-invalid=${this.#bad('password')} aria-describedby=${this.#described('password')} /></label>
       ${
         candidates
           ? html`<fieldset class="picks" data-picks>
               <legend class="muted">Choose what to import</legend>
+              <p class="muted" data-rules-note>Rules from the file aren't applied. Add them with sudo.</p>
               ${candidates.map(
                 (item) => html`<label data-candidate=${item.name}>
-                  <input type="checkbox" data-pick=${item.name} .checked=${this.picked.has(item.name)} @change=${(event: Event) => this.#pick(item.name, event)} />
+                  <input type="checkbox" data-pick=${item.name} .checked=${this.picked.has(item.name)} ?disabled=${!!item.refused} @change=${(event: Event) => this.#pick(item.name, event)} />
                   <span class="about">
                     <span><code>${item.name}</code>${item.exists ? html` <swc-badge size="s" variant="notice" subtle>Replaces a secret</swc-badge>` : nothing}</span>
+                    ${item.refused ? html`<span class="muted" data-refused-reason>Can't be imported: ${item.refused}</span>` : nothing}
                     ${item.suggestedRules ? html`<span class="suggested" data-suggested><span class="from">From the file, not checked by SLICC:</span> <span class="said">${prompt(item.suggestedRules)}</span></span>` : nothing}
                   </span>
                 </label>`
@@ -979,7 +1041,7 @@ export class SliccSecrets extends ThemedElement {
 
   #exportForm(vault: VaultPort, locked: boolean): TemplateResult {
     const run = () => this.exportAll(vault);
-    return html`<div class="form" data-form="export" @keydown=${(event: KeyboardEvent) => this.#enter(event, run)}>
+    return html`<div class="form" data-form="export" @input=${() => this.#typed()} @keydown=${(event: KeyboardEvent) => this.#enter(event, run)}>
       <strong>Export secrets</strong>
       <span class="muted">The file is sealed with this passphrase. You need it to import the file again.</span>
       ${this.#value('Passphrase', 'passphrase')}
@@ -992,15 +1054,7 @@ export class SliccSecrets extends ThemedElement {
   }
 
   #request(vault: VaultPort, request: PendingRequest): TemplateResult {
-    const asker = who(request);
-    const what =
-      request.kind === 'value'
-        ? request.name
-          ? html`${asker} asks for <code>${request.name}</code>`
-          : html`${asker} asks for a value`
-        : request.kind === 'oauth'
-          ? html`${asker} asks you to sign in to ${request.provider}`
-          : html`${asker} asks for a jerk lease for ${request.provider}`;
+    const what = asking(request);
     return html`<div class="box" data-request=${request.id}>
       <span class="title">${what}</span>
       ${
@@ -1087,8 +1141,9 @@ export class SliccSecrets extends ThemedElement {
   ): TemplateResult {
     const more = this.more ?? list.auditMore;
     const row = (secret: SecretView) => this.#secret(vault, secret, entries, devices, more, locked);
-    const live = list.secrets.filter((secret) => secret.state !== 'removed');
-    const removed = list.secrets.filter((secret) => secret.state === 'removed');
+    const sorted = [...list.secrets].sort(byName);
+    const live = sorted.filter((secret) => secret.state !== 'removed');
+    const removed = sorted.filter((secret) => secret.state === 'removed');
     return html`${live.length ? html`<ul class="secrets" aria-labelledby="secrets">${live.map(row)}</ul>` : nothing}
       ${
         removed.length
@@ -1113,7 +1168,7 @@ export class SliccSecrets extends ThemedElement {
     const name = entry.type === 'policy' ? null : entry.name;
     return html`<li data-seq=${entry.seq} data-type=${entry.type}>
       <time datetime=${date.toISOString()} title=${date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}>${since(entry.at)}</time>
-      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices)}${entry.type === 'policy' ? nothing : html` <span class="by">by ${who(entry)}</span>`}</span>
+      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices)}${entry.type === 'policy' || entry.type === 'refresh' ? nothing : html` <span class="by">by ${who(entry)}</span>`}</span>
     </li>`;
   }
 
@@ -1153,7 +1208,7 @@ export class SliccSecrets extends ThemedElement {
     if (said.kind === 'saved')
       return html`<p role="status" data-said="saved">Saved <code>${said.name}</code> in the vault</p>`;
     if (said.kind === 'imported')
-      return html`<p role="status" data-said="imported">Imported ${said.imported}, skipped ${said.skipped}</p>`;
+      return html`<div role="status" data-said="imported"><p>Imported ${said.imported}</p>${said.skipped.map((item) => html`<p class="skipped" data-skipped=${item.name}>Skipped <code>${item.name}</code>${item.reason ? html`: <span class="said">${item.reason}</span>` : nothing}</p>`)}</div>`;
     return html`<p role="status" data-said="exported">Exported to <code>${said.file}</code></p>`;
   }
 
@@ -1232,7 +1287,9 @@ export class SliccSecrets extends ThemedElement {
       ${this.#tools(vault, locked)}
       ${
         !current
-          ? html`<p class="muted" data-loading>Loading secrets…</p>`
+          ? this.#offline
+            ? nothing
+            : html`<p class="muted" data-loading>Loading secrets…</p>`
           : current.secrets.length
             ? this.#secrets(vault, current, entries, devices, locked)
             : html`<p data-empty>No secrets yet. Add one here, or enter the value when an agent or program asks for one.</p>`

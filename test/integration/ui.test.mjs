@@ -4381,8 +4381,8 @@ test('settings list the secrets by name, with rules, exits and reveals, but no v
     [
       ['HARBOR_API_KEY', 'active'],
       ['PIER_PUBLISH_TOKEN', 'active'],
-      ['TIDE_MAIL', 'active'],
       ['REEF_DEPLOY_KEY', 'inert'],
+      ['TIDE_MAIL', 'active'],
       ['BUOY_OLD_TOKEN', 'removed'],
     ]
   );
@@ -4455,6 +4455,21 @@ test('Add secret refuses a short value, saves a real one and never shows it', as
     "Values shorter than 8 bytes can't be protected from the model"
   );
   await clean(page, 'tide42');
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const input = window.settingsPart('slicc-secrets', '[data-form=add] [data-field=value]');
+      const error = window.settingsPart(
+        'slicc-secrets',
+        `#${input.getAttribute('aria-describedby')}`
+      );
+      return [
+        input.getAttribute('aria-invalid'),
+        error?.dataset.error,
+        /slicc-secrets > input$/.test(window.focused()),
+      ];
+    }),
+    ['true', 'form', true]
+  );
   await views(page, 'secrets-vault-error', '.head', () =>
     save(page, 'tide_token', sample, 'EACCES')
   );
@@ -4514,26 +4529,34 @@ async function picked(page) {
   await page.until(() => !!window.settingsPart('slicc-secrets', '[data-picks]'));
 }
 
-async function imported(page) {
-  if (await page.evaluate(() => !!window.settingsPart('slicc-secrets', '[data-said=imported]')))
-    return;
-  await picked(page);
-  await page.evaluate(() => {
-    window.settingsPart('slicc-secrets', '[data-pick=KELP_WEBHOOK_SECRET]').click();
+const passes = [
+  ['1280-light', 'light', 1280, 1800],
+  ['1280-dark', 'dark', 1280, 1800],
+  ['420-light', 'light', 420, 860],
+];
+
+async function at(t, params, color, width, height) {
+  const page = await secretsPage(t, params);
+  await page.evaluate((value) => {
+    window.model.settings.update({ color: value });
     return true;
-  });
-  await page.until(
-    () =>
-      window.settingsPart('slicc-secrets', '[data-action=import-picked]')?.textContent.trim() ===
-      'Import 2'
+  }, color);
+  await sized(page, width, height);
+  await shown(
+    page,
+    'settings',
+    () => !!window.settingsPart('slicc-secrets', 'section[data-vault]')
   );
-  await page.evaluate(() =>
-    window.settingsPart('slicc-secrets', '[data-action=import-picked]').click()
-  );
-  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-said=imported]'));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  return page;
 }
 
-test('Import offers a pick of what the file holds, then imports the chosen secrets', async (t) => {
+const activity = () =>
+  [...window.settingsPart('slicc-secrets').shadowRoot.querySelectorAll('ol.audit li')]
+    .slice(0, 6)
+    .map((row) => row.querySelector('.what').textContent.replace(/\s+/g, ' ').trim());
+
+test('Import offers a pick of what the file holds, with its rules as untrusted text', async (t) => {
   const page = await secretsPage(t, { vault: 'secrets' });
   await picked(page);
   assert.deepEqual(
@@ -4546,16 +4569,108 @@ test('Import offers a pick of what the file holds, then imports the chosen secre
       ['LAGOON_API_KEY', true],
       ['HARBOR_API_KEY', true],
       ['KELP_WEBHOOK_SECRET', true],
+      ['LAGOON_MODEL_KEY', true],
+      ['MOORING_TOKEN', false],
     ]
   );
+  assert.equal(
+    await page.evaluate(said, '[data-rules-note]'),
+    "Rules from the file aren't applied. Add them with sudo."
+  );
   await views(page, 'secrets-import-pick', '[data-form=import]', () => picked(page));
-  await sized(page, 1280);
-  await imported(page);
-  assert.equal(await page.evaluate(said, '[data-said=imported]'), 'Imported 2, skipped 1');
-  await clean(page);
-  await views(page, 'secrets-import-done', null, () => imported(page));
   assert.deepEqual(page.errors, []);
 });
+
+for (const [suffix, color, width, height] of passes) {
+  test(`one import writes one audit entry per imported secret, by you, ${suffix}`, async (t) => {
+    const page = await at(t, { vault: 'secrets' }, color, width, height);
+    await picked(page);
+    await page.evaluate(() =>
+      window.settingsPart('slicc-secrets', '[data-action=import-picked]').click()
+    );
+    await page.until(() => !!window.settingsPart('slicc-secrets', '[data-said=imported]'));
+    assert.deepEqual(
+      await page.evaluate(() =>
+        [
+          ...window
+            .settingsPart('slicc-secrets')
+            .shadowRoot.querySelectorAll('[data-said=imported] p'),
+        ].map((line) => line.textContent.replace(/\s+/g, ' ').trim())
+      ),
+      [
+        'Imported 4',
+        'Skipped MOORING_TOKEN: its placeholder is in use by another embedder of this vault',
+      ]
+    );
+    const seals = await page.evaluate(() =>
+      window.model.vault
+        .list()
+        .audit.filter((entry) => entry.type === 'seal' && entry.source.startsWith('import:'))
+        .map((entry) => [entry.name, entry.uid, entry.tag])
+        .sort()
+    );
+    assert.deepEqual(seals, [
+      ['HARBOR_API_KEY', null, null],
+      ['KELP_WEBHOOK_SECRET', null, null],
+      ['LAGOON_API_KEY', null, null],
+      ['LAGOON_MODEL_KEY', null, null],
+    ]);
+    assert.ok((await page.evaluate(activity)).slice(0, 4).every((line) => line.endsWith('by you')));
+    assert.deepEqual(
+      await page.evaluate(() =>
+        [
+          ...window
+            .settingsPart('slicc-secrets')
+            .shadowRoot.querySelectorAll('ul.secrets[aria-labelledby=secrets] > li'),
+        ].map((row) => row.dataset.secret)
+      ),
+      [
+        'HARBOR_API_KEY',
+        'KELP_WEBHOOK_SECRET',
+        'LAGOON_API_KEY',
+        'LAGOON_MODEL_KEY',
+        'PIER_PUBLISH_TOKEN',
+        'REEF_DEPLOY_KEY',
+        'TIDE_MAIL',
+      ]
+    );
+    await clean(page);
+    await page.evaluate(() => {
+      window.settingsPart('slicc-secrets').scrollIntoView({ block: 'start' });
+      return true;
+    });
+    await shot(page, `secrets-import-done-${suffix}`);
+    assert.deepEqual(page.errors, []);
+  });
+
+  test(`what the person does in Settings reads by you in Activity, ${suffix}`, async (t) => {
+    const page = await at(t, { vault: 'secrets' }, color, width, height);
+    await save(page, 'tide_token', sample);
+    await form(page, '[data-secret=REEF_DEPLOY_KEY] [data-action=replace]', 'replace');
+    await fill(page, '[data-form=replace] [data-field=value]', 'another-sample-value-7');
+    await page.evaluate(() =>
+      window.settingsPart('slicc-secrets', '[data-form] [data-action=save]').click()
+    );
+    await page.until(() => !window.settingsPart('slicc-secrets', '[data-form]'));
+    const lines = await page.evaluate(activity);
+    assert.deepEqual(lines.slice(0, 2), [
+      'REEF_DEPLOY_KEY · Value replaced by you',
+      'TIDE_TOKEN · Value saved by you',
+    ]);
+    assert.equal(
+      lines[2],
+      'HARBOR_API_KEY · Sent to api.harbor.example: GET /v2/ships, through Local proxy by cone'
+    );
+    await clean(page);
+    await clean(page, 'another-sample-value-7');
+    await page.evaluate(() => {
+      window.settingsPart('slicc-secrets', '.audit-head').scrollIntoView({ block: 'start' });
+      return true;
+    });
+    await shot(page, `secrets-by-you-${suffix}`);
+    assert.deepEqual(page.errors, []);
+  });
+}
 
 test('Export asks for a passphrase twice and confirms before it downloads', async (t) => {
   const page = await secretsPage(t, { vault: 'secrets' });
@@ -4730,11 +4845,30 @@ async function valueDialog(t, color, width) {
   });
   assert.deepEqual(shown, {
     title: 'Enter a value for TIDE_STATION_TOKEN',
-    asked: 'Asked by fnox',
+    asked: 'docs-pass asks for TIDE_STATION_TOKEN',
     actions: ['later', 'cancel-request', 'save'],
     inside: true,
   });
   await shot(page, `value-request-${width ?? 1280}-${color}`);
+  await page.until(() => /slicc-value-request > input/.test(window.focused()));
+  await page.insert('tide42');
+  await page.press('Enter');
+  await page.until(() => !!window.$('slicc-app', 'slicc-value-request', '[data-error]'));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.$('slicc-app', 'slicc-value-request').shadowRoot;
+      const input = root.querySelector('input[data-field=value]');
+      return [
+        input.getAttribute('aria-invalid'),
+        input.getAttribute('aria-describedby'),
+        root.querySelector('#error-request').textContent.trim(),
+        input.value,
+      ];
+    }),
+    ['true', 'error-request', "Values shorter than 8 bytes can't be protected from the model", '']
+  );
+  await clean(page, 'tide42');
+  await shot(page, `value-request-refusal-${width ?? 1280}-${color}`);
   return page;
 }
 

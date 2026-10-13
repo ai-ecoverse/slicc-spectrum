@@ -116,6 +116,10 @@ export function failureText(error: unknown): string {
   return text ?? (error instanceof Error ? error.message : 'The vault did not answer');
 }
 
+export function fieldOf(error: unknown, field: string): string | null {
+  return isVaultFailure(error) && error.code === 'EINVAL' ? field : null;
+}
+
 export function away(vault: VaultPort): boolean {
   const state = vault.availability?.() ?? (vault.status() ? 'ready' : 'waiting');
   return state === 'connecting' || state === 'waiting';
@@ -152,6 +156,9 @@ export const fieldStyles = css`
     border-radius: var(--swc-corner-radius-small-default);
     background: var(--swc-background-layer-2-color);
     color: inherit;
+  }
+  .field input[aria-invalid='true'] {
+    border-color: var(--swc-negative-border-color-default);
   }
   .field input[type='file'] {
     padding: var(--swc-spacing-75) var(--swc-spacing-100);

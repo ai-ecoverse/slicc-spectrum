@@ -1114,6 +1114,11 @@ export interface RemoveEntry extends AuditBase {
   type: 'remove' | 'restore';
 }
 
+export interface RefreshEntry extends AuditBase {
+  type: 'refresh';
+  grant?: string;
+}
+
 export interface PolicyEntry {
   type: 'policy';
   seq: number;
@@ -1127,7 +1132,13 @@ export interface PolicyEntry {
   warning?: string;
 }
 
-export type AuditEntry = InjectionEntry | RevealEntry | SealEntry | RemoveEntry | PolicyEntry;
+export type AuditEntry =
+  | InjectionEntry
+  | RevealEntry
+  | SealEntry
+  | RemoveEntry
+  | RefreshEntry
+  | PolicyEntry;
 
 export interface AuditPage {
   audit: AuditEntry[];
@@ -1160,13 +1171,22 @@ export type ImportKind = 'bundle' | 'keepass' | 'six';
 
 export interface ImportCandidate {
   name: string;
+  kind?: RecordKind;
   exists: boolean;
   suggestedRules?: string;
+  refused?: string;
 }
+
+export type ImportPick = string | { name: string; kind: RecordKind };
 
 export type ImportResult =
   | { stage: 'pick'; candidates: ImportCandidate[] }
-  | { stage: 'done'; imported: SealResult[]; skipped: string[] };
+  | {
+      stage: 'done';
+      imported: SealResult[];
+      skipped: string[];
+      reasons?: Record<string, string>;
+    };
 
 export type PopupIntent =
   | { kind: 'unlock' }
@@ -1238,7 +1258,7 @@ export interface VaultPort extends Subscribable<VaultEvents> {
   import?(
     kind: ImportKind,
     bytes: Uint8Array,
-    options?: { password?: string; pick?: string[] }
+    options?: { password?: string; pick?: ImportPick[] }
   ): Promise<ImportResult>;
   export?(passphrase: string): Promise<Uint8Array>;
   lock?(): Promise<void>;
