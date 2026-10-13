@@ -27,11 +27,12 @@ export const reachStyles = css`
     color: var(--swc-code-color);
     user-select: all;
   }
-  .command + .command {
-    margin-top: var(--swc-spacing-100);
+  .commands {
+    display: grid;
+    gap: var(--swc-spacing-100);
   }
-  .node {
-    margin-top: var(--swc-spacing-200);
+  .commands p {
+    margin: 0;
     font-size: var(--swc-font-size-75);
     color: var(--swc-neutral-subdued-content-color-default);
   }
@@ -68,10 +69,14 @@ export function reach({ intro, extensionUrl, copied, uncopied, copy }: Reach): T
         : nothing
     }
     <p>To run slicc, enter this in a terminal:</p>
-    ${block(command, copied, copy, true)}
-    ${block(startCommand, copied, copy)}
-    <p class="node">With Node:</p>
-    ${block(nodeCommand, copied, copy)}
+    <div class="commands">
+      ${block(command, copied, copy, true)}
+      ${block(startCommand, copied, copy)}
+    </div>
+    <div class="commands" data-commands="node">
+      <p>With Node:</p>
+      ${block(nodeCommand, copied, copy)}
+    </div>
     ${
       uncopied
         ? html`<div class="error" role="alert" data-error="copy"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>Couldn’t copy. Select the command and copy it.</span></div>`
