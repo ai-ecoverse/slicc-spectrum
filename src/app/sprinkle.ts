@@ -298,7 +298,9 @@ export class SliccSprinkle extends ThemedElement {
   };
 
   #readOnly(): boolean {
-    return this.readonly || !!watchOnly(this.model);
+    const owner = this.#data?.agentId;
+    const frozen = this.model?.agent.list().some((agent) => agent.id === owner && agent.frozen);
+    return this.readonly || !!frozen || !!watchOnly(this.model);
   }
 
   async #call(source: Window, data: FrameMessage): Promise<void> {
