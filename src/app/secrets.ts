@@ -1199,7 +1199,7 @@ export class SliccSecrets extends ThemedElement {
         ${secret.expiresAt ? html`<dt>Expires</dt><dd data-expires>${until(secret.expiresAt)}</dd>` : nothing}
         ${secret.removedAt ? html`<dt>Removed</dt><dd>${since(secret.removedAt)}</dd>` : nothing}
       </dl>
-      ${form?.kind === 'replace' && form.name === secret.name ? this.#valueForm(vault, form, locked) : nothing}
+      ${form?.kind === 'replace' && form.name === secret.name && (form.options?.kind ?? 'secret') === (putOptions(secret)?.kind ?? 'secret') ? this.#valueForm(vault, form, locked) : nothing}
     </li>`;
   }
 

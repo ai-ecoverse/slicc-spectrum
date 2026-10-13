@@ -288,7 +288,7 @@ export class SliccSettings extends ThemedElement {
       if (this.model === model) this.#refuse(id, 'value', failureText(error));
       return;
     }
-    if (this.model !== model) {
+    if (this.model !== model || this.entering !== id) {
       this.#busy(id, false);
       return;
     }
