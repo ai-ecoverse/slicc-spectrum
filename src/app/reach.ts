@@ -3,7 +3,11 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-copy.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 
-export const command = 'npx @ai-ecoverse/slicc-node';
+export const command = 'curl -fsSL https://get.sliccy.ai/slicc | sh';
+
+export const startCommand = 'slicc';
+
+export const nodeCommand = 'npx sliccy@next';
 
 export const reachStyles = css`
   .command {
@@ -23,14 +27,37 @@ export const reachStyles = css`
     color: var(--swc-code-color);
     user-select: all;
   }
+  .command + .command {
+    margin-top: var(--swc-spacing-100);
+  }
+  .node {
+    margin-top: var(--swc-spacing-200);
+    font-size: var(--swc-font-size-75);
+    color: var(--swc-neutral-subdued-content-color-default);
+  }
 `;
 
 export interface Reach {
   intro: string;
   extensionUrl?: string;
-  copied: boolean;
+  copied: string | null;
   uncopied: boolean;
-  copy: () => void;
+  copy: (text: string) => void;
+}
+
+function block(
+  text: string,
+  copied: string | null,
+  copy: (text: string) => void,
+  first = false
+): TemplateResult {
+  const done = copied === text;
+  return html`<div class="command" data-command=${text}>
+      <code>${text}</code>
+      <swc-action-button size="s" quiet data-action=${first ? 'copy-command' : nothing} accessible-label=${done ? 'Copied' : `Copy ${text}`} @click=${() => copy(text)}>
+        <swc-icon-copy slot="icon"></swc-icon-copy>${done ? 'Copied' : 'Copy'}
+      </swc-action-button>
+    </div>`;
 }
 
 export function reach({ intro, extensionUrl, copied, uncopied, copy }: Reach): TemplateResult {
@@ -40,13 +67,11 @@ export function reach({ intro, extensionUrl, copied, uncopied, copy }: Reach): T
         ? html`<p><a class="swc-Link" href=${extensionUrl} target="_blank" rel="noopener noreferrer" data-action="install-extension">Install the Chrome extension</a></p>`
         : nothing
     }
-    <p>To run slicc-node, enter this in a terminal:</p>
-    <div class="command">
-      <code>${command}</code>
-      <swc-action-button size="s" quiet data-action="copy-command" accessible-label=${copied ? 'Copied' : 'Copy command'} @click=${copy}>
-        <swc-icon-copy slot="icon"></swc-icon-copy>${copied ? 'Copied' : 'Copy'}
-      </swc-action-button>
-    </div>
+    <p>To run slicc, enter this in a terminal:</p>
+    ${block(command, copied, copy, true)}
+    ${block(startCommand, copied, copy)}
+    <p class="node">With Node:</p>
+    ${block(nodeCommand, copied, copy)}
     ${
       uncopied
         ? html`<div class="error" role="alert" data-error="copy"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>Couldn’t copy. Select the command and copy it.</span></div>`

@@ -36,7 +36,7 @@ import { ModelElement } from './base.ts';
 import { agentName } from './files.ts';
 import { watchOnly } from './follow.ts';
 import { time } from './messages.ts';
-import { command, copyText, reach, reachStyles } from './reach.ts';
+import { copyText, reach, reachStyles } from './reach.ts';
 
 export function normalize(input: string): string {
   const text = input.trim();
@@ -155,7 +155,7 @@ export class SliccBrowser extends ModelElement {
   #ticker: ReturnType<typeof setInterval> | null = null;
   #width = 0;
   #copied: 'url' | 'failed' | null = null;
-  #command: boolean | null = null;
+  #command: string | false | null = null;
   #count = 0;
 
   constructor() {
@@ -743,7 +743,7 @@ export class SliccBrowser extends ModelElement {
   }
 
   async #copyCommand(text: string): Promise<void> {
-    this.#command = await copyText(text);
+    this.#command = (await copyText(text)) && text;
     this.requestUpdate();
   }
 
@@ -958,12 +958,11 @@ export class SliccBrowser extends ModelElement {
         <span slot="description">Agents can’t open or use browser tabs yet.</span>
       </swc-illustrated-message>
       <div class="reach">${reach({
-        intro:
-          'Install the SLICC Chrome extension, or run slicc-node on this computer. Either one lets agents use this browser.',
+        intro: 'Install the SLICC extension, or run slicc on this computer.',
         extensionUrl: status?.extensionUrl,
-        copied: this.#command === true,
+        copied: this.#command || null,
         uncopied: this.#command === false,
-        copy: () => this.#copyCommand(command),
+        copy: (text) => this.#copyCommand(text),
       })}</div>
     </div></div>`;
   }

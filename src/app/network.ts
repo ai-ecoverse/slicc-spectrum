@@ -54,7 +54,8 @@ export const networkHealth: Record<
 };
 
 const routes: Record<NetworkRoute | 'none', string> = {
-  proxy: 'Through slicc-node, which reaches every site.',
+  proxy: 'Through slicc on this computer, which reaches every site.',
+  link: 'Through a linked device.',
   extension: 'Through the SLICC Chrome extension, which reaches every site.',
   tailnet: 'Through a Tailscale exit node, which reaches every site.',
   page: 'Through this page’s own fetch. Sites that block cross-origin requests are out of reach.',
@@ -63,33 +64,41 @@ const routes: Record<NetworkRoute | 'none', string> = {
 
 export const automation: Record<NonNullable<BrowserAutomation['via']> | 'none', string> = {
   extension: 'Browser automation: through the SLICC extension.',
-  proxy: 'Browser automation: through slicc-node.',
+  proxy: 'Browser automation: through slicc on this computer.',
   link: 'Browser automation: through a linked device.',
-  none: 'Browser automation: not available. Install the extension, or run slicc-node or npx sliccy@next.',
+  none: 'Browser automation: not available. Install the extension, or run slicc on this computer.',
 };
+
+export function exitDevice(status: NetworkStatus): LinkedDevice | undefined {
+  const exit = status.exit;
+  return exit?.kind === 'link'
+    ? status.links?.devices.find((device) => device.id === exit.id)
+    : undefined;
+}
+
+export function localExit(status: NetworkStatus): boolean {
+  return status.route === 'proxy' || exitDevice(status)?.mode === 'local';
+}
 
 export function automationOf(browser: BrowserAutomation): keyof typeof automation {
   return browser.via ?? 'none';
 }
 
-export function browserLine(
-  browser: BrowserAutomation,
-  links?: NetworkLinks,
-  route?: NetworkRoute | null
-): string {
+export function browserLine(browser: BrowserAutomation, status: NetworkStatus): string {
   const via = automationOf(browser);
-  if (via === 'none' && route === 'proxy')
-    return 'Browser automation: slicc-node has no browser attached.';
+  const local = localExit(status);
+  if (via === 'none' && local) return 'slicc on this computer has no browser to control.';
   if (via !== 'link') return automation[via];
-  const connected = (links?.devices ?? []).filter((device) => device.state === 'connected');
+  const connected = (status.links?.devices ?? []).filter((device) => device.state === 'connected');
   const found = connected.flatMap((device) =>
-    (device.browsers ?? []).map((item) => ({ name: item.name, device: device.name }))
+    (device.browsers ?? []).map((item) => ({ name: item.name, device }))
   );
+  if (found.length === 1 && found[0].device.mode === 'local') return automation.proxy;
   if (found.length === 1)
-    return `Browser automation: through ${found[0].name} on the linked device ${found[0].device}.`;
+    return `Browser automation: through ${found[0].name} on the linked device ${found[0].device.name}.`;
   if (found.length > 1)
     return `Browser automation: through ${found.length} browsers on linked devices.`;
-  return automation.link;
+  return local ? automation.proxy : automation.link;
 }
 
 export const tailnetStates: Record<
@@ -105,7 +114,8 @@ export const tailnetStates: Record<
 };
 
 const tailnetOnly: Record<NetworkRoute | 'none', string> = {
-  proxy: 'Tailnet hosts only. Everything else goes through slicc-node.',
+  proxy: 'Tailnet hosts only. Everything else goes through slicc on this computer.',
+  link: 'Tailnet hosts only. Everything else goes through a linked device.',
   extension: 'Tailnet hosts only. Everything else goes through the SLICC extension.',
   tailnet: 'Everything goes through your tailnet.',
   page: 'Tailnet hosts only. Everything else goes through this page’s fetch.',
@@ -114,6 +124,16 @@ const tailnetOnly: Record<NetworkRoute | 'none', string> = {
 
 export function tailnetAddress(addresses: readonly string[]): string | undefined {
   return addresses.find((address) => address.startsWith('100.')) ?? addresses[0];
+}
+
+export function tailnetLine(status: NetworkStatus): string {
+  const route = routeOf(status) ?? 'none';
+  if (route !== 'link') return tailnetOnly[route];
+  if (localExit(status)) return tailnetOnly.proxy;
+  const device = exitDevice(status);
+  return device
+    ? `Tailnet hosts only. Everything else goes through ${device.name}.`
+    : tailnetOnly.link;
 }
 
 export function exitNodeValue(tailnet: TailnetStatus): string {
@@ -302,28 +322,29 @@ export function unlinkBody(device: LinkedDevice, isExit: boolean): string {
   return isExit ? `${body} Internet traffic goes directly again.` : body;
 }
 
-export const wholeWeb: ReadonlySet<NetworkRoute | 'link' | null> = new Set([
+export const wholeWeb: ReadonlySet<NetworkRoute | null> = new Set([
   'proxy',
   'extension',
   'tailnet',
   'link',
 ]);
 
-export function routeOf(status: NetworkStatus): NetworkRoute | 'link' | null {
+export function routeOf(status: NetworkStatus): NetworkRoute | null {
   return status.exit?.kind === 'link' ? 'link' : status.route;
 }
 
-function linkLine(status: NetworkStatus, id: string): string {
-  const device = status.links?.devices.find((item) => item.id === id);
+function linkLine(status: NetworkStatus): string {
+  const device = exitDevice(status);
   if (!device) return 'Waiting for a linked device that isn’t connected.';
   if (device.state !== 'connected') return `Waiting for the linked device ${device.name}.`;
+  if (device.mode === 'local') return routes.proxy;
   return device.policy
     ? `Through the linked device ${device.name}, which reaches ${device.policy}.`
     : `Through the linked device ${device.name}.`;
 }
 
 export function routeLine(status: NetworkStatus): string {
-  if (status.exit?.kind === 'link') return linkLine(status, status.exit.id);
+  if (status.exit?.kind === 'link') return linkLine(status);
   const node = status.route === 'tailnet' ? status.tailnet?.exitNode : null;
   return node
     ? `Through the Tailscale exit node ${node}, which reaches every site.`
@@ -394,7 +415,7 @@ export class SliccNetwork extends ModelElement {
     syncError: { state: true },
   };
   declare checking: boolean;
-  declare copied: boolean;
+  declare copied: string | null;
   declare uncopied: boolean;
   declare error: string;
   declare busy: string;
@@ -407,7 +428,7 @@ export class SliccNetwork extends ModelElement {
   constructor() {
     super();
     this.checking = false;
-    this.copied = false;
+    this.copied = null;
     this.uncopied = false;
     this.error = '';
     this.busy = '';
@@ -783,9 +804,9 @@ export class SliccNetwork extends ModelElement {
     }
   }
 
-  async copy(): Promise<void> {
-    const done = await copyText(command);
-    this.copied = done;
+  async copy(text = command): Promise<void> {
+    const done = await copyText(text);
+    this.copied = done ? text : null;
     this.uncopied = !done;
   }
 
@@ -959,7 +980,7 @@ export class SliccNetwork extends ModelElement {
           </div>`
         : nothing
     }
-      <p data-exit=${tailnet.exitNode ? 'node' : 'none'}>${tailnet.exitNode ? `Internet through the exit node ${tailnet.exitNode}.` : tailnetOnly[status.route ?? 'none']}</p>`;
+      <p data-exit=${tailnet.exitNode ? 'node' : 'none'}>${tailnet.exitNode ? `Internet through the exit node ${tailnet.exitNode}.` : tailnetLine(status)}</p>`;
   }
 
   #exitLine(port: NetworkPort, status: NetworkStatus): TemplateResult | typeof nothing {
@@ -1325,7 +1346,7 @@ export class SliccNetwork extends ModelElement {
       ${this.#exitPicker(port, status)}
       ${
         status.browser
-          ? html`<p data-browser=${automationOf(status.browser)}>${browserLine(status.browser, status.links, status.route)}${status.browser.detail ? html` <span class="detail">${status.browser.detail}</span>` : nothing}</p>`
+          ? html`<p data-browser=${automationOf(status.browser)}>${browserLine(status.browser, status)}${status.browser.detail ? html` <span class="detail">${status.browser.detail}</span>` : nothing}</p>`
           : nothing
       }
       ${
@@ -1387,11 +1408,11 @@ export class SliccNetwork extends ModelElement {
   #ways(status: NetworkStatus): TemplateResult {
     return reach({
       intro:
-        'Install the SLICC Chrome extension, or run slicc-node on this computer. Either one reaches every site.',
+        'Install the SLICC extension, or run slicc on this computer. Either one reaches every site.',
       extensionUrl: status.extensionUrl,
       copied: this.copied,
       uncopied: this.uncopied,
-      copy: () => this.copy(),
+      copy: (text) => this.copy(text),
     });
   }
 

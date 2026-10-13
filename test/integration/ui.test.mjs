@@ -3675,7 +3675,11 @@ test('the network indicator shows the health and opens the Network panel', async
       return [
         root.querySelector('[data-route]').dataset.route,
         root.querySelector('[data-action=install-extension]').getAttribute('href'),
-        root.querySelector('section[aria-labelledby=whole] code').textContent.trim(),
+        [...root.querySelectorAll('section[aria-labelledby=whole] [data-command]')].map(
+          (item) => item.dataset.command
+        ),
+        root.querySelector('[data-command] [data-action=copy-command]').closest('[data-command]')
+          .dataset.command,
         root.querySelectorAll('li[data-url]').length,
         !!root.querySelector('[data-action=check]'),
         /\u2014/.test(root.textContent),
@@ -3685,7 +3689,8 @@ test('the network indicator shows the health and opens the Network panel', async
     [
       'page',
       'https://extensions.example/slicc',
-      'npx @ai-ecoverse/slicc-node',
+      ['curl -fsSL https://get.sliccy.ai/slicc | sh', 'slicc', 'npx sliccy@next'],
+      'curl -fsSL https://get.sliccy.ai/slicc | sh',
       2,
       true,
       false,
@@ -3720,15 +3725,22 @@ test('the network indicator shows the health and opens the Network panel', async
     ),
     'Network'
   );
-  assert.equal(
-    await page.evaluate(
-      () =>
-        window
-          .$('slicc-app', 'slicc-dock')
-          .content('network')
-          .shadowRoot.querySelector('[data-browser]').dataset.browser
-    ),
-    'proxy'
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.$('slicc-app', 'slicc-dock').content('network').shadowRoot;
+      return [
+        root.querySelector('[data-route]').dataset.route,
+        root.querySelector('[data-route]').textContent.trim(),
+        root.querySelector('[data-browser]').dataset.browser,
+        root.querySelector('[data-browser]').textContent.trim(),
+      ];
+    }),
+    [
+      'link',
+      'Through slicc on this computer, which reaches every site.',
+      'link',
+      'Browser automation: through slicc on this computer.',
+    ]
   );
   await shot(page, 'network-ok');
   await page.evaluate(() => {

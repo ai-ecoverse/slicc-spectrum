@@ -728,7 +728,7 @@ export interface UpdatesPort extends Subscribable<UpdatesEvents> {
   actPackage?(id: string, action: PackageAction): Promise<void>;
 }
 
-export type NetworkRoute = 'proxy' | 'extension' | 'tailnet' | 'page';
+export type NetworkRoute = 'proxy' | 'extension' | 'tailnet' | 'page' | 'link';
 
 export interface NetworkFailure {
   url: string;
