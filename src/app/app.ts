@@ -893,6 +893,10 @@ export class SliccApp extends ThemedElement {
     return Boolean(cone && !cone.frozen && this.model?.agent.freeze && !watchOnly(this.model));
   }
 
+  #creatable(): boolean {
+    return Boolean(this.model?.agent.createCone) && !watchOnly(this.model);
+  }
+
   #cone(): string {
     const agent = this.#active() as Agent | null;
     return agent?.kind === 'scoop' ? (agent.parentId ?? '') : (agent?.id ?? '');
@@ -1037,13 +1041,13 @@ export class SliccApp extends ThemedElement {
                   html`<sp-picker size="s" label="Agent" value=${this.#cone()} @change=${this.#pick}>
             ${cones.map((agent) => html`<sp-menu-item value=${agent.id}>${agent.name}<span slot="description">${agentTitle(this.model as SliccModel, agent) || untitled}</span></sp-menu-item>`)}
             ${
-              this.model?.agent.createCone
+              this.#creatable()
                 ? html`<sp-menu-divider></sp-menu-divider><sp-menu-item value=${newCone} data-action="new-cone"><swc-icon-add slot="icon"></swc-icon-add>New cone</sp-menu-item>`
                 : nothing
             }
             ${
               this.#deletable()
-                ? html`${this.model?.agent.createCone ? nothing : html`<sp-menu-divider></sp-menu-divider>`}<sp-menu-item value=${deleteActiveCone} data-action="delete-cone"><swc-icon-delete slot="icon"></swc-icon-delete>Delete cone</sp-menu-item>`
+                ? html`${this.#creatable() ? nothing : html`<sp-menu-divider></sp-menu-divider>`}<sp-menu-item value=${deleteActiveCone} data-action="delete-cone"><swc-icon-delete slot="icon"></swc-icon-delete>Delete cone</sp-menu-item>`
                 : nothing
             }
             ${

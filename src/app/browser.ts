@@ -34,6 +34,7 @@ import type {
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
 import { agentName } from './files.ts';
+import { watchOnly } from './follow.ts';
 import { time } from './messages.ts';
 import { command, copyText, reach, reachStyles } from './reach.ts';
 
@@ -573,6 +574,7 @@ export class SliccBrowser extends ModelElement {
         this.requestUpdate();
       }),
       ...(model.network ? [model.network.on('network', () => this.requestUpdate())] : []),
+      ...(model.follow ? [model.follow.on('follow', () => this.requestUpdate())] : []),
       () => clearInterval(timer),
       () => resize.disconnect(),
       () => document.removeEventListener('visibilitychange', visibility),
@@ -756,7 +758,7 @@ export class SliccBrowser extends ModelElement {
     refocus: string,
     justified = false
   ): TemplateResult | typeof nothing {
-    if (!tab.agentId) return nothing;
+    if (!tab.agentId || watchOnly(this.model)) return nothing;
     const agentId = tab.agentId;
     return html`<swc-button size="s" variant="secondary" ?justified=${justified} data-action="stop-agent" @click=${() => this.#stop(agentId, refocus)}>Stop ${agentName(this.model as SliccModel, agentId)}</swc-button>`;
   }

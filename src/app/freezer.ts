@@ -6,6 +6,7 @@ import type { Agent, FrozenCone, FrozenKind, SliccModel } from '../model/types.t
 import { ModelElement, shared } from './base.ts';
 import { confirm } from './confirm.ts';
 import { panelCss } from './files.ts';
+import { watchOnly } from './follow.ts';
 import { coneLabel, twinned, withTitle } from './names.ts';
 
 export function ago(at: number, now = Date.now()): string {
@@ -99,6 +100,7 @@ export class SliccFreezer extends ModelElement {
       model.agent.on('frozen', update),
       model.agent.on('active', update),
       model.agent.on('agents', update),
+      ...(model.follow ? [model.follow.on('follow', update)] : []),
     ];
   }
 
@@ -136,6 +138,7 @@ export class SliccFreezer extends ModelElement {
     if (cone.live) {
       return html`<swc-action-button size="s" quiet data-action="open" accessible-label=${`Open ${this.#named(cone)}`} @click=${() => model.agent.select(cone.id)}>Open</swc-action-button>`;
     }
+    if (watchOnly(model)) return html``;
     return html`<swc-action-button size="s" quiet data-action="thaw" accessible-label=${`Thaw ${this.#named(cone)}`} @click=${() => model.agent.thaw(cone.id)}>Thaw</swc-action-button>
       <swc-action-button size="s" quiet data-action="remove" accessible-label=${`Remove ${this.#named(cone)}`} @click=${(event: Event) => this.#remove(cone, event.currentTarget as HTMLElement)}>Remove</swc-action-button>`;
   }

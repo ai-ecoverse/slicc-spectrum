@@ -298,9 +298,16 @@ export class SliccSprinkle extends ThemedElement {
   };
 
   #readOnly(): boolean {
+    return this.readonly || this.#frozen() || !!watchOnly(this.model);
+  }
+
+  #frozen(): boolean {
     const owner = this.#data?.agentId;
-    const frozen = this.model?.agent.list().some((agent) => agent.id === owner && agent.frozen);
-    return this.readonly || !!frozen || !!watchOnly(this.model);
+    const port = this.model?.agent;
+    if (!port || !owner) return false;
+    const live = port.list().find((agent) => agent.id === owner);
+    if (live) return !!live.frozen;
+    return port.frozen().some((row) => row.id === owner && !row.live);
   }
 
   async #call(source: Window, data: FrameMessage): Promise<void> {

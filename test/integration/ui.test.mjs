@@ -3243,7 +3243,11 @@ test('a watch-only follower has no Delete cone or Drop, and its inline sprinkle 
   );
   assert.equal(
     await page.evaluate(
-      () => !!window.$('slicc-app', 'header sp-menu-item[data-action=delete-cone]')
+      () =>
+        !!window.$(
+          'slicc-app',
+          'header sp-menu-item[data-action=delete-cone], header sp-menu-item[data-action=new-cone]'
+        )
     ),
     false
   );
