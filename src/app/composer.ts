@@ -11,6 +11,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-lock.js';
 import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { live } from 'lit/directives/live.js';
 import type {
+  AgentPort,
   Attachment,
   Outgoing,
   SendMode,
@@ -133,6 +134,24 @@ export function release(attachments: readonly Attachment[]): void {
     if (attachment.url?.startsWith('blob:')) URL.revokeObjectURL(attachment.url);
 }
 
+export function retire(agent: AgentPort, id: string, attachments: readonly Attachment[]): void {
+  const urls = new Set(attachments.flatMap((attachment) => attachment.url ?? []));
+  const waiting = () =>
+    agent
+      .queue(id)
+      .some((message) => message.attachments?.some((attachment) => urls.has(attachment.url ?? '')));
+  const later = () => void setTimeout(() => release(attachments), linger);
+  if (!waiting()) {
+    later();
+    return;
+  }
+  const off = agent.on('messages', () => {
+    if (waiting()) return;
+    off();
+    later();
+  });
+}
+
 export function filter(items: Choice[], query: string, limit = 8): Choice[] {
   const needle = query.toLowerCase();
   return items
@@ -193,6 +212,7 @@ export class SliccComposer extends ThemedElement {
   #paths: string[] = [];
   #agent = '';
   #next = 1;
+  #abandon: ReturnType<typeof setTimeout> | undefined;
   #recognition: { stop(): void } | null = null;
   #keys = { capture: true, handleEvent: (event: KeyboardEvent) => this.#keydown(event) };
 
@@ -467,6 +487,7 @@ export class SliccComposer extends ThemedElement {
 
   connectedCallback(): void {
     super.connectedCallback();
+    clearTimeout(this.#abandon);
     if (this.hasUpdated) this.#wire();
   }
 
@@ -477,6 +498,14 @@ export class SliccComposer extends ThemedElement {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     clearValues(this.renderRoot);
+    const held = [
+      this.attachments,
+      ...[...this.#drafts.values()].map((draft) => draft.attachments),
+    ];
+    if (held.flat().some((attachment) => attachment.url?.startsWith('blob:')))
+      this.#abandon = setTimeout(() => {
+        for (const attachments of held) release(attachments);
+      }, linger);
   }
 
   protected updated(changed: Map<string, unknown>): void {
@@ -585,8 +614,9 @@ export class SliccComposer extends ThemedElement {
     const busy = this.#busy();
     const resolved: SendMode =
       mode === 'queue' ? (busy ? 'queue' : 'send') : busy || mode === 'steer' ? 'steer' : 'send';
-    const later = () => void setTimeout(() => release(attachments), linger);
-    model.agent.send(this.#agent, { text, attachments, mode: resolved }).then(later, later);
+    const id = this.#agent;
+    const done = () => retire(model.agent, id, attachments);
+    model.agent.send(id, { text, attachments, mode: resolved }).then(done, done);
   }
 
   #id(): string {
