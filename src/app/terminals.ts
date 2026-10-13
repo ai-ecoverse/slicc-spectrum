@@ -344,8 +344,8 @@ export class SliccTerminalPanel extends ThemedElement {
     await settled(screen);
     screen.fit();
     if (screen.cols === cols) return;
-    screen.write('\x1bc');
-    backend.replay((data) => screen.write(data));
+    screen.redraw('\x1bc');
+    backend.replay((data) => screen.redraw(data));
   }
 
   #request(): void {

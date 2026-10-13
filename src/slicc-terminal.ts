@@ -109,6 +109,10 @@ export class SliccTerminal extends HTMLElement {
     this.#output(data);
   }
 
+  redraw(data: string | Uint8Array): void {
+    this.#term?.write(data);
+  }
+
   send(data: string | Uint8Array): void {
     const bytes = typeof data === 'string' ? encoder.encode(data) : data;
     if (this.#session) this.#session.write(bytes);
