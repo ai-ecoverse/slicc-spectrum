@@ -184,6 +184,8 @@ export const sprinkleMethods: ReadonlySet<string> = new Set<SprinkleMethod>([
 
 const grip = svg`<svg class="grip" viewBox="0 0 8 14" width="8" height="14" aria-hidden="true">${[2, 7, 12].flatMap((y) => [2, 6].map((x) => svg`<circle cx=${x} cy=${y} r="1.25"></circle>`))}</svg>`;
 
+const plainId = (id: string) => id.replace(/^cone:/, '');
+
 export class SliccSprinkle extends ThemedElement {
   static properties = {
     ...ThemedElement.properties,
@@ -325,12 +327,21 @@ export class SliccSprinkle extends ThemedElement {
     return this.readonly || this.#frozen() || !!watchOnly(this.model);
   }
 
+  #seen = new Set<string>();
+
   #frozen(): boolean {
     const owner = this.#data?.agentId;
     const port = this.model?.agent;
     if (!port || !owner) return false;
-    const live = port.list().find((agent) => agent.id === owner);
-    return !live || !!live.frozen;
+    const id = plainId(owner);
+    const agents = port.list();
+    const live = agents.find((agent) => plainId(agent.id) === id);
+    if (live) {
+      this.#seen.add(id);
+      return !!live.frozen;
+    }
+    if (port.frozen().some((row) => !row.live && plainId(row.id) === id)) return true;
+    return agents.length > 0 && this.#seen.has(id);
   }
 
   async #call(source: Window, data: FrameMessage): Promise<void> {
