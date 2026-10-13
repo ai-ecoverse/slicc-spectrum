@@ -21,7 +21,8 @@ export const reachStyles = css`
   code {
     flex: 1;
     min-width: 0;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
+    word-break: normal;
     font-family: var(--swc-code-font-family-stack);
     font-size: var(--swc-font-size-75);
     color: var(--swc-code-color);
@@ -54,11 +55,19 @@ function block(
 ): TemplateResult {
   const done = copied === text;
   return html`<div class="command" data-command=${text}>
-      <code>${text}</code>
+      <code>${breakable(text)}</code>
       <swc-action-button size="s" quiet data-action=${first ? 'copy-command' : nothing} accessible-label=${done ? 'Copied' : `Copy ${text}`} @click=${() => copy(text)}>
         <swc-icon-copy slot="icon"></swc-icon-copy>${done ? 'Copied' : 'Copy'}
       </swc-action-button>
     </div>`;
+}
+
+export function breakable(text: string): TemplateResult[] {
+  return text
+    .split('/')
+    .map(
+      (part, index, parts) => html`${part}${index < parts.length - 1 ? html`/<wbr />` : nothing}`
+    );
 }
 
 export function reach({ intro, extensionUrl, copied, uncopied, copy }: Reach): TemplateResult {

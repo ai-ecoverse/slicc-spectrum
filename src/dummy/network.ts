@@ -33,7 +33,7 @@ export function networkFixtures(scenario: NetworkScenario, now = Date.now()): Ne
     return {
       route: 'link',
       health: 'ok',
-      detail: 'slicc on this computer reaches every site.',
+      detail: 'Linked 2 min ago.',
       failures: [],
       extensionUrl,
       browser: { via: 'link' },
