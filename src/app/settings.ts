@@ -258,6 +258,7 @@ export class SliccSettings extends ThemedElement {
   }
 
   async keep(account: Account, value: string, fields?: Record<string, string>): Promise<void> {
+    const model = this.model;
     const vault = this.#vault(account) as VaultPort;
     const { id } = account;
     const problem = valueProblem(value);
@@ -276,7 +277,11 @@ export class SliccSettings extends ThemedElement {
       await vault.put?.(recordName(account), value, undefined, options);
     } catch (error) {
       this.#busy(id, false);
-      this.#refuse(id, 'value', failureText(error));
+      if (this.model === model) this.#refuse(id, 'value', failureText(error));
+      return;
+    }
+    if (this.model !== model) {
+      this.#busy(id, false);
       return;
     }
     await this.connect(id, undefined, fields);
@@ -463,14 +468,16 @@ export class SliccSettings extends ThemedElement {
   }
 
   async #disconnect(account: Account): Promise<void> {
-    const vault = this.model?.vault;
+    const model = this.model;
+    const vault = model?.vault;
     const stored = account.auth === 'api-key' && account.store === 'vault' && vault?.remove;
     const body = `Agents can’t use ${account.provider} until you connect it again.${stored ? ' You can restore its key from Removed in Secrets for 30 days.' : ''}`;
     const title = `Disconnect ${account.provider}?`;
     if (!(await confirm({ title, body, action: 'Disconnect', variant: 'confirmation' }))) return;
     clearValues(this.renderRoot);
+    if (this.model !== model) return;
     if (stored && !(await this.#forget(account, vault))) return;
-    this.model?.settings.disconnect(account.id);
+    if (this.model === model) model?.settings.disconnect(account.id);
   }
 
   async #forget(account: Account, vault: VaultPort): Promise<boolean> {
@@ -481,7 +488,8 @@ export class SliccSettings extends ThemedElement {
       return true;
     } catch (error) {
       if (isVaultFailure(error) && error.code === 'ENOENT') return true;
-      this.failure = { id: account.id, message: failureText(error) };
+      if (this.model?.vault === vault)
+        this.failure = { id: account.id, message: failureText(error) };
       return false;
     } finally {
       this.#busy(account.id, false);
