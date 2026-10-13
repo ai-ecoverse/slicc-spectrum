@@ -9,7 +9,7 @@ export const repos = ['/workspace/harbor', '/workspace/skills'];
 export const linkCommand = 'curl -fsSL https://get.sliccy.ai/slicc | sh';
 
 export const noGit =
-  'Changes needs git, and git isn’t installed. Install it with `pnpm add -g @ai-ecoverse/wasm-git`, then run `git init` in a folder under /home, or clone with slicc-node or the extension connected.';
+  'Changes needs git, and git isn’t installed. Install it with `pnpm add -g @ai-ecoverse/wasm-git`, then run `git init` in a folder under /home. To clone from the internet, link slicc or the SLICC extension.';
 
 function repoOf(path: string): string | undefined {
   return repos.find((repo) => path.startsWith(`${repo}/`));
