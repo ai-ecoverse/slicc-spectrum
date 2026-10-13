@@ -214,8 +214,8 @@ export class SliccChat extends ThemedElement {
         pointer-events: none;
         --swc-dropzone-background-color: color-mix(
           in srgb,
-          var(--swc-accent-subtle-background-color-default) 94%,
-          transparent
+          var(--swc-accent-visual-color) 14%,
+          color-mix(in srgb, var(--swc-background-layer-2-color) 82%, transparent)
         );
       }
       swc-dropzone p {
