@@ -116,6 +116,11 @@ export function failureText(error: unknown): string {
   return text ?? (error instanceof Error ? error.message : 'The vault did not answer');
 }
 
+export function away(vault: VaultPort): boolean {
+  const state = vault.availability?.() ?? (vault.status() ? 'ready' : 'waiting');
+  return state === 'connecting' || state === 'waiting';
+}
+
 export function take(input: HTMLInputElement): string {
   const value = input.value;
   input.value = '';

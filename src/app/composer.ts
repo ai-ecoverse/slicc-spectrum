@@ -22,7 +22,7 @@ import { nameProblem, valueProblem } from '../model/values.ts';
 import { chatModels, shared, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import { size } from './messages.ts';
-import { clearValues, failureText, type PopupDetail, take } from './vault.ts';
+import { away, clearValues, failureText, type PopupDetail, take } from './vault.ts';
 
 export const limit = 25 * 1024 * 1024;
 
@@ -492,6 +492,9 @@ export class SliccComposer extends ThemedElement {
       model.agent.on('message', update),
       model.settings.on('settings', update),
       ...(model.follow ? [model.follow.on('follow', update)] : []),
+      ...(model.vault
+        ? [model.vault.on('availability', update), model.vault.on('status', update)]
+        : []),
     ];
   }
 
@@ -638,6 +641,10 @@ export class SliccComposer extends ThemedElement {
       .replace(/[^A-Z0-9_]/g, '_');
     if (!clean || this.sharing) return;
     const vault = this.model?.vault;
+    if (field && vault?.put && away(vault)) {
+      this.secretError = 'Waiting for the vault';
+      return;
+    }
     const exists = !!vault
       ?.list()
       ?.secrets.some((secret) => secret.name === clean && secret.state !== 'removed');
@@ -936,7 +943,10 @@ export class SliccComposer extends ThemedElement {
     const popup = this.popup;
     if (!popup) return nothing;
     if (popup.kind === 'secret') {
-      const valued = !!this.model?.vault?.put;
+      const vault = this.model?.vault;
+      const valued = !!vault?.put && !away(vault);
+      const waiting = !!vault?.put && !valued;
+      if (!valued) clearValues(this.renderRoot);
       const submit = (event: Event) => {
         event.preventDefault();
         const form = event.currentTarget as HTMLFormElement;
@@ -952,7 +962,7 @@ export class SliccComposer extends ThemedElement {
       };
       return html`<form class="popup secret" data-vault=${valued ? 'on' : 'off'} @submit=${submit} @keydown=${close}>
         <strong>Share a secret</strong>
-        <span class="lead">${valued ? 'The value goes to the vault; the agent only sees its name. Leave the value empty to share a secret the vault already has.' : 'Add the value in Settings › Secrets. The agent only sees the name.'}</span>
+        <span class="lead">${valued ? 'The value goes to the vault; the agent only sees its name. Leave the value empty to share a secret the vault already has.' : waiting ? 'Waiting for the vault. You can share the name now and add the value in Settings › Secrets later.' : 'Add the value in Settings › Secrets. The agent only sees the name.'}</span>
         <input name="name" placeholder="Name, e.g. API_TOKEN" aria-label="Secret name" autocomplete="off" spellcheck="false" />
         ${valued ? html`<input name="value" type="password" placeholder="Value" aria-label="Secret value" autocomplete="off" spellcheck="false" />` : nothing}
         ${this.secretError ? html`<span class="secret-error" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.secretError}</span></span>` : nothing}

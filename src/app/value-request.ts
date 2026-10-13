@@ -8,7 +8,7 @@ import { nameProblem, valueProblem } from '../model/values.ts';
 import { ThemedElement } from './base.ts';
 import { dialogStyles, focused } from './confirm.ts';
 import { prompt, until } from './secrets.ts';
-import { clearValues, failureText, fieldStyles, type PopupDetail, take } from './vault.ts';
+import { away, clearValues, failureText, fieldStyles, type PopupDetail, take } from './vault.ts';
 
 export function valueRequests(vault: VaultPort | undefined, now: number): PendingRequest[] {
   return [...(vault?.status()?.waiting ?? [])]
@@ -136,7 +136,12 @@ export class SliccValueRequest extends ThemedElement {
       this.now = Date.now();
       this.requestUpdate();
     };
-    return [...super.subscribe(model), ...(model.vault ? [model.vault.on('status', update)] : [])];
+    return [
+      ...super.subscribe(model),
+      ...(model.vault
+        ? [model.vault.on('status', update), model.vault.on('availability', update)]
+        : []),
+    ];
   }
 
   reopen(id: string): void {
@@ -154,7 +159,9 @@ export class SliccValueRequest extends ThemedElement {
   }
 
   #queue(): PendingRequest[] {
-    return valueRequests(this.model?.vault, this.now).filter(({ id }) => !this.#done.has(id));
+    const vault = this.model?.vault;
+    if (!vault || away(vault)) return [];
+    return valueRequests(vault, this.now).filter(({ id }) => !this.#done.has(id));
   }
 
   #current(queue: readonly PendingRequest[]): PendingRequest | null {

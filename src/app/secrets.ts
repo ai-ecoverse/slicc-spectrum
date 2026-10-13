@@ -29,6 +29,7 @@ import { ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import { since } from './network.ts';
 import {
+  away,
   changeLine,
   clearValues,
   deviceName,
@@ -1209,8 +1210,7 @@ export class SliccSecrets extends ThemedElement {
     const devices = devicesOf(this.model);
     const entries = merged(current?.audit ?? [], this.older);
     const locked = !!status?.locked;
-    const state = vault.availability?.() ?? (status ? 'ready' : 'waiting');
-    this.#offline = state === 'connecting' || state === 'waiting';
+    this.#offline = away(vault);
     if (this.#offline && this.form) clearValues(this.renderRoot);
     const now = Date.now();
     const waiting = (status?.waiting ?? []).filter((request) => request.expiresAt > now);
