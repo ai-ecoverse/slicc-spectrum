@@ -1,7 +1,7 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { TerminalBackend, TerminalSession, TerminalSink, TerminalSize } from '../backend.ts';
-import type { SliccDock } from '../components/dock.ts';
+import type { IDockviewPanel, SliccDock } from '../components/dock.ts';
 import type { SliccModel, TerminalInfo, TerminalPort } from '../model/types.ts';
 import type { SliccTerminal } from '../slicc-terminal.ts';
 import { ThemedElement } from './base.ts';
@@ -40,6 +40,18 @@ function settled(element: Element): Promise<void> {
   });
 }
 
+function shown(): Promise<void> {
+  if (!document.hidden) return Promise.resolve();
+  return new Promise((resolve) => {
+    const seen = () => {
+      if (document.hidden) return;
+      document.removeEventListener('visibilitychange', seen);
+      resolve();
+    };
+    document.addEventListener('visibilitychange', seen);
+  });
+}
+
 const ended: TerminalSession = { write() {}, resize() {}, close() {} };
 
 class KeptSession implements TerminalBackend {
@@ -69,6 +81,10 @@ class KeptSession implements TerminalBackend {
           })
         : this.#start(size);
     return session.then((live) => this.#handle(live, sink));
+  }
+
+  replay(write: (data: Uint8Array) => void): void {
+    for (const chunk of this.#log) write(chunk);
   }
 
   dispose(): void {
@@ -139,7 +155,7 @@ function sessions(port: TerminalPort): Map<string, KeptSession> {
   return fresh;
 }
 
-export function keep(port: TerminalPort, id: string): TerminalBackend {
+export function keep(port: TerminalPort, id: string): KeptSession {
   const map = sessions(port);
   let session = map.get(id);
   if (!session) {
@@ -262,9 +278,12 @@ export class SliccTerminalPanel extends ThemedElement {
     const backend = keep(model.terminals, info.id);
     terminal.backend = {
       open: async (sink) => {
-        await this.#placed(info.id, terminal);
+        const hidden = await this.#placed(info.id, terminal);
         terminal.fit();
-        return backend.open(sink, { cols: terminal.cols, rows: terminal.rows });
+        const cols = terminal.cols;
+        const session = await backend.open(sink, { cols, rows: terminal.rows });
+        if (hidden) void this.#relayout(terminal, backend, cols);
+        return session;
       },
     };
     terminal.addEventListener('exit', () => model.terminals.close(info.id));
@@ -282,13 +301,32 @@ export class SliccTerminalPanel extends ThemedElement {
     return terminal;
   }
 
-  #placed(id: string, screen: SliccTerminal): Promise<void> {
+  #placed(id: string, screen: SliccTerminal): Promise<boolean> {
     const host = (this.getRootNode() as Partial<ShadowRoot>).host;
     const panel =
       host?.localName === 'slicc-dock'
         ? (host as SliccDock).api.getPanel(terminalPanel(id))
         : undefined;
-    if (!panel) return Promise.resolve();
+    if (!panel) return Promise.resolve(false);
+    if (!document.hidden) return this.#seen(panel, screen).then(() => false);
+    if (laid(screen.getBoundingClientRect())) return Promise.resolve(true);
+    return new Promise<boolean>((resolve) => {
+      const done = (hidden: boolean) => {
+        watch.dispose();
+        document.removeEventListener('visibilitychange', visible);
+        resolve(hidden);
+      };
+      const watch = panel.api.onDidDimensionsChange((size) => {
+        if (laid(size)) done(true);
+      });
+      const visible = () => {
+        if (!document.hidden) done(false);
+      };
+      document.addEventListener('visibilitychange', visible);
+    }).then((hidden) => hidden || this.#seen(panel, screen).then(() => false));
+  }
+
+  #seen(panel: IDockviewPanel, screen: SliccTerminal): Promise<void> {
     const sized = laid(panel.api)
       ? Promise.resolve()
       : new Promise<void>((resolve) => {
@@ -299,6 +337,15 @@ export class SliccTerminalPanel extends ThemedElement {
           });
         });
     return sized.then(() => settled(screen));
+  }
+
+  async #relayout(screen: SliccTerminal, backend: KeptSession, cols: number): Promise<void> {
+    await shown();
+    await settled(screen);
+    screen.fit();
+    if (screen.cols === cols) return;
+    screen.write('\x1bc');
+    backend.replay((data) => screen.write(data));
   }
 
   #request(): void {
