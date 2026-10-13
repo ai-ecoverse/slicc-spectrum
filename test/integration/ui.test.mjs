@@ -5401,7 +5401,7 @@ test('Accounts keeps a vault-backed key in the vault and never shows it', async 
       ?.textContent.includes('Key kept in the vault')
   );
   assert.deepEqual(await page.evaluate(() => window.model.vault.puts), [
-    { name: 'OPENAI_API_KEY', options: { kind: 'model', provider: 'OpenAI' } },
+    { name: 'OPENAI_API_KEY', options: { kind: 'model', provider: 'openai' } },
   ]);
   assert.deepEqual(await page.evaluate(() => window.sentToSettings), ['["openai"]']);
   await clean(page);
@@ -5437,6 +5437,22 @@ test('Accounts keeps a vault-backed key in the vault and never shows it', async 
     () =>
       !!window.settingsPart('slicc-secrets', '[data-secret=OPENAI_API_KEY] [data-provider]') &&
       !!window.settingsPart('slicc-secrets', '[data-secret=MCP_DOCS_TOKEN] [data-server]')
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.settingsPart('slicc-secrets', '[data-secret=OPENAI_API_KEY] [data-used-for]')
+          ?.textContent
+    ),
+    'Model requests to OpenAI, by the agent'
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.settingsPart('slicc-secrets', '[data-secret=MCP_TICKETS_TOKEN] [data-used-for]')
+          ?.textContent
+    ),
+    'Requests to the MCP server tickets, by the agent'
   );
   await views(page, 'secrets-model-and-mcp', '[data-secret=MCP_DOCS_TOKEN]');
 
