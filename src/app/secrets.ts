@@ -82,8 +82,8 @@ export function asking(request: PendingRequest): TemplateResult {
   if (request.kind === 'oauth') return html`${by} asks you to sign in to ${request.provider}`;
   if (request.kind === 'jerk-seal')
     return html`${by} asks for a jerk lease for ${request.provider}`;
-  if (request.kind === 'jerk') return html`${by} asks to set up a jerk for ${request.provider}`;
-  if (request.kind === 'unseal') return html`${by} asks to unseal ${request.provider}`;
+  if (request.kind === 'jerk') return html`${by} asks to sign in to ${request.provider}`;
+  if (request.kind === 'unseal') return html`${by} asks to remove the ${request.provider} sign-in`;
   return request.name
     ? html`${by} asks for <code>${request.name}</code>`
     : html`${by} asks for a value`;
