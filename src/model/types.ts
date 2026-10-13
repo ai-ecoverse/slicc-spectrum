@@ -455,6 +455,14 @@ export interface Account {
   needs?: 'cors-free-transport';
   group?: 'providers' | 'mcp';
   secret?: 'api-key' | 'token';
+  store?: 'vault';
+  fields?: AccountField[];
+}
+
+export interface AccountField {
+  name: string;
+  label: string;
+  required?: boolean;
 }
 
 export interface ModelOption {
@@ -477,7 +485,7 @@ export interface SettingsPort extends Subscribable<SettingsEvents> {
   update(patch: Partial<Settings>): void;
   models(): readonly ModelOption[];
   accounts(): readonly Account[];
-  connect(id: string, secret?: string): Promise<void>;
+  connect(id: string, secret?: string, fields?: Record<string, string>): Promise<void>;
   disconnect(id: string): void;
   cancel?(id: string): void;
 }
@@ -1009,6 +1017,8 @@ export interface SecretView {
   sourceDevice: DeviceId | null;
   provider?: string;
   account?: string;
+  server?: string;
+  settings?: Record<string, string>;
   domains: string[];
   rules: Rule[];
   exits?: ExitName[];
@@ -1263,13 +1273,20 @@ export interface VaultEvents {
   availability: Availability;
 }
 
+export interface PutOptions {
+  kind?: 'secret' | 'model' | 'mcp';
+  provider?: string;
+  server?: string;
+  settings?: Record<string, string>;
+}
+
 export interface VaultPort extends Subscribable<VaultEvents> {
   status(): VaultStatus | null;
   list(): VaultList | null;
   audit(before?: number, limit?: number): Promise<AuditPage>;
   acknowledge?(notice: string): Promise<void>;
   availability?(): Availability;
-  put?(name: string, value: string, request?: string): Promise<SealResult>;
+  put?(name: string, value: string, request?: string, options?: PutOptions): Promise<SealResult>;
   cancel?(request: string): Promise<RequestState>;
   remove?(name: string, kind?: RecordKind): Promise<SealResult>;
   restore?(name: string, kind?: RecordKind): Promise<SealResult>;

@@ -77,7 +77,7 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
     const account = this.#accounts.find((candidate) => candidate.id === id);
     if (account && account.auth !== 'api-key' && !(await this.#signIn(account))) return;
     if (account?.auth === 'api-key' || !account) await this.#clock.sleep(10);
-    if (account?.auth === 'api-key' && !secret)
+    if (account?.auth === 'api-key' && account.store !== 'vault' && !secret)
       throw new Error(
         `${account.provider} needs ${account.secret === 'token' ? 'a token' : 'an API key'}`
       );

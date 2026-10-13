@@ -1145,6 +1145,8 @@ export class SliccSecrets extends ThemedElement {
         <dd data-rules>${secret.rules.length ? secret.rules.map((rule, index) => html`${index ? html`<br />` : nothing}${ruleLine(rule)}`) : 'Nowhere yet: no rule names it'}</dd>
         ${secret.exits ? html`<dt>${gone ? 'Left through' : 'Leaves through'}</dt><dd data-exits>${secret.exits.length ? list(secret.exits.map((exit) => exitLabel(exit, devices))) : 'No exit'}</dd>` : nothing}
         ${exec || reveal ? html`<dt>Programs</dt><dd data-exec>${exec}${exec && reveal ? html`<br />` : nothing}${reveal}</dd>` : nothing}
+        ${secret.kind === 'model' && secret.provider ? html`<dt>Provider</dt><dd data-provider>${secret.provider}</dd>` : nothing}
+        ${secret.kind === 'mcp' && secret.server ? html`<dt>Server</dt><dd data-server>${secret.server}</dd>` : nothing}
         <dt>From</dt>
         <dd data-source>${sourceLine(secret, devices)}</dd>
         ${secret.usedAt ? html`<dt>Last used</dt><dd data-used>${since(secret.usedAt)}</dd>` : nothing}

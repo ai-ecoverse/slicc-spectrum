@@ -14,6 +14,7 @@ import type {
   PendingRequest,
   PolicyNotice,
   PopupIntent,
+  PutOptions,
   RecordKind,
   RefusedRule,
   RequestState,
@@ -133,6 +134,25 @@ export function vaultSecrets(now = Date.now()): SecretView[] {
       exec: 'shell',
       createdAt: now - 40 * day,
       removedAt: now - day,
+    },
+  ];
+}
+
+export function accountRecords(now = Date.now()): SecretView[] {
+  return [
+    {
+      name: 'MCP_DOCS_TOKEN',
+      kind: 'mcp',
+      placeholder: 'fnox_proxy_docs0006',
+      state: 'active',
+      source: 'settings',
+      sourceDevice: null,
+      server: 'docs',
+      domains: ['docs.example'],
+      rules: [{ domain: 'docs.example', header: 'Authorization', methods: [], paths: [] }],
+      exec: false,
+      createdAt: now - 6 * day,
+      usedAt: now - 20 * minute,
     },
   ];
 }
@@ -515,17 +535,17 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
   #older: AuditEntry[] = vaultOlder();
   #serial = 0;
   buttons: DummyVaultButton[] = [];
-  puts: { name: string; request?: string }[] = [];
+  puts: { name: string; request?: string; options?: PutOptions }[] = [];
   cancelled: string[] = [];
   imports: DummyImport[] = [];
   exported = 0;
   acknowledged: string[] = [];
 
-  constructor(scenario: VaultScenario, time: Clock) {
+  constructor(scenario: VaultScenario, time: Clock, records: readonly SecretView[] = []) {
     super();
     const { status, list } = vaultFixtures(scenario);
     this.#status = status;
-    this.#list = list;
+    this.#list = { ...list, secrets: [...list.secrets, ...records] };
     this.#time = time;
     this.#available = scenario === 'waiting' ? 'waiting' : 'ready';
   }
@@ -604,19 +624,29 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
   #save(secret: SecretView, rotated: boolean): SealResult {
     this.#list = {
       ...this.#list,
-      secrets: [...this.#list.secrets.filter((item) => item.name !== secret.name), secret],
+      secrets: [
+        ...this.#list.secrets.filter(
+          (item) => item.name !== secret.name || item.kind !== secret.kind
+        ),
+        secret,
+      ],
     };
     this.#log(secret.name, { type: 'seal', source: secret.source, rotated });
     this.emit('list', this.#list);
     return { name: secret.name, placeholder: secret.placeholder, state: secret.state };
   }
 
-  #seal(name: string, source: SecretView['source'], kind: RecordKind = 'secret'): SealResult {
+  #seal(
+    name: string,
+    source: SecretView['source'],
+    kind: RecordKind = 'secret',
+    binding: { provider?: string; server?: string } = {}
+  ): SealResult {
     const old = this.#list.secrets.find((item) => item.name === name && item.kind === kind);
     if (old) {
       const state = old.state === 'removed' ? (old.rules.length ? 'active' : 'inert') : old.state;
       const { removedAt: _, ...kept } = old;
-      return this.#save({ ...kept, state, source }, true);
+      return this.#save({ ...kept, ...binding, state, source }, true);
     }
     this.#serial += 1;
     return this.#save(
@@ -627,6 +657,7 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
         state: 'inert',
         source,
         sourceDevice: null,
+        ...binding,
         domains: [],
         rules: [],
         exec: false,
@@ -636,14 +667,27 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
     );
   }
 
-  async put(name: string, value: string, request?: string): Promise<SealResult> {
+  async put(
+    name: string,
+    value: string,
+    request?: string,
+    options?: PutOptions
+  ): Promise<SealResult> {
     await this.#time.sleep(5);
     this.#unlocked();
     const problem = nameProblem(name) ?? valueProblem(value);
     if (problem) throw vaultFailure('EINVAL', problem);
     if (request !== undefined) this.#take(request, name);
-    this.puts.push({ name, ...(request === undefined ? {} : { request }) });
-    return this.#seal(name, 'settings');
+    this.puts.push({
+      name,
+      ...(request === undefined ? {} : { request }),
+      ...(options ? { options: { ...options } } : {}),
+    });
+    const { kind = 'secret', provider, server } = options ?? {};
+    return this.#seal(name, 'settings', kind, {
+      ...(provider === undefined ? {} : { provider }),
+      ...(server === undefined ? {} : { server }),
+    });
   }
 
   #take(request: string, name?: string): void {
