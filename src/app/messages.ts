@@ -961,7 +961,8 @@ export const messageCss = css`
     flex: 1;
   }
   .tool .name {
-    flex: 0 4 auto;
+    flex: 0 0.001 auto;
+    max-inline-size: 50%;
     font-family: var(--swc-code-font-family-stack);
     color: var(--swc-neutral-subdued-content-color-default);
   }
