@@ -317,6 +317,7 @@ export interface ChangesPort extends Subscribable<{ changes: readonly Change[] }
   accept(path: string): void;
   revert(path: string): Promise<void>;
   unavailable?(): string | null;
+  commands?(): readonly string[];
 }
 
 export interface FileEvents {
