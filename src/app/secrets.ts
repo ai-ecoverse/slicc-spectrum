@@ -706,6 +706,14 @@ export class SliccSecrets extends ThemedElement {
     ) as HTMLInputElement;
   }
 
+  #same(vault: VaultPort, form: SecretForm | null, kind: ImportKind, file: File): boolean {
+    return (
+      this.#mine(vault, form) &&
+      this.importKind === kind &&
+      this.#field('file')?.files?.[0] === file
+    );
+  }
+
   #shut(vault: VaultPort): boolean {
     if (!vault.status()?.locked) return false;
     this.#refuse('Unlock the vault first');
@@ -858,14 +866,14 @@ export class SliccSecrets extends ThemedElement {
     this.#refuse(null);
     try {
       let bytes: Uint8Array | null = new Uint8Array(await file.arrayBuffer());
-      if (!this.#mine(vault, form) || this.importKind !== kind || this.#shut(vault)) return;
+      if (!this.#same(vault, form, kind, file) || this.#shut(vault)) return;
       const call = vault.import?.(kind, bytes, {
         ...(password ? { password } : {}),
         ...(pick ? { pick } : {}),
       });
       bytes = null;
       const result = (await call) as ImportResult;
-      if (!this.#mine(vault, form) || this.importKind !== kind) return;
+      if (!this.#same(vault, form, kind, file)) return;
       if (result.stage === 'pick') {
         this.candidates = result.candidates;
         this.picked = new Set(

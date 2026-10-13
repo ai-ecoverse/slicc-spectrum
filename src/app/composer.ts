@@ -654,12 +654,16 @@ export class SliccComposer extends ThemedElement {
   }
 
   async shareSecret(name: string, field: HTMLInputElement | null = null): Promise<void> {
-    const value = field ? take(field) : '';
     const clean = name
       .trim()
       .toUpperCase()
       .replace(/[^A-Z0-9_]/g, '_');
-    if (!clean || this.sharing) return;
+    if (this.sharing) return;
+    if (!clean) {
+      if (field) this.#refuse('Enter a name', 'name', true);
+      return;
+    }
+    const value = field ? take(field) : '';
     const vault = this.model?.vault;
     if (field && vault?.put && !(await this.#store(vault, clean, value))) return;
     this.#refuse(null);
