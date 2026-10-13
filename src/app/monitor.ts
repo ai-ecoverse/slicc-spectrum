@@ -93,7 +93,7 @@ export class SliccMonitor extends ModelElement {
     copied: { state: true },
   };
   declare expanded: Record<string, boolean>;
-  declare copied: { id: string; done: boolean } | null;
+  declare copied: { id: string; text: string; done: boolean } | null;
 
   constructor() {
     super();
@@ -370,7 +370,7 @@ export class SliccMonitor extends ModelElement {
   }
 
   #command(id: string, text: string, label: string): TemplateResult {
-    const copied = this.copied?.id === id ? this.copied : null;
+    const copied = this.copied?.id === id && this.copied.text === text ? this.copied : null;
     return html`<span class="lead">${label}:</span><div class="command" data-command><code>${text}</code><swc-action-button size="s" quiet data-action="copy-command" accessible-label=${copied?.done ? 'Copied' : 'Copy command'} @click=${() => this.#copy(id, text)}><swc-icon-copy slot="icon"></swc-icon-copy>${copied?.done ? 'Copied' : 'Copy'}</swc-action-button></div>${
       copied && !copied.done
         ? html`<span class="uncopied" role="alert" data-error="copy">Couldn’t copy. Select the command and copy it.</span>`
@@ -379,7 +379,7 @@ export class SliccMonitor extends ModelElement {
   }
 
   async #copy(id: string, text: string): Promise<void> {
-    this.copied = { id, done: await copyText(text) };
+    this.copied = { id, text, done: await copyText(text) };
   }
 
   #open(id: string): void {

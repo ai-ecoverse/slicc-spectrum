@@ -258,6 +258,12 @@ function body(call: ToolCall, color: 'light' | 'dark'): TemplateResult | typeof 
   return html`<pre class="input">${call.input}</pre>`;
 }
 
+const severityWords: Record<ToolNote['severity'], string> = {
+  error: 'Error: ',
+  warn: 'Warning: ',
+  info: 'Note: ',
+};
+
 function notes(list: readonly ToolNote[]): TemplateResult {
   return html`<ul class="notes">${list.map(
     (note) =>
@@ -265,7 +271,7 @@ function notes(list: readonly ToolNote[]): TemplateResult {
         note.severity === 'info'
           ? html`<swc-icon-info-circle size="s" aria-hidden="true"></swc-icon-info-circle>`
           : html`<swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>`
-      }<span>${note.text}</span></li>`
+      }<span><span class="sr">${severityWords[note.severity]}</span>${note.text}</span></li>`
   )}</ul>`;
 }
 
@@ -1325,7 +1331,8 @@ export const messageCss = css`
   .lick[data-severity='warn'] {
     --severity: var(--swc-notice-visual-color);
   }
-  .lick .sr {
+  .lick .sr,
+  .notes .sr {
     position: absolute;
     inline-size: 1px;
     block-size: 1px;
