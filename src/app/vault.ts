@@ -273,7 +273,6 @@ export class SliccVaultButton extends LitElement {
     iframe {
       border: 0;
       background: transparent;
-      color-scheme: normal;
     }
   `;
 
@@ -320,6 +319,7 @@ export class SliccVaultButton extends LitElement {
   }
 
   #send(): void {
+    if (this.#button) this.#button.element.style.colorScheme = this.config?.theme ?? '';
     if (!(this.#ready && this.#button && this.config)) return;
     const sent = JSON.stringify(this.config);
     if (sent === this.#sent) return;

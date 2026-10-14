@@ -508,14 +508,15 @@ function attachment(item: Attachment): TemplateResult {
   </swc-user-message>`;
 }
 
-const deliveries = { steer: 'Steered', 'follow-up': 'Follow-up' } as const;
+function when(at: number, title: string = ''): TemplateResult {
+  return html`<time class="when" datetime=${new Date(at).toISOString()} title=${title || nothing}>${time(at)}</time>`;
+}
 
 export function user(message: UserMessage): TemplateResult {
   const delivered = message.delivered ?? (message.mode === 'steer' ? 'steer' : undefined);
-  const tag = delivered === 'steer' || delivered === 'follow-up' ? deliveries[delivered] : null;
   const agent = message.origin === 'agent';
   const name = message.from ?? 'an agent';
-  const who = agent ? name : message.from ? `From ${message.from}` : 'You';
+  const who = agent ? name : message.from ? `From ${message.from}` : '';
   const label = agent
     ? `Request from ${name}`
     : message.from
@@ -524,9 +525,8 @@ export function user(message: UserMessage): TemplateResult {
   return html`<swc-conversation-turn type="user" class="message user" accessible-label=${label} data-id=${message.id} data-mode=${message.mode ?? 'send'} data-delivered=${delivered ?? 'run'} data-origin=${message.origin ?? 'user'}>
     <div class="bubble">
       <div class="meta">
-        <span class="who">${who}</span><span>${time(message.createdAt)}</span>
+        ${who ? html`<span class="who">${who}</span>` : nothing}${when(message.createdAt)}
         ${agent ? html`<swc-badge class="origin" size="s" variant="indigo">Agent</swc-badge>` : nothing}
-        ${tag ? html`<swc-badge class="tag" size="s" variant=${delivered === 'steer' ? 'notice' : 'informative'} subtle>${tag}</swc-badge>` : nothing}
       </div>
       ${message.text ? html`<swc-user-message class="body"><span class="text">${message.text}</span></swc-user-message>` : nothing}
       ${message.attachments?.length ? html`<div class="attachments">${message.attachments.map(attachment)}</div>` : nothing}
@@ -578,8 +578,8 @@ export function assistant(
   return html`<swc-conversation-turn type="system" class="message assistant" accessible-label=${`Reply from ${name}`} data-id=${message.id} data-status=${message.status}>
     <div class="reply">
       <div class="meta">
-        <span class="who">${name}</span><span>${time(message.createdAt)}</span>
-        ${model ? html`<span title=${usage}>${model}</span>` : nothing}
+        ${when(message.createdAt, model ? '' : usage)}
+        ${model ? html`<span class="model" title=${usage}>${model}</span>` : nothing}
         ${message.status === 'error' ? html`<swc-badge class="tag" size="s" variant="negative" subtle><swc-icon-alert-diamond slot="icon" size="s" aria-hidden="true"></swc-icon-alert-diamond>Failed</swc-badge>` : nothing}
       </div>
       <swc-system-message>
