@@ -103,7 +103,7 @@
     "dockview-core": "8.4.1",
     "esbuild": "0.28.2",
     "happy-dom": "20.14.5",
-    "lefthook": "2.1.17",
+    "lefthook": "2.2.0",
     "lucide": "1.52.0",
     "monocart-coverage-reports": "2.13.2",
     "playwright-core": "1.63.0",
