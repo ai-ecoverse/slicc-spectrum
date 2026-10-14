@@ -7,6 +7,7 @@ export interface ModelSwitch {
 
 const asked = new WeakMap<SliccModel, Map<string, string>>();
 const switched = new WeakMap<SliccModel, ModelSwitch>();
+const settling = new WeakSet<SliccModel>();
 
 function stale(model: SliccModel, id: string, offered: readonly ModelOption[]): boolean {
   if (offered.some((option) => option.id === id)) return false;
@@ -27,7 +28,16 @@ function controls(model: SliccModel): boolean {
 }
 
 export function settleModels(model: SliccModel): void {
-  if (!controls(model)) return;
+  if (settling.has(model) || !controls(model)) return;
+  settling.add(model);
+  try {
+    settle(model);
+  } finally {
+    settling.delete(model);
+  }
+}
+
+function settle(model: SliccModel): void {
   const offered = chatModels(model.settings.models());
   const pick = fallbackModel(offered);
   if (!pick) return;
@@ -40,13 +50,15 @@ export function settleModels(model: SliccModel): void {
     }
     if (requests.get(key) === pick.id) return;
     requests.set(key, pick.id);
-    switched.set(model, { to: pick });
     apply();
   };
   for (const agent of model.agent.list())
     if (!agent.frozen)
       ask(`agent:${agent.id}`, agent.model, () => model.agent.setModel(agent.id, pick.id));
-  ask('settings', model.settings.get().model, () => model.settings.update({ model: pick.id }));
+  ask('settings', model.settings.get().model, () => {
+    switched.set(model, { to: pick });
+    model.settings.update({ model: pick.id });
+  });
 }
 
 export function modelSwitch(model: SliccModel): ModelSwitch | undefined {
