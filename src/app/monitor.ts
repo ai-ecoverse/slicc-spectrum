@@ -431,7 +431,7 @@ export class SliccMonitor extends ModelElement {
 
   #vital(vital: MonitorVital): TemplateResult {
     if (vital.ratio !== undefined) {
-      return html`<div class="vital" data-id=${vital.id}>
+      return html`<div class="vital" data-id=${vital.id} title=${vital.hint ?? vital.unit ?? nothing}>
         <swc-meter
           size="s"
           variant=${meterVariant(vital.ratio)}
@@ -444,7 +444,7 @@ export class SliccMonitor extends ModelElement {
     const line = vital.series ? sparkline(vital.series) : '';
     return html`<div class="vital" data-id=${vital.id}>
       <div class="label">${vital.label}</div>
-      <div class="reading" title=${[vital.value, vital.unit, vital.delta].filter(Boolean).join(' ')}><span class="value">${vital.value}</span>${
+      <div class="reading" title=${vital.hint ?? [vital.value, vital.unit, vital.delta].filter(Boolean).join(' ')}><span class="value">${vital.value}</span>${
         vital.unit ? html`<span class="unit">${vital.unit}</span>` : nothing
       }${vital.delta ? html`<span class="delta">${vital.delta}</span>` : nothing}</div>
       <div class="spark">${line ? html`<svg viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true">${svg`<polyline points=${line}></polyline>`}</svg>` : nothing}</div>
