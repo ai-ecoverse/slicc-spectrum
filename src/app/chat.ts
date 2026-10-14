@@ -318,7 +318,10 @@ export class SliccChat extends ThemedElement {
 
   #scroll = (): void => {
     const log = this.#log();
-    const reader = log.scrollHeight <= this.#height || performance.now() - this.#input < 1000;
+    const reader =
+      log.scrollHeight <= this.#height ||
+      this.#height - log.scrollTop - log.clientHeight >= 48 ||
+      performance.now() - this.#input < 1000;
     const rising = performance.now() - this.#up < 1000 && log.scrollTop <= this.#from;
     if (log.scrollHeight - log.scrollTop - log.clientHeight < 48) this.#stuck ||= !rising;
     else if (reader && log.scrollTop < this.#last) this.#stuck = false;

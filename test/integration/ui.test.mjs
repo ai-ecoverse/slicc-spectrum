@@ -4134,7 +4134,7 @@ test('chat stays pinned to the bottom while content grows after render', async (
     await grow(log.clientHeight * 2);
     const pinned = gap();
     await new Promise((resolve) => setTimeout(resolve));
-    log.scrollTop -= 100;
+    log.scrollTop -= 30;
     await grow(log.clientHeight * 2);
     const stale = gap();
     log.dispatchEvent(new WheelEvent('wheel', { deltaY: -log.scrollTop }));
