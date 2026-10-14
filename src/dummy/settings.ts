@@ -19,6 +19,7 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   #clock: Clock;
   #keys: readonly string[];
   #signIns = new Map<string, { before: AccountStatus; stop: () => void }>();
+  #gated: boolean;
 
   constructor(
     defaults: Settings,
@@ -26,9 +27,11 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
     accounts: readonly Account[],
     storage: Storage | null,
     clock: Clock,
-    keys: readonly string[] = [dummySettingsKey]
+    keys: readonly string[] = [dummySettingsKey],
+    gated = false
   ) {
     super();
+    this.#gated = gated;
     this.#keys = keys;
     this.#storage = storage;
     this.#clock = clock;
@@ -59,7 +62,13 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   }
 
   models(): readonly ModelOption[] {
-    return this.#models;
+    if (!this.#gated) return this.#models;
+    const live = new Set(
+      this.#accounts
+        .filter((account) => account.status === 'connected')
+        .map((account) => account.provider)
+    );
+    return this.#models.filter((option) => live.has(option.provider));
   }
 
   accounts(): readonly Account[] {

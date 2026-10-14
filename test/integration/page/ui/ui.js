@@ -38,6 +38,7 @@ const model = createDummyModel({
   follow,
   vault: params.get('vault') ?? 'off',
   accounts: params.get('accounts') ?? 'settings',
+  providers: params.get('providers') ?? 'connected',
   hold: params.get('hold') ?? 'off',
   browser: params.get('browser') ?? 'idle',
   sprinkles: params.get('sprinkles') ?? 'builtin',

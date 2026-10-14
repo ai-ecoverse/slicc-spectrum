@@ -6,6 +6,7 @@ import type { Account, RecordKind, Settings, SliccModel, VaultPort } from '../mo
 import { isVaultFailure, valueProblem } from '../model/values.ts';
 import { chatModels, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
+import { forgetSwitch, modelSwitch, settleModels } from './models.ts';
 import { recordKind, recordName, serverOf, upper as upperName } from './records.ts';
 import { clearValues, failureText, fieldStyles, type PopupDetail, take } from './vault.ts';
 
@@ -160,6 +161,9 @@ export class SliccSettings extends ThemedElement {
         color: var(--swc-neutral-subdued-content-color-default);
         font-size: var(--swc-font-size-75);
       }
+      .switched {
+        grid-column: 2;
+      }
       .failure,
       .problem {
         display: flex;
@@ -177,6 +181,9 @@ export class SliccSettings extends ThemedElement {
         .row {
           grid-template-columns: minmax(0, 1fr);
           gap: var(--swc-spacing-75);
+        }
+        .switched {
+          grid-column: 1;
         }
         .accounts {
           grid-template-columns: minmax(0, 1fr) max-content;
@@ -209,10 +216,15 @@ export class SliccSettings extends ThemedElement {
 
   protected subscribe(model: SliccModel): Array<() => void> {
     const update = () => this.requestUpdate();
+    const settle = () => {
+      settleModels(model);
+      update();
+    };
+    queueMicrotask(() => settleModels(model));
     return [
       ...super.subscribe(model),
-      model.settings.on('settings', update),
-      model.settings.on('accounts', update),
+      model.settings.on('settings', settle),
+      model.settings.on('accounts', settle),
       ...(model.vault ? [model.vault.on('status', update)] : []),
     ];
   }
@@ -223,6 +235,17 @@ export class SliccSettings extends ThemedElement {
 
   #update(patch: Partial<Settings>): void {
     this.model?.settings.update(patch);
+  }
+
+  #pickModel(event: Event): void {
+    forgetSwitch(this.model as SliccModel);
+    this.#update({ model: this.#value(event) });
+  }
+
+  #switched(current: string): TemplateResult | typeof nothing {
+    const note = modelSwitch(this.model as SliccModel);
+    if (note?.to.id !== current) return nothing;
+    return html`<p class="hint switched" role="status" data-switched>Switched to ${note.to.label} because the previous model's provider isn't set up.</p>`;
   }
 
   #value(event: Event): string {
@@ -636,9 +659,10 @@ export class SliccSettings extends ThemedElement {
       <div class="rows">
       <div class="row">
         <span class="label" id="model">Model for new cones</span>
-        <sp-picker size="m" label="Model" aria-labelledby="model" value=${value.model} @change=${(e: Event) => this.#update({ model: this.#value(e) })}>
+        <sp-picker size="m" label="Model" aria-labelledby="model" value=${value.model} @change=${(e: Event) => this.#pickModel(e)}>
           ${chatModels(settings.models()).map((option) => html`<sp-menu-item value=${option.id}>${option.label}<span slot="description">${option.provider}</span></sp-menu-item>`)}
         </sp-picker>
+        ${this.#switched(value.model)}
       </div>
       <div class="row">
         <span class="label" id="thinking">Thinking</span>

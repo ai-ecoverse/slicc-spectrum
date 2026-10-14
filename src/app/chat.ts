@@ -29,6 +29,7 @@ import {
   toolMessage,
   user,
 } from './messages.ts';
+import { settleModels } from './models.ts';
 import { connecting } from './tabs.ts';
 
 const navigation = new Set([
@@ -41,6 +42,8 @@ const navigation = new Set([
   'PageUp',
   'PageDown',
 ]);
+
+const compactWidth = 560;
 
 const failed = (message: Message): boolean =>
   message.role === 'assistant'
@@ -83,14 +86,21 @@ document.addEventListener(
 );
 
 export class SliccChat extends ThemedElement {
-  static properties = { ...ThemedElement.properties, agent: {}, dropping: { state: true } };
+  static properties = {
+    ...ThemedElement.properties,
+    agent: {},
+    dropping: { state: true },
+    compact: { state: true },
+  };
   declare agent: string;
   declare dropping: boolean;
+  declare compact: boolean;
 
   constructor() {
     super();
     this.agent = '';
     this.dropping = false;
+    this.compact = false;
     this.addEventListener('dragenter', this.#over);
     this.addEventListener('dragover', this.#over);
     this.addEventListener('dragleave', this.#leave);
@@ -151,7 +161,7 @@ export class SliccChat extends ThemedElement {
       }
       header {
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         align-items: center;
         gap: var(--swc-spacing-50) var(--swc-spacing-100);
         padding: var(--swc-spacing-75) var(--swc-spacing-200);
@@ -163,15 +173,23 @@ export class SliccChat extends ThemedElement {
       }
       header sp-picker {
         --mod-picker-spacing-label-to-picker-quiet: calc(-1 * var(--swc-border-width-100));
+        flex: none;
         min-width: 0;
         width: auto;
+      }
+      header sp-picker[label='Model'] {
+        flex: 0 1 auto;
+      }
+      header swc-status-light,
+      header swc-action-button {
+        flex: none;
       }
       header swc-status-light {
         align-self: center;
       }
       header swc-meter {
         flex: 0 1 calc(var(--swc-spacing-400) * 6);
-        min-width: calc(var(--swc-spacing-400) * 4);
+        min-width: calc(var(--swc-spacing-400) * 4.5);
         margin-inline-start: auto;
       }
       header .frozen,
@@ -270,14 +288,27 @@ export class SliccChat extends ThemedElement {
   };
 
   protected subscribe(model: SliccModel): Array<() => void> {
+    const settle = () => {
+      settleModels(model);
+      this.requestUpdate();
+    };
+    queueMicrotask(() => settleModels(model));
+    const width = new ResizeObserver(([entry]) => {
+      const size = (entry as ResizeObserverEntry).contentRect.width;
+      this.compact = size > 0 && size < compactWidth;
+    });
+    width.observe(this);
     return [
       ...super.subscribe(model),
+      () => width.disconnect(),
+      model.settings.on('settings', settle),
+      model.settings.on('accounts', settle),
       model.agent.on('active', () => {
         if (!this.agent) this.#refresh(true);
       }),
-      model.agent.on('agents', () => this.requestUpdate()),
+      model.agent.on('agents', settle),
       ...(model.tabs ? [model.tabs.on('tabs', () => this.requestUpdate())] : []),
-      ...(model.follow ? [model.follow.on('follow', () => this.requestUpdate())] : []),
+      ...(model.follow ? [model.follow.on('follow', settle)] : []),
       model.agent.on('messages', (agentId) => {
         if (agentId === this.#id()) this.#refresh(this.#sent(agentId));
       }),
@@ -491,10 +522,15 @@ export class SliccChat extends ThemedElement {
         <span class="model" data-model>${label ?? agent.model}</span>
         ${meter}`;
     }
+    const offered = chatModels(model.settings.models());
     return html`${statusLight(agent.status)}
-      <sp-picker size="s" quiet label="Model" value=${agent.model} @change=${(event: Event) => model.agent.setModel(agent.id, (event.target as HTMLInputElement).value)}>
-        ${chatModels(model.settings.models()).map((option) => html`<sp-menu-item value=${option.id}>${option.label}<span slot="description">${option.provider}</span></sp-menu-item>`)}
-      </sp-picker>
+      ${
+        offered.length
+          ? html`<sp-picker size="s" quiet label="Model" value=${agent.model} @change=${(event: Event) => model.agent.setModel(agent.id, (event.target as HTMLInputElement).value)}>
+        ${offered.map((option) => html`<sp-menu-item value=${option.id}>${option.label}<span slot="description">${option.provider}</span></sp-menu-item>`)}
+      </sp-picker>`
+          : html`<swc-action-button size="s" quiet data-action="set-up-model" @click=${() => this.#action('settings')}>Set up a model</swc-action-button>`
+      }
       <sp-picker size="s" quiet label="Thinking" value=${model.settings.get().thinking} @change=${(event: Event) => model.settings.update({ thinking: (event.target as HTMLInputElement).value as Thinking })}>
         <sp-menu-item value="off">No thinking</sp-menu-item>
         <sp-menu-item value="low">Think a little</sp-menu-item>
@@ -502,7 +538,7 @@ export class SliccChat extends ThemedElement {
         <sp-menu-item value="high">Think hard</sp-menu-item>
       </sp-picker>
       ${meter}
-      <swc-action-button id="new-chat" size="s" quiet data-action="new-chat" ?disabled=${empty} @click=${() => this.#newChat(agent)}><swc-icon-new slot="icon"></swc-icon-new>New conversation</swc-action-button>
+      <swc-action-button id="new-chat" size="s" quiet data-action="new-chat" accessible-label=${this.compact ? 'New conversation' : nothing} ?disabled=${empty} @click=${() => this.#newChat(agent)}><swc-icon-new slot="icon"></swc-icon-new>${this.compact ? nothing : 'New conversation'}</swc-action-button>
       <swc-tooltip for="new-chat" placement="bottom">${agent.kind === 'cone' && model.agent.freeze ? 'Start a new conversation. This one stays in the Freezer.' : 'Start a new conversation'}</swc-tooltip>`;
   }
 
@@ -515,7 +551,7 @@ export class SliccChat extends ThemedElement {
     const messages = agent ? (this.model?.agent.messages(agent.id) ?? []) : [];
     this.#tail = messages.at(-1)?.id ?? '';
     return html`
-      <header>
+      <header ?data-compact=${this.compact}>
         ${agent ? this.#meta(agent, !messages.length) : html`<span>No agent</span>`}
       </header>
       <slicc-notices .model=${this.model}></slicc-notices>

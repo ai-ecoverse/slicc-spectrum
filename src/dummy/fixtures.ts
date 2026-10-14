@@ -347,6 +347,11 @@ export const models: ModelOption[] = [
   { id: 'local-tiny', label: 'Local tiny (no tools)', provider: 'This browser', tools: false },
 ];
 
+export const laterModels: ModelOption[] = [
+  { id: 'gpt-6', label: 'GPT-6', provider: 'OpenAI', images: true },
+  { id: 'gpt-6-mini', label: 'GPT-6 mini', provider: 'OpenAI', images: true, default: true },
+];
+
 export const defaults: Settings = {
   color: 'system',
   model: 'claude-sonnet-5-5',
