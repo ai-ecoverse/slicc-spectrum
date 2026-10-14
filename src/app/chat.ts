@@ -308,7 +308,7 @@ export class SliccChat extends ThemedElement {
       }),
       model.agent.on('agents', settle),
       ...(model.tabs ? [model.tabs.on('tabs', () => this.requestUpdate())] : []),
-      ...(model.follow ? [model.follow.on('follow', () => this.requestUpdate())] : []),
+      ...(model.follow ? [model.follow.on('follow', settle)] : []),
       model.agent.on('messages', (agentId) => {
         if (agentId === this.#id()) this.#refresh(this.#sent(agentId));
       }),

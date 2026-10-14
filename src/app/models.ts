@@ -1,6 +1,5 @@
 import type { ModelOption, SliccModel } from '../model/types.ts';
 import { chatModels } from './base.ts';
-import { watchOnly } from './follow.ts';
 
 export interface ModelSwitch {
   to: ModelOption;
@@ -22,8 +21,13 @@ export function fallbackModel(options: readonly ModelOption[]): ModelOption | un
   return offered.find((option) => option.default) ?? offered[0];
 }
 
+function controls(model: SliccModel): boolean {
+  const state = model.follow?.state();
+  return !state || (!!state.access.control && state.link === 'connected');
+}
+
 export function settleModels(model: SliccModel): void {
-  if (watchOnly(model)) return;
+  if (!controls(model)) return;
   const offered = chatModels(model.settings.models());
   const pick = fallbackModel(offered);
   if (!pick) return;

@@ -420,6 +420,7 @@ export class SliccApp extends ThemedElement {
       ...(model.follow
         ? [
             model.follow.on('follow', () => {
+              settle();
               this.#followed(model);
               update();
             }),
