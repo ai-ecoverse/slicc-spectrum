@@ -2092,6 +2092,24 @@ test('tool runs cluster across messages, pick their icons, and open from the key
   await page.until(
     () => window.chatPart('[data-target=k-r7]').getAttribute('aria-expanded') === 'false'
   );
+  await page.press('Tab');
+  await page.press('Tab');
+  await page.press('Tab');
+  assert.equal(await page.evaluate(focused), 'open-cluster');
+  await page.evaluate(() => {
+    window.everyRun = () =>
+      window
+        .chatPart()
+        .shadowRoot.querySelectorAll('[data-id=k-m8] slicc-tool-runs')[1]
+        .querySelector('[data-action=open-cluster]')
+        .getAttribute('aria-expanded');
+  });
+  await page.press('Enter');
+  await page.until(() => window.everyRun() === 'true');
+  assert.deepEqual(await page.evaluate(shown), ['open', 'open', 'open', 'open', 'open']);
+  await page.press(' ');
+  await page.until(() => window.everyRun() === 'false');
+  assert.deepEqual(await page.evaluate(shown), ['-', '-', '-', '-', '-']);
   await page.until(() =>
     [
       ...window.chatPart().shadowRoot.querySelectorAll('[data-id=k-m8] slicc-tool-runs .label'),

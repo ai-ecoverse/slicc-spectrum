@@ -1065,8 +1065,7 @@ export const messageCss = css`
     align-items: center;
     gap: var(--swc-spacing-50) var(--swc-spacing-200);
     min-block-size: 0;
-    padding-block: var(--swc-spacing-50);
-    padding-inline: var(--swc-spacing-50) var(--swc-spacing-200);
+    padding: var(--swc-spacing-50);
     border: var(--swc-border-width-100) solid var(--swc-gray-200);
     border-radius: var(--swc-corner-radius-500);
     background: var(--swc-background-layer-1-color);
@@ -1090,6 +1089,9 @@ export const messageCss = css`
     block-size: var(--run-size);
   }
   .runs .label {
+    block-size: var(--run-size);
+    padding-inline: var(--swc-spacing-100);
+    line-height: var(--run-size);
     text-align: end;
     font-weight: var(--swc-medium-font-weight);
   }
