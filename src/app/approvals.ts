@@ -250,12 +250,12 @@ function scan(words: string[], cwds: Set<string>, whole: boolean): string | null
   return null;
 }
 
-export function secretRules(approval: Approval): string | null {
-  if (approval.command.length > 4096) return `${approval.command.slice(0, 40)}…`;
-  const start = absolute('/', approval.cwd ?? '/');
+function reach(command: string, cwd?: string | null): string | null {
+  if (command.length > 4096) return `${command.slice(0, 40)}…`;
+  const start = absolute('/', cwd ?? '/');
   if (protects(start, false)) return start;
   const cwds = new Set([start]);
-  const text = unglob(ansi(approval.command.replace(/\\\n/g, '')));
+  const text = unglob(ansi(command.replace(/\\\n/g, '')));
   const plain = text
     .split(separators)
     .map((segment) => commas(segment.split(/[\s<>=]+/).map((word) => word.replace(/['"\\]/g, ''))));
@@ -277,6 +277,16 @@ export function secretRules(approval: Approval): string | null {
   return segments.flat().some((word) => word.includes('$')) || text.includes('`')
     ? (text.match(expansion) as RegExpMatchArray)[0]
     : null;
+}
+
+export interface SecretRulesVerdict {
+  certain: string | null;
+  maybe: string | null;
+}
+
+export function secretRules(command: string, cwd?: string | null): SecretRulesVerdict {
+  const hit = reach(command, cwd);
+  return hit && certain(hit) ? { certain: hit, maybe: null } : { certain: null, maybe: hit };
 }
 
 export function waiting(model: SliccModel | null, now: number): Approval[] {
@@ -433,7 +443,8 @@ export class SliccApprovals extends ModelElement {
   async decide(approval: Approval, decision: ApprovalDecision): Promise<void> {
     const port = this.model?.approvals;
     if (!port?.decide || this.busy || (decision !== 'deny' && !this.#armed)) return;
-    if (decision === 'always' && secretRules(approval)) return;
+    const verdict = secretRules(approval.command, approval.cwd);
+    if (decision === 'always' && (verdict.certain ?? verdict.maybe)) return;
     this.busy = decision;
     this.failure = null;
     this.#pending.add(approval.id);
@@ -558,7 +569,8 @@ export class SliccApprovals extends ModelElement {
     const [approval, ...rest] = held ? [held, ...list.filter(({ id }) => id !== held.id)] : list;
     if (!approval) return nothing;
     const failure = this.failure?.id === approval.id ? this.failure.message : '';
-    const rules = secretRules(approval);
+    const verdict = secretRules(approval.command, approval.cwd);
+    const rules = verdict.certain ?? verdict.maybe;
     const always = approval.always && !rules;
     return this.#dialog(
       approval,
@@ -567,7 +579,7 @@ export class SliccApprovals extends ModelElement {
           <h2 id="title" slot="heading">Allow sudo?</h2>
           ${this.#request(approval)}
           ${approval.cwd ? html`<p class="cwd">In ${approval.cwd}</p>` : nothing}
-          ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${certain(rules) ? html`<strong>This changes secret rules.</strong> It names <code>${rules}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${rules}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>` : nothing}
+          ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${verdict.certain ? html`<strong>This changes secret rules.</strong> It names <code>${rules}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${rules}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>` : nothing}
           ${always ? html`<p class="hint">Always allow lets ${approval.requester.name} run exactly this command with sudo without asking again.</p>` : nothing}
           ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : nothing}
           <p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>
