@@ -1619,6 +1619,56 @@ test('the browser follows a driven tab live, lists its actions and stops the age
   assert.deepEqual(page.errors, []);
 });
 
+for (const [width, height] of [
+  [1280, 800],
+  [420, 860],
+]) {
+  test(`the browser preview stays put while an agent starts and stops at ${width} px`, async (t) => {
+    const page = await open(t, { browser: 'idle' });
+    await page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+    if (width === 420)
+      await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+    await page.evaluate(() => {
+      window.inBrowser = (selector) =>
+        window.$('slicc-app', 'slicc-dock', 'slicc-browser', selector);
+      window.app.show('browser');
+      return true;
+    });
+    await page.until(() => !!window.inBrowser('li[data-id=tab-preview] .window'));
+    await page.evaluate(() => window.inBrowser('li[data-id=tab-preview] .window').click());
+    await page.until(() => window.inBrowser('.driving')?.dataset.driving === 'none');
+    const measure = () =>
+      page.evaluate(() => {
+        const top = (selector) =>
+          Math.round(window.inBrowser(selector).getBoundingClientRect().top);
+        return {
+          driving: top('.driving'),
+          figure: top('figure'),
+          actions: top('details, h3'),
+          height: Math.round(window.inBrowser('.driving').getBoundingClientRect().height),
+        };
+      });
+    const before = await measure();
+    await page.evaluate(() =>
+      window.model.browser.record({ tabId: 'tab-preview', agentId: 'cone-harbor', kind: 'scroll' })
+    );
+    await page.until(() => window.inBrowser('.driving')?.dataset.driving === 'agent');
+    await page.until(() => !!window.inBrowser('.driving [data-action=stop-agent]'));
+    const driven = await measure();
+    assert.deepEqual(driven, before);
+    await page.evaluate(() => window.inBrowser('.driving [data-action=stop-agent]').click());
+    await page.until(() => window.inBrowser('.driving')?.dataset.driving === 'none');
+    assert.deepEqual(await measure(), before);
+    assert.deepEqual(page.errors, []);
+  });
+}
+
 test('the browser says when browser control isn’t connected', async (t) => {
   const page = await open(t, { browser: 'off' });
   await page.evaluate(() => window.app.show('browser'));
