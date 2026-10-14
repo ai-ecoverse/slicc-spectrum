@@ -86,6 +86,7 @@ export class SliccAgents extends ModelElement {
       cursor: pointer;
     }
     li.scoop {
+      grid-template-areas: 'name unread fill drop' 'status unread fill drop' 'error error error error';
       padding-inline-start: calc(var(--swc-spacing-200) + var(--swc-spacing-300));
     }
     li:hover {
@@ -147,6 +148,7 @@ export class SliccAgents extends ModelElement {
     }
     .drop {
       grid-area: drop;
+      margin-block: calc(-1 * var(--swc-spacing-100));
       visibility: hidden;
     }
     li:hover .drop,
