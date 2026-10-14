@@ -121,6 +121,7 @@ export class SliccMonitor extends ModelElement {
         flex: none;
       }
       .body {
+        container: monitor / inline-size;
         flex: 1;
         min-height: 0;
         overflow-y: auto;
@@ -135,10 +136,65 @@ export class SliccMonitor extends ModelElement {
         grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--swc-card-default-width-extra-small)), 1fr));
         gap: var(--swc-spacing-100);
       }
+      @container monitor (min-width: 248px) {
+        .vital:last-child:nth-child(2n + 1) {
+          grid-column: 1 / -1;
+        }
+      }
+      @container monitor (min-width: 376px) {
+        .vital:last-child:nth-child(n) {
+          grid-column: auto;
+        }
+        .vital:last-child:nth-child(3n + 1) {
+          grid-column: 1 / -1;
+        }
+      }
+      @container monitor (min-width: 504px) {
+        .vital:last-child:nth-child(n) {
+          grid-column: auto;
+        }
+        .vital:last-child:nth-child(4n + 1) {
+          grid-column: 1 / -1;
+        }
+      }
+      @container monitor (min-width: 632px) {
+        .vital:last-child:nth-child(n) {
+          grid-column: auto;
+        }
+        .vital:last-child:nth-child(5n + 1) {
+          grid-column: 1 / -1;
+        }
+      }
+      @container monitor (min-width: 760px) {
+        .vital:last-child:nth-child(n) {
+          grid-column: auto;
+        }
+        .vital:last-child:nth-child(6n + 1) {
+          grid-column: 1 / -1;
+        }
+      }
+      @container monitor (min-width: 888px) {
+        .vital:last-child:nth-child(n) {
+          grid-column: auto;
+        }
+        .vital:last-child:nth-child(7n + 1) {
+          grid-column: 1 / -1;
+        }
+      }
+      @container monitor (min-width: 1016px) {
+        .vital:last-child:nth-child(n) {
+          grid-column: auto;
+        }
+        .vital:last-child:nth-child(8n + 1) {
+          grid-column: 1 / -1;
+        }
+      }
       .vital {
         display: grid;
+        grid-template-rows: auto auto 1fr;
         align-content: start;
         gap: var(--swc-spacing-50);
+        min-width: 0;
         border-radius: var(--swc-corner-radius-medium-default);
         padding: var(--swc-spacing-200);
         background: var(--swc-background-layer-1-color);
@@ -147,20 +203,41 @@ export class SliccMonitor extends ModelElement {
         color: var(--swc-neutral-subdued-content-color-default);
         font-size: var(--swc-font-size-75);
       }
+      .reading {
+        display: flex;
+        align-items: baseline;
+        gap: var(--swc-spacing-75);
+        min-width: 0;
+        white-space: nowrap;
+      }
+      .value,
+      .rest {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       .value {
+        flex: none;
+        max-width: 100%;
         font-size: var(--swc-font-size-300);
         font-weight: var(--swc-bold-font-weight);
         font-variant-numeric: tabular-nums;
       }
-      .unit,
-      .delta {
+      .rest {
+        flex: 0 1 auto;
         color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .unit + .delta {
         margin-inline-start: var(--swc-spacing-75);
+      }
+      .spark {
+        align-self: end;
+        height: var(--swc-component-height-100);
       }
       svg {
         display: block;
         width: 100%;
-        height: var(--swc-component-height-100);
+        height: 100%;
       }
       polyline {
         fill: none;
@@ -169,6 +246,13 @@ export class SliccMonitor extends ModelElement {
       }
       swc-meter {
         width: 100%;
+      }
+      swc-meter > span {
+        display: block;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
       }
       .alerts {
         display: grid;
@@ -231,25 +315,34 @@ export class SliccMonitor extends ModelElement {
       }
       .sections {
         display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        column-gap: var(--swc-spacing-100);
         margin: 0;
         padding: 0;
         list-style: none;
       }
-      .section {
+      .section,
+      .line {
+        grid-column: 1 / -1;
         display: grid;
+        grid-template-columns: subgrid;
       }
       .line {
+        align-items: center;
+        min-height: var(--swc-component-height-100);
+        padding: var(--swc-spacing-50) 0;
+      }
+      .caption {
+        grid-column: 1;
+        min-width: 0;
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: var(--swc-spacing-100);
-        min-height: var(--swc-component-height-100);
-        padding: var(--swc-spacing-50) 0;
+        gap: var(--swc-spacing-50) var(--swc-spacing-75);
       }
       .toggle {
         all: unset;
         box-sizing: border-box;
-        flex: 1 1 auto;
         min-width: 0;
         display: flex;
         align-items: center;
@@ -275,14 +368,19 @@ export class SliccMonitor extends ModelElement {
         transform: scaleX(-1);
       }
       .line .name {
-        flex: 1 1 auto;
         min-width: 0;
       }
       .line .num {
+        grid-column: 2;
+        justify-self: end;
         font-weight: var(--swc-bold-font-weight);
         font-variant-numeric: tabular-nums;
       }
+      .line swc-action-button {
+        grid-column: 3;
+      }
       .rows {
+        grid-column: 1 / -1;
         display: grid;
         gap: var(--swc-spacing-50);
         margin: 0 0 var(--swc-spacing-100);
@@ -341,19 +439,21 @@ export class SliccMonitor extends ModelElement {
           variant=${meterVariant(vital.ratio)}
           value=${Math.round(vital.ratio * 100)}
           value-label=${vital.value}
-          ><span slot="label">${vital.label}</span>${
-            vital.unit ? html`<span slot="description">${vital.unit}</span>` : nothing
-          }</swc-meter
+          ><span slot="label">${vital.label}</span><span slot="description">${vital.unit ?? '\u00a0'}</span></swc-meter
         >
       </div>`;
     }
     const line = vital.series ? sparkline(vital.series) : '';
     return html`<div class="vital" data-id=${vital.id}>
       <div class="label">${vital.label}</div>
-      <div><span class="value">${vital.value}</span>${vital.unit ? html`<span class="unit">${vital.unit}</span>` : nothing}${
-        vital.delta ? html`<span class="delta">${vital.delta}</span>` : nothing
+      <div class="reading"><span class="value">${vital.value}</span>${
+        vital.unit || vital.delta
+          ? html`<span class="rest">${vital.unit ? html`<span class="unit">${vital.unit}</span>` : nothing}${
+              vital.delta ? html`<span class="delta">${vital.delta}</span>` : nothing
+            }</span>`
+          : nothing
       }</div>
-      ${line ? html`<svg viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true">${svg`<polyline points=${line}></polyline>`}</svg>` : nothing}
+      <div class="spark">${line ? html`<svg viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true">${svg`<polyline points=${line}></polyline>`}</svg>` : nothing}</div>
     </div>`;
   }
 
@@ -403,16 +503,18 @@ export class SliccMonitor extends ModelElement {
     const rows = section.rows.length > 0;
     const open = rows && (this.expanded[section.id] ?? flag !== null);
     const list = `rows-${section.id}`;
+    const badge = flag
+      ? html`<swc-badge size="s" variant=${flag.variant} subtle>${flag.text}</swc-badge>`
+      : nothing;
     return html`<li class="section" data-id=${section.id} data-open=${open ? '' : nothing}>
       <div class="line">
-        ${
+        <span class="caption">${
           rows
             ? html`<button class="toggle" aria-expanded=${open ? 'true' : 'false'} aria-controls=${open ? list : nothing} @click=${() => {
                 this.expanded = { ...this.expanded, [section.id]: !open };
               }}><span class="chevron"><swc-icon-chevron-right size="s" aria-hidden="true"></swc-icon-chevron-right></span><span class="name">${section.label}</span></button>`
             : html`<span class="chevron"></span><span class="name">${section.label}</span>`
-        }
-        ${flag ? html`<swc-badge size="s" variant=${flag.variant} subtle>${flag.text}</swc-badge>` : nothing}
+        }${badge}</span>
         <span class="num">${section.rows.length}</span>
         ${
           surface

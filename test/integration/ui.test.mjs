@@ -2935,7 +2935,7 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
   await page.until(
     () =>
       window.$('slicc-app', 'slicc-dock').content('monitor')?.shadowRoot.querySelectorAll('.vital')
-        .length === 4
+        .length === 6
   );
   await page.evaluate(() => window.model.tray.disconnect());
   await page.until(
@@ -3095,6 +3095,143 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
     before
   );
   assert.deepEqual(page.errors, []);
+});
+
+test('the monitor keeps its cards and the list in place whatever values they show', async (t) => {
+  const page = await open(t, { monitor: 'agent', delay: '0' });
+  await page.evaluate(() => window.app.show('monitor'));
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock').content('monitor')?.shadowRoot.querySelectorAll('.vital')
+        .length > 0
+  );
+  await page.evaluate(() => document.fonts.ready.then(() => true));
+  const measure = (variant, width) =>
+    page.evaluate(
+      async ({ variant, width }) => {
+        const host = window.$('slicc-app', 'slicc-dock').content('monitor');
+        const monitor = window.model.monitor;
+        window.monitorBase ??= monitor.snapshot();
+        const wave = (seed) =>
+          Array.from({ length: 24 }, (_, i) => 40 + 25 * Math.sin((i + seed) / 3));
+        const values = {
+          short: [
+            {
+              id: 'budget',
+              label: 'Budget (weekly)',
+              value: '0%',
+              unit: 'resets in 4 days',
+              ratio: 0,
+            },
+            { id: 'spend', label: 'Spend', value: '$0.00', unit: '0 tokens' },
+            { id: 'agents', label: 'Active agents', value: '1', unit: 'of 1', series: [1] },
+            { id: 'tasks', label: 'Running', value: '0', unit: 'tools · 0 tasks' },
+            { id: 'processes', label: 'Processes', value: '…', unit: 'checking' },
+            { id: 'memory', label: 'Process memory', value: '0 B', unit: '0 B by agents' },
+            { id: 'context', label: 'Fullest context', value: '0%', ratio: 0 },
+          ],
+          missing: [
+            { id: 'budget', label: 'Budget (weekly)', value: '7%', ratio: 0.07 },
+            { id: 'spend', label: 'Spend', value: '<$0.01', unit: '12 tokens' },
+            { id: 'agents', label: 'Active agents', value: '0', unit: 'of 1' },
+            { id: 'tasks', label: 'Running', value: '0', unit: 'tools · 1 task' },
+            { id: 'processes', label: 'Processes', value: '—', unit: 'kernel not reachable' },
+            {
+              id: 'memory',
+              label: 'Process memory',
+              value: '17 MiB',
+              unit: '0 B by agents',
+              series: [17, 17],
+            },
+            { id: 'context', label: 'Fullest context', value: '15%', ratio: 0.15 },
+          ],
+          long: [
+            {
+              id: 'budget',
+              label: 'Budget (weekly)',
+              value: '100%',
+              unit: 'resets 2026-10-14 00:00 UTC',
+              ratio: 1,
+            },
+            {
+              id: 'spend',
+              label: 'Spend',
+              value: '$12,345.67',
+              unit: '10.5M tokens',
+              delta: '$123.45/h',
+              series: wave(1),
+            },
+            { id: 'agents', label: 'Active agents', value: '12', unit: 'of 30', series: wave(2) },
+            { id: 'tasks', label: 'Running', value: '12', unit: 'tools · 128 tasks' },
+            {
+              id: 'processes',
+              label: 'Processes',
+              value: '1,024',
+              unit: '996 by agents',
+              series: wave(3),
+            },
+            {
+              id: 'memory',
+              label: 'Process memory',
+              value: '1023.9 MiB',
+              unit: '1023.9 MiB by agents',
+              series: wave(4),
+            },
+            { id: 'context', label: 'Fullest context', value: '100%', ratio: 1 },
+          ],
+        }[variant];
+        monitor.snapshot = () => ({
+          ...window.monitorBase,
+          updatedAt: 0,
+          alerts: [],
+          vitals: values,
+        });
+        host.style.width = `${width}px`;
+        host.shadowRoot.querySelector('.bar swc-action-button').click();
+        await host.updateComplete;
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+        const root = host.shadowRoot;
+        const origin = root.querySelector('.body').getBoundingClientRect();
+        const box = (node) => {
+          const rect = node.getBoundingClientRect();
+          return [rect.left - origin.left, rect.top - origin.top, rect.width, rect.height].map(
+            (n) => Math.round(n)
+          );
+        };
+        const cards = [...root.querySelectorAll('.vital')];
+        return {
+          cards: cards.map(box),
+          inside: cards.every((card) =>
+            [...card.querySelectorAll('.reading > *')].every(
+              (part) =>
+                part.getBoundingClientRect().right <= card.getBoundingClientRect().right + 0.5
+            )
+          ),
+          lines: [...root.querySelectorAll('.section > .line')].map(box),
+          nums: [...root.querySelectorAll('.line .num')].map((num) =>
+            Math.round(num.getBoundingClientRect().right)
+          ),
+          list: box(root.querySelector('.sections')),
+        };
+      },
+      { variant, width }
+    );
+  for (const width of [200, 340, 420, 640, 960]) {
+    const [short, missing, long] = [
+      await measure('short', width),
+      await measure('missing', width),
+      await measure('long', width),
+    ];
+    assert.equal(short.inside && missing.inside && long.inside, true, `${width}px`);
+    assert.deepEqual(missing, short, `${width}px, missing data`);
+    assert.deepEqual(long, short, `${width}px, long values`);
+    assert.equal(new Set(short.nums).size, 1, `${width}px, counts line up`);
+    assert.equal(new Set(short.cards.map((card) => card[3])).size <= 2, true, `${width}px`);
+  }
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-dock').content('monitor').style.width = '';
+  });
 });
 
 test('SLICC sprinkles run sandboxed with Lucide icons and lick their cone, and the tray shows its status', async (t) => {
@@ -3554,7 +3691,7 @@ test('new surfaces in dark', async (t) => {
   await page.until(
     () =>
       window.$('slicc-app', 'slicc-dock').content('monitor')?.shadowRoot.querySelectorAll('.vital')
-        .length === 4
+        .length === 6
   );
   await page.evaluate(() =>
     window.$('slicc-app', 'slicc-dock').api.getPanel('memory').api.setActive()
@@ -5172,6 +5309,68 @@ async function save(page, name, value, fail) {
 
 const said = (selector) =>
   window.settingsPart('slicc-secrets', selector)?.textContent.replace(/\s+/g, ' ').trim();
+
+test('a locked Secrets form unlocks in place with the vault button and keeps what was typed', async (t) => {
+  const page = await secretsPage(t, { vault: 'secrets' });
+  await page.evaluate(() => {
+    window.model.vault.lock();
+    return true;
+  });
+  await page.until(() => window.model.vault.status().locked);
+  await views(page, 'secrets-locked-form', '[data-tools]', async () => {
+    await form(page, '[data-action=add-secret]', 'add');
+    await page.until(
+      () =>
+        !!window
+          .settingsPart('slicc-secrets', '[data-form] slicc-vault-button[data-action=unlock]')
+          ?.shadowRoot?.querySelector('swc-button')
+    );
+  });
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const line = window.settingsPart('slicc-secrets', '[data-form=add] p[data-locked]');
+      const button = window.settingsPart(
+        'slicc-secrets',
+        '[data-form=add] slicc-vault-button[data-action=unlock]'
+      );
+      const [a, b] = [line, button].map((node) => node.getBoundingClientRect());
+      return [
+        line.textContent,
+        button.config.size,
+        Math.abs(a.top + a.height / 2 - (b.top + b.height / 2)) < 4,
+        window.settingsPart('slicc-secrets', '[data-form=add] [data-action=save]').disabled,
+      ];
+    }),
+    ['Unlock the vault first', 's', true, true]
+  );
+  await fill(page, '[data-form=add] [data-field=name]', 'tide_token');
+  await fill(page, '[data-form=add] [data-field=value]', sample);
+  await page.evaluate(() => {
+    window
+      .settingsPart('slicc-secrets', '[data-form] slicc-vault-button[data-action=unlock]')
+      .shadowRoot.querySelector('swc-button')
+      .click();
+    return true;
+  });
+  await page.until(() => !window.model.vault.status().locked);
+  await page.until(() => !window.settingsPart('slicc-secrets', '[data-form] [data-locked]'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.settingsPart('slicc-secrets', '[data-form=add] [data-field=name]').value,
+      window.settingsPart('slicc-secrets', '[data-form=add] [data-field=value]').value.length,
+      window.settingsPart('slicc-secrets', '[data-form=add] [data-action=save]').disabled,
+    ]),
+    ['TIDE_TOKEN', sample.length, false]
+  );
+  await page.evaluate(() => {
+    window.settingsPart('slicc-secrets', '[data-form] [data-action=save]').click();
+    return true;
+  });
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-said=saved]'));
+  assert.equal(await page.evaluate(said, '[data-said=saved]'), 'Saved TIDE_TOKEN in the vault');
+  await clean(page);
+  assert.deepEqual(page.errors, []);
+});
 
 test('Add secret refuses a short value, saves a real one and never shows it', async (t) => {
   const page = await secretsPage(t, { vault: 'secrets' });

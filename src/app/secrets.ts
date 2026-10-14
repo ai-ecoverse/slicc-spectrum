@@ -52,7 +52,7 @@ import {
 const kinds = { secret: null, grant: 'Sign-in', model: 'Model key', mcp: 'MCP server' } as const;
 
 const lockModes = {
-  auto: 'Unlocks with this browser',
+  auto: 'Unlocks automatically in this browser',
   passkey: 'Unlocks with a passkey',
   passphrase: 'Unlocks with a passphrase',
 } as const;
@@ -387,6 +387,7 @@ export class SliccSecrets extends ThemedElement {
         font-weight: var(--swc-bold-font-weight);
       }
       .box .actions,
+      .locked,
       .buttons {
         display: flex;
         flex-wrap: wrap;
@@ -1017,7 +1018,9 @@ export class SliccSecrets extends ThemedElement {
   }
 
   #locked(locked: boolean): TemplateResult | typeof nothing {
-    return locked ? html`<p class="muted" data-locked>Unlock the vault first</p>` : nothing;
+    return locked
+      ? html`<div class="locked"><p class="muted" data-locked>Unlock the vault first</p>${this.#button({ intent: { kind: 'unlock' }, label: 'Unlock', size: 's', variant: 'accent' }, 'unlock')}</div>`
+      : nothing;
   }
 
   #valueForm(vault: VaultPort, form: SecretForm, locked: boolean): TemplateResult {
