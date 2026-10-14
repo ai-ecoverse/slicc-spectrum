@@ -19,7 +19,7 @@ import type {
   UserMessage,
 } from '../model/types.ts';
 import type { Clock } from './clock.ts';
-import { type Effects, runLabel, type Step, script } from './script.ts';
+import { type Effects, label, type Step, script } from './script.ts';
 
 interface Run {
   stopped: boolean;
@@ -133,9 +133,20 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     return this.#suggestions.get(agentId) ?? null;
   }
 
-  async runLabel(_agentId: string, calls: readonly ToolCall[]): Promise<string | null> {
+  #call(agentId: string, id: string): ToolCall | undefined {
+    for (const message of this.#messages.get(agentId) ?? []) {
+      if (message.role === 'tool' && message.tool.id === id) return message.tool;
+      if (message.role !== 'assistant') continue;
+      for (const part of message.parts)
+        if (part.type === 'tool' && part.tool.id === id) return part.tool;
+    }
+    return undefined;
+  }
+
+  async toolLabel(agentId: string, callIds: readonly string[]): Promise<string | null> {
     await this.#clock.sleep(15);
-    return runLabel(calls);
+    const first = this.#call(agentId, callIds[0] ?? '');
+    return first ? label(first.title) : null;
   }
 
   #post(agentId: string, message: Message): void {

@@ -1,4 +1,4 @@
-import type { Attachment, BrowserPort, FilePort, MessagePart, ToolCall } from '../model/types.ts';
+import type { Attachment, BrowserPort, FilePort, MessagePart } from '../model/types.ts';
 
 export interface Effects {
   files: FilePort;
@@ -196,7 +196,7 @@ function investigate(): Step[] {
   ];
 }
 
-const runLabels: Record<string, string> = {
+const labels: Record<string, string> = {
   'Read the error log': 'Find why Celsius requests get Fahrenheit',
   'Search for the cache expiry': 'Find and fix the stale cache entry',
   'Count the routes': 'Walk through every kind of tool',
@@ -204,8 +204,8 @@ const runLabels: Record<string, string> = {
   'Switch the page to Celsius': 'Move the forecast docs to Celsius, then build and test the site',
 };
 
-export function runLabel(calls: readonly ToolCall[]): string | null {
-  return runLabels[calls[0]?.title ?? ''] ?? null;
+export function label(title: string): string | null {
+  return labels[title] ?? null;
 }
 
 function chat(prompt: string): Step[] {

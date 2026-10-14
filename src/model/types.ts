@@ -252,7 +252,6 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   queue(agentId: string): readonly UserMessage[];
   unqueue(agentId: string, messageId: string): void;
   suggestion(agentId: string): string | null;
-  runLabel?(agentId: string, calls: readonly ToolCall[]): Promise<string | null>;
   answer(agentId: string, questionId: string, answer: string): void;
   resolveLick(agentId: string, messageId: string, state: Exclude<LickState, 'pending'>): void;
   compact(agentId: string): void;
@@ -261,6 +260,7 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   setThinking(agentId: string, thinking: Thinking): void;
   older(agentId: string, before: string): Promise<readonly Message[]>;
   commands(agentId: string): readonly SlashCommand[];
+  toolLabel?(agentId: string, callIds: readonly string[]): Promise<string | null>;
   ready(): Promise<void>;
   createScoop(parentId: string, name: string): Agent;
   frozen(): readonly FrozenCone[];
@@ -900,6 +900,7 @@ export interface SudoApproval {
   createdAt: number;
   expiresAt: number;
   always: boolean;
+  alwaysScope?: 'cwd';
 }
 
 export type Approval = SudoApproval;

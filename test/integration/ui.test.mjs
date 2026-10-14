@@ -4686,6 +4686,11 @@ test('chat stays pinned to the bottom while content grows after render', async (
     };
     await grow(log.clientHeight * 2);
     const pinned = gap();
+    await new Promise((resolve) => setTimeout(resolve));
+    log.scrollTop -= 30;
+    await grow(log.clientHeight * 2);
+    const stale = gap();
+    log.dispatchEvent(new WheelEvent('wheel', { deltaY: -log.scrollTop }));
     log.scrollTop = 0;
     await frame();
     await grow(300);
@@ -4696,11 +4701,67 @@ test('chat stays pinned to the bottom while content grows after render', async (
     log.scrollTop = log.scrollHeight;
     await frame();
     await grow(300);
-    return { pinned, reading, back: gap() };
+    return { pinned, stale, reading, back: gap() };
   });
   assert.ok(result.pinned <= 1, JSON.stringify(result));
+  assert.ok(result.stale <= 1, JSON.stringify(result));
   assert.equal(result.reading, 0);
   assert.ok(result.back <= 1, JSON.stringify(result));
+});
+
+test('chat lets the reader scroll up by wheel or keyboard while content streams in', async (t) => {
+  const page = await open(t);
+  const center = await page.evaluate(() => {
+    const log = window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log');
+    const column = log.querySelector('.column');
+    window.chatGap = () => log.scrollHeight - log.scrollTop - log.clientHeight;
+    window.streaming = setInterval(() => {
+      const block = document.createElement('div');
+      block.style.height = '20px';
+      column.append(block);
+    }, 16);
+    const box = log.getBoundingClientRect();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  });
+  const held = () =>
+    page.evaluate(async () => {
+      const log = window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log');
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      let top = -1;
+      while (top !== log.scrollTop) {
+        top = log.scrollTop;
+        await wait(150);
+      }
+      await wait(300);
+      return { top, after: log.scrollTop, gap: window.chatGap() };
+    });
+  await page.until(() => {
+    const log = window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log');
+    return log.scrollHeight > log.clientHeight * 3 && window.chatGap() <= 21;
+  });
+  await page.send('Input.dispatchMouseEvent', {
+    type: 'mouseWheel',
+    ...center,
+    deltaX: 0,
+    deltaY: -400,
+  });
+  await page.until(() => window.chatGap() > 300);
+  const wheel = await held();
+  await page.evaluate(() => {
+    const log = window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log');
+    log.scrollTop = log.scrollHeight;
+  });
+  await page.until(() => window.chatGap() <= 21);
+  await page.evaluate(() => window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log').focus());
+  await page.press('PageUp');
+  await page.until(() => window.chatGap() > 200);
+  const key = await held();
+  await page.evaluate(() => clearInterval(window.streaming));
+  for (const result of [wheel, key]) {
+    assert.equal(result.after, result.top, JSON.stringify(result));
+    assert.ok(result.gap > 200, JSON.stringify(result));
+  }
+  assert.deepEqual(page.errors, []);
 });
 
 test('the composer turns dark with the rest of the app when the theme switches', async (t) => {

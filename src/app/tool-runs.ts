@@ -85,22 +85,27 @@ export class SliccToolRuns extends LitElement {
 
   #ask(): void {
     const port = this.model?.agent;
-    if (this.calls.length < 2 || !port?.runLabel) return;
+    if (this.calls.length < 2 || !port?.toolLabel) return;
     const store = cache(port);
     const key = `${this.agent} ${this.#key}`;
     const anchor = `${this.agent} ${this.#anchor}`;
     if (store.asked.has(key)) return;
     store.asked.add(key);
-    port.runLabel(this.agent, [...this.calls]).then(
-      (text) => {
-        const label = text?.trim();
-        if (!label) return;
-        store.done.set(key, label);
-        store.latest.set(anchor, label);
-        this.requestUpdate();
-      },
-      () => undefined
-    );
+    port
+      .toolLabel(
+        this.agent,
+        this.calls.map((call) => call.id)
+      )
+      .then(
+        (text) => {
+          const label = text?.trim();
+          if (!label) return;
+          store.done.set(key, label);
+          store.latest.set(anchor, label);
+          this.requestUpdate();
+        },
+        () => undefined
+      );
   }
 
   #label(): string {
