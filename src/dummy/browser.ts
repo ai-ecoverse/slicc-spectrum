@@ -37,6 +37,35 @@ function titleFor(url: string): string {
 
 const second = 1000;
 
+export const actionLimits = { perTab: 500, total: 5000, age: 24 * 60 * 60 * second };
+
+const cities = ['Lisbon', 'Porto', 'Faro', 'Braga', 'Coimbra', 'Aveiro'];
+
+function session(now: number): ActionDraft[] {
+  const harbor = { tabId: 'tab-preview', agentId: 'cone-harbor' };
+  return Array.from({ length: 170 }, (_, i): ActionDraft => {
+    const city = cities[i % cities.length] as string;
+    const at = now - 286 * second + i * 960;
+    switch (i % 5) {
+      case 0:
+        return {
+          ...harbor,
+          kind: 'goto',
+          value: `http://localhost:8787/forecast?city=${city}&days=${(i % 7) + 1}&units=metric&compare=tides,wind,swell&session=run-${i}`,
+          at,
+        };
+      case 1:
+        return { ...harbor, kind: 'snapshot', at };
+      case 2:
+        return { ...harbor, kind: 'click', target: `button "Day ${(i % 7) + 1}"`, at };
+      case 3:
+        return { ...harbor, kind: 'scroll', at };
+      default:
+        return { ...harbor, kind: 'screenshot', at };
+    }
+  });
+}
+
 export function browserHistory(scenario: BrowserScenario, now = Date.now()): ActionDraft[] {
   if (scenario === 'off') return [];
   const harbor = { tabId: 'tab-preview', agentId: 'cone-harbor' };
@@ -51,6 +80,7 @@ export function browserHistory(scenario: BrowserScenario, now = Date.now()): Act
     { ...otter, kind: 'snapshot', at: now - 296 * second },
     { ...otter, kind: 'scroll', at: now - 290 * second },
     { ...otter, kind: 'screenshot', at: now - 288 * second },
+    ...session(now),
     { ...harbor, kind: 'open', value: 'http://localhost:8787/', at: now - 120 * second },
     { ...harbor, kind: 'snapshot', at: now - 116 * second },
     { ...harbor, kind: 'type', target: 'textbox "City"', length: 6, at: now - 110 * second },
@@ -117,9 +147,18 @@ export class DummyBrowser extends Emitter<BrowserEvents> implements BrowserPort 
   }
 
   actions(tabId?: string): readonly BrowserAction[] {
-    return this.#actions
+    const since = Date.now() - actionLimits.age;
+    const counts = new Map<string | null, number>();
+    const kept: BrowserAction[] = [];
+    for (const action of [...this.#actions].reverse()) {
+      if (kept.length === actionLimits.total) break;
+      const count = (counts.get(action.tabId) ?? 0) + 1;
+      counts.set(action.tabId, count);
+      if (count <= actionLimits.perTab && action.at >= since) kept.push(action);
+    }
+    return kept
+      .reverse()
       .filter((action) => tabId === undefined || action.tabId === tabId)
-      .slice(-50)
       .map((action) => ({ ...action }));
   }
 
