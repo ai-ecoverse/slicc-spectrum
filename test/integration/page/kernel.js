@@ -39,7 +39,10 @@ async function install() {
 
 window.boot = async () => {
   await install();
-  window.kernel = await createKernel({ root: await navigator.storage.getDirectory() });
+  window.kernel = await createKernel({
+    root: await navigator.storage.getDirectory(),
+    users: 'off',
+  });
   await window.kernel.users.add({ name: 'slicc', home: '/home' });
   const terminal = document.querySelector('slicc-terminal');
   window.statuses = [];
