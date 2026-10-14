@@ -64,8 +64,17 @@ export class SliccFileTree extends HTMLElement {
     const expanded = this.#paths.length > 0 ? this.#expandedNow() : this.#expanded;
     this.#paths = value;
     this.#tree?.resetPaths(value, { initialExpandedPaths: expanded });
-    if (this.#query) this.#tree?.setSearch(this.#query);
+    this.#research();
     this.#matched();
+  }
+
+  #research(): void {
+    const query = this.#query;
+    if (!query || !this.#tree) return;
+    this.#query = '';
+    this.#tree.setSearch(null);
+    this.#query = query;
+    this.#tree.setSearch(query);
   }
 
   get query(): string {
