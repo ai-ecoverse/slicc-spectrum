@@ -289,6 +289,11 @@ export function secretRules(command: string, cwd?: string | null): SecretRulesVe
   return hit && certain(hit) ? { certain: hit, maybe: null } : { certain: null, maybe: hit };
 }
 
+function origin(): HTMLElement | null {
+  const active = focused();
+  return (active?.closest('slicc-terminal') as HTMLElement | null) ?? active;
+}
+
 export function waiting(model: SliccModel | null, now: number): Approval[] {
   return [...(model?.approvals?.list() ?? [])]
     .filter((approval) => approval.expiresAt > now)
@@ -497,7 +502,7 @@ export class SliccApprovals extends ModelElement {
     const dialog = this.renderRoot.querySelector('dialog');
     const key = dialog ? `${dialog.dataset.approval}:${dialog.dataset.gone ?? ''}` : '';
     if (key === this.#shown) return;
-    if (dialog && !this.#shown) this.#trigger = focused();
+    if (dialog && !this.#shown) this.#trigger = origin();
     this.#shown = key;
     if (!dialog) {
       if (this.#trigger?.isConnected) this.#trigger.focus();
