@@ -205,30 +205,28 @@ export class SliccMonitor extends ModelElement {
       }
       .reading {
         display: flex;
+        flex-wrap: wrap;
         align-items: baseline;
-        gap: var(--swc-spacing-75);
+        column-gap: var(--swc-spacing-75);
         min-width: 0;
-        white-space: nowrap;
-      }
-      .value,
-      .rest {
-        min-width: 0;
+        height: 1lh;
         overflow: hidden;
-        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--swc-font-size-300);
       }
       .value {
         flex: none;
         max-width: 100%;
-        font-size: var(--swc-font-size-300);
+        overflow: hidden;
+        text-overflow: ellipsis;
         font-weight: var(--swc-bold-font-weight);
         font-variant-numeric: tabular-nums;
       }
-      .rest {
-        flex: 0 1 auto;
+      .unit,
+      .delta {
+        flex: none;
+        font-size: var(--swc-font-size-100);
         color: var(--swc-neutral-subdued-content-color-default);
-      }
-      .unit + .delta {
-        margin-inline-start: var(--swc-spacing-75);
       }
       .spark {
         align-self: end;
@@ -446,13 +444,9 @@ export class SliccMonitor extends ModelElement {
     const line = vital.series ? sparkline(vital.series) : '';
     return html`<div class="vital" data-id=${vital.id}>
       <div class="label">${vital.label}</div>
-      <div class="reading"><span class="value">${vital.value}</span>${
-        vital.unit || vital.delta
-          ? html`<span class="rest">${vital.unit ? html`<span class="unit">${vital.unit}</span>` : nothing}${
-              vital.delta ? html`<span class="delta">${vital.delta}</span>` : nothing
-            }</span>`
-          : nothing
-      }</div>
+      <div class="reading" title=${[vital.value, vital.unit, vital.delta].filter(Boolean).join(' ')}><span class="value">${vital.value}</span>${
+        vital.unit ? html`<span class="unit">${vital.unit}</span>` : nothing
+      }${vital.delta ? html`<span class="delta">${vital.delta}</span>` : nothing}</div>
       <div class="spark">${line ? html`<svg viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true">${svg`<polyline points=${line}></polyline>`}</svg>` : nothing}</div>
     </div>`;
   }
