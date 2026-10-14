@@ -289,6 +289,8 @@ export class SliccChat extends ThemedElement {
 
   #stuck = true;
   #last = 0;
+  #height = 0;
+  #input = Number.NEGATIVE_INFINITY;
   #tail = '';
 
   #sent(agentId: string): boolean {
@@ -307,13 +309,31 @@ export class SliccChat extends ThemedElement {
     const log = this.#log();
     log.scrollTop = log.scrollHeight;
     this.#last = log.scrollTop;
+    this.#height = log.scrollHeight;
   }
 
   #scroll = (): void => {
     const log = this.#log();
+    const reader = log.scrollHeight <= this.#height || performance.now() - this.#input < 1000;
     if (log.scrollHeight - log.scrollTop - log.clientHeight < 48) this.#stuck = true;
-    else if (log.scrollTop < this.#last) this.#stuck = false;
+    else if (reader && log.scrollTop < this.#last) this.#stuck = false;
     this.#last = log.scrollTop;
+    this.#height = log.scrollHeight;
+  };
+
+  #intent = {
+    passive: true,
+    handleEvent: (): void => {
+      this.#input = performance.now();
+    },
+  };
+
+  #hold = (event: PointerEvent): void => {
+    if (event.target === event.currentTarget) this.#input = Number.POSITIVE_INFINITY;
+  };
+
+  #release = (): void => {
+    if (this.#input === Number.POSITIVE_INFINITY) this.#input = performance.now();
   };
 
   #refresh(jump: boolean): void {
@@ -331,11 +351,15 @@ export class SliccChat extends ThemedElement {
 
   connectedCallback(): void {
     super.connectedCallback();
+    globalThis.addEventListener('pointerup', this.#release, true);
+    globalThis.addEventListener('pointercancel', this.#release, true);
     if (this.hasUpdated) this.#observe();
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    globalThis.removeEventListener('pointerup', this.#release, true);
+    globalThis.removeEventListener('pointercancel', this.#release, true);
     this.#resize.disconnect();
   }
 
@@ -514,6 +538,11 @@ export class SliccChat extends ThemedElement {
         aria-label="Conversation"
         tabindex="-1"
         @scroll=${this.#scroll}
+        @wheel=${this.#intent}
+        @touchstart=${this.#intent}
+        @touchmove=${this.#intent}
+        @keydown=${this.#intent}
+        @pointerdown=${this.#hold}
       >
         <div class="column" @keydown=${this.#keys}>
           ${
