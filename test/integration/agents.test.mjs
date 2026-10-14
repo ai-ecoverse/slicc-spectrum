@@ -346,6 +346,9 @@ test('New cone in the Agents panel creates a cone and selects it', async (t) => 
   await page.until(() => !window.$('slicc-app', 'slicc-prompt'));
   await page.until(() => window.model.agent.active() === 'cone-1');
   await page.until(() => window.agentRow('cone-1')?.getAttribute('aria-selected') === 'true');
+  await page.until(() => /slicc-agents > li#cone-1$/.test(window.focused()));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.match(await page.evaluate(() => window.focused()), /slicc-agents > li#cone-1$/);
   assert.equal(
     await page.evaluate(() => window.agentRow('cone-1').querySelector('.name').textContent),
     'scratchpad'
