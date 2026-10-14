@@ -11,6 +11,7 @@ import { followPage, terminalsAllowed, watchOnly } from './follow.ts';
 import { defaultFontBase, defaultVariableFont, installFonts } from './fonts.ts';
 import { deleteCone } from './freezer.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
+import { settleModels } from './models.ts';
 import { agentTitle, untitled, watchTitles } from './names.ts';
 import { networkHealth, networkIcon, networkLabel, networkStatus, remoteLight } from './network.ts';
 import { Panels } from './panel-command.ts';
@@ -386,9 +387,13 @@ export class SliccApp extends ThemedElement {
 
   protected subscribe(model: SliccModel): Array<() => void> {
     const update = () => this.requestUpdate();
+    const settle = () => settleModels(model);
     return [
       ...super.subscribe(model),
+      model.settings.on('settings', settle),
+      model.settings.on('accounts', settle),
       model.agent.on('agents', () => {
+        settle();
         this.#prune();
         update();
       }),

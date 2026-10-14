@@ -4116,6 +4116,88 @@ test('the chat header lists chat models with their provider and starts a new cha
   assert.deepEqual(page.errors, []);
 });
 
+test('the chat header refreshes its models once the first provider connects, on one row at 1280 and 420', async (t) => {
+  const page = await open(t, { providers: 'none' });
+  const viewport = (width) =>
+    page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height: 860,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await viewport(1280);
+  const header = () => {
+    const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot;
+    const head = root.querySelector('header');
+    const picker = head.querySelector('sp-picker[label=Model]');
+    const tops = [...head.children]
+      .filter(
+        (child) => child.localName !== 'swc-tooltip' && child.getBoundingClientRect().height > 0
+      )
+      .map((child) =>
+        Math.round(child.getBoundingClientRect().top + child.getBoundingClientRect().height / 2)
+      );
+    const button = head.querySelector('[data-action=new-chat]');
+    return {
+      setUp: !!head.querySelector('[data-action=set-up-model]'),
+      options: picker ? [...picker.querySelectorAll('sp-menu-item')].map((item) => item.value) : [],
+      value: picker?.value ?? null,
+      rows: Math.max(...tops) - Math.min(...tops) < 12 ? 1 : 2,
+      label: button.textContent.trim(),
+      name: button.getAttribute('accessible-label'),
+    };
+  };
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat')?.shadowRoot.querySelector('header')
+  );
+  assert.deepEqual(await page.evaluate(header), {
+    setUp: true,
+    options: [],
+    value: null,
+    rows: 1,
+    label: 'New conversation',
+    name: null,
+  });
+  await shot(page, 'models-before-provider');
+  await page.evaluate(() =>
+    window.model.settings.connect('openai', 'sk-invented-key').then(() => true)
+  );
+  await page.until(
+    () =>
+      window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat')
+        .shadowRoot.querySelector('header sp-picker[label=Model]')?.value === 'gpt-6-mini'
+  );
+  assert.deepEqual(await page.evaluate(header), {
+    setUp: false,
+    options: ['gpt-6', 'gpt-6-mini'],
+    value: 'gpt-6-mini',
+    rows: 1,
+    label: 'New conversation',
+    name: null,
+  });
+  assert.equal(await page.evaluate(() => window.model.settings.get().model), 'gpt-6-mini');
+  await shot(page, 'models-after-provider');
+  await viewport(420);
+  await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+  await page.until(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat')
+      ?.shadowRoot.querySelector('header[data-compact] [data-action=new-chat]')
+  );
+  assert.deepEqual(await page.evaluate(header), {
+    setUp: false,
+    options: ['gpt-6', 'gpt-6-mini'],
+    value: 'gpt-6-mini',
+    rows: 1,
+    label: '',
+    name: 'New conversation',
+  });
+  await shot(page, 'chat-header-420');
+  assert.deepEqual(page.errors, []);
+});
+
 test('chat stays pinned to the bottom while content grows after render', async (t) => {
   const page = await open(t);
   const result = await page.evaluate(async () => {

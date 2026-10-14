@@ -47,6 +47,7 @@ export interface DummyOptions {
   follow?: FollowScenario | 'off';
   vault?: VaultScenario | 'off';
   accounts?: 'settings' | 'vault';
+  providers?: 'connected' | 'none';
   hold?: AgentHold['reason'] | 'off';
   browser?: BrowserScenario;
   sprinkles?: 'builtin' | 'cones';
@@ -89,6 +90,7 @@ export function createDummyModel({
   follow = 'off',
   vault = 'off',
   accounts = 'settings',
+  providers = 'connected',
   hold = 'off',
   browser: scenario = 'idle',
   sprinkles = 'builtin',
@@ -127,10 +129,17 @@ export function createDummyModel({
     terminals: new DummyTerminals(fixtures.terminals, files, time),
     settings: new DummySettings(
       fixtures.defaults,
-      fixtures.models,
-      accounts === 'vault' ? vaultAccounts(fixtures.accounts) : fixtures.accounts,
+      providers === 'none' ? [...fixtures.models, ...fixtures.laterModels] : fixtures.models,
+      (accounts === 'vault' ? vaultAccounts(fixtures.accounts) : fixtures.accounts).map(
+        (account) =>
+          providers === 'none' && account.group !== 'mcp'
+            ? { ...account, status: 'disconnected' as const, identity: '' }
+            : account
+      ),
       storage,
-      time
+      time,
+      undefined,
+      providers === 'none'
     ),
     memory: new DummyMemory(extras.memories, () => [
       { id: 'global', label: 'Everyone' },
