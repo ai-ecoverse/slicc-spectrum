@@ -1,6 +1,7 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
+import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
 import '@adobe/spectrum-wc-icons/swc-icon-delete.js';
 import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import type { Memory, MemoryScope, MemoryTag, SliccModel } from '../model/types.ts';
@@ -8,8 +9,11 @@ import { ModelElement, shared } from './base.ts';
 import { confirm } from './confirm.ts';
 import { panelCss } from './files.ts';
 import { markdown } from './markdown.ts';
+import { search, searchCss } from './search.ts';
 
 export type TagFilter = MemoryTag | 'all' | 'untagged';
+
+export const everyone = '*';
 
 export function visible(
   memories: readonly Memory[],
@@ -20,10 +24,27 @@ export function visible(
   const needle = query.trim().toLowerCase();
   return memories.filter(
     (memory) =>
-      memory.scope === scope &&
+      (scope === everyone || memory.scope === scope) &&
       (tag === 'all' || (tag === 'untagged' ? memory.tag === null : memory.tag === tag)) &&
       (!needle || `${memory.title} ${memory.body} ${memory.section}`.toLowerCase().includes(needle))
   );
+}
+
+export function inScope(memories: readonly Memory[], scope: string): number {
+  return scope === everyone
+    ? memories.length
+    : memories.filter((memory) => memory.scope === scope).length;
+}
+
+export function emptyNote(total: number, filtered: boolean, scope: MemoryScope | null): string {
+  if (filtered && total) return 'No memories match.';
+  if (!scope) return 'No memories yet.';
+  if (scope.id === 'global') return 'No shared memories yet.';
+  return `No memories for ${scope.label} yet.`;
+}
+
+export function scopeLabel(scope: MemoryScope): MemoryScope {
+  return scope.id === 'global' ? { ...scope, label: 'Shared' } : scope;
 }
 
 export const scopeGroups = { cones: 'Cones', roles: 'Roles' } as const;
@@ -32,6 +53,12 @@ export const tagLabels: Record<MemoryTag, string> = {
   user: 'User',
   feedback: 'Feedback',
   project: 'Project',
+};
+
+export const tagVariants: Record<MemoryTag, string> = {
+  user: 'indigo',
+  feedback: 'purple',
+  project: 'seafoam',
 };
 
 export function sections(memories: readonly Memory[]): Array<[string, Memory[]]> {
@@ -60,7 +87,7 @@ export class SliccMemory extends ModelElement {
     super();
     this.query = '';
     this.tag = 'all';
-    this.scope = 'global';
+    this.scope = everyone;
     this.open = null;
     this.editing = null;
   }
@@ -68,54 +95,103 @@ export class SliccMemory extends ModelElement {
   static styles = [
     shared,
     panelCss,
+    searchCss,
     css`
+      :host {
+        container-type: inline-size;
+      }
       .tools {
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: var(--swc-spacing-100);
         align-items: center;
+        flex: none;
         padding: var(--swc-spacing-100);
-        border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
       }
-      sp-search {
-        flex: 1;
-        min-width: 120px;
+      .tools sp-search {
+        grid-column: 1 / -1;
+      }
+      .tools sp-picker {
+        width: 100%;
+        min-width: 0;
+      }
+      @container (min-width: 560px) {
+        .tools {
+          grid-template-columns: minmax(0, 1fr) auto auto;
+        }
+        .tools sp-search {
+          grid-column: auto;
+        }
+        .tools sp-picker {
+          width: auto;
+        }
       }
       .list {
         flex: 1;
         min-height: 0;
         overflow-y: auto;
-        padding: var(--swc-spacing-75) var(--swc-spacing-100) var(--swc-spacing-200);
+        display: flex;
+        flex-direction: column;
+        gap: var(--swc-spacing-200);
+        padding: var(--swc-spacing-50) var(--swc-spacing-100) var(--swc-spacing-200);
+      }
+      section,
+      ul {
+        display: flex;
+        flex-direction: column;
+        gap: var(--swc-spacing-50);
+        margin: 0;
+        padding: 0;
+        list-style: none;
       }
       h3 {
-        font-size: var(--swc-font-size-100);
+        margin: 0;
+        padding: var(--swc-spacing-50) var(--swc-spacing-100) 0;
+        font-size: var(--swc-font-size-75);
         font-weight: var(--swc-bold-font-weight);
-        color: var(--swc-neutral-content-color-default);
-        margin: var(--swc-spacing-200) var(--swc-spacing-75) var(--swc-spacing-75);
+        color: var(--swc-neutral-subdued-content-color-default);
       }
       .row {
         border-radius: var(--swc-corner-radius-medium-default);
-        margin: var(--swc-spacing-75) 0;
-        background: var(--swc-background-layer-1-color);
+      }
+      .row[data-open] {
+        background: var(--swc-accent-subtle-background-color-default);
       }
       .head {
         all: unset;
         box-sizing: border-box;
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: var(--swc-spacing-50) var(--swc-spacing-100);
+        grid-template-columns: auto minmax(0, 1fr);
+        column-gap: var(--swc-spacing-75);
+        row-gap: var(--swc-spacing-50);
         align-items: start;
         width: 100%;
-        padding: var(--swc-spacing-100) var(--swc-spacing-200);
+        padding: var(--swc-spacing-100);
         border-radius: var(--swc-corner-radius-medium-default);
         cursor: pointer;
       }
-      .head:hover {
+      .row:not([data-open]) .head:hover {
         background: var(--swc-gray-100);
       }
       .head:focus-visible {
         outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
         outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
+      }
+      .lead {
+        display: flex;
+        align-items: center;
+        height: 1lh;
+        line-height: var(--swc-line-height-100);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .chevron {
+        transition: transform var(--swc-animation-duration-100);
+      }
+      .row[data-open] .chevron {
+        transform: rotate(90deg);
+      }
+      .head > :not(.lead) {
+        grid-column: 2;
       }
       .title,
       .summary {
@@ -126,25 +202,23 @@ export class SliccMemory extends ModelElement {
         overflow-wrap: anywhere;
       }
       .title {
+        grid-row: 1;
         font-weight: var(--swc-bold-font-weight);
         line-height: var(--swc-line-height-100);
       }
-      .from {
-        grid-column: 1 / -1;
-        margin-top: var(--swc-spacing-50);
-        font-size: var(--swc-font-size-75);
-        color: var(--swc-neutral-subdued-content-color-default);
-      }
       .summary {
-        grid-column: 1 / -1;
         color: var(--swc-neutral-subdued-content-color-default);
         line-height: var(--swc-line-height-100);
       }
-      swc-badge {
-        justify-self: end;
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--swc-spacing-75);
+        color: var(--swc-neutral-subdued-content-color-default);
       }
       .body {
-        padding: 0 var(--swc-spacing-200) var(--swc-spacing-100);
+        padding: 0 var(--swc-spacing-100) var(--swc-spacing-50) var(--swc-spacing-400);
       }
       .body p {
         margin: var(--swc-spacing-75) 0;
@@ -152,7 +226,7 @@ export class SliccMemory extends ModelElement {
       .actions {
         display: flex;
         gap: var(--swc-spacing-75);
-        padding: 0 var(--swc-spacing-100) var(--swc-spacing-100);
+        padding: 0 var(--swc-spacing-100) var(--swc-spacing-100) var(--swc-spacing-300);
       }
       .editor {
         display: grid;
@@ -223,31 +297,46 @@ export class SliccMemory extends ModelElement {
       this.model?.memory.remove(memory.id);
   }
 
+  #scopeName(id: string): string {
+    return this.#scopes.find((item) => item.id === id)?.label ?? id;
+  }
+
+  #meta(memory: Memory): TemplateResult | typeof nothing {
+    const scope = this.scope === everyone;
+    const notes = memory.source === 'notes';
+    if (!memory.tag && !scope && !notes) return nothing;
+    return html`<span class="meta">
+      ${memory.tag ? html`<swc-badge size="s" variant=${tagVariants[memory.tag]} subtle data-tag=${memory.tag}>${tagLabels[memory.tag]}</swc-badge>` : nothing}
+      ${scope ? html`<span class="scope" data-scope=${memory.scope}>${this.#scopeName(memory.scope)}</span>` : nothing}
+      ${notes ? html`<span class="from">From MEMORY.md</span>` : nothing}
+    </span>`;
+  }
+
   #row(memory: Memory): TemplateResult {
     if (this.editing === memory.id)
-      return html`<div class="row" data-id=${memory.id}>${this.#form(memory)}</div>`;
+      return html`<li class="row" data-id=${memory.id}>${this.#form(memory)}</li>`;
     const open = this.open === memory.id;
-    return html`<div class="row" data-id=${memory.id}>
+    return html`<li class="row" data-id=${memory.id} ?data-open=${open}>
       <button class="head" aria-expanded=${open ? 'true' : 'false'} @click=${() => (this.open = open ? null : memory.id)}>
+        <span class="lead"><swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right></span>
         <span class="title">${memory.title}</span>
-        ${memory.tag ? html`<swc-badge size="s" variant="neutral" subtle>${tagLabels[memory.tag]}</swc-badge>` : nothing}
         ${open ? nothing : html`<span class="summary">${memory.body}</span>`}
-        ${memory.source === 'notes' ? html`<span class="from">From MEMORY.md</span>` : nothing}
+        ${this.#meta(memory)}
       </button>
       ${
         open
           ? html`<div class="body">${markdown(memory.body)}</div>
             <div class="actions">
-              <swc-action-button size="s" quiet @click=${() => (this.editing = memory.id)}>
+              <swc-action-button size="s" quiet data-action="edit" @click=${() => (this.editing = memory.id)}>
                 <swc-icon-edit slot="icon"></swc-icon-edit>Edit
               </swc-action-button>
-              <swc-action-button size="s" quiet @click=${() => this.#forget(memory)}>
+              <swc-action-button size="s" quiet data-action="forget" @click=${() => this.#forget(memory)}>
                 <swc-icon-delete slot="icon"></swc-icon-delete>Forget
               </swc-action-button>
             </div>`
           : nothing
       }
-    </div>`;
+    </li>`;
   }
 
   #scopes: readonly MemoryScope[] = [];
@@ -255,13 +344,16 @@ export class SliccMemory extends ModelElement {
   protected willUpdate(changed: PropertyValues): void {
     super.willUpdate(changed);
     const model = this.model;
-    this.#scopes = model?.memory.scopes?.() ?? [
-      { id: 'global', label: 'Everyone' },
-      ...(model?.agent.list() ?? [])
-        .filter((agent) => agent.kind === 'cone')
-        .map((cone) => ({ id: cone.id, label: cone.name })),
-    ];
-    if (!this.#scopes.some((item) => item.id === this.scope)) this.scope = 'global';
+    this.#scopes = (
+      model?.memory.scopes?.() ?? [
+        { id: 'global', label: 'Shared' },
+        ...(model?.agent.list() ?? [])
+          .filter((agent) => agent.kind === 'cone')
+          .map((cone) => ({ id: cone.id, label: cone.name })),
+      ]
+    ).map(scopeLabel);
+    if (this.scope !== everyone && !this.#scopes.some((item) => item.id === this.scope))
+      this.scope = everyone;
   }
 
   render(): TemplateResult {
@@ -271,12 +363,16 @@ export class SliccMemory extends ModelElement {
     const option = (item: MemoryScope) =>
       html`<sp-menu-item value=${item.id}>${item.label}</sp-menu-item>`;
     const shown = visible(all, scope, this.tag, this.query);
-    return html`<div class="bar"><span>${shown.length} of ${all.filter((memory) => memory.scope === scope).length} memories</span><span class="spacer"></span>
-        <swc-action-button size="s" quiet @click=${() => (this.editing = 'new')}><swc-icon-add slot="icon"></swc-icon-add>Remember</swc-action-button>
+    const total = inScope(all, scope);
+    const filtered = this.tag !== 'all' || this.query.trim() !== '';
+    const current = scopes.find((item) => item.id === scope) ?? null;
+    return html`<div class="bar"><span>${shown.length} of ${total} memories</span><span class="spacer"></span>
+        <swc-action-button size="s" quiet data-action="remember" @click=${() => (this.editing = 'new')}><swc-icon-add slot="icon"></swc-icon-add>Remember</swc-action-button>
       </div>
       <div class="tools">
-        <sp-search size="s" label="Search memories" placeholder="Search memories" .value=${this.query} @input=${(event: Event) => (this.query = (event.target as HTMLInputElement).value)} @submit=${(event: Event) => event.preventDefault()}></sp-search>
-        <sp-picker size="s" label="Scope" value=${scope} @change=${(event: Event) => (this.scope = (event.target as HTMLInputElement).value)}>
+        ${search({ label: 'Search memories', value: this.query, input: (value) => (this.query = value) })}
+        <sp-picker size="s" label="Scope" data-action="scope" value=${scope} @change=${(event: Event) => (this.scope = (event.target as HTMLInputElement).value)}>
+          <sp-menu-item value=${everyone}>Everyone</sp-menu-item>
           ${scopes.filter((item) => !item.group).map(option)}
           ${(['cones', 'roles'] as const).map((group) => {
             const items = scopes.filter((item) => item.group === group);
@@ -285,7 +381,7 @@ export class SliccMemory extends ModelElement {
               : nothing;
           })}
         </sp-picker>
-        <sp-picker size="s" label="Tag" value=${this.tag} @change=${(event: Event) => (this.tag = (event.target as HTMLInputElement).value as TagFilter)}>
+        <sp-picker size="s" label="Tag" data-action="tag" value=${this.tag} @change=${(event: Event) => (this.tag = (event.target as HTMLInputElement).value as TagFilter)}>
           <sp-menu-item value="all">All tags</sp-menu-item>
           <sp-menu-item value="user">User</sp-menu-item>
           <sp-menu-item value="feedback">Feedback</sp-menu-item>
@@ -294,14 +390,14 @@ export class SliccMemory extends ModelElement {
         </sp-picker>
       </div>
       <div class="list">
-        ${this.editing === 'new' ? html`<div class="row">${this.#form({ scope })}</div>` : nothing}
+        ${this.editing === 'new' ? html`<div class="row">${this.#form({ scope: scope === everyone ? 'global' : scope })}</div>` : nothing}
         ${
           shown.length
             ? sections(shown).map(
                 ([section, items]) =>
-                  html`<h3>${section}</h3>${items.map((memory) => this.#row(memory))}`
+                  html`<section><h3>${section}</h3><ul>${items.map((memory) => this.#row(memory))}</ul></section>`
               )
-            : html`<div class="note">${all.length ? 'No memories match.' : 'No memories yet.'}</div>`
+            : html`<div class="note">${emptyNote(total, filtered, current)}</div>`
         }
       </div>`;
   }

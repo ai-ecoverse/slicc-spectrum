@@ -19,7 +19,6 @@ const css = `
   --trees-focus-ring-color-override: var(--swc-focus-indicator-color);
   --trees-font-family-override: var(--swc-sans-font-family-stack);
   --trees-font-size-override: var(--swc-font-size-75);
-  --trees-search-bg-override: var(--swc-background-layer-2-color);
   --trees-git-added-color-override: var(--swc-positive-color-1000);
   --trees-git-modified-color-override: var(--swc-notice-color-1000);
   --trees-git-deleted-color-override: var(--swc-negative-color-1000);
@@ -34,6 +33,16 @@ file-tree-container {
 }
 `;
 
+function seed(event: KeyboardEvent): boolean {
+  return (
+    event.key.length === 1 &&
+    /^[\p{L}\p{N}]$/u.test(event.key) &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey
+  );
+}
+
 export class SliccFileTree extends HTMLElement {
   static loaded = FileTreeContainerLoaded;
   #tree: FileTree | null = null;
@@ -41,6 +50,7 @@ export class SliccFileTree extends HTMLElement {
   #status: readonly GitStatusEntry[] = [];
   #expanded: readonly string[] = [];
   #mount: HTMLElement | null = null;
+  #query = '';
 
   get paths(): readonly string[] {
     return this.#paths;
@@ -50,6 +60,16 @@ export class SliccFileTree extends HTMLElement {
     const expanded = this.#paths.length > 0 ? this.#expandedNow() : this.#expanded;
     this.#paths = value;
     this.#tree?.resetPaths(value, { initialExpandedPaths: expanded });
+    if (this.#query) this.#tree?.setSearch(this.#query);
+  }
+
+  get query(): string {
+    return this.#query;
+  }
+
+  set query(value: string) {
+    this.#query = value;
+    this.#tree?.setSearch(value || null);
   }
 
   #expandedNow(): string[] {
@@ -97,8 +117,10 @@ export class SliccFileTree extends HTMLElement {
       gitStatus: this.#status,
       initialExpandedPaths: this.#expanded,
       flattenEmptyDirectories: true,
-      search: true,
+      search: false,
+      initialSearchQuery: this.#query || null,
       density: 'compact',
+      icons: { set: 'complete', colored: false },
       onSelectionChange: (paths) => this.#selected(paths),
     });
     this.#tree.render({ containerWrapper: this.#mount });
@@ -123,7 +145,19 @@ export class SliccFileTree extends HTMLElement {
   }
 
   #keydown(event: KeyboardEvent): void {
-    if (event.key !== 'Enter' || event.defaultPrevented) return;
+    if (event.defaultPrevented) return;
+    if (seed(event)) {
+      event.preventDefault();
+      this.dispatchEvent(
+        new CustomEvent('tree-search', {
+          detail: { key: event.key },
+          bubbles: true,
+          composed: true,
+        })
+      );
+      return;
+    }
+    if (event.key !== 'Enter') return;
     this.#open(this.#tree?.getFocusedPath());
   }
 

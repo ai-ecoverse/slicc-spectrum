@@ -978,6 +978,50 @@ test('a file opens from the tree in a tab, by click and by keyboard', async (t) 
   assert.deepEqual(page.errors, []);
 });
 
+test('the files search filters the tree, and a letter typed in the tree starts a search', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.$('slicc-app', '.rail.left [data-surface=files]').click());
+  await page.until(() => /slicc-files/.test(window.focused()));
+  await page.until(() => !!window.row('workspace/harbor/README.md'));
+  assert.equal(
+    await page.evaluate(() => window.filesPart('.find sp-search[data-action=search]').label),
+    'Search files'
+  );
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-files', 'slicc-file-tree')
+      .reveal('workspace/harbor/README.md')
+  );
+  await page.press('u');
+  await page.until(() => /slicc-files > sp-search/.test(window.focused()));
+  await page.type('nits');
+  await page.until(() => window.filesPart('sp-search').value === 'units');
+  await page.until(
+    () =>
+      !!window.row('workspace/harbor/src/lib/units.ts') && !window.row('workspace/harbor/README.md')
+  );
+  await shot(page, 'files-search');
+  await page.press('ArrowDown');
+  await page.until(() => /slicc-file-tree/.test(window.focused()));
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-files', 'slicc-file-tree')
+      .reveal('workspace/harbor/src/lib/units.ts')
+  );
+  await page.press('Enter');
+  await page.until(() =>
+    window.code('file:/workspace/harbor/src/lib/units.ts').includes('toFahrenheit')
+  );
+  await page.evaluate(() => window.app.show('files'));
+  await page.evaluate(() => {
+    const field = window.filesPart('sp-search');
+    field.value = '';
+    field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+  });
+  await page.until(() => !!window.row('workspace/harbor/README.md'));
+  assert.deepEqual(page.errors, []);
+});
+
 test('a diff opens from the changes list, switches layout, and accepting or reverting clears it', async (t) => {
   const page = await open(t);
   const id = 'diff:/workspace/harbor/src/lib/cache.ts';
@@ -2593,6 +2637,52 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
   );
   await shot(page, 'memory-light');
 
+  const memory = (selector) =>
+    page.evaluate(
+      (selector) =>
+        [
+          ...window
+            .$('slicc-app', 'slicc-dock')
+            .content('memory')
+            .shadowRoot.querySelectorAll(selector),
+        ].map((node) => node.dataset.scope ?? node.textContent.trim()),
+      selector
+    );
+  assert.deepEqual(await memory('.bar > span:first-child'), ['10 of 10 memories']);
+  assert.deepEqual(
+    [...new Set(await memory('.row .scope'))],
+    ['global', 'cone-harbor', 'cone-release', 'role:reviewer']
+  );
+  const scope = (value) =>
+    page.evaluate((value) => {
+      const picker = window
+        .$('slicc-app', 'slicc-dock')
+        .content('memory')
+        .shadowRoot.querySelector('.tools sp-picker[label=Scope]');
+      picker.value = value;
+      picker.dispatchEvent(new Event('change'));
+    }, value);
+  await scope('global');
+  await page.until(() =>
+    /5 of 5 memories/.test(
+      window.$('slicc-app', 'slicc-dock').content('memory').shadowRoot.querySelector('.bar')
+        .textContent
+    )
+  );
+  assert.deepEqual(await memory('.row .scope'), []);
+  await scope('cone-sliccy');
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock').content('memory').shadowRoot.querySelector('.note')
+  );
+  assert.deepEqual(await memory('.note'), ['No memories for sliccy yet.']);
+  await scope('*');
+  await page.until(() =>
+    /10 of 10 memories/.test(
+      window.$('slicc-app', 'slicc-dock').content('memory').shadowRoot.querySelector('.bar')
+        .textContent
+    )
+  );
+
   await page.evaluate(() => {
     window.memoryPart = (selector) =>
       window.$('slicc-app', 'slicc-dock').content('memory').shadowRoot.querySelector(selector);
@@ -2611,7 +2701,8 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
   await page.evaluate(() =>
     window.memoryPart('.tools sp-picker[label=Scope] sp-menu-item[value="role:reviewer"]').click()
   );
-  await page.until(() => !!window.memoryPart('.row[data-id=mem-10] .from'));
+  await page.until(() => /2 of 2 memories/.test(window.memoryPart('.bar').textContent));
+  assert.ok(await page.evaluate(() => !!window.memoryPart('.row[data-id=mem-10] .from')));
   assert.equal(
     await page.evaluate(() => window.memoryPart('.tools sp-picker[label=Scope]').value),
     'role:reviewer'
