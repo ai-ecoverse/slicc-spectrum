@@ -438,7 +438,7 @@ export const agents: Agent[] = [
     parentId: null,
     status: 'idle',
     model: 'claude-sonnet-5-5',
-    contextFill: 0.09,
+    contextFill: 0.7,
     unread: 1,
   },
   {
@@ -448,7 +448,7 @@ export const agents: Agent[] = [
     parentId: null,
     status: 'waiting',
     model: 'claude-sonnet-5-5',
-    contextFill: 0.84,
+    contextFill: 0.95,
     unread: 2,
   },
   {
