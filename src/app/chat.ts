@@ -161,7 +161,7 @@ export class SliccChat extends ThemedElement {
       }
       header {
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         align-items: center;
         gap: var(--swc-spacing-50) var(--swc-spacing-100);
         padding: var(--swc-spacing-75) var(--swc-spacing-200);
@@ -173,19 +173,24 @@ export class SliccChat extends ThemedElement {
       }
       header sp-picker {
         --mod-picker-spacing-label-to-picker-quiet: calc(-1 * var(--swc-border-width-100));
+        flex: none;
         min-width: 0;
         width: auto;
+      }
+      header sp-picker[label='Model'] {
+        flex: 0 1 auto;
+      }
+      header swc-status-light,
+      header swc-action-button {
+        flex: none;
       }
       header swc-status-light {
         align-self: center;
       }
       header swc-meter {
         flex: 0 1 calc(var(--swc-spacing-400) * 6);
-        min-width: calc(var(--swc-spacing-400) * 4);
+        min-width: calc(var(--swc-spacing-400) * 4.5);
         margin-inline-start: auto;
-      }
-      header[data-compact] swc-meter {
-        min-width: calc(var(--swc-spacing-400) * 3);
       }
       header .frozen,
       header .model {

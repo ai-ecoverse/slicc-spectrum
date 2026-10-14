@@ -388,6 +388,7 @@ export class SliccApp extends ThemedElement {
   protected subscribe(model: SliccModel): Array<() => void> {
     const update = () => this.requestUpdate();
     const settle = () => settleModels(model);
+    queueMicrotask(settle);
     return [
       ...super.subscribe(model),
       model.settings.on('settings', settle),
