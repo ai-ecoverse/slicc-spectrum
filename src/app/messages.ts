@@ -67,8 +67,15 @@ export interface Handlers {
   open(path: string): void;
   show(surfaceId: string): void;
   suggest(text: string): void;
-  owners?: ReadonlyMap<string, string>;
+  owners?: ReadonlyMap<string, Owner>;
 }
+
+export interface Owner {
+  id?: string;
+  at: number;
+}
+
+export type RunContext = Pick<Handlers, 'color' | 'model' | 'owners'>;
 
 export const lickLabels: Record<LickChannel, [string, string]> = {
   webhook: ['Webhook', 'informative'],
@@ -380,7 +387,7 @@ function notes(list: readonly ToolNote[]): TemplateResult {
 export interface CardOptions {
   open?: boolean;
   run?: boolean;
-  owner?: string;
+  owner?: Owner;
   model?: SliccModel | null;
   toggle?: (event: Event) => void;
 }
@@ -391,7 +398,7 @@ export function tool(
   options: CardOptions = {}
 ): TemplateResult {
   const kind = toolKind(call.name);
-  return html`<details class=${options.run ? 'tool run' : 'tool'} id=${`run-${call.id}`} data-id=${options.owner ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id} ?open=${!!options.open} @toggle=${options.toggle ?? nothing}>
+  return html`<details class=${options.run ? 'tool run' : 'tool'} id=${`run-${call.id}`} data-id=${options.owner?.id ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id} ?open=${!!options.open} @toggle=${options.toggle ?? nothing}>
     <summary aria-label=${`${call.title}, ${statusLabel(call.status)}`}>
       <span class="head">
         <swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right>
@@ -408,13 +415,14 @@ export function tool(
       ${call.output ? html`<pre class="output">${call.output}</pre>` : nothing}
       ${call.notes?.length ? notes(call.notes) : nothing}
       ${call.image ? html`<img class="shot" src=${call.image} alt=${call.title} />` : nothing}
+      ${options.owner ? html`<span class="ran">Ran at ${when(options.owner.at)}</span>` : nothing}
     </div>
   </details>`;
 }
 
 export const clusterSize = 3;
 
-function runs(calls: ToolCall[], handlers: Handlers): TemplateResult[] {
+function runs(calls: ToolCall[], handlers: RunContext): TemplateResult[] {
   const groups = calls.length >= clusterSize ? [calls] : calls.map((call) => [call]);
   return groups.map(
     (group) =>
@@ -521,18 +529,12 @@ function delegation(
   return html`<div class="delegation" data-kind=${entry.kind}><span aria-hidden="true">↳</span><strong>${delegationVerbs[entry.kind]}</strong>${target}<span>${entry.text}</span></div>`;
 }
 
-function part(
-  entry: MessagePart,
-  handlers: Handlers,
-  showThinking: boolean
-): TemplateResult | typeof nothing {
+function part(entry: Exclude<MessagePart, { type: 'tool' }>, handlers: Handlers): TemplateResult {
   switch (entry.type) {
     case 'text':
       return html`<div class="text">${markdown(entry.text)}</div>`;
     case 'thinking':
-      return showThinking ? html`<div class="thinking">${entry.text}</div>` : nothing;
-    case 'tool':
-      return tool(entry.tool, handlers.color);
+      return html`<div class="thinking">${entry.text}</div>`;
     case 'media':
       return media(entry.items);
     case 'card':
@@ -553,7 +555,7 @@ function part(
     case 'sprinkle':
       return html`<slicc-sprinkle inline ?readonly=${handlers.readOnly} .model=${handlers.model} sprinkle=${entry.sprinkle}></slicc-sprinkle>`;
     case 'link':
-      return host(entry.url) ? nothing : html`<div class="link-text">${entry.title}</div>`;
+      return html`<div class="link-text">${entry.title}</div>`;
     default:
       return html`<div class="error-card" role="alert">
         <div class="error-text"><span class="lead">${entry.message}</span>${entry.detail ? html`<span class="detail">${entry.detail}</span>` : nothing}</div>
@@ -584,7 +586,7 @@ export function parts(
     if (entry.type === 'tool') run.push(entry.tool);
     else if (!silent(entry, showThinking)) {
       flush();
-      out.push(part(entry, handlers, showThinking));
+      out.push(part(entry, handlers));
     }
   }
   run.push(...extra);
@@ -672,7 +674,10 @@ function sources(entries: MessagePart[]): TemplateResult | typeof nothing {
   </swc-message-sources>`;
 }
 
-function suggestions(text: string | null, handlers: Handlers): TemplateResult | typeof nothing {
+function suggestions(
+  text: string | null,
+  handlers: Pick<Handlers, 'suggest'>
+): TemplateResult | typeof nothing {
   if (!text) return nothing;
   return html`<swc-suggestion-group slot="suggestions" accessible-label="Suggested follow-up" @swc-suggestion=${() => handlers.suggest(text)}>
     <swc-suggestion-item data-action="suggestion">${text}</swc-suggestion-item>
@@ -719,14 +724,15 @@ export function assistant(
 
 export function toolMessage(
   message: ToolMessage,
-  color: 'light' | 'dark' = 'light',
+  context: RunContext & Partial<Pick<Handlers, 'suggest'>> = { color: 'light', model: null },
   extra: ToolCall[] = [],
-  model: SliccModel | null = null,
-  owners: ReadonlyMap<string, string> | null = null
+  suggestion: string | null = null
 ): TemplateResult {
-  const calls = [message.tool, ...extra];
+  const owners = new Map(context.owners);
+  owners.set(message.tool.id, { at: message.createdAt });
+  const shown = runs([message.tool, ...extra], { ...context, owners });
   return html`<swc-conversation-turn type="system" class="message tool-message" accessible-label=${`Tool ${message.tool.name}`} data-id=${message.id}>
-    ${runs(calls, { color, model, owners: owners ?? undefined } as Handlers)}
+    ${suggestion && context.suggest ? html`<swc-system-message>${shown}${suggestions(suggestion, context as Pick<Handlers, 'suggest'>)}</swc-system-message>` : shown}
   </swc-conversation-turn>`;
 }
 
@@ -1284,6 +1290,10 @@ export const messageCss = css`
   }
   .call:empty {
     display: none;
+  }
+  .call > .ran {
+    font-size: var(--swc-font-size-75);
+    color: var(--swc-neutral-subdued-content-color-default);
   }
   .call > pre,
   .call > slicc-diff-view {

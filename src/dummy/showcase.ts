@@ -521,7 +521,7 @@ function runs(): Message[] {
           tool(
             'k-r7',
             'bash',
-            'Run the units tests',
+            'Run the unit tests',
             'npx vitest run src/lib/units.test.ts',
             'FAIL src/lib/units.test.ts > rounds half to even\nExpected 22, received 21',
             {

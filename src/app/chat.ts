@@ -26,6 +26,7 @@ import {
   type Handlers,
   lick,
   messageCss,
+  type Owner,
   system,
   toolMessage,
   toolOnly,
@@ -442,7 +443,7 @@ export class SliccChat extends ThemedElement {
     suggestion: string | null,
     changed: boolean,
     extra: ToolCall[],
-    owners: ReadonlyMap<string, string>
+    owners: ReadonlyMap<string, Owner>
   ): TemplateResult {
     const model = this.model as SliccModel;
     const handlers = { ...this.#handlers, owners };
@@ -465,7 +466,7 @@ export class SliccChat extends ThemedElement {
       case 'user':
         return user(message);
       case 'tool':
-        return toolMessage(message, this.#handlers.color, extra, model, owners);
+        return toolMessage(message, handlers, extra, suggestion);
       case 'system':
         return system(message, this.#handlers);
       default:
@@ -488,14 +489,14 @@ export class SliccChat extends ThemedElement {
         : null;
     const showThinking = model.settings.get().showThinking;
     const extra = new Map<string, ToolCall[]>();
-    const owners = new Map<string, string>();
+    const owners = new Map<string, Owner>();
     const into = new Map<string, string>();
     let anchor: Message | null = null;
     for (const message of messages) {
       const calls = toolOnly(message, showThinking);
       if (anchor && calls && day(message.createdAt) === day(anchor.createdAt)) {
         extra.set(anchor.id, [...(extra.get(anchor.id) ?? []), ...calls]);
-        owners.set(calls[0].id, message.id);
+        owners.set(calls[0].id, { id: message.id, at: message.createdAt });
         into.set(message.id, anchor.id);
         continue;
       }

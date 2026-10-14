@@ -115,6 +115,8 @@ window.deep = (selector) => {
 
 window.settingsPart = (...path) => window.$('slicc-app', 'slicc-dock', 'slicc-settings', ...path);
 
+window.chatPart = (...path) => window.$('slicc-app', 'slicc-dock', 'slicc-chat', ...path);
+
 window.filesPart = (...path) => window.$('slicc-app', 'slicc-dock', 'slicc-files', ...path);
 
 window.focused = () => {

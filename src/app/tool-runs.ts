@@ -1,6 +1,6 @@
 import { html, LitElement, type TemplateResult } from 'lit';
 import type { SliccModel, ToolCall } from '../model/types.ts';
-import { chip, overall, state, statusLabel, tool, toolSummary } from './messages.ts';
+import { chip, type Owner, overall, state, statusLabel, tool, toolSummary } from './messages.ts';
 
 const opened = new Map<string, string>();
 
@@ -14,7 +14,7 @@ export class SliccToolRuns extends LitElement {
   declare calls: ToolCall[];
   declare color: 'light' | 'dark';
   declare model: SliccModel | null;
-  declare owners: ReadonlyMap<string, string> | null;
+  declare owners: ReadonlyMap<string, Owner> | null;
 
   constructor() {
     super();
