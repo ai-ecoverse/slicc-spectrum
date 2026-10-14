@@ -433,18 +433,23 @@ export class SliccChat extends ThemedElement {
     );
   }
 
-  #message(message: Message, agent: Agent, suggestion: string | null): TemplateResult {
+  #message(
+    message: Message,
+    agent: Agent,
+    suggestion: string | null,
+    changed: boolean
+  ): TemplateResult {
     const model = this.model as SliccModel;
     switch (message.role) {
       case 'assistant': {
-        const label =
-          model.settings.models().find((option) => option.id === (message.model ?? ''))?.label ??
-          message.model ??
-          '';
+        const label = changed
+          ? (model.settings.models().find((option) => option.id === message.model)?.label ??
+            message.model)
+          : '';
         return assistant(
           message,
           agent.name,
-          label,
+          label as string,
           this.#handlers,
           model.settings.get().showThinking,
           suggestion
@@ -464,6 +469,7 @@ export class SliccChat extends ThemedElement {
   #items(messages: readonly Message[], agent: Agent): Array<[string, TemplateResult]> {
     const out: Array<[string, TemplateResult]> = [];
     let previous = '';
+    let shown: string | undefined;
     const model = this.model as SliccModel;
     const last = messages.at(-1);
     const suggestion =
@@ -484,7 +490,13 @@ export class SliccChat extends ThemedElement {
         ]);
         previous = label;
       }
-      out.push([message.id, this.#message(message, agent, message === last ? suggestion : null)]);
+      const next = message.role === 'assistant' ? message.model : undefined;
+      const changed = !!next && next !== shown;
+      if (changed) shown = next;
+      out.push([
+        message.id,
+        this.#message(message, agent, message === last ? suggestion : null, changed),
+      ]);
     }
     return out;
   }
