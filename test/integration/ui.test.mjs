@@ -2138,14 +2138,19 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
       window.model.agent.busy('cone-sliccy') === false &&
       window.model.agent.queue('cone-sliccy').length === 0
   );
-  const tags = await page.evaluate(() =>
-    [
+  const delivered = await page.evaluate(() => {
+    const turns = [
       ...window
         .$('slicc-app', 'slicc-dock', 'slicc-chat')
-        .shadowRoot.querySelectorAll('.message.user[data-delivered] .tag'),
-    ].map((tag) => tag.textContent)
-  );
-  assert.deepEqual([...new Set(tags)].sort(), ['Follow-up', 'Steered']);
+        .shadowRoot.querySelectorAll('.message.user[data-origin=user]'),
+    ];
+    return {
+      kinds: [...new Set(turns.map((turn) => turn.dataset.delivered))].sort(),
+      labels: turns.filter((turn) => turn.querySelector('.who, .tag')).length,
+      times: turns.every((turn) => turn.querySelector('.meta time.when')),
+    };
+  });
+  assert.deepEqual(delivered, { kinds: ['follow-up', 'run', 'steer'], labels: 0, times: true });
   await shot(page, 'composer-delivered');
 
   await page.press('ArrowUp');

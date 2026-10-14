@@ -377,7 +377,7 @@ function opening(): Message[] {
       role: 'assistant',
       status: 'done',
       createdAt: at(1),
-      model: 'claude-opus-5-5',
+      model: 'claude-sonnet-5-5',
       usage: { input: 18_204, output: 912, cost: 0.31 },
       parts: [
         {
@@ -393,6 +393,7 @@ function opening(): Message[] {
       role: 'assistant',
       status: 'done',
       createdAt: at(5),
+      model: 'claude-sonnet-5-5',
       parts: [
         {
           type: 'text',
@@ -433,6 +434,7 @@ function opening(): Message[] {
       role: 'assistant',
       status: 'done',
       createdAt: at(9),
+      model: 'claude-sonnet-5-5',
       parts: [
         { type: 'text', text: 'Every tool from today’s run, in order:' },
         ...toolShapes.map((call) => ({ type: 'tool' as const, tool: call })),
@@ -460,6 +462,7 @@ function work(): Message[] {
       role: 'assistant',
       status: 'done',
       createdAt: at(14),
+      model: 'claude-sonnet-5-5',
       parts: [
         { type: 'text', text: 'Here is where things stand.' },
         {
@@ -554,6 +557,7 @@ function work(): Message[] {
       role: 'assistant',
       status: 'done',
       createdAt: at(18),
+      model: 'claude-sonnet-5-5',
       parts: [
         { type: 'text', text: 'Three decisions from earlier:' },
         {
@@ -639,6 +643,7 @@ function events(): Message[] {
       role: 'assistant',
       status: 'stopped',
       createdAt: at(1470),
+      model: 'claude-haiku-4-5',
       parts: [{ type: 'text', text: 'Stopping the staging deploy and leaving' }],
     },
     {
@@ -653,6 +658,7 @@ function events(): Message[] {
       role: 'assistant',
       status: 'error',
       createdAt: at(1475),
+      model: 'claude-haiku-4-5',
       parts: [
         {
           type: 'thinking',
