@@ -15,6 +15,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-code.js';
 import '@adobe/spectrum-wc-icons/swc-icon-copy.js';
 import '@adobe/spectrum-wc-icons/swc-icon-cursor-click.js';
 import '@adobe/spectrum-wc-icons/swc-icon-globe-grid.js';
+import '@adobe/spectrum-wc-icons/swc-icon-hand.js';
 import '@adobe/spectrum-wc-icons/swc-icon-keyboard.js';
 import '@adobe/spectrum-wc-icons/swc-icon-link.js';
 import '@adobe/spectrum-wc-icons/swc-icon-open-in.js';
@@ -123,7 +124,7 @@ const icons: Record<BrowserActionKind, TemplateResult> = {
   fill: html`<swc-icon-text size="s"></swc-icon-text>`,
   type: html`<swc-icon-text size="s"></swc-icon-text>`,
   press: html`<swc-icon-keyboard size="s"></swc-icon-keyboard>`,
-  scroll: html`<swc-icon-chevron-down size="s"></swc-icon-chevron-down>`,
+  scroll: html`<swc-icon-hand size="s"></swc-icon-hand>`,
   request: html`<swc-icon-globe-grid size="s"></swc-icon-globe-grid>`,
 };
 

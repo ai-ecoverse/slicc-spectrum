@@ -8,6 +8,7 @@ import { css, html, nothing, type TemplateResult } from 'lit';
 import type { GitStatusEntry } from '../components/file-tree.ts';
 import type { Change, FileEntry, FilePort, SliccModel } from '../model/types.ts';
 import { changesOf, ModelElement, shared, ThemedElement } from './base.ts';
+import { search, searchCss } from './search.ts';
 
 export function relative(path: string): string {
   return path.replace(/^\//, '');
@@ -164,6 +165,8 @@ export class SliccFiles extends ModelElement {
     waiting: { state: true },
     inserting: { state: true },
     error: { state: true },
+    query: { state: true },
+    unmatched: { state: true },
   };
   declare count: number;
   declare mounted: readonly string[];
@@ -173,6 +176,8 @@ export class SliccFiles extends ModelElement {
   declare waiting: readonly string[];
   declare inserting: ReadonlySet<string>;
   declare error: string;
+  declare query: string;
+  declare unmatched: boolean;
   #entries: readonly FileEntry[] = [];
   #pending = false;
   #reveal: string | null = null;
@@ -187,12 +192,15 @@ export class SliccFiles extends ModelElement {
     this.waiting = [];
     this.inserting = new Set();
     this.error = '';
+    this.query = '';
+    this.unmatched = false;
   }
 
   static styles = [
     shared,
     panelCss,
     errorCss,
+    searchCss,
     css`
       :host {
         container-type: inline-size;
@@ -200,6 +208,11 @@ export class SliccFiles extends ModelElement {
       slicc-file-tree {
         flex: 1;
         min-height: 0;
+      }
+      .find {
+        display: flex;
+        flex: none;
+        padding: var(--swc-spacing-100);
       }
       .total {
         min-width: 0;
@@ -313,6 +326,7 @@ export class SliccFiles extends ModelElement {
         paths: readonly string[];
         gitStatus: readonly GitStatusEntry[];
         expanded: readonly string[];
+        query: string;
         tree: FileTree | null;
         reveal(path: string, focus?: boolean): void;
       })
@@ -402,6 +416,34 @@ export class SliccFiles extends ModelElement {
         ejecting.delete(path);
         this.ejecting = ejecting;
       });
+  }
+
+  #search(query: string): void {
+    this.query = query;
+    const tree = this.#tree();
+    if (tree) tree.query = query;
+  }
+
+  #seed(event: CustomEvent<{ key: string }>): void {
+    event.stopPropagation();
+    this.#search(this.query + event.detail.key);
+    this.focusOn('sp-search');
+  }
+
+  #matches(event: CustomEvent<{ empty: boolean }>): void {
+    event.stopPropagation();
+    this.unmatched = event.detail.empty;
+  }
+
+  #closed(event: Event): void {
+    event.stopPropagation();
+    this.query = '';
+  }
+
+  #find(event: KeyboardEvent): void {
+    if (event.key !== 'ArrowDown') return;
+    event.preventDefault();
+    this.#tree()?.focus();
   }
 
   #open(event: CustomEvent<{ path: string }>): void {
@@ -500,7 +542,19 @@ export class SliccFiles extends ModelElement {
       }</div>
       ${this.#waiting(files)}
       ${this.#strip(files)}
-      <slicc-file-tree @file-open=${this.#open}></slicc-file-tree>`;
+      <div class="find">${search({
+        label: 'Search files',
+        value: this.query,
+        input: (value) => this.#search(value),
+        keydown: (event) => this.#find(event),
+      })}</div>
+      ${this.unmatched ? html`<div class="note" role="status" data-empty>No files match.</div>` : nothing}
+      <slicc-file-tree
+        @file-open=${this.#open}
+        @tree-search=${this.#seed}
+        @tree-matches=${this.#matches}
+        @tree-search-close=${this.#closed}
+      ></slicc-file-tree>`;
   }
 }
 
