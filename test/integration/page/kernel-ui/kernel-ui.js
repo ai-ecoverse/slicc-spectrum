@@ -45,7 +45,7 @@ const open = { files: ['tablet', 'desktop'], terminal: ['phone', 'tablet', 'desk
 window.boot = async () => {
   await install();
   const root = await navigator.storage.getDirectory();
-  const kernel = await createKernel({ root });
+  const kernel = await createKernel({ root, users: 'off' });
   await kernel.users.add({ name: 'slicc', home: '/home' });
   const model = createKernelModel({
     kernel,
