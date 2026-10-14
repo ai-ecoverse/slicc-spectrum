@@ -1,18 +1,50 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
+import '@adobe/spectrum-wc-icons/swc-icon-add.js';
 import '@adobe/spectrum-wc-icons/swc-icon-close.js';
 import '@adobe/spectrum-wc-icons/swc-icon-delete.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Agent, SliccModel } from '../model/types.ts';
 import { ModelElement, percent, shared, statusLabel, statusLight } from './base.ts';
-import { confirm } from './confirm.ts';
+import { confirm, prompt } from './confirm.ts';
 import { watchOnly } from './follow.ts';
 import { deleteCone } from './freezer.ts';
+import { meterVariant } from './monitor.ts';
 import { agentTitle, coneLabel, untitled, watchTitles } from './names.ts';
 
 export function ordered(agents: readonly Agent[]): Agent[] {
   const cones = agents.filter((agent) => agent.kind === 'cone');
   return cones.flatMap((cone) => [cone, ...agents.filter((agent) => agent.parentId === cone.id)]);
+}
+
+export function creatable(model: SliccModel | null | undefined): boolean {
+  return Boolean(model?.agent.createCone) && !watchOnly(model);
+}
+
+export async function createCone(
+  model: SliccModel,
+  trigger: HTMLElement
+): Promise<Agent | undefined> {
+  const port = model.agent;
+  const create = port.createCone?.bind(port);
+  if (!create) return undefined;
+  let created: Agent | undefined;
+  await prompt({
+    title: 'New cone',
+    label: 'Name',
+    action: 'Create',
+    trigger,
+    submit: async (name) => {
+      if (watchOnly(model)) return;
+      created = await create(name);
+    },
+  });
+  if (created) port.select(created.id);
+  return created;
+}
+
+export function fillShown(fill: number): boolean {
+  return fill >= 0.5;
 }
 
 export class SliccAgents extends ModelElement {
@@ -34,6 +66,10 @@ export class SliccAgents extends ModelElement {
       background: var(--swc-background-layer-1-color);
       color: var(--swc-neutral-content-color-default);
       font-size: var(--swc-font-size-100);
+    }
+    .actions {
+      display: flex;
+      padding: var(--swc-spacing-75) var(--swc-spacing-100) 0;
     }
     ul {
       list-style: none;
@@ -96,6 +132,14 @@ export class SliccAgents extends ModelElement {
       color: var(--swc-neutral-subdued-content-color-default);
       min-width: 4ch;
       text-align: end;
+    }
+    .fill[data-variant='notice'] {
+      color: var(--swc-notice-color-1000);
+      font-weight: var(--swc-bold-font-weight);
+    }
+    .fill[data-variant='negative'] {
+      color: var(--swc-negative-color-1000);
+      font-weight: var(--swc-bold-font-weight);
     }
     swc-status-light {
       grid-area: status;
@@ -272,8 +316,9 @@ export class SliccAgents extends ModelElement {
     const error = this.errors[agent.id];
     const model = this.model as SliccModel;
     const title = agent.kind === 'cone' ? agentTitle(model, agent) : null;
+    const unread = selected ? 0 : agent.unread;
     const label = `${coneLabel(model, agent)}: ${statusLabel[agent.status]}, ${percent(agent.contextFill)} context${
-      agent.unread ? `, ${agent.unread} unread` : ''
+      unread ? `, ${unread} unread` : ''
     }${error ? `. ${error}` : ''}`;
     return html`<li
       role="option"
@@ -289,11 +334,15 @@ export class SliccAgents extends ModelElement {
       <span class="name">${agent.name}</span>
       ${title === null ? nothing : html`<span class="title">${title || untitled}</span>`}
       ${
-        agent.unread
-          ? html`<swc-badge class="unread" size="s" variant="accent">${agent.unread}</swc-badge>`
+        unread
+          ? html`<swc-badge class="unread" size="s" variant="accent">${unread}</swc-badge>`
           : nothing
       }
-      <span class="fill">${percent(agent.contextFill)}</span>
+      ${
+        fillShown(agent.contextFill)
+          ? html`<span class="fill" data-variant=${meterVariant(agent.contextFill)}>${percent(agent.contextFill)}</span>`
+          : nothing
+      }
       ${statusLight(agent.status)}
       ${this.#dropButton(agent)}
       ${this.#deleteButton(agent)}
@@ -301,11 +350,26 @@ export class SliccAgents extends ModelElement {
     </li>`;
   }
 
+  async #newCone(trigger: HTMLElement): Promise<void> {
+    if (!(await createCone(this.model as SliccModel, trigger))) return;
+    await this.updateComplete;
+    this.focus();
+  }
+
+  #actions(): TemplateResult | typeof nothing {
+    if (!creatable(this.model)) return nothing;
+    return html`<div class="actions">
+      <swc-action-button size="s" quiet data-action="new-cone" @click=${(event: Event) => void this.#newCone(event.currentTarget as HTMLElement)}>
+        <swc-icon-add slot="icon"></swc-icon-add>New cone
+      </swc-action-button>
+    </div>`;
+  }
+
   render(): TemplateResult {
     const agents = ordered(this.model?.agent.list() ?? []);
     const active = this.model?.agent.active() ?? '';
     const errors = Object.values(this.errors);
-    return html`<ul role="listbox" aria-label="Cones and scoops" @keydown=${this.#keydown}>
+    return html`${this.#actions()}<ul role="listbox" aria-label="Cones and scoops" @keydown=${this.#keydown}>
         ${agents.map((agent) => this.#row(agent, active))}
       </ul>
       <div class="sr" role="status">${errors.at(-1) ?? ''}</div>`;
