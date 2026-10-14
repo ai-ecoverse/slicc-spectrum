@@ -14,8 +14,6 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-cancel.js';
 import '@adobe/spectrum-wc-icons/swc-icon-checkmark.js';
-import '@adobe/spectrum-wc-icons/swc-icon-checkmark-circle.js';
-import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
 import '@adobe/spectrum-wc-icons/swc-icon-clock-pending.js';
 import '@adobe/spectrum-wc-icons/swc-icon-code.js';
 import '@adobe/spectrum-wc-icons/swc-icon-data.js';
@@ -68,6 +66,7 @@ export interface Handlers {
   show(surfaceId: string): void;
   suggest(text: string): void;
   owners?: ReadonlyMap<string, Owner>;
+  agentId?: string;
 }
 
 export interface Owner {
@@ -75,7 +74,7 @@ export interface Owner {
   at: number;
 }
 
-export type RunContext = Pick<Handlers, 'color' | 'model' | 'owners'>;
+export type RunContext = Pick<Handlers, 'color' | 'model' | 'owners' | 'agentId'>;
 
 export const lickLabels: Record<LickChannel, [string, string]> = {
   webhook: ['Webhook', 'informative'],
@@ -97,20 +96,11 @@ export const lickLabels: Record<LickChannel, [string, string]> = {
   'sudo-request': ['Permission', 'notice'],
 };
 
-const toolStates: Record<ToolStatus, [string, TemplateResult]> = {
-  running: [
-    'Running',
-    html`<swc-progress-circle size="s" label="Running" aria-hidden="true"></swc-progress-circle>`,
-  ],
-  done: [
-    'Done',
-    html`<swc-icon-checkmark-circle size="s" aria-hidden="true"></swc-icon-checkmark-circle>`,
-  ],
-  error: [
-    'Failed',
-    html`<swc-icon-alert-diamond size="s" aria-hidden="true"></swc-icon-alert-diamond>`,
-  ],
-  cancelled: ['Cancelled', html`<swc-icon-cancel size="s" aria-hidden="true"></swc-icon-cancel>`],
+const toolStates: Record<ToolStatus, string> = {
+  running: 'Running',
+  done: 'Done',
+  error: 'Failed',
+  cancelled: 'Cancelled',
 };
 
 const stepStates: Record<ToolStatus, string> = {
@@ -216,12 +206,8 @@ export function toolSummary(calls: ToolCall[]): string {
     .join(', ');
 }
 
-export function state(status: ToolStatus, label = toolStates[status][0]): TemplateResult {
-  return html`<span class="state" data-state=${status}>${toolStates[status][1]}<span>${label}</span></span>`;
-}
-
 export function statusLabel(status: ToolStatus): string {
-  return toolStates[status][0];
+  return toolStates[status];
 }
 
 export function overall(calls: readonly ToolCall[]): [ToolStatus, string] {
@@ -398,25 +384,24 @@ export function tool(
   options: CardOptions = {}
 ): TemplateResult {
   const kind = toolKind(call.name);
-  return html`<details class=${options.run ? 'tool run' : 'tool'} id=${`run-${call.id}`} data-id=${options.owner?.id ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id} ?open=${!!options.open} @toggle=${options.toggle ?? nothing}>
-    <summary aria-label=${`${call.title}, ${statusLabel(call.status)}`}>
-      <span class="head">
-        <swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right>
-        ${chip(call, options.model ?? null)}
-        <span class="title">${call.title}</span>
-        <span class="name">${call.name}</span>
-        ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
-        ${state(call.status)}
-      </span>
-      ${call.image ? html`<span class="thumb"><img src=${call.image} alt="" /></span>` : nothing}
-    </summary>
-    <div class="call">
+  const label = `${call.title}, ${statusLabel(call.status)}`;
+  const content = html`<div class="call">
       ${body(call, color)}
       ${call.output ? html`<pre class="output">${call.output}</pre>` : nothing}
       ${call.notes?.length ? notes(call.notes) : nothing}
       ${call.image ? html`<img class="shot" src=${call.image} alt=${call.title} />` : nothing}
+      ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
       ${options.owner ? html`<span class="ran">Ran at ${when(options.owner.at)}</span>` : nothing}
-    </div>
+    </div>`;
+  if (!options.run) {
+    return html`<div class="tool" id=${`run-${call.id}`} role="region" aria-label=${label} data-id=${options.owner?.id ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id}>${content}</div>`;
+  }
+  return html`<details class="tool run" id=${`run-${call.id}`} data-id=${options.owner?.id ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id} ?open=${!!options.open} @toggle=${options.toggle ?? nothing}>
+    <summary class="strip" aria-label=${label}>
+      <span class="icons"><span class="run">${chip(call, options.model ?? null)}</span></span>
+      <span class="label">${call.title}</span>
+    </summary>
+    ${content}
   </details>`;
 }
 
@@ -426,7 +411,7 @@ function runs(calls: ToolCall[], handlers: RunContext): TemplateResult[] {
   const groups = calls.length >= clusterSize ? [calls] : calls.map((call) => [call]);
   return groups.map(
     (group) =>
-      html`<slicc-tool-runs .calls=${group} .model=${handlers.model} .owners=${handlers.owners ?? null} .color=${handlers.color}></slicc-tool-runs>`
+      html`<slicc-tool-runs .calls=${group} .agent=${handlers.agentId ?? ''} .model=${handlers.model} .owners=${handlers.owners ?? null} .color=${handlers.color}></slicc-tool-runs>`
   );
 }
 
@@ -1030,21 +1015,6 @@ export const messageCss = css`
   summary::-webkit-details-marker {
     display: none;
   }
-  details.tool > summary {
-    padding-inline: var(--swc-spacing-100);
-  }
-  details.tool > summary {
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: center;
-    gap: 0;
-  }
-  details.tool > summary > .head {
-    display: flex;
-    align-items: center;
-    gap: var(--swc-spacing-100);
-    min-inline-size: 0;
-  }
   details.tool > summary:hover,
   .runs button:hover {
     background: var(--swc-gray-100);
@@ -1063,75 +1033,40 @@ export const messageCss = css`
   details[open] > summary .chevron {
     transform: rotate(90deg);
   }
-  .tool .title,
-  .tool .name,
-  .runs .names,
-  .lick .text {
+  .lick .text,
+  .runs .label {
     min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .tool .title {
-    flex: 0 1 auto;
-    font-weight: var(--swc-medium-font-weight);
-  }
   .lick .text {
     flex: 1;
-  }
-  .tool .name {
-    flex: 0 0.001 auto;
-    max-inline-size: 50%;
-    font-family: var(--swc-code-font-family-stack);
-    color: var(--swc-neutral-subdued-content-color-default);
-  }
-  .tool-meta {
-    flex: none;
-    color: var(--swc-neutral-subdued-content-color-default);
-  }
-  .runs .summary .names {
-    flex: 0 1 auto;
-  }
-  .state {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--swc-spacing-75);
-    flex: none;
-    margin-inline-start: auto;
-    padding-inline-start: var(--swc-spacing-100);
-    color: var(--swc-neutral-subdued-content-color-default);
-  }
-  .state[data-state='done'] swc-icon-checkmark-circle {
-    color: var(--swc-positive-visual-color);
-  }
-  .state[data-state='running'] {
-    color: var(--swc-neutral-content-color-default);
-  }
-  .state[data-state='error'] {
-    color: var(--swc-negative-content-color-default);
-    font-weight: var(--swc-bold-font-weight);
   }
   swc-system-message > slicc-tool-runs + slicc-tool-runs {
     margin-block-start: var(--swc-spacing-75);
   }
   slicc-tool-runs {
     display: block;
+    container-type: inline-size;
   }
   .runs {
+    --run-size: var(--swc-spacing-500);
+    --run-gap: var(--swc-spacing-25);
+    --run-icons: calc(5 * var(--run-size) + 4 * var(--run-gap));
     display: flex;
     flex-direction: column;
-    align-items: center;
     min-inline-size: 0;
+    margin-inline: var(--swc-spacing-700);
   }
-  .runs > details.tool.run,
-  .runs > .cards {
-    align-self: stretch;
-  }
-  details.run > summary {
-    inline-size: fit-content;
-    max-inline-size: 100%;
-    margin-inline: auto;
-    padding-inline: var(--swc-spacing-100) var(--swc-spacing-200);
+  .strip {
+    display: grid;
+    grid-template-columns: var(--run-icons) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--swc-spacing-50) var(--swc-spacing-200);
+    min-block-size: 0;
+    padding-block: var(--swc-spacing-50);
+    padding-inline: var(--swc-spacing-50) var(--swc-spacing-200);
     border: var(--swc-border-width-100) solid var(--swc-gray-200);
     border-radius: var(--swc-corner-radius-500);
     background: var(--swc-background-layer-1-color);
@@ -1140,39 +1075,25 @@ export const messageCss = css`
   details.run[open] > summary {
     margin-block-end: var(--swc-spacing-75);
   }
-  details.run > summary :is(.name, .tool-meta, .state[data-state='done'], .state[data-state='running']),
-  details.run > summary .thumb {
-    display: none;
-  }
-  details.run > summary .state {
-    padding-inline-start: 0;
-  }
-  details.run > .call {
-    padding-inline-start: var(--swc-spacing-100);
-  }
-  .strip {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: var(--swc-spacing-50) var(--swc-spacing-100);
-    max-inline-size: 100%;
-    padding: var(--swc-spacing-50) var(--swc-spacing-75);
-    border: var(--swc-border-width-100) solid var(--swc-gray-200);
-    border-radius: var(--swc-corner-radius-500);
-    background: var(--swc-background-layer-1-color);
-    box-sizing: border-box;
-  }
   .icons {
     display: flex;
-    flex-wrap: wrap;
+    gap: var(--run-gap);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .icons > .run {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
     justify-content: center;
-    gap: var(--swc-spacing-25);
+    inline-size: var(--run-size);
+    block-size: var(--run-size);
+  }
+  .runs .label {
+    text-align: end;
+    font-weight: var(--swc-medium-font-weight);
   }
   .runs button {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--swc-spacing-75);
     margin: 0;
     padding: 0;
     border: 0;
@@ -1186,25 +1107,21 @@ export const messageCss = css`
     outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
     outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
   }
-  button.run {
-    justify-content: center;
-    inline-size: var(--swc-spacing-500);
-    block-size: var(--swc-spacing-500);
-  }
   button.run[aria-expanded='true'] {
     background: var(--swc-accent-subtle-background-color-default);
   }
-  button.summary {
-    min-block-size: var(--swc-spacing-500);
-    min-inline-size: 0;
-    padding-inline: var(--swc-spacing-75) var(--swc-spacing-100);
-    color: var(--swc-neutral-subdued-content-color-default);
-  }
-  button.summary .state {
-    padding-inline-start: 0;
-  }
-  button.summary[aria-expanded='true'] .chevron {
-    transform: rotate(90deg);
+  @container (inline-size < 480px) {
+    .runs {
+      margin-inline: var(--swc-spacing-300);
+    }
+    .strip {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .icons {
+      inline-size: calc(
+        round(down, 100% + var(--run-gap), var(--run-size) + var(--run-gap)) - var(--run-gap)
+      );
+    }
   }
   .cards {
     margin-block-start: var(--swc-spacing-75);
@@ -1286,12 +1203,12 @@ export const messageCss = css`
     display: flex;
     flex-direction: column;
     gap: var(--swc-spacing-100);
-    padding: var(--swc-spacing-75) var(--swc-spacing-100) var(--swc-spacing-200) var(--swc-spacing-500);
+    padding-block: var(--swc-spacing-75) var(--swc-spacing-200);
   }
   .call:empty {
     display: none;
   }
-  .call > .ran {
+  .call > :is(.ran, .tool-meta) {
     font-size: var(--swc-font-size-75);
     color: var(--swc-neutral-subdued-content-color-default);
   }
@@ -1350,19 +1267,6 @@ export const messageCss = css`
     overflow: auto;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-  }
-  .thumb {
-    padding-inline-start: calc(var(--swc-spacing-100) + var(--swc-spacing-300));
-    padding-block: var(--swc-spacing-75);
-  }
-  .thumb img {
-    display: block;
-    max-inline-size: min(100%, calc(var(--swc-spacing-1000) * 2));
-    max-block-size: calc(var(--swc-spacing-1000) * 1.25);
-    border-radius: var(--swc-corner-radius-75);
-  }
-  details[open] > summary .thumb {
-    display: none;
   }
   .shot {
     display: block;

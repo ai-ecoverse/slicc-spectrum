@@ -338,7 +338,7 @@ test('sending a message streams a reply with a tool call', async (t) => {
       .$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-conversation-turn.assistant:last-of-type')
       .textContent.replace(/\s+/g, ' ')
   );
-  assert.match(reply, /Run the tests bash Done/);
+  assert.match(reply, /Run the tests\s*\$ npm test/);
   assert.match(reply, /All 3 tests pass/);
   assert.equal(
     await page.evaluate(
@@ -1922,31 +1922,35 @@ const chat = (...path) => window.$('slicc-app', 'slicc-dock', 'slicc-chat', ...p
 test('tool cards show the command, its timeout, and an edit as a diff', async (t) => {
   const page = await open(t);
   await page.evaluate(() => window.model.agent.select('cone-harbor'));
-  await page.until(() =>
-    window
-      .$('slicc-app', 'slicc-dock', 'slicc-chat')
-      ?.shadowRoot?.querySelector('.runs[data-runs=cluster]')
+  await page.until(
+    () =>
+      window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat')
+        ?.shadowRoot?.querySelector('.runs[data-runs=cluster] .strip > .label')?.textContent
   );
   const cards = await page.evaluate(async () => {
     const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot;
     const cluster = root.querySelector('.runs[data-runs=cluster]');
-    cluster.querySelector('button.summary').click();
-    const all = [...cluster.querySelectorAll('details.tool')];
-    for (const card of all) card.open = true;
+    const edit = cluster.querySelector('.tool[data-tool="edit_file"]');
+    cluster.querySelector(`[data-action=open-run][aria-controls=${edit.id}]`).click();
     await new Promise((resolve) => setTimeout(resolve, 300));
-    for (const card of all) card.open = card.dataset.tool !== 'read_file';
-    window.clusterSummary = cluster
-      .querySelector('button.summary')
-      .textContent.replace(/\s+/g, ' ')
-      .trim();
-    return [...cluster.querySelectorAll('details.tool')].map((card) => ({
+    window.clusterSummary = [
+      cluster.querySelector('.strip').title,
+      cluster.querySelector('.icons').getAttribute('aria-label'),
+      cluster.querySelector('.strip > .label').textContent,
+    ];
+    return [...cluster.querySelectorAll('.tool')].map((card) => ({
       name: card.dataset.tool,
       meta: card.querySelector('.tool-meta')?.textContent ?? null,
       input: card.querySelector('pre.input')?.textContent ?? null,
       diff: card.querySelector('slicc-diff-view')?.getAttribute('path') ?? null,
     }));
   });
-  assert.equal(await page.evaluate(() => window.clusterSummary), '2 commands, 1 read, 1 edit Done');
+  assert.deepEqual(await page.evaluate(() => window.clusterSummary), [
+    '2 commands, 1 read, 1 edit. Done',
+    '2 commands, 1 read, 1 edit. Done',
+    'Find and fix the stale cache entry',
+  ]);
   assert.deepEqual(
     cards.find((card) => card.input === '$ npm test'),
     { name: 'bash', meta: 'timeout 120s', input: '$ npm test', diff: null }
@@ -1963,14 +1967,14 @@ test('tool cards show the command, its timeout, and an edit as a diff', async (t
   await page.until(() =>
     window
       .$('slicc-app', 'slicc-dock', 'slicc-chat')
-      .shadowRoot.querySelector('details.tool slicc-diff-view')
+      .shadowRoot.querySelector('.tool slicc-diff-view')
       ?.shadowRoot?.querySelector('diffs-container')
       ?.shadowRoot?.textContent.includes('dayOf')
   );
   await page.evaluate(() =>
     window
       .$('slicc-app', 'slicc-dock', 'slicc-chat')
-      .shadowRoot.querySelector('details.tool[data-tool="edit_file"]')
+      .shadowRoot.querySelector('.tool[data-tool="edit_file"]')
       .scrollIntoView({ block: 'start' })
   );
   await shot(page, 'tool-cards-light');
@@ -1979,7 +1983,7 @@ test('tool cards show the command, its timeout, and an edit as a diff', async (t
     () =>
       window
         .$('slicc-app', 'slicc-dock', 'slicc-chat')
-        .shadowRoot.querySelector('details.tool slicc-diff-view')
+        .shadowRoot.querySelector('.tool slicc-diff-view')
         ?.getAttribute('color') === 'dark'
   );
   await shot(page, 'tool-cards-dark');
@@ -1995,7 +1999,7 @@ test('tool runs cluster across messages, pick their icons, and open from the key
     const groups = (id) =>
       [...root.querySelectorAll(`[data-id=${id}] slicc-tool-runs > .runs`)].map((runs) => [
         runs.dataset.runs,
-        runs.querySelectorAll('details.tool').length,
+        runs.querySelectorAll('.tool').length,
         runs.dataset.status,
       ]);
     const icons = (index) =>
@@ -2004,7 +2008,7 @@ test('tool runs cluster across messages, pick their icons, and open from the key
           .querySelectorAll('[data-id=k-m8] slicc-tool-runs')
           [index].querySelectorAll('.icons .chip'),
       ].map((chip) => [chip.dataset.icon, chip.dataset.target ?? null, chip.dataset.state]);
-    const card = root.querySelector('details.tool[data-id=k-tool1]');
+    const card = root.querySelector('.tool[data-id=k-tool1]');
     return {
       m3: groups('k-m3'),
       m8: groups('k-m8'),
@@ -2049,7 +2053,7 @@ test('tool runs cluster across messages, pick their icons, and open from the key
         .chatPart()
         .shadowRoot.querySelectorAll('[data-id=k-m8] slicc-tool-runs')[1]
         .querySelectorAll('.cards > .slot'),
-    ].map((slot) => (slot.hidden ? '-' : slot.querySelector('details').open ? 'open' : 'shown'));
+    ].map((slot) => (slot.hidden ? '-' : 'open'));
   await page.evaluate(() =>
     window.chatPart().shadowRoot.querySelector('[data-action=open-run][data-target=k-r5]').focus()
   );
@@ -2071,34 +2075,41 @@ test('tool runs cluster across messages, pick their icons, and open from the key
     await page.evaluate(() => window.chatPart('#run-k-r7 pre.input').textContent),
     /^\$ npx vitest run src\/lib\/units\.test\.ts$/
   );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const card = window.chatPart('#run-k-r7');
+      return [
+        card.localName,
+        card.getAttribute('role'),
+        card.getAttribute('aria-label'),
+        card.querySelectorAll('summary, .chevron, .chip, .title, .state').length,
+        card.textContent.includes('bash'),
+      ];
+    }),
+    ['div', 'region', 'Run the unit tests, Failed', 0, false]
+  );
   await page.press(' ');
   await page.until(
     () => window.chatPart('[data-target=k-r7]').getAttribute('aria-expanded') === 'false'
   );
-  await page.press('Tab');
-  await page.press('Tab');
-  await page.press('Tab');
-  assert.equal(await page.evaluate(focused), 'open-cluster');
-  await page.press('Enter');
-  await page.until(
-    () =>
-      window
-        .chatPart()
-        .shadowRoot.querySelectorAll('[data-id=k-m8] slicc-tool-runs')[1]
-        .querySelector('button.summary')
-        .getAttribute('aria-expanded') === 'true'
+  await page.until(() =>
+    [
+      ...window.chatPart().shadowRoot.querySelectorAll('[data-id=k-m8] slicc-tool-runs .label'),
+    ].every((label) => label.textContent)
   );
-  assert.equal(
-    await page.evaluate(
-      () =>
-        [
-          ...window
-            .chatPart()
-            .shadowRoot.querySelectorAll('[data-id=k-m8] slicc-tool-runs')[1]
-            .querySelectorAll('.cards > .slot'),
-        ].filter((slot) => !slot.hidden).length
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [
+        ...window.chatPart().shadowRoot.querySelectorAll('[data-id=k-m8] slicc-tool-runs .strip'),
+      ].map((strip) => [strip.title, strip.querySelector('.label').textContent])
     ),
-    5
+    [
+      ['3 commands, 1 read. Done', 'Compare the docs with the live API'],
+      [
+        '4 commands, 1 edit. Running, 1 failed, 1 cancelled',
+        'Move the forecast docs to Celsius, then build and test the site',
+      ],
+    ]
   );
 
   await page.evaluate(() => window.chatPart('[data-id=k-tool2] details.run > summary').focus());
@@ -2109,6 +2120,15 @@ test('tool runs cluster across messages, pick their icons, and open from the key
       window.chatPart('[data-id=k-tool2] details.run > summary').getAttribute('aria-label')
     ),
     'Check the preview port, Done'
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window
+          .chatPart('[data-id=k-tool2] details.run > summary')
+          .querySelectorAll('.chevron, .name').length
+    ),
+    0
   );
   await page.press(' ');
   await page.until(() => window.chatPart('[data-id=k-tool2] details.run').open === false);
@@ -2124,6 +2144,125 @@ test('tool runs cluster across messages, pick their icons, and open from the key
   });
   assert.deepEqual(await page.evaluate(motion), ['none', 'dashed']);
   await page.send('Emulation.setEmulatedMedia', { features: [] });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a growing run keeps its place, shows its newest five runs and its label, and stacks on a narrow panel', async (t) => {
+  const page = await open(t, { delay: '30' });
+  const viewport = (width) =>
+    page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height: 860,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await viewport(1280);
+  await page.evaluate(() => window.model.agent.select('cone-harbor'));
+  await page.until(() => !!window.chatPart('.runs[data-runs=cluster]'));
+  await page.evaluate(() => {
+    window.growth = [];
+    const record = () => {
+      const turn = window
+        .chatPart()
+        .shadowRoot.querySelector('swc-conversation-turn.assistant[data-status]:last-of-type');
+      const runs = turn?.querySelector('.runs[data-runs=cluster]');
+      if (runs) {
+        const box = runs.querySelector('.strip').getBoundingClientRect();
+        const entry = [
+          runs.querySelectorAll('.icons > .run').length,
+          Math.round(box.left),
+          Math.round(box.width),
+          Math.round(box.height),
+        ].join(' ');
+        if (window.growth.at(-1) !== entry) window.growth.push(entry);
+      }
+      window.growing = requestAnimationFrame(record);
+    };
+    record();
+    void window.model.agent.send('cone-harbor', 'Investigate the Celsius bug');
+  });
+  await page.until(
+    () =>
+      window
+        .chatPart('swc-conversation-turn.assistant:last-of-type')
+        ?.querySelectorAll('.runs[data-runs=cluster] .icons > .run[data-status=done]').length === 7
+  );
+  const growth = await page.evaluate(() => {
+    cancelAnimationFrame(window.growing);
+    return window.growth;
+  });
+  assert.deepEqual(
+    growth.map((entry) => entry.split(' ')[0]),
+    ['3', '4', '5', '6', '7']
+  );
+  assert.equal(new Set(growth.map((entry) => entry.split(' ').slice(1).join(' '))).size, 1);
+  await page.until(
+    () =>
+      window.chatPart('swc-conversation-turn.assistant:last-of-type .runs .strip > .label')
+        ?.textContent === 'Find why Celsius requests get Fahrenheit'
+  );
+  const geometry = () => {
+    const runs = window.chatPart('swc-conversation-turn.assistant:last-of-type .runs');
+    const strip = runs.querySelector('.strip').getBoundingClientRect();
+    const icons = runs.querySelector('.icons');
+    const box = icons.getBoundingClientRect();
+    const label = runs.querySelector('.label').getBoundingClientRect();
+    const buttons = [...icons.children].map((button) => button.getBoundingClientRect());
+    const shown = buttons.filter((b) => b.right > box.left + 1 && b.left < box.right - 1);
+    return {
+      shown: shown.length,
+      whole: shown.every((b) => b.left >= box.left - 0.5 && b.right <= box.right + 0.5),
+      newest: buttons.at(-1).right <= box.right + 0.5,
+      start: Math.round(box.left - strip.left),
+      end: Math.round(strip.right - label.right),
+      stacked: label.top >= box.bottom,
+      margins: Math.round(
+        strip.left - runs.parentElement.parentElement.getBoundingClientRect().left
+      ),
+    };
+  };
+  const wide = await page.evaluate(geometry);
+  assert.deepEqual(
+    [wide.shown, wide.whole, wide.newest, wide.stacked],
+    [5, true, true, false],
+    JSON.stringify(wide)
+  );
+  assert.ok(wide.start < 8 && wide.end < 16, JSON.stringify(wide));
+  await page.evaluate(() =>
+    window
+      .chatPart('swc-conversation-turn.assistant:last-of-type .runs .icons > .run:last-child')
+      .click()
+  );
+  const edges = () => {
+    const runs = window.chatPart('swc-conversation-turn.assistant:last-of-type .runs');
+    const strip = runs.querySelector('.strip').getBoundingClientRect();
+    const input = runs
+      .querySelector('.cards > .slot:not([hidden]) pre.input')
+      .getBoundingClientRect();
+    return [strip.left - input.left, strip.right - input.right].map(Math.round);
+  };
+  assert.deepEqual(await page.evaluate(edges), [0, 0]);
+  await shot(page, 'tool-runs-growing');
+
+  await viewport(420);
+  await page.until(() => window.app.getAttribute('screen') === 'phone');
+  await page.until(
+    () => !!window.chatPart('swc-conversation-turn.assistant:last-of-type .runs .strip > .label')
+  );
+  const narrow = await page.evaluate(geometry);
+  assert.deepEqual(
+    [narrow.shown, narrow.whole, narrow.newest, narrow.stacked],
+    [7, true, true, true],
+    JSON.stringify(narrow)
+  );
+  assert.deepEqual(await page.evaluate(edges), [0, 0]);
+  await page.evaluate(() =>
+    window
+      .chatPart('swc-conversation-turn.assistant:last-of-type .runs')
+      .scrollIntoView({ block: 'center' })
+  );
+  await shot(page, 'tool-runs-phone');
   assert.deepEqual(page.errors, []);
 });
 

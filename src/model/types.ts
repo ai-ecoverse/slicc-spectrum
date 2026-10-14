@@ -252,6 +252,7 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   queue(agentId: string): readonly UserMessage[];
   unqueue(agentId: string, messageId: string): void;
   suggestion(agentId: string): string | null;
+  runLabel?(agentId: string, calls: readonly ToolCall[]): Promise<string | null>;
   answer(agentId: string, questionId: string, answer: string): void;
   resolveLick(agentId: string, messageId: string, state: Exclude<LickState, 'pending'>): void;
   compact(agentId: string): void;

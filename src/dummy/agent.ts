@@ -15,10 +15,11 @@ import type {
   Outgoing,
   SlashCommand,
   Thinking,
+  ToolCall,
   UserMessage,
 } from '../model/types.ts';
 import type { Clock } from './clock.ts';
-import { type Effects, type Step, script } from './script.ts';
+import { type Effects, runLabel, type Step, script } from './script.ts';
 
 interface Run {
   stopped: boolean;
@@ -130,6 +131,11 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
 
   suggestion(agentId: string): string | null {
     return this.#suggestions.get(agentId) ?? null;
+  }
+
+  async runLabel(_agentId: string, calls: readonly ToolCall[]): Promise<string | null> {
+    await this.#clock.sleep(15);
+    return runLabel(calls);
   }
 
   #post(agentId: string, message: Message): void {
