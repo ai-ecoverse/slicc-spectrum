@@ -899,6 +899,7 @@ export interface SudoApproval {
   createdAt: number;
   expiresAt: number;
   always: boolean;
+  alwaysScope?: 'cwd';
 }
 
 export type Approval = SudoApproval;

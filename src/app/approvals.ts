@@ -294,6 +294,14 @@ function origin(): HTMLElement | null {
   return (active?.closest('slicc-terminal') as HTMLElement | null) ?? active;
 }
 
+const inCwd = (approval: Approval): boolean => approval.alwaysScope === 'cwd' && !!approval.cwd;
+
+export function alwaysHint(approval: Approval): string {
+  return inCwd(approval)
+    ? `Always allow lets ${approval.requester.name} run exactly this command with sudo, in ${approval.cwd}, without asking again.`
+    : `Always allow lets ${approval.requester.name} run exactly this command with sudo without asking again.`;
+}
+
 export function waiting(model: SliccModel | null, now: number): Approval[] {
   return [...(model?.approvals?.list() ?? [])]
     .filter((approval) => approval.expiresAt > now)
@@ -585,12 +593,12 @@ export class SliccApprovals extends ModelElement {
           ${this.#request(approval)}
           ${approval.cwd ? html`<p class="cwd">In ${approval.cwd}</p>` : nothing}
           ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${verdict.certain ? html`<strong>This changes secret rules.</strong> It names <code>${rules}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${rules}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>` : nothing}
-          ${always ? html`<p class="hint">Always allow lets ${approval.requester.name} run exactly this command with sudo without asking again.</p>` : nothing}
+          ${always ? html`<p class="hint">${alwaysHint(approval)}</p>` : nothing}
           ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : nothing}
           <p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>
           ${rest.length ? html`<p class="more" data-more>${rest.length === 1 ? '1 more request is waiting.' : `${rest.length} more requests are waiting.`}</p>` : nothing}
           ${this.#button(approval, 'deny', 'Deny', 'secondary')}
-          ${always ? this.#button(approval, 'always', 'Always allow', 'secondary') : nothing}
+          ${always ? this.#button(approval, 'always', inCwd(approval) ? 'Always allow in this directory' : 'Always allow', 'secondary') : nothing}
           ${this.#button(approval, 'once', 'Allow once', 'accent')}
         </sp-alert-dialog>`
     );
