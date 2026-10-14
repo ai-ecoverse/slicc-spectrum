@@ -211,8 +211,7 @@ export class SliccMonitor extends ModelElement {
         white-space: nowrap;
       }
       .value,
-      .unit,
-      .delta {
+      .rest {
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -224,10 +223,12 @@ export class SliccMonitor extends ModelElement {
         font-weight: var(--swc-bold-font-weight);
         font-variant-numeric: tabular-nums;
       }
-      .unit,
-      .delta {
-        flex: 0 100 auto;
+      .rest {
+        flex: 0 1 auto;
         color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .unit + .delta {
+        margin-inline-start: var(--swc-spacing-75);
       }
       .spark {
         align-self: end;
@@ -445,8 +446,12 @@ export class SliccMonitor extends ModelElement {
     const line = vital.series ? sparkline(vital.series) : '';
     return html`<div class="vital" data-id=${vital.id}>
       <div class="label">${vital.label}</div>
-      <div class="reading"><span class="value">${vital.value}</span>${vital.unit ? html`<span class="unit">${vital.unit}</span>` : nothing}${
-        vital.delta ? html`<span class="delta">${vital.delta}</span>` : nothing
+      <div class="reading"><span class="value">${vital.value}</span>${
+        vital.unit || vital.delta
+          ? html`<span class="rest">${vital.unit ? html`<span class="unit">${vital.unit}</span>` : nothing}${
+              vital.delta ? html`<span class="delta">${vital.delta}</span>` : nothing
+            }</span>`
+          : nothing
       }</div>
       <div class="spark">${line ? html`<svg viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true">${svg`<polyline points=${line}></polyline>`}</svg>` : nothing}</div>
     </div>`;
