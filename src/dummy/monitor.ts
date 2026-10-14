@@ -3,20 +3,10 @@ import type {
   ChangesPort,
   MonitorEvents,
   MonitorPort,
-  MonitorRow,
   MonitorSection,
   MonitorSnapshot,
-  MonitorStatus,
   SliccModel,
 } from '../model/types.ts';
-
-const statuses: Record<string, MonitorStatus> = {
-  idle: 'idle',
-  thinking: 'active',
-  working: 'active',
-  waiting: 'warn',
-  error: 'error',
-};
 
 export function wave(seed: number, length = 24): number[] {
   return Array.from({ length }, (_, i) =>
@@ -130,7 +120,7 @@ export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort 
   }
 
   snapshot(): MonitorSnapshot {
-    const { agent, terminals, browser, files, sprinkles, tray } = this.#model;
+    const { agent, terminals, browser, files, tray } = this.#model;
     const changes: ChangesPort = this.#model.changes ?? files;
     const listed = agent.list();
     const agents = listed
@@ -139,33 +129,19 @@ export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort 
     const active = agents.filter((candidate) => candidate.status !== 'idle').length;
     const status = tray.status();
     const fill = Math.max(...agents.map((candidate) => candidate.contextFill), 0);
-    const agentRows = agents.map(
-      (candidate): MonitorRow => ({
-        id: candidate.id,
-        name: candidate.name,
-        depth: candidate.kind === 'scoop' ? 1 : 0,
-        meta: `${candidate.status} · ${Math.round(candidate.contextFill * 100)}% context`,
-        status: statuses[candidate.status],
-        badges: candidate.unread ? [`${candidate.unread} unread`] : [],
-      })
-    );
+    const rows = (id: string) => this.#extra.find((section) => section.id === id)?.rows;
+    const tasks = rows('tasks');
+    const running = rows('processes') ?? [];
+    const processes = terminals.list().length + running.length + 1;
+    const byAgents = running.filter((row) =>
+      row.badges?.some((badge) => badge !== 'terminal')
+    ).length;
+    const tools = (tasks ?? []).filter(
+      (row) => row.name.startsWith('tool ') && row.status === 'active'
+    ).length;
     return {
       updatedAt: Date.now(),
       vitals: [
-        {
-          id: 'agents',
-          label: 'Active agents',
-          value: String(active),
-          unit: `of ${agents.length}`,
-          series: wave(this.#tick + 1),
-        },
-        {
-          id: 'spend',
-          label: 'Spend',
-          value: `$${(status.spent ?? 0).toFixed(2)}`,
-          delta: `$${(status.rate ?? 0).toFixed(2)}/h`,
-          series: wave(this.#tick + 7),
-        },
         ...(status.budget
           ? [
               {
@@ -177,6 +153,44 @@ export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort 
               },
             ]
           : []),
+        {
+          id: 'spend',
+          label: 'Spend',
+          value: `$${(status.spent ?? 0).toFixed(2)}`,
+          delta: `$${(status.rate ?? 0).toFixed(2)}/h`,
+          series: wave(this.#tick + 7),
+        },
+        {
+          id: 'agents',
+          label: 'Active agents',
+          value: String(active),
+          unit: `of ${agents.length}`,
+          series: wave(this.#tick + 1),
+        },
+        ...(tasks
+          ? [
+              {
+                id: 'tasks',
+                label: 'Running',
+                value: String(tools),
+                unit: `${tools === 1 ? 'tool' : 'tools'} · ${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}`,
+              },
+            ]
+          : []),
+        {
+          id: 'processes',
+          label: 'Processes',
+          value: String(processes),
+          unit: `${byAgents} by agents`,
+          series: wave(this.#tick + 3),
+        },
+        {
+          id: 'memory',
+          label: 'Process memory',
+          value: `${17 + 24 * (processes - 1)} MiB`,
+          unit: `${24 * byAgents} MiB by agents`,
+          series: wave(this.#tick + 5),
+        },
         {
           id: 'context',
           label: 'Fullest context',
@@ -217,7 +231,6 @@ export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort 
             ]),
       ],
       sections: [
-        { id: 'agents', label: 'Cones and scoops', rows: agentRows },
         ...this.#extra,
         {
           id: 'terminals',
@@ -245,15 +258,6 @@ export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort 
             name: change.path,
             meta: change.status,
             status: 'warn' as const,
-          })),
-        },
-        {
-          id: 'sprinkles',
-          label: 'Sprinkles',
-          rows: sprinkles.list().map((sprinkle) => ({
-            name: sprinkle.title,
-            meta: sprinkle.name,
-            status: 'idle' as const,
           })),
         },
         {
