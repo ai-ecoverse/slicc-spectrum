@@ -5430,6 +5430,18 @@ test('focus goes back to the terminal after a sudo decision, even when its panel
   await new Promise((resolve) => setTimeout(resolve, 300));
   await click('once');
   await back('echo moved');
+  await raise();
+  await page.evaluate(() =>
+    window
+      .dock()
+      .api.getPanel('terminal:term-1')
+      .api.moveTo({
+        group: window.dock().api.getPanel('chat:cone-sliccy').api.group,
+        position: 'right',
+      })
+  );
+  await page.press('Escape');
+  await back('echo raced');
   assert.deepEqual(page.errors, []);
 });
 
