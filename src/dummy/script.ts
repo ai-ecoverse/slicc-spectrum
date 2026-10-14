@@ -156,6 +156,58 @@ function files(): Step[] {
   ];
 }
 
+function probe(title: string, input: string, output: string, paths: string[] = []): Step {
+  return { type: 'tool', name: 'bash', title, input, output, paths, ticks: 12 };
+}
+
+function investigate(): Step[] {
+  return [
+    { type: 'thinking', text: 'Celsius requests return Fahrenheit. Follow one request through.' },
+    probe(
+      'Read the error log',
+      'tail -n 3 /workspace/harbor/logs/worker.log',
+      'GET /forecast?city=Porto&unit=C 200 (cache hit)',
+      ['/workspace/harbor/logs/worker.log']
+    ),
+    probe(
+      'Ask the API for Porto',
+      'curl -s https://api.example.com/v2/forecast?city=Porto&unit=C',
+      '{ "city": "Porto", "high": 70, "unit": "F" }'
+    ),
+    probe(
+      'Find the cache key',
+      'rg -n "cacheKey" src',
+      'src/lib/cache.ts:9:  const cacheKey = city;'
+    ),
+    probe('Read the cache', 'cat /workspace/harbor/src/lib/cache.ts', 'const cacheKey = city;', [
+      '/workspace/harbor/src/lib/cache.ts',
+    ]),
+    probe('Check the working tree', 'git status --short', ' M src/lib/cache.ts'),
+    probe('Clear the preview cache', 'wrangler kv key delete Porto --env preview', 'Deleted 1 key'),
+    probe(
+      'Ask the API again',
+      'curl -s https://api.example.com/v2/forecast?city=Porto&unit=C',
+      '{ "city": "Porto", "high": 21, "unit": "C" }'
+    ),
+    {
+      type: 'text',
+      text: 'The cache key is only the city, so a Fahrenheit answer is served to Celsius requests. The key needs the unit too.',
+    },
+  ];
+}
+
+const labels: Record<string, string> = {
+  'Read the error log': 'Find why Celsius requests get Fahrenheit',
+  'Search for the cache expiry': 'Find and fix the stale cache entry',
+  'Count the routes': 'Walk through every kind of tool',
+  'Ask the API for Lisbon': 'Compare the docs with the live API',
+  'Switch the page to Celsius': 'Move the forecast docs to Celsius, then build and test the site',
+};
+
+export function label(title: string): string | null {
+  return labels[title] ?? null;
+}
+
 function chat(prompt: string): Step[] {
   return [
     { type: 'thinking', text: 'Short question. Answer directly, then offer the next step.' },
@@ -220,6 +272,7 @@ function look(attachments: readonly Attachment[]): Step[] {
 }
 
 const suggestions: Array<[RegExp, string]> = [
+  [/\b(debug|investigate)\b/, 'Add the unit to the cache key'],
   [/\btests?\b/, 'Open a pull request with the fix'],
   [/\b(fix|edit|add|change)\b/, 'Run the tests'],
   [/\b(open|browse|page|docs)\b/, 'Summarize the page'],
@@ -235,6 +288,7 @@ export function script(
   if (attachments.length > 0) return { steps: look(attachments), suggestion };
   if (/\bforbidden\b/.test(text)) return { steps: filtered(), suggestion };
   if (/\b(ask|choose|decide)\b/.test(text)) return { steps: ask(), suggestion };
+  if (/\b(debug|investigate)\b/.test(text)) return { steps: investigate(), suggestion };
   if (/\btests?\b/.test(text)) return { steps: test(), suggestion };
   if (/\b(fix|edit|add|change)\b/.test(text)) return { steps: edit(), suggestion };
   if (/\b(open|browse|page|docs)\b/.test(text)) return { steps: browse(), suggestion };

@@ -633,6 +633,7 @@ export class SliccChat extends ThemedElement {
     const agent = this.#agent();
     const watch = watchOnly(this.model);
     this.#handlers.readOnly = !!agent?.frozen || !!watch;
+    this.#handlers.agentId = agent?.id;
     const messages = agent ? (this.model?.agent.messages(agent.id) ?? []) : [];
     this.#tail = messages.at(-1)?.id ?? '';
     return html`
