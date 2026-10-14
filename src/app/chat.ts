@@ -47,6 +47,8 @@ const navigation = new Set([
   'PageDown',
 ]);
 
+const upward = new Set(['ArrowUp', 'PageUp', 'Home']);
+
 const compactWidth = 560;
 
 const failed = (message: Message): boolean =>
@@ -324,6 +326,12 @@ export class SliccChat extends ThemedElement {
 
   #stuck = true;
   #last = 0;
+  #height = 0;
+  #input = Number.NEGATIVE_INFINITY;
+  #up = Number.NEGATIVE_INFINITY;
+  #from = 0;
+  #start = 0;
+  #settle: ReturnType<typeof setTimeout> | undefined;
   #tail = '';
 
   #sent(agentId: string): boolean {
@@ -342,13 +350,53 @@ export class SliccChat extends ThemedElement {
     const log = this.#log();
     log.scrollTop = log.scrollHeight;
     this.#last = log.scrollTop;
+    this.#height = log.scrollHeight;
   }
 
   #scroll = (): void => {
     const log = this.#log();
-    if (log.scrollHeight - log.scrollTop - log.clientHeight < 48) this.#stuck = true;
-    else if (log.scrollTop < this.#last) this.#stuck = false;
+    const reader =
+      log.scrollHeight <= this.#height ||
+      this.#height - log.scrollTop - log.clientHeight >= 48 ||
+      performance.now() - this.#input < 1000;
+    const rising = performance.now() - this.#up < 1000 && log.scrollTop <= this.#from;
+    if (log.scrollHeight - log.scrollTop - log.clientHeight < 48) this.#stuck ||= !rising;
+    else if (reader && log.scrollTop < this.#last) this.#stuck = false;
     this.#last = log.scrollTop;
+    this.#height = log.scrollHeight;
+  };
+
+  #intent = {
+    passive: true,
+    handleEvent: (event: Event): void => {
+      this.#input = performance.now();
+      const up =
+        event instanceof WheelEvent
+          ? event.deltaY < 0 && !event.ctrlKey
+          : event instanceof KeyboardEvent &&
+            (upward.has(event.key) || (event.key === ' ' && event.shiftKey));
+      const at = this.#log().scrollTop;
+      if (!up || at <= 0) return;
+      this.#from = at;
+      this.#up = this.#input;
+      if (this.#settle === undefined) this.#start = Math.max(at, this.#last);
+      this.#stuck = false;
+      clearTimeout(this.#settle);
+      this.#settle = setTimeout(() => {
+        this.#settle = undefined;
+        if (this.#start - this.#log().scrollTop >= 48) return;
+        this.#stuck = true;
+        this.#pin();
+      }, 400);
+    },
+  };
+
+  #hold = (event: PointerEvent): void => {
+    if (event.target === event.currentTarget) this.#input = Number.POSITIVE_INFINITY;
+  };
+
+  #release = (): void => {
+    if (this.#input === Number.POSITIVE_INFINITY) this.#input = performance.now();
   };
 
   #refresh(jump: boolean): void {
@@ -366,12 +414,17 @@ export class SliccChat extends ThemedElement {
 
   connectedCallback(): void {
     super.connectedCallback();
+    globalThis.addEventListener('pointerup', this.#release, true);
+    globalThis.addEventListener('pointercancel', this.#release, true);
     if (this.hasUpdated) this.#observe();
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    globalThis.removeEventListener('pointerup', this.#release, true);
+    globalThis.removeEventListener('pointercancel', this.#release, true);
     this.#resize.disconnect();
+    clearTimeout(this.#settle);
   }
 
   protected firstUpdated(): void {
@@ -594,6 +647,11 @@ export class SliccChat extends ThemedElement {
         aria-label="Conversation"
         tabindex="-1"
         @scroll=${this.#scroll}
+        @wheel=${this.#intent}
+        @touchstart=${this.#intent}
+        @touchmove=${this.#intent}
+        @keydown=${this.#intent}
+        @pointerdown=${this.#hold}
       >
         <div class="column" @keydown=${this.#keys}>
           ${
