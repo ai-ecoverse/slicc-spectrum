@@ -42,6 +42,8 @@ const navigation = new Set([
   'PageDown',
 ]);
 
+const upward = new Set(['ArrowUp', 'PageUp', 'Home']);
+
 const failed = (message: Message): boolean =>
   message.role === 'assistant'
     ? message.status === 'error'
@@ -323,8 +325,14 @@ export class SliccChat extends ThemedElement {
 
   #intent = {
     passive: true,
-    handleEvent: (): void => {
+    handleEvent: (event: Event): void => {
       this.#input = performance.now();
+      const up =
+        event instanceof WheelEvent
+          ? event.deltaY < 0
+          : event instanceof KeyboardEvent &&
+            (upward.has(event.key) || (event.key === ' ' && event.shiftKey));
+      if (up && this.#log().scrollTop > 0) this.#stuck = false;
     },
   };
 
