@@ -166,6 +166,7 @@ export class SliccFiles extends ModelElement {
     inserting: { state: true },
     error: { state: true },
     query: { state: true },
+    unmatched: { state: true },
   };
   declare count: number;
   declare mounted: readonly string[];
@@ -176,6 +177,7 @@ export class SliccFiles extends ModelElement {
   declare inserting: ReadonlySet<string>;
   declare error: string;
   declare query: string;
+  declare unmatched: boolean;
   #entries: readonly FileEntry[] = [];
   #pending = false;
   #reveal: string | null = null;
@@ -191,6 +193,7 @@ export class SliccFiles extends ModelElement {
     this.inserting = new Set();
     this.error = '';
     this.query = '';
+    this.unmatched = false;
   }
 
   static styles = [
@@ -427,6 +430,16 @@ export class SliccFiles extends ModelElement {
     this.focusOn('sp-search');
   }
 
+  #matches(event: CustomEvent<{ empty: boolean }>): void {
+    event.stopPropagation();
+    this.unmatched = event.detail.empty;
+  }
+
+  #closed(event: Event): void {
+    event.stopPropagation();
+    this.query = '';
+  }
+
   #find(event: KeyboardEvent): void {
     if (event.key !== 'ArrowDown') return;
     event.preventDefault();
@@ -535,7 +548,13 @@ export class SliccFiles extends ModelElement {
         input: (value) => this.#search(value),
         keydown: (event) => this.#find(event),
       })}</div>
-      <slicc-file-tree @file-open=${this.#open} @tree-search=${this.#seed}></slicc-file-tree>`;
+      ${this.unmatched ? html`<div class="note" role="status" data-empty>No files match.</div>` : nothing}
+      <slicc-file-tree
+        @file-open=${this.#open}
+        @tree-search=${this.#seed}
+        @tree-matches=${this.#matches}
+        @tree-search-close=${this.#closed}
+      ></slicc-file-tree>`;
   }
 }
 

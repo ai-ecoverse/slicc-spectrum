@@ -28,6 +28,10 @@ const css = `
   height: 100%;
 }
 
+:host([data-empty]) .mount {
+  display: none;
+}
+
 file-tree-container {
   color-scheme: inherit;
 }
@@ -61,6 +65,7 @@ export class SliccFileTree extends HTMLElement {
     this.#paths = value;
     this.#tree?.resetPaths(value, { initialExpandedPaths: expanded });
     if (this.#query) this.#tree?.setSearch(this.#query);
+    this.#matched();
   }
 
   get query(): string {
@@ -70,6 +75,27 @@ export class SliccFileTree extends HTMLElement {
   set query(value: string) {
     this.#query = value;
     this.#tree?.setSearch(value || null);
+    this.#matched();
+  }
+
+  get empty(): boolean {
+    return this.hasAttribute('data-empty');
+  }
+
+  #matched(): void {
+    const empty = !!this.#query && !!this.#tree && this.#tree.getSearchMatchingPaths().length === 0;
+    if (empty === this.empty) return;
+    this.toggleAttribute('data-empty', empty);
+    this.dispatchEvent(
+      new CustomEvent('tree-matches', { detail: { empty }, bubbles: true, composed: true })
+    );
+  }
+
+  #searched(value: string | null): void {
+    if (value !== null || !this.#query) return;
+    this.#query = '';
+    this.#matched();
+    this.dispatchEvent(new CustomEvent('tree-search-close', { bubbles: true, composed: true }));
   }
 
   #expandedNow(): string[] {
@@ -122,8 +148,10 @@ export class SliccFileTree extends HTMLElement {
       density: 'compact',
       icons: { set: 'complete', colored: false },
       onSelectionChange: (paths) => this.#selected(paths),
+      onSearchChange: (value) => this.#searched(value),
     });
     this.#tree.render({ containerWrapper: this.#mount });
+    this.#matched();
   }
 
   disconnectedCallback(): void {

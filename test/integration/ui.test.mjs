@@ -1019,6 +1019,33 @@ test('the files search filters the tree, and a letter typed in the tree starts a
     field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
   });
   await page.until(() => !!window.row('workspace/harbor/README.md'));
+  await page.evaluate(() => {
+    const field = window.filesPart('sp-search');
+    field.value = 'zzqx';
+    field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+  });
+  await page.until(
+    () =>
+      window.filesPart('.note[data-empty]')?.textContent === 'No files match.' &&
+      !window.row('workspace/harbor/README.md')
+  );
+  await page.evaluate(() => {
+    const field = window.filesPart('sp-search');
+    field.value = 'units';
+    field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+  });
+  await page.until(
+    () => !window.filesPart('.note[data-empty]') && !window.row('workspace/harbor/README.md')
+  );
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-files', 'slicc-file-tree')
+      .reveal('workspace/harbor/src/lib/units.ts')
+  );
+  await page.press('Escape');
+  await page.until(
+    () => window.filesPart('sp-search').value === '' && !!window.row('workspace/harbor/README.md')
+  );
   assert.deepEqual(page.errors, []);
 });
 
