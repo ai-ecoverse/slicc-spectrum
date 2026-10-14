@@ -4181,10 +4181,11 @@ test('the chat header refreshes its models once the first provider connects, on 
   await shot(page, 'models-after-provider');
   await viewport(420);
   await page.until(() => document.querySelector('slicc-app').screen === 'phone');
-  await page.until(() =>
-    window
-      .$('slicc-app', 'slicc-dock', 'slicc-chat')
-      ?.shadowRoot.querySelector('header[data-compact] [data-action=new-chat]')
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat')
+        ?.shadowRoot.querySelector('header[data-compact] [data-action=new-chat]')
   );
   assert.deepEqual(await page.evaluate(header), {
     setUp: false,
