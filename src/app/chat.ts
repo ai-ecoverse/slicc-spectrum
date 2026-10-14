@@ -326,6 +326,8 @@ export class SliccChat extends ThemedElement {
   #input = Number.NEGATIVE_INFINITY;
   #up = Number.NEGATIVE_INFINITY;
   #from = 0;
+  #start = 0;
+  #settle: ReturnType<typeof setTimeout> | undefined;
   #tail = '';
 
   #sent(agentId: string): boolean {
@@ -366,12 +368,22 @@ export class SliccChat extends ThemedElement {
       this.#input = performance.now();
       const up =
         event instanceof WheelEvent
-          ? event.deltaY < 0
+          ? event.deltaY < 0 && !event.ctrlKey
           : event instanceof KeyboardEvent &&
             (upward.has(event.key) || (event.key === ' ' && event.shiftKey));
-      this.#from = this.#log().scrollTop;
-      this.#up = up && this.#from > 0 ? this.#input : Number.NEGATIVE_INFINITY;
-      if (this.#up === this.#input) this.#stuck = false;
+      const at = this.#log().scrollTop;
+      if (!up || at <= 0) return;
+      this.#from = at;
+      this.#up = this.#input;
+      if (this.#settle === undefined) this.#start = Math.max(at, this.#last);
+      this.#stuck = false;
+      clearTimeout(this.#settle);
+      this.#settle = setTimeout(() => {
+        this.#settle = undefined;
+        if (this.#start - this.#log().scrollTop >= 48) return;
+        this.#stuck = true;
+        this.#pin();
+      }, 400);
     },
   };
 
@@ -408,6 +420,7 @@ export class SliccChat extends ThemedElement {
     globalThis.removeEventListener('pointerup', this.#release, true);
     globalThis.removeEventListener('pointercancel', this.#release, true);
     this.#resize.disconnect();
+    clearTimeout(this.#settle);
   }
 
   protected firstUpdated(): void {
