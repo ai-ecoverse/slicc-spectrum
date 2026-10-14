@@ -347,6 +347,11 @@ export const models: ModelOption[] = [
   { id: 'local-tiny', label: 'Local tiny (no tools)', provider: 'This browser', tools: false },
 ];
 
+export const laterModels: ModelOption[] = [
+  { id: 'gpt-6', label: 'GPT-6', provider: 'OpenAI', images: true },
+  { id: 'gpt-6-mini', label: 'GPT-6 mini', provider: 'OpenAI', images: true, default: true },
+];
+
 export const defaults: Settings = {
   color: 'system',
   model: 'claude-sonnet-5-5',
@@ -438,7 +443,7 @@ export const agents: Agent[] = [
     parentId: null,
     status: 'idle',
     model: 'claude-sonnet-5-5',
-    contextFill: 0.09,
+    contextFill: 0.7,
     unread: 1,
   },
   {
@@ -448,7 +453,7 @@ export const agents: Agent[] = [
     parentId: null,
     status: 'waiting',
     model: 'claude-sonnet-5-5',
-    contextFill: 0.84,
+    contextFill: 0.95,
     unread: 2,
   },
   {

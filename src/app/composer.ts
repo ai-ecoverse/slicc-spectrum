@@ -301,6 +301,11 @@ export class SliccComposer extends ThemedElement {
         flex: none;
         color: var(--swc-neutral-subdued-content-color-default);
       }
+      .queued .next {
+        flex: none;
+        font-size: var(--swc-font-size-75);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
       .queued .text {
         flex: 1;
         min-width: 0;
@@ -1132,17 +1137,23 @@ export class SliccComposer extends ThemedElement {
     const model = this.model as SliccModel;
     return html`<ul class="queue" aria-label="Queued messages">
       ${queued.map(
-        (message) => html`<li class="queued" data-id=${message.id}>
+        (
+          message
+        ) => html`<li class="queued" data-id=${message.id} data-mode=${message.mode ?? 'queue'}>
           <swc-icon-clock size="s" aria-hidden="true"></swc-icon-clock>
-          <span class="text"><span class="sr">Queued: </span>${message.text}</span>
-          <swc-action-button size="s" quiet data-action="send-now" @click=${() => {
-            model.agent.unqueue(this.#agent, message.id);
-            void model.agent.send(this.#agent, {
-              text: message.text,
-              attachments: message.attachments,
-              mode: 'steer',
-            });
-          }}>Send now</swc-action-button>
+          <span class="text"><span class="sr">${message.mode === 'steer' ? 'Steering: ' : 'Queued: '}</span>${message.text}</span>
+          ${
+            message.mode === 'steer'
+              ? html`<span class="next">Sends at the next step</span>`
+              : html`<swc-action-button size="s" quiet data-action="send-now" @click=${() => {
+                  model.agent.unqueue(this.#agent, message.id);
+                  void model.agent.send(this.#agent, {
+                    text: message.text,
+                    attachments: message.attachments,
+                    mode: 'steer',
+                  });
+                }}>Send now</swc-action-button>`
+          }
           <swc-close-button size="s" data-action="unqueue" accessible-label="Remove from queue" @click=${() => model.agent.unqueue(this.#agent, message.id)}></swc-close-button>
         </li>`
       )}

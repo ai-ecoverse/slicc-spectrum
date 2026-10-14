@@ -474,6 +474,7 @@ export interface ModelOption {
   reasoning?: boolean;
   tools?: boolean;
   images?: boolean;
+  default?: boolean;
 }
 
 export interface SettingsEvents {

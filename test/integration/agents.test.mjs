@@ -332,6 +332,34 @@ test('New cone opens a name dialog: empty disables Create, Escape cancels, a rej
   assert.deepEqual(page.errors, []);
 });
 
+test('New cone in the Agents panel creates a cone and selects it', async (t) => {
+  const page = await open(t);
+  await page.until(() =>
+    Boolean(window.agents()?.shadowRoot.querySelector('[data-action=new-cone]'))
+  );
+  await page.evaluate(() =>
+    window.agents().shadowRoot.querySelector('[data-action=new-cone]').click()
+  );
+  await page.until(() => /slicc-prompt > sp-textfield > input$/.test(window.focused()));
+  await page.type('scratchpad');
+  await page.press('Enter');
+  await page.until(() => !window.$('slicc-app', 'slicc-prompt'));
+  await page.until(() => window.model.agent.active() === 'cone-1');
+  await page.until(() => window.agentRow('cone-1')?.getAttribute('aria-selected') === 'true');
+  await page.until(() => /slicc-agents > li#cone-1$/.test(window.focused()));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.match(await page.evaluate(() => window.focused()), /slicc-agents > li#cone-1$/);
+  assert.equal(
+    await page.evaluate(() => window.agentRow('cone-1').querySelector('.name').textContent),
+    'scratchpad'
+  );
+  assert.equal(
+    await page.evaluate(() => window.$('slicc-app', 'header sp-picker').value),
+    'cone-1'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('New cone is hidden when the port has no createCone', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {

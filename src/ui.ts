@@ -28,6 +28,8 @@ import { defineDock, SliccDock } from './components/dock.ts';
 import { defineFileTree, SliccFileTree } from './components/file-tree.ts';
 import { define as defineTerminal } from './slicc-terminal.ts';
 
+export type { SecretRulesVerdict } from './app/approvals.ts';
+export { secretRules } from './app/approvals.ts';
 export type { Color } from './app/base.ts';
 export { resolveColor } from './app/base.ts';
 export type { ConfirmOptions, ConfirmVariant, PromptOptions } from './app/confirm.ts';

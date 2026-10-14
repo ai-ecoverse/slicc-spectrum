@@ -189,6 +189,7 @@ export class SliccPrompt extends LitElement {
   trigger: HTMLElement | null = null;
   submit: ((value: string) => Promise<void>) | null = null;
   readonly #result = Promise.withResolvers<string | null>();
+  #submitted: string | null = null;
 
   constructor() {
     super();
@@ -250,7 +251,7 @@ export class SliccPrompt extends LitElement {
       this.#field.focus();
       return;
     }
-    this.#result.resolve(value);
+    this.#submitted = value;
     this.#dialog.close();
   }
 
@@ -259,7 +260,7 @@ export class SliccPrompt extends LitElement {
   }
 
   #closed(): void {
-    this.#result.resolve(null);
+    this.#result.resolve(this.#submitted);
     this.remove();
     if (this.trigger?.isConnected) this.trigger.focus();
   }

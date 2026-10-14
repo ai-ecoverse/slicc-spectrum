@@ -9,11 +9,13 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-camera.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chevron-down.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chevron-left.js';
+import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
 import '@adobe/spectrum-wc-icons/swc-icon-close.js';
 import '@adobe/spectrum-wc-icons/swc-icon-code.js';
 import '@adobe/spectrum-wc-icons/swc-icon-copy.js';
 import '@adobe/spectrum-wc-icons/swc-icon-cursor-click.js';
 import '@adobe/spectrum-wc-icons/swc-icon-globe-grid.js';
+import '@adobe/spectrum-wc-icons/swc-icon-hand.js';
 import '@adobe/spectrum-wc-icons/swc-icon-keyboard.js';
 import '@adobe/spectrum-wc-icons/swc-icon-link.js';
 import '@adobe/spectrum-wc-icons/swc-icon-open-in.js';
@@ -122,13 +124,15 @@ const icons: Record<BrowserActionKind, TemplateResult> = {
   fill: html`<swc-icon-text size="s"></swc-icon-text>`,
   type: html`<swc-icon-text size="s"></swc-icon-text>`,
   press: html`<swc-icon-keyboard size="s"></swc-icon-keyboard>`,
-  scroll: html`<swc-icon-chevron-down size="s"></swc-icon-chevron-down>`,
+  scroll: html`<swc-icon-hand size="s"></swc-icon-hand>`,
   request: html`<swc-icon-globe-grid size="s"></swc-icon-globe-grid>`,
 };
 
 export const refresh = 10_000;
 export const fresh = 3_000;
+export const actionPage = 50;
 const narrowWidth = 480;
+const linked = new Set<BrowserActionKind>(['open', 'goto', 'request']);
 const wideWidth = 720;
 
 const offline = html`<svg viewBox="0 0 96 72" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="8" width="84" height="56" rx="6"/><path d="M6 22h84"/><circle cx="16" cy="15" r="1.5"/><circle cx="24" cy="15" r="1.5"/><path d="M38 34l20 20M58 34L38 54"/></svg>`;
@@ -156,7 +160,10 @@ export class SliccBrowser extends ModelElement {
   #width = 0;
   #copied: 'url' | 'failed' | null = null;
   #command: string | false | null = null;
-  #count = 0;
+  #last: string | null = null;
+  #shown = actionPage;
+  #anchor: number | null = null;
+  #expanded = new Set<string>();
 
   constructor() {
     super();
@@ -362,8 +369,15 @@ export class SliccBrowser extends ModelElement {
         font-family: var(--swc-code-font-family-stack);
         color: var(--swc-neutral-subdued-content-color-default);
       }
-      .narrow .driving swc-button {
-        flex: 1 0 100%;
+      .detail .driving {
+        flex-wrap: nowrap;
+        min-block-size: var(--swc-component-height-75);
+      }
+      .detail .driving swc-status-light {
+        min-width: 0;
+      }
+      .detail .driving swc-button {
+        flex: none;
       }
       .swc-Link {
         font-size: inherit;
@@ -436,6 +450,7 @@ export class SliccBrowser extends ModelElement {
         user-select: none;
       }
       figcaption {
+        min-block-size: var(--swc-component-height-50);
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -449,7 +464,83 @@ export class SliccBrowser extends ModelElement {
         color: var(--swc-heading-color);
       }
       summary {
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-100);
+        min-block-size: var(--swc-component-height-75);
+        padding-inline: var(--swc-spacing-75);
+        margin-inline: calc(-1 * var(--swc-spacing-75));
+        border-radius: var(--swc-corner-radius-medium-default);
+        list-style: none;
         cursor: pointer;
+      }
+      summary::-webkit-details-marker {
+        display: none;
+      }
+      summary:hover {
+        background: var(--swc-gray-100);
+      }
+      summary:focus-visible,
+      .url-toggle:focus-visible,
+      .actions:focus-visible {
+        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+        outline-offset: var(--swc-focus-ring-gap);
+      }
+      .chevron {
+        flex: none;
+        color: var(--swc-neutral-subdued-content-color-default);
+        transition: transform var(--swc-animation-duration-100);
+      }
+      details[open] > summary .chevron {
+        transform: rotate(90deg);
+      }
+      .url-toggle[aria-expanded='true'] .chevron {
+        transform: rotate(180deg);
+      }
+      :host(:dir(rtl)) details:not([open]) > summary .chevron {
+        transform: scaleX(-1);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .chevron {
+          transition: none;
+        }
+      }
+      .more {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--swc-spacing-200);
+        padding-block-end: var(--swc-spacing-75);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .url-toggle {
+        display: inline-flex;
+        align-self: flex-start;
+        align-items: center;
+        gap: var(--swc-spacing-50);
+        max-width: 100%;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-radius: var(--swc-corner-radius-small-default);
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: start;
+        cursor: pointer;
+      }
+      .url-toggle > span {
+        min-width: 0;
+      }
+      .url-toggle:hover > span {
+        text-decoration: underline;
+      }
+      .full {
+        font-family: var(--swc-code-font-family-stack);
+        color: var(--swc-neutral-subdued-content-color-default);
+        overflow-wrap: anywhere;
+        white-space: normal;
+        user-select: text;
       }
       .actions {
         display: flex;
@@ -478,7 +569,8 @@ export class SliccBrowser extends ModelElement {
         min-width: 0;
         overflow-wrap: anywhere;
       }
-      .last .what {
+      .last .what > :not(.full),
+      .last .url-toggle > span {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -545,6 +637,8 @@ export class SliccBrowser extends ModelElement {
     this.#shots.clear();
     this.#frames.clear();
     this.#pulse.clear();
+    this.#expanded.clear();
+    this.#shown = actionPage;
     const tabs = model.browser.list();
     this.#driven = new Set(tabs.filter((tab) => tab.controlled).map((tab) => tab.id));
     this.#focus = this.#latest(model, tabs);
@@ -654,7 +748,7 @@ export class SliccBrowser extends ModelElement {
       try {
         const src = await model.browser.screenshot(id);
         const now = model.browser.list().find((candidate) => candidate.id === id);
-        if (this.model === model && now && this.#key(now) === key) {
+        if (this.model === model && now && this.#key(now) === key && this.#watching?.tabId !== id) {
           this.#shots.set(id, { key, src, at: Date.now() });
           this.requestUpdate();
         }
@@ -673,6 +767,7 @@ export class SliccBrowser extends ModelElement {
   #show(id: string | null): void {
     this.#focus = id;
     this.#copied = null;
+    this.#shown = actionPage;
     if (id) this.#pulse.delete(id);
     this.requestUpdate();
   }
@@ -689,9 +784,11 @@ export class SliccBrowser extends ModelElement {
       this.#ticker = setInterval(() => this.requestUpdate(), 1000);
     if (!(visible && tab)) this.#still();
     const list = this.renderRoot.querySelector('.actions:not(.last)');
-    const count = list?.childElementCount ?? 0;
-    if (list && count !== this.#count) list.scrollTop = list.scrollHeight;
-    this.#count = count;
+    const last = list?.lastElementChild?.getAttribute('data-action-id') ?? null;
+    if (list && this.#anchor !== null) list.scrollTop = list.scrollHeight - this.#anchor;
+    else if (list && last !== this.#last) list.scrollTop = list.scrollHeight;
+    this.#anchor = null;
+    this.#last = last;
   }
 
   #still(): void {
@@ -753,14 +850,10 @@ export class SliccBrowser extends ModelElement {
       : 'In use';
   }
 
-  #stopButton(
-    tab: BrowserTab,
-    refocus: string,
-    justified = false
-  ): TemplateResult | typeof nothing {
+  #stopButton(tab: BrowserTab, refocus: string): TemplateResult | typeof nothing {
     if (!tab.agentId || watchOnly(this.model)) return nothing;
     const agentId = tab.agentId;
-    return html`<swc-button size="s" variant="secondary" ?justified=${justified} data-action="stop-agent" @click=${() => this.#stop(agentId, refocus)}>Stop ${agentName(this.model as SliccModel, agentId)}</swc-button>`;
+    return html`<swc-button size="s" variant="secondary" data-action="stop-agent" @click=${() => this.#stop(agentId, refocus)}>Stop ${agentName(this.model as SliccModel, agentId)}</swc-button>`;
   }
 
   #card(tab: BrowserTab, active: string | null): TemplateResult {
@@ -879,9 +972,33 @@ export class SliccBrowser extends ModelElement {
     </figure>`;
   }
 
+  #more(total: number): void {
+    const list = this.renderRoot.querySelector('.actions:not(.last)') as Element;
+    this.#anchor = list.scrollHeight - list.scrollTop;
+    this.#shown += actionPage;
+    const done = this.#shown >= total;
+    void this.updateComplete.then(() => {
+      if (done) this.focusOn('.actions:not(.last)');
+    });
+    this.requestUpdate();
+  }
+
+  #toggle(id: string): void {
+    if (!this.#expanded.delete(id)) this.#expanded.add(id);
+    this.requestUpdate();
+  }
+
+  #what(action: BrowserAction): TemplateResult {
+    const url = linked.has(action.kind) ? action.value : undefined;
+    if (!url) return html`<span>${describe(action)}</span>`;
+    const open = this.#expanded.has(action.id);
+    return html`<button class="url-toggle" data-action="action-url" aria-expanded=${open ? 'true' : 'false'} aria-controls=${`url-${action.id}`} @click=${() => this.#toggle(action.id)}><span>${describe(action)}</span><swc-icon-chevron-down class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-down></button>${open ? html`<span class="full" id=${`url-${action.id}`}>${url}</span>` : nothing}`;
+  }
+
   #row(action: BrowserAction): TemplateResult {
     const failed = action.status === 'failed';
-    return html`<li data-action-id=${action.id} data-kind=${action.kind} data-status=${action.status} title=${action.kind === 'request' ? (action.value ?? '') : nothing}>
+    const url = linked.has(action.kind) ? action.value : undefined;
+    return html`<li data-action-id=${action.id} data-kind=${action.kind} data-status=${action.status} title=${url ?? nothing}>
       <span>${
         action.status === 'running'
           ? html`<swc-progress-circle size="s" indeterminate label="Running"></swc-progress-circle>`
@@ -889,7 +1006,7 @@ export class SliccBrowser extends ModelElement {
             ? html`<swc-icon-alert-triangle size="s" aria-label="Failed"></swc-icon-alert-triangle>`
             : icons[action.kind]
       }</span>
-      <span class="what"><span>${describe(action)}</span>${failed && action.error ? html`<span class="failure">${action.error}</span>` : nothing}</span>
+      <span class="what">${this.#what(action)}${failed && action.error ? html`<span class="failure">${action.error}</span>` : nothing}</span>
       <span class="who">${agentName(this.model as SliccModel, action.agentId)} ${time(action.at)}</span>
     </li>`;
   }
@@ -897,22 +1014,27 @@ export class SliccBrowser extends ModelElement {
   #actions(tab: BrowserTab): TemplateResult | typeof nothing {
     const port = (this.model as SliccModel).browser;
     if (!port.actions) return nothing;
-    const actions = port
+    const all = port
       .actions()
       .filter(
         (action) =>
           action.tabId === tab.id ||
           (action.tabId === null && action.agentId !== null && action.agentId === tab.agentId)
-      )
-      .slice(-50);
-    if (!actions.length)
+      );
+    if (!all.length)
       return html`<h3>Recent actions</h3><p class="muted" data-actions="none">No actions yet.</p>`;
+    const actions = all.slice(-this.#shown);
+    const more =
+      all.length > actions.length
+        ? html`<div class="more"><span>Showing the latest ${actions.length} of ${all.length}</span><swc-button size="s" variant="secondary" fill-style="outline" data-action="more-actions" @click=${() => this.#more(all.length)}>Show more</swc-button></div>`
+        : nothing;
     if (this.#width >= narrowWidth)
-      return html`<h3>Recent actions</h3><ol class="actions" aria-label="Recent actions">${actions.map((action) => this.#row(action))}</ol>`;
+      return html`<h3>Recent actions</h3>${more}<ol class="actions" aria-label="Recent actions" tabindex="0">${actions.map((action) => this.#row(action))}</ol>`;
     const last = actions.at(-1) as BrowserAction;
     return html`<details>
-        <summary>Recent actions (${actions.length})</summary>
-        <ol class="actions" aria-label="Earlier actions">${actions.slice(0, -1).map((action) => this.#row(action))}</ol>
+        <summary><swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right>Recent actions (${all.length})</summary>
+        ${more}
+        <ol class="actions" aria-label="Earlier actions" tabindex="0">${actions.slice(0, -1).map((action) => this.#row(action))}</ol>
       </details>
       <ol class="actions last" aria-label="Last action">${this.#row(last)}</ol>`;
   }
@@ -941,7 +1063,7 @@ export class SliccBrowser extends ModelElement {
         </div>
         <div class="driving" data-driving=${tab.controlled ? (tab.agentId ? 'agent' : 'user') : 'none'}>
           <swc-status-light size="m" variant=${tab.controlled ? 'info' : 'neutral'}>${tab.controlled ? this.#who(tab) : 'No agent is using this tab'}</swc-status-light>
-          ${tab.controlled ? this.#stopButton(tab, '[data-action="all-tabs"]', narrow) : nothing}
+          ${tab.controlled ? this.#stopButton(tab, '[data-action="all-tabs"]') : nothing}
         </div>
         ${this.#view(tab)}
         ${this.#actions(tab)}

@@ -4,13 +4,14 @@ import { keyed } from 'lit/directives/keyed.js';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import type { PanelParams, SerializedDockview, SliccDock } from '../components/dock.ts';
 import type { Agent, SliccModel, Sprinkle, UpdatesPort } from '../model/types.ts';
+import { creatable, createCone } from './agents.ts';
 import { changesOf, type DocumentHold, holdDocument, shared, ThemedElement } from './base.ts';
-import { prompt } from './confirm.ts';
 import { Dips, dipType } from './dips.ts';
 import { followPage, terminalsAllowed, watchOnly } from './follow.ts';
 import { defaultFontBase, defaultVariableFont, installFonts } from './fonts.ts';
 import { deleteCone } from './freezer.ts';
 import { grammarBase, setGrammarBase } from './grammars.ts';
+import { settleModels } from './models.ts';
 import { agentTitle, untitled, watchTitles } from './names.ts';
 import { networkHealth, networkIcon, networkLabel, networkStatus, remoteLight } from './network.ts';
 import { Panels } from './panel-command.ts';
@@ -386,9 +387,14 @@ export class SliccApp extends ThemedElement {
 
   protected subscribe(model: SliccModel): Array<() => void> {
     const update = () => this.requestUpdate();
+    const settle = () => settleModels(model);
+    queueMicrotask(settle);
     return [
       ...super.subscribe(model),
+      model.settings.on('settings', settle),
+      model.settings.on('accounts', settle),
       model.agent.on('agents', () => {
+        settle();
         this.#prune();
         update();
       }),
@@ -414,6 +420,7 @@ export class SliccApp extends ThemedElement {
       ...(model.follow
         ? [
             model.follow.on('follow', () => {
+              settle();
               this.#followed(model);
               update();
             }),
@@ -894,7 +901,7 @@ export class SliccApp extends ThemedElement {
   }
 
   #creatable(): boolean {
-    return Boolean(this.model?.agent.createCone) && !watchOnly(this.model);
+    return creatable(this.model);
   }
 
   #cone(): string {
@@ -931,22 +938,7 @@ export class SliccApp extends ThemedElement {
   }
 
   async #newCone(trigger: HTMLElement): Promise<void> {
-    const port = this.model?.agent;
-    const create = port?.createCone?.bind(port);
-    if (!port || !create) return;
-    let created: Agent | undefined;
-    await prompt({
-      title: 'New cone',
-      label: 'Name',
-      action: 'Create',
-      trigger,
-      submit: async (name) => {
-        if (watchOnly(this.model)) return;
-        created = await create(name);
-      },
-    });
-    if (!created) return;
-    port.select(created.id);
+    if (!(await createCone(this.model as SliccModel, trigger))) return;
     await this.updateComplete;
     this.renderRoot.querySelector<HTMLElement>('header sp-picker')?.focus();
   }

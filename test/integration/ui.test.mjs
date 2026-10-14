@@ -978,6 +978,77 @@ test('a file opens from the tree in a tab, by click and by keyboard', async (t) 
   assert.deepEqual(page.errors, []);
 });
 
+test('the files search filters the tree, and a letter typed in the tree starts a search', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.$('slicc-app', '.rail.left [data-surface=files]').click());
+  await page.until(() => /slicc-files/.test(window.focused()));
+  await page.until(() => !!window.row('workspace/harbor/README.md'));
+  assert.equal(
+    await page.evaluate(() => window.filesPart('.find sp-search[data-action=search]').label),
+    'Search files'
+  );
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-files', 'slicc-file-tree')
+      .reveal('workspace/harbor/README.md')
+  );
+  await page.press('u');
+  await page.until(() => /slicc-files > sp-search/.test(window.focused()));
+  await page.type('nits');
+  await page.until(() => window.filesPart('sp-search').value === 'units');
+  await page.until(
+    () =>
+      !!window.row('workspace/harbor/src/lib/units.ts') && !window.row('workspace/harbor/README.md')
+  );
+  await shot(page, 'files-search');
+  await page.press('ArrowDown');
+  await page.until(() => /slicc-file-tree/.test(window.focused()));
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-files', 'slicc-file-tree')
+      .reveal('workspace/harbor/src/lib/units.ts')
+  );
+  await page.press('Enter');
+  await page.until(() =>
+    window.code('file:/workspace/harbor/src/lib/units.ts').includes('toFahrenheit')
+  );
+  await page.evaluate(() => window.app.show('files'));
+  await page.evaluate(() => {
+    const field = window.filesPart('sp-search');
+    field.value = '';
+    field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+  });
+  await page.until(() => !!window.row('workspace/harbor/README.md'));
+  await page.evaluate(() => {
+    const field = window.filesPart('sp-search');
+    field.value = 'zzqx';
+    field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+  });
+  await page.until(
+    () =>
+      window.filesPart('.note[data-empty]')?.textContent === 'No files match.' &&
+      !window.row('workspace/harbor/README.md')
+  );
+  await page.evaluate(() => {
+    const field = window.filesPart('sp-search');
+    field.value = 'units';
+    field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+  });
+  await page.until(
+    () => !window.filesPart('.note[data-empty]') && !window.row('workspace/harbor/README.md')
+  );
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-files', 'slicc-file-tree')
+      .reveal('workspace/harbor/src/lib/units.ts')
+  );
+  await page.press('Escape');
+  await page.until(
+    () => window.filesPart('sp-search').value === '' && !!window.row('workspace/harbor/README.md')
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a diff opens from the changes list, switches layout, and accepting or reverting clears it', async (t) => {
   const page = await open(t);
   const id = 'diff:/workspace/harbor/src/lib/cache.ts';
@@ -1619,6 +1690,56 @@ test('the browser follows a driven tab live, lists its actions and stops the age
   assert.deepEqual(page.errors, []);
 });
 
+for (const [width, height] of [
+  [1280, 800],
+  [420, 860],
+]) {
+  test(`the browser preview stays put while an agent starts and stops at ${width} px`, async (t) => {
+    const page = await open(t, { browser: 'idle' });
+    await page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+    if (width === 420)
+      await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+    await page.evaluate(() => {
+      window.inBrowser = (selector) =>
+        window.$('slicc-app', 'slicc-dock', 'slicc-browser', selector);
+      window.app.show('browser');
+      return true;
+    });
+    await page.until(() => !!window.inBrowser('li[data-id=tab-preview] .window'));
+    await page.evaluate(() => window.inBrowser('li[data-id=tab-preview] .window').click());
+    await page.until(() => window.inBrowser('.driving')?.dataset.driving === 'none');
+    const measure = () =>
+      page.evaluate(() => {
+        const top = (selector) =>
+          Math.round(window.inBrowser(selector).getBoundingClientRect().top);
+        return {
+          driving: top('.driving'),
+          figure: top('figure'),
+          actions: top('details, h3'),
+          height: Math.round(window.inBrowser('.driving').getBoundingClientRect().height),
+        };
+      });
+    const before = await measure();
+    await page.evaluate(() =>
+      window.model.browser.record({ tabId: 'tab-preview', agentId: 'cone-harbor', kind: 'scroll' })
+    );
+    await page.until(() => window.inBrowser('.driving')?.dataset.driving === 'agent');
+    await page.until(() => !!window.inBrowser('.driving [data-action=stop-agent]'));
+    const driven = await measure();
+    assert.deepEqual(driven, before);
+    await page.evaluate(() => window.inBrowser('.driving [data-action=stop-agent]').click());
+    await page.until(() => window.inBrowser('.driving')?.dataset.driving === 'none');
+    assert.deepEqual(await measure(), before);
+    assert.deepEqual(page.errors, []);
+  });
+}
+
 test('the browser says when browser control isn’t connected', async (t) => {
   const page = await open(t, { browser: 'off' });
   await page.evaluate(() => window.app.show('browser'));
@@ -2138,14 +2259,19 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
       window.model.agent.busy('cone-sliccy') === false &&
       window.model.agent.queue('cone-sliccy').length === 0
   );
-  const tags = await page.evaluate(() =>
-    [
+  const delivered = await page.evaluate(() => {
+    const turns = [
       ...window
         .$('slicc-app', 'slicc-dock', 'slicc-chat')
-        .shadowRoot.querySelectorAll('.message.user[data-delivered] .tag'),
-    ].map((tag) => tag.textContent)
-  );
-  assert.deepEqual([...new Set(tags)].sort(), ['Follow-up', 'Steered']);
+        .shadowRoot.querySelectorAll('.message.user[data-origin=user]'),
+    ];
+    return {
+      kinds: [...new Set(turns.map((turn) => turn.dataset.delivered))].sort(),
+      labels: turns.filter((turn) => turn.querySelector('.who, .tag')).length,
+      times: turns.every((turn) => turn.querySelector('.meta time.when')),
+    };
+  });
+  assert.deepEqual(delivered, { kinds: ['follow-up', 'run', 'steer'], labels: 0, times: true });
   await shot(page, 'composer-delivered');
 
   await page.press('ArrowUp');
@@ -2593,6 +2719,52 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
   );
   await shot(page, 'memory-light');
 
+  const memory = (selector) =>
+    page.evaluate(
+      (selector) =>
+        [
+          ...window
+            .$('slicc-app', 'slicc-dock')
+            .content('memory')
+            .shadowRoot.querySelectorAll(selector),
+        ].map((node) => node.dataset.scope ?? node.textContent.trim()),
+      selector
+    );
+  assert.deepEqual(await memory('.bar > span:first-child'), ['10 of 10 memories']);
+  assert.deepEqual(
+    [...new Set(await memory('.row .scope'))],
+    ['global', 'cone-harbor', 'cone-release', 'role:reviewer']
+  );
+  const scope = (value) =>
+    page.evaluate((value) => {
+      const picker = window
+        .$('slicc-app', 'slicc-dock')
+        .content('memory')
+        .shadowRoot.querySelector('.tools sp-picker[label=Scope]');
+      picker.value = value;
+      picker.dispatchEvent(new Event('change'));
+    }, value);
+  await scope('global');
+  await page.until(() =>
+    /5 of 5 memories/.test(
+      window.$('slicc-app', 'slicc-dock').content('memory').shadowRoot.querySelector('.bar')
+        .textContent
+    )
+  );
+  assert.deepEqual(await memory('.row .scope'), []);
+  await scope('cone-sliccy');
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock').content('memory').shadowRoot.querySelector('.note')
+  );
+  assert.deepEqual(await memory('.note'), ['No memories for sliccy yet.']);
+  await scope('*');
+  await page.until(() =>
+    /10 of 10 memories/.test(
+      window.$('slicc-app', 'slicc-dock').content('memory').shadowRoot.querySelector('.bar')
+        .textContent
+    )
+  );
+
   await page.evaluate(() => {
     window.memoryPart = (selector) =>
       window.$('slicc-app', 'slicc-dock').content('memory').shadowRoot.querySelector(selector);
@@ -2611,7 +2783,8 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
   await page.evaluate(() =>
     window.memoryPart('.tools sp-picker[label=Scope] sp-menu-item[value="role:reviewer"]').click()
   );
-  await page.until(() => !!window.memoryPart('.row[data-id=mem-10] .from'));
+  await page.until(() => /2 of 2 memories/.test(window.memoryPart('.bar').textContent));
+  assert.ok(await page.evaluate(() => !!window.memoryPart('.row[data-id=mem-10] .from')));
   assert.equal(
     await page.evaluate(() => window.memoryPart('.tools sp-picker[label=Scope]').value),
     'role:reviewer'
@@ -4116,6 +4289,89 @@ test('the chat header lists chat models with their provider and starts a new cha
   assert.deepEqual(page.errors, []);
 });
 
+test('the chat header refreshes its models once the first provider connects, on one row at 1280 and 420', async (t) => {
+  const page = await open(t, { providers: 'none' });
+  const viewport = (width) =>
+    page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height: 860,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await viewport(1280);
+  const header = () => {
+    const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot;
+    const head = root.querySelector('header');
+    const picker = head.querySelector('sp-picker[label=Model]');
+    const tops = [...head.children]
+      .filter(
+        (child) => child.localName !== 'swc-tooltip' && child.getBoundingClientRect().height > 0
+      )
+      .map((child) =>
+        Math.round(child.getBoundingClientRect().top + child.getBoundingClientRect().height / 2)
+      );
+    const button = head.querySelector('[data-action=new-chat]');
+    return {
+      setUp: !!head.querySelector('[data-action=set-up-model]'),
+      options: picker ? [...picker.querySelectorAll('sp-menu-item')].map((item) => item.value) : [],
+      value: picker?.value ?? null,
+      rows: Math.max(...tops) - Math.min(...tops) < 12 ? 1 : 2,
+      label: button.textContent.trim(),
+      name: button.getAttribute('accessible-label'),
+    };
+  };
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat')?.shadowRoot.querySelector('header')
+  );
+  assert.deepEqual(await page.evaluate(header), {
+    setUp: true,
+    options: [],
+    value: null,
+    rows: 1,
+    label: 'New conversation',
+    name: null,
+  });
+  await shot(page, 'models-before-provider');
+  await page.evaluate(() =>
+    window.model.settings.connect('openai', 'sk-invented-key').then(() => true)
+  );
+  await page.until(
+    () =>
+      window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat')
+        .shadowRoot.querySelector('header sp-picker[label=Model]')?.value === 'gpt-6-mini'
+  );
+  assert.deepEqual(await page.evaluate(header), {
+    setUp: false,
+    options: ['gpt-6', 'gpt-6-mini'],
+    value: 'gpt-6-mini',
+    rows: 1,
+    label: 'New conversation',
+    name: null,
+  });
+  assert.equal(await page.evaluate(() => window.model.settings.get().model), 'gpt-6-mini');
+  await shot(page, 'models-after-provider');
+  await viewport(420);
+  await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat')
+        ?.shadowRoot.querySelector('header[data-compact] [data-action=new-chat]')
+  );
+  assert.deepEqual(await page.evaluate(header), {
+    setUp: false,
+    options: ['gpt-6', 'gpt-6-mini'],
+    value: 'gpt-6-mini',
+    rows: 1,
+    label: '',
+    name: 'New conversation',
+  });
+  await shot(page, 'chat-header-420');
+  assert.deepEqual(page.errors, []);
+});
+
 test('chat stays pinned to the bottom while content grows after render', async (t) => {
   const page = await open(t);
   const result = await page.evaluate(async () => {
@@ -4257,18 +4513,20 @@ test('the file tree follows the app theme, not the system one', async (t) => {
     return [
       getComputedStyle(tree).colorScheme,
       light(getComputedStyle(window.row('workspace/harbor/src/lib/units.ts')).color),
-      light(getComputedStyle(tree.shadowRoot.querySelector('input')).backgroundColor),
+      light(
+        getComputedStyle(window.filesPart('sp-search').shadowRoot.querySelector('input')).color
+      ),
     ];
   };
   const toggle = () => window.$('slicc-app', 'header swc-action-button#theme').click();
-  assert.deepEqual(await page.evaluate(theme), ['light', false, true]);
+  assert.deepEqual(await page.evaluate(theme), ['light', false, false]);
   await page.evaluate(toggle);
   await page.until(
     () =>
       getComputedStyle(window.row('workspace/harbor/src/lib/units.ts').getRootNode().host)
         .colorScheme === 'dark'
   );
-  assert.deepEqual(await page.evaluate(theme), ['dark', true, false]);
+  assert.deepEqual(await page.evaluate(theme), ['dark', true, true]);
   await shot(page, 'tree-dark');
   assert.deepEqual(page.errors, []);
 });
@@ -5400,6 +5658,127 @@ test('a sudo request that changes secret rules is flagged, in dark', async (t) =
 
 test('the secret rules flag fits a narrow window', async (t) => {
   await secretRulesDialog(t, 'light', 420);
+});
+
+async function sudoFromTerminal(t) {
+  const page = await open(t, { approvals: 'none' });
+  await page.evaluate(() => window.$('slicc-app', '.rail.right [data-surface=terminal]').click());
+  await page.until(() => window.screen().includes('user@slicc:/workspace/harbor$'));
+  await page.evaluate(() => window.terminal().focus());
+  await page.until(() => window.activated().terminal);
+  let count = 0;
+  const raise = async () => {
+    const id = `sudo-${++count}`;
+    await page.evaluate((id) => {
+      const now = Date.now();
+      window.model.approvals.raise({
+        id,
+        kind: 'sudo',
+        requester: { kind: 'user', name: 'cone', where: 'Terminal 1' },
+        command: 'apt install jq',
+        createdAt: now,
+        expiresAt: now + 300_000,
+        always: true,
+      });
+    }, id);
+    await page.until(
+      (id) =>
+        window.$('slicc-app', 'slicc-approvals', 'dialog')?.dataset.approval === id &&
+        window.focused().includes('swc-button'),
+      id
+    );
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return id;
+  };
+  const click = async (action) => {
+    const { x, y } = await page.evaluate((action) => {
+      const box = window
+        .$('slicc-app', 'slicc-approvals', `[data-action=${action}]`)
+        .getBoundingClientRect();
+      return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+    }, action);
+    for (const type of ['mousePressed', 'mouseReleased'])
+      await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  };
+  const back = async (line) => {
+    await page.until(() => !window.$('slicc-app', 'slicc-approvals', 'dialog'));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.deepEqual(await page.evaluate(() => window.activated().terminal), true);
+    await page.type(line);
+    await page.press('Enter');
+    await page.until((line) => window.screen().replace(/\n/g, '').includes(`$ ${line}`), line);
+  };
+  return { page, raise, click, back };
+}
+
+test('focus goes back to the terminal after each sudo decision', async (t) => {
+  const { page, raise, click, back } = await sudoFromTerminal(t);
+  for (const action of ['deny', 'always', 'once']) {
+    await raise();
+    await click(action);
+    await back(`echo ${action}`);
+  }
+  await raise();
+  await page.press('Escape');
+  await back('echo escape');
+  assert.deepEqual(
+    (await page.evaluate(() => window.model.approvals.decisions)).map(([, decision]) => decision),
+    ['deny', 'always', 'once', 'deny']
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('focus goes back to the terminal after a sudo decision, even when its panel moved meanwhile', async (t) => {
+  const { page, raise, click, back } = await sudoFromTerminal(t);
+  await raise();
+  await page.evaluate(() =>
+    window
+      .dock()
+      .api.getPanel('terminal:term-1')
+      .api.moveTo({
+        group: window.dock().api.getPanel('chat:cone-sliccy').api.group,
+        position: 'bottom',
+      })
+  );
+  await page.until(
+    () =>
+      window.dock().api.getPanel('terminal:term-1').api.group !==
+        window.dock().api.getPanel('chat:cone-sliccy').api.group &&
+      window.screen().includes('user@slicc:/workspace/harbor$')
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await click('once');
+  await back('echo moved');
+  await raise();
+  await page.evaluate(() =>
+    window
+      .dock()
+      .api.getPanel('terminal:term-1')
+      .api.moveTo({
+        group: window.dock().api.getPanel('chat:cone-sliccy').api.group,
+        position: 'right',
+      })
+  );
+  await page.press('Escape');
+  await back('echo raced');
+  assert.deepEqual(page.errors, []);
+});
+
+test('focus goes back to the terminal after a sudo request answered elsewhere', async (t) => {
+  const { page, raise, click, back } = await sudoFromTerminal(t);
+  const first = await raise();
+  await page.evaluate((id) => window.model.approvals.end(id, 'answered'), first);
+  await page.until(() => !!window.$('slicc-app', 'slicc-approvals', 'dialog[data-gone]'));
+  await page.until(() => window.focused().includes('swc-button'));
+  await click('close');
+  await back('echo closed');
+  const second = await raise();
+  await page.evaluate((id) => window.model.approvals.end(id, 'answered'), second);
+  await page.until(() => !!window.$('slicc-app', 'slicc-approvals', 'dialog[data-gone]'));
+  await page.until(() => window.focused().includes('swc-button'));
+  await page.press('Escape');
+  await back('echo escaped');
+  assert.deepEqual(page.errors, []);
 });
 
 async function vaultHold(t, hold, color, width) {
