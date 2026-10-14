@@ -17,7 +17,8 @@ export type ApprovalScenario =
   | 'soon'
   | 'elsewhere'
   | 'withdrawn'
-  | 'secrets';
+  | 'secrets'
+  | 'none';
 
 const minutes = 60_000;
 
@@ -64,6 +65,7 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
         always: true,
       },
     ];
+  if (scenario === 'none') return [];
   if (scenario === 'user') return [user];
   if (scenario === 'many') return [agent, user, cache];
   if (scenario === 'elsewhere' || scenario === 'withdrawn') return [agent, user];
@@ -87,6 +89,11 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
       void time
         .sleep(100)
         .then(() => this.end('sudo-jq', scenario === 'elsewhere' ? 'answered' : 'withdrawn'));
+  }
+
+  raise(approval: Approval): void {
+    this.#approvals = [...this.#approvals, approval];
+    this.emit('approvals', this.list());
   }
 
   end(id: string, reason: ApprovalEnd): void {

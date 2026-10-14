@@ -5396,6 +5396,127 @@ test('the secret rules flag fits a narrow window', async (t) => {
   await secretRulesDialog(t, 'light', 420);
 });
 
+async function sudoFromTerminal(t) {
+  const page = await open(t, { approvals: 'none' });
+  await page.evaluate(() => window.$('slicc-app', '.rail.right [data-surface=terminal]').click());
+  await page.until(() => window.screen().includes('user@slicc:/workspace/harbor$'));
+  await page.evaluate(() => window.terminal().focus());
+  await page.until(() => window.activated().terminal);
+  let count = 0;
+  const raise = async () => {
+    const id = `sudo-${++count}`;
+    await page.evaluate((id) => {
+      const now = Date.now();
+      window.model.approvals.raise({
+        id,
+        kind: 'sudo',
+        requester: { kind: 'user', name: 'cone', where: 'Terminal 1' },
+        command: 'apt install jq',
+        createdAt: now,
+        expiresAt: now + 300_000,
+        always: true,
+      });
+    }, id);
+    await page.until(
+      (id) =>
+        window.$('slicc-app', 'slicc-approvals', 'dialog')?.dataset.approval === id &&
+        window.focused().includes('swc-button'),
+      id
+    );
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return id;
+  };
+  const click = async (action) => {
+    const { x, y } = await page.evaluate((action) => {
+      const box = window
+        .$('slicc-app', 'slicc-approvals', `[data-action=${action}]`)
+        .getBoundingClientRect();
+      return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+    }, action);
+    for (const type of ['mousePressed', 'mouseReleased'])
+      await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  };
+  const back = async (line) => {
+    await page.until(() => !window.$('slicc-app', 'slicc-approvals', 'dialog'));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.deepEqual(await page.evaluate(() => window.activated().terminal), true);
+    await page.type(line);
+    await page.press('Enter');
+    await page.until((line) => window.screen().replace(/\n/g, '').includes(`$ ${line}`), line);
+  };
+  return { page, raise, click, back };
+}
+
+test('focus goes back to the terminal after each sudo decision', async (t) => {
+  const { page, raise, click, back } = await sudoFromTerminal(t);
+  for (const action of ['deny', 'always', 'once']) {
+    await raise();
+    await click(action);
+    await back(`echo ${action}`);
+  }
+  await raise();
+  await page.press('Escape');
+  await back('echo escape');
+  assert.deepEqual(
+    (await page.evaluate(() => window.model.approvals.decisions)).map(([, decision]) => decision),
+    ['deny', 'always', 'once', 'deny']
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('focus goes back to the terminal after a sudo decision, even when its panel moved meanwhile', async (t) => {
+  const { page, raise, click, back } = await sudoFromTerminal(t);
+  await raise();
+  await page.evaluate(() =>
+    window
+      .dock()
+      .api.getPanel('terminal:term-1')
+      .api.moveTo({
+        group: window.dock().api.getPanel('chat:cone-sliccy').api.group,
+        position: 'bottom',
+      })
+  );
+  await page.until(
+    () =>
+      window.dock().api.getPanel('terminal:term-1').api.group !==
+        window.dock().api.getPanel('chat:cone-sliccy').api.group &&
+      window.screen().includes('user@slicc:/workspace/harbor$')
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await click('once');
+  await back('echo moved');
+  await raise();
+  await page.evaluate(() =>
+    window
+      .dock()
+      .api.getPanel('terminal:term-1')
+      .api.moveTo({
+        group: window.dock().api.getPanel('chat:cone-sliccy').api.group,
+        position: 'right',
+      })
+  );
+  await page.press('Escape');
+  await back('echo raced');
+  assert.deepEqual(page.errors, []);
+});
+
+test('focus goes back to the terminal after a sudo request answered elsewhere', async (t) => {
+  const { page, raise, click, back } = await sudoFromTerminal(t);
+  const first = await raise();
+  await page.evaluate((id) => window.model.approvals.end(id, 'answered'), first);
+  await page.until(() => !!window.$('slicc-app', 'slicc-approvals', 'dialog[data-gone]'));
+  await page.until(() => window.focused().includes('swc-button'));
+  await click('close');
+  await back('echo closed');
+  const second = await raise();
+  await page.evaluate((id) => window.model.approvals.end(id, 'answered'), second);
+  await page.until(() => !!window.$('slicc-app', 'slicc-approvals', 'dialog[data-gone]'));
+  await page.until(() => window.focused().includes('swc-button'));
+  await page.press('Escape');
+  await back('echo escaped');
+  assert.deepEqual(page.errors, []);
+});
+
 async function vaultHold(t, hold, color, width) {
   const page = await open(t, { hold, vault: hold === 'locked' ? 'locked' : 'off', color });
   if (width)
