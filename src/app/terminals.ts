@@ -308,22 +308,8 @@ export class SliccTerminalPanel extends ThemedElement {
         ? (host as SliccDock).api.getPanel(terminalPanel(id))
         : undefined;
     if (!panel) return Promise.resolve(false);
-    if (!document.hidden) return this.#seen(panel, screen).then(() => false);
-    if (laid(screen.getBoundingClientRect())) return Promise.resolve(true);
-    return new Promise<boolean>((resolve) => {
-      const done = (hidden: boolean) => {
-        watch.dispose();
-        document.removeEventListener('visibilitychange', visible);
-        resolve(hidden);
-      };
-      const watch = panel.api.onDidDimensionsChange((size) => {
-        if (laid(size)) done(true);
-      });
-      const visible = () => {
-        if (!document.hidden) done(false);
-      };
-      document.addEventListener('visibilitychange', visible);
-    }).then((hidden) => hidden || this.#seen(panel, screen).then(() => false));
+    if (document.hidden) return Promise.resolve(true);
+    return this.#seen(panel, screen).then(() => false);
   }
 
   #seen(panel: IDockviewPanel, screen: SliccTerminal): Promise<void> {
