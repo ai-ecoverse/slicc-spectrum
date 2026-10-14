@@ -806,6 +806,7 @@ export const tabs: BrowserTab[] = [
     url: 'https://api.example.com/docs/v2/forecast',
     status: 'complete',
     agentId: null,
+    favicon: `data:image/svg+xml;charset=utf-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#7a5af8"/><text x="8" y="12" font-family="sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">A</text></svg>')}`,
   },
   {
     id: 'tab-pull',
@@ -813,6 +814,7 @@ export const tabs: BrowserTab[] = [
     url: 'https://git.example.com/example/harbor/pull/58',
     status: 'complete',
     agentId: 'scoop-otter',
+    favicon: `data:image/svg+xml;charset=utf-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#0a7a43"/><text x="8" y="12" font-family="sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">G</text></svg>')}`,
   },
 ];
 

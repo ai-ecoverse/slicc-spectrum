@@ -455,6 +455,113 @@ function opening(): Message[] {
   ];
 }
 
+function runs(): Message[] {
+  return [
+    {
+      id: 'k-u6',
+      role: 'user',
+      text: 'Get the forecast docs ready for the Celsius release.',
+      createdAt: at(13),
+    },
+    {
+      id: 'k-m8',
+      role: 'assistant',
+      status: 'done',
+      createdAt: at(13.1),
+      model: 'claude-sonnet-5-5',
+      parts: [
+        { type: 'text', text: 'Checking what the docs and the API say today.' },
+        ...[
+          tool(
+            'k-r1',
+            'bash',
+            'Ask the API for Lisbon',
+            'curl -s https://api.example.com/v2/forecast?city=Lisbon',
+            '{ "city": "Lisbon", "high": 71, "low": 58, "unit": "F" }'
+          ),
+          tool(
+            'k-r2',
+            'bash',
+            'Read the forecast page',
+            'cat /workspace/harbor/docs/forecast.md',
+            '# Forecast\n\nTemperatures are in Fahrenheit.'
+          ),
+          tool('k-r3', 'bash', 'See what changed', 'git status --short', ' M src/lib/units.ts'),
+          tool(
+            'k-r4',
+            'read_file',
+            'Read the units helper',
+            '/workspace/harbor/src/lib/units.ts',
+            'export function toCelsius(f: number): number {…}',
+            { paths: ['/workspace/harbor/src/lib/units.ts'] }
+          ),
+        ].map((call) => ({ type: 'tool' as const, tool: call })),
+        {
+          type: 'text',
+          text: 'The page still says Fahrenheit. Updating it, then building and testing.',
+        },
+        ...[
+          tool(
+            'k-r5',
+            'edit_file',
+            'Switch the page to Celsius',
+            '/workspace/harbor/docs/forecast.md',
+            'Edited 1 line',
+            {
+              paths: ['/workspace/harbor/docs/forecast.md'],
+              diff: {
+                before: '# Forecast\n\nTemperatures are in Fahrenheit.\n',
+                after: '# Forecast\n\nTemperatures are in Celsius.\n',
+              },
+            }
+          ),
+          tool('k-r6', 'bash', 'Build the site', 'npm run build', 'Built 14 pages in 2.1s', {
+            meta: 'timeout 120s',
+          }),
+          tool(
+            'k-r7',
+            'bash',
+            'Run the units tests',
+            'npx vitest run src/lib/units.test.ts',
+            'FAIL src/lib/units.test.ts > rounds half to even\nExpected 22, received 21',
+            {
+              status: 'error',
+              notes: [{ severity: 'error', text: 'Exited with code 1' }],
+            }
+          ),
+          tool(
+            'k-r8',
+            'bash',
+            'Open the release pull request',
+            'gh pr create --repo https://git.example.com/example/harbor --title "Celsius docs"',
+            'Stopped before the tests pass',
+            { status: 'cancelled' }
+          ),
+          tool('k-r9', 'bash', 'Watch the preview logs', 'wrangler tail --env preview', '', {
+            status: 'running',
+          }),
+        ].map((call) => ({ type: 'tool' as const, tool: call })),
+        {
+          type: 'text',
+          text: 'One test fails on rounding, so the pull request waits for the fix.',
+        },
+      ],
+    },
+    {
+      id: 'k-tool2',
+      role: 'tool',
+      createdAt: at(13.5),
+      tool: tool(
+        'k-r10',
+        'bash',
+        'Check the preview port',
+        'lsof -i :8787',
+        'workerd 4120 harbor 12u IPv4 TCP localhost:8787 (LISTEN)'
+      ),
+    },
+  ];
+}
+
 function work(): Message[] {
   return [
     {
@@ -702,7 +809,7 @@ function events(): Message[] {
 }
 
 export function showcase(): Message[] {
-  return [...opening(), ...work(), ...events()];
+  return [...opening(), ...runs(), ...work(), ...events()];
 }
 
 export function showcaseQueue(): UserMessage[] {

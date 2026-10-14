@@ -13,8 +13,10 @@ import '@adobe/spectrum-wc/patterns/ai-toolkit/user-message/swc-user-message.js'
 import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-cancel.js';
+import '@adobe/spectrum-wc-icons/swc-icon-checkmark.js';
 import '@adobe/spectrum-wc-icons/swc-icon-checkmark-circle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
+import '@adobe/spectrum-wc-icons/swc-icon-clock-pending.js';
 import '@adobe/spectrum-wc-icons/swc-icon-code.js';
 import '@adobe/spectrum-wc-icons/swc-icon-data.js';
 import '@adobe/spectrum-wc-icons/swc-icon-edit.js';
@@ -28,7 +30,9 @@ import '@adobe/spectrum-wc-icons/swc-icon-search.js';
 import '@adobe/spectrum-wc-icons/swc-icon-tools.js';
 import '@adobe/spectrum-wc-icons/swc-icon-user-group.js';
 import '@adobe/spectrum-wc-icons/swc-icon-web-page.js';
-import { css, html, nothing, type TemplateResult } from 'lit';
+import { createFileTreeIconResolver, getBuiltInSpriteSheet } from '@pierre/trees';
+import { css, html, nothing, svg, type TemplateResult } from 'lit';
+import { unsafeSVG } from 'lit/directives/unsafe-svg.js';
 import type {
   ActionCard,
   AssistantMessage,
@@ -39,6 +43,7 @@ import type {
   LickMessage,
   LickState,
   Media,
+  Message,
   MessagePart,
   Question,
   SliccModel,
@@ -62,6 +67,7 @@ export interface Handlers {
   open(path: string): void;
   show(surfaceId: string): void;
   suggest(text: string): void;
+  owners?: ReadonlyMap<string, string>;
 }
 
 export const lickLabels: Record<LickChannel, [string, string]> = {
@@ -187,11 +193,11 @@ const otherKind: ToolKind = {
   icon: html`<swc-icon-tools size="s" aria-hidden="true"></swc-icon-tools>`,
 };
 
-function toolKind(name: string): ToolKind {
+export function toolKind(name: string): ToolKind {
   return toolKinds.find((kind) => kind.match.test(name)) ?? otherKind;
 }
 
-function toolSummary(calls: ToolCall[]): string {
+export function toolSummary(calls: ToolCall[]): string {
   const counts = new Map<ToolKind, number>();
   for (const call of calls) {
     const kind = toolKind(call.name);
@@ -203,8 +209,104 @@ function toolSummary(calls: ToolCall[]): string {
     .join(', ');
 }
 
-function state(status: ToolStatus, label = toolStates[status][0]): TemplateResult {
+export function state(status: ToolStatus, label = toolStates[status][0]): TemplateResult {
   return html`<span class="state" data-state=${status}>${toolStates[status][1]}<span>${label}</span></span>`;
+}
+
+export function statusLabel(status: ToolStatus): string {
+  return toolStates[status][0];
+}
+
+export function overall(calls: readonly ToolCall[]): [ToolStatus, string] {
+  const count = (status: ToolStatus) => calls.filter((call) => call.status === status).length;
+  const [running, failed, cancelled] = [count('running'), count('error'), count('cancelled')];
+  const status: ToolStatus = running
+    ? 'running'
+    : failed
+      ? 'error'
+      : cancelled
+        ? 'cancelled'
+        : 'done';
+  const label = [
+    running ? 'Running' : '',
+    failed ? `${failed} failed` : '',
+    cancelled ? `${cancelled} cancelled` : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
+  return [status, label || 'Done'];
+}
+
+const glyphs: Record<ToolStatus, TemplateResult> = {
+  running: html`<swc-icon-clock-pending size="xs"></swc-icon-clock-pending>`,
+  done: html`<swc-icon-checkmark size="xs"></swc-icon-checkmark>`,
+  error: html`<swc-icon-alert-diamond size="xs"></swc-icon-alert-diamond>`,
+  cancelled: html`<swc-icon-cancel size="xs"></swc-icon-cancel>`,
+};
+
+type Target = { type: 'site'; host: string } | { type: 'file'; path: string };
+
+const urlPattern = /\bhttps?:\/\/([a-z0-9.-]+)/i;
+const hostPattern =
+  /(?:^|[\s'"@=(])((?:[a-z0-9-]+\.)+(?:com|org|net|io|dev|app|ai|co|cloud|page|site|example|test|edu|gov)|localhost)(?=$|[\s'"/:)])/i;
+const filePattern =
+  /(?:^|[\s'"=(<>])((?:[\w.~-]*\/)*[\w-][\w.-]*\.[a-z][a-z0-9]{0,7})(?=$|[\s'"):,;<>|])/i;
+
+export function target(command: string): Target | null {
+  const site = urlPattern.exec(command)?.[1] ?? hostPattern.exec(command)?.[1];
+  if (site) return { type: 'site', host: site.toLowerCase() };
+  const path = filePattern.exec(command)?.[1];
+  return path ? { type: 'file', path } : null;
+}
+
+const fileIcons = createFileTreeIconResolver({ set: 'complete', colored: false });
+let sprite: Map<string, [string, string]> | undefined;
+
+function fileIcon(path: string): TemplateResult {
+  sprite ??= new Map(
+    [
+      ...getBuiltInSpriteSheet('complete').matchAll(
+        /<symbol id="([^"]+)" viewBox="([^"]+)">([\s\S]*?)<\/symbol>/g
+      ),
+    ].map((match) => [match[1], [match[2], match[3]]])
+  );
+  const [box, body] = sprite.get(fileIcons.resolveIcon('file-tree-icon-file', path).name) as [
+    string,
+    string,
+  ];
+  return html`<svg class="file-icon" viewBox=${box} aria-hidden="true">${svg`${unsafeSVG(body)}`}</svg>`;
+}
+
+function favicon(name: string, model: SliccModel | null): string | undefined {
+  return model?.browser
+    .list()
+    .find((tab) => tab.favicon?.startsWith('data:') && sameHost(tab.url, name))?.favicon;
+}
+
+function sameHost(url: string, name: string): boolean {
+  try {
+    return new URL(url).hostname === name;
+  } catch {
+    return false;
+  }
+}
+
+const globe = html`<swc-icon-globe-grid size="s" aria-hidden="true"></swc-icon-globe-grid>`;
+
+export function chip(call: ToolCall, model: SliccModel | null = null): TemplateResult {
+  const kind = toolKind(call.name);
+  const found = kind.id === 'command' ? target(call.input) : null;
+  let face = kind.icon;
+  let source = kind.id;
+  if (found?.type === 'site') {
+    const src = favicon(found.host, model);
+    face = src ? html`<img class="favicon" src=${src} alt="" />` : globe;
+    source = src ? 'favicon' : 'site';
+  } else if (found?.type === 'file') {
+    face = fileIcon(found.path);
+    source = 'file';
+  }
+  return html`<span class="chip" data-state=${call.status} data-icon=${source} data-target=${found ? (found.type === 'site' ? found.host : found.path) : nothing} aria-hidden="true"><span class="face">${face}</span><span class="glyph">${glyphs[call.status]}</span></span>`;
 }
 
 const actionLabels: Record<ErrorAction, string> = {
@@ -275,13 +377,25 @@ function notes(list: readonly ToolNote[]): TemplateResult {
   )}</ul>`;
 }
 
-export function tool(call: ToolCall, color: 'light' | 'dark' = 'light'): TemplateResult {
+export interface CardOptions {
+  open?: boolean;
+  run?: boolean;
+  owner?: string;
+  model?: SliccModel | null;
+  toggle?: (event: Event) => void;
+}
+
+export function tool(
+  call: ToolCall,
+  color: 'light' | 'dark' = 'light',
+  options: CardOptions = {}
+): TemplateResult {
   const kind = toolKind(call.name);
-  return html`<details class="tool" data-status=${call.status} data-tool=${call.name} data-kind=${kind.id}>
-    <summary>
+  return html`<details class=${options.run ? 'tool run' : 'tool'} id=${`run-${call.id}`} data-id=${options.owner ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id} ?open=${!!options.open} @toggle=${options.toggle ?? nothing}>
+    <summary aria-label=${`${call.title}, ${statusLabel(call.status)}`}>
       <span class="head">
         <swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right>
-        <span class="kind">${kind.icon}</span>
+        ${chip(call, options.model ?? null)}
         <span class="title">${call.title}</span>
         <span class="name">${call.name}</span>
         ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
@@ -298,32 +412,14 @@ export function tool(call: ToolCall, color: 'light' | 'dark' = 'light'): Templat
   </details>`;
 }
 
-function cluster(calls: ToolCall[], open: boolean, color: 'light' | 'dark'): TemplateResult {
-  const count = (status: ToolStatus) => calls.filter((call) => call.status === status).length;
-  const [running, failed, cancelled] = [count('running'), count('error'), count('cancelled')];
-  const overall: ToolStatus = running
-    ? 'running'
-    : failed
-      ? 'error'
-      : cancelled
-        ? 'cancelled'
-        : 'done';
-  const label = [
-    running ? 'Running' : '',
-    failed ? `${failed} failed` : '',
-    cancelled ? `${cancelled} cancelled` : '',
-  ]
-    .filter(Boolean)
-    .join(', ');
-  return html`<details class="cluster" data-status=${overall} ?open=${open || running > 0}>
-    <summary>
-      <swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right>
-      <span class="title">${calls.length} tools</span>
-      <span class="names"><span aria-hidden="true">· </span>${toolSummary(calls)}</span>
-      ${state(overall, label || undefined)}
-    </summary>
-    <div class="calls">${calls.map((call) => tool(call, color))}</div>
-  </details>`;
+export const clusterSize = 3;
+
+function runs(calls: ToolCall[], handlers: Handlers): TemplateResult[] {
+  const groups = calls.length >= clusterSize ? [calls] : calls.map((call) => [call]);
+  return groups.map(
+    (group) =>
+      html`<slicc-tool-runs .calls=${group} .model=${handlers.model} .owners=${handlers.owners ?? null} .color=${handlers.color}></slicc-tool-runs>`
+  );
 }
 
 function media(items: Media[]): TemplateResult {
@@ -466,29 +562,48 @@ function part(
   }
 }
 
+function silent(entry: MessagePart, showThinking: boolean): boolean {
+  return (
+    (entry.type === 'thinking' && !showThinking) || (entry.type === 'link' && !!host(entry.url))
+  );
+}
+
 export function parts(
   entries: MessagePart[],
   handlers: Handlers,
   showThinking: boolean,
-  streaming: boolean
+  extra: ToolCall[] = []
 ): Array<TemplateResult | typeof nothing> {
   const out: Array<TemplateResult | typeof nothing> = [];
-  let i = 0;
-  while (i < entries.length) {
-    let end = i;
-    while (end < entries.length && entries[end].type === 'tool') end++;
-    if (end - i >= 3) {
-      const calls = entries
-        .slice(i, end)
-        .map((entry) => (entry as Extract<MessagePart, { type: 'tool' }>).tool);
-      out.push(cluster(calls, streaming && end === entries.length, handlers.color));
-      i = end;
-    } else {
-      out.push(part(entries[i], handlers, showThinking));
-      i++;
+  let run: ToolCall[] = [];
+  const flush = () => {
+    out.push(...runs(run, handlers));
+    run = [];
+  };
+  for (const entry of entries) {
+    if (entry.type === 'tool') run.push(entry.tool);
+    else if (!silent(entry, showThinking)) {
+      flush();
+      out.push(part(entry, handlers, showThinking));
     }
   }
+  run.push(...extra);
+  flush();
   return out;
+}
+
+export function toolTail(message: Message, showThinking: boolean): boolean {
+  if (message.role === 'tool') return true;
+  if (message.role !== 'assistant') return false;
+  return message.parts.filter((entry) => !silent(entry, showThinking)).at(-1)?.type === 'tool';
+}
+
+export function toolOnly(message: Message, showThinking: boolean): ToolCall[] | null {
+  if (message.role === 'tool') return [message.tool];
+  if (message.role !== 'assistant' || message.status !== 'done') return null;
+  const shown = message.parts.filter((entry) => !silent(entry, showThinking));
+  if (!shown.length || shown.some((entry) => entry.type !== 'tool')) return null;
+  return shown.map((entry) => (entry as Extract<MessagePart, { type: 'tool' }>).tool);
 }
 
 const attachmentIcons = {
@@ -570,7 +685,8 @@ export function assistant(
   model: string,
   handlers: Handlers,
   showThinking: boolean,
-  suggestion: string | null = null
+  suggestion: string | null = null,
+  extra: ToolCall[] = []
 ): TemplateResult {
   const usage = message.usage
     ? `${message.usage.input.toLocaleString('en')} in · ${message.usage.output.toLocaleString('en')} out · $${message.usage.cost.toFixed(2)}`
@@ -592,7 +708,7 @@ export function assistant(
             dropping: () => handlers.dropping(message.id),
           },
           showThinking,
-          message.status === 'streaming'
+          extra
         )}
         ${sources(message.parts)}
         ${suggestions(suggestion, handlers)}
@@ -603,13 +719,14 @@ export function assistant(
 
 export function toolMessage(
   message: ToolMessage,
-  color: 'light' | 'dark' = 'light'
+  color: 'light' | 'dark' = 'light',
+  extra: ToolCall[] = [],
+  model: SliccModel | null = null,
+  owners: ReadonlyMap<string, string> | null = null
 ): TemplateResult {
+  const calls = [message.tool, ...extra];
   return html`<swc-conversation-turn type="system" class="message tool-message" accessible-label=${`Tool ${message.tool.name}`} data-id=${message.id}>
-    <div class="reply">
-      <div class="meta"><span class="who">Tool</span><span>${time(message.createdAt)}</span></div>
-      ${tool(message.tool, color)}
-    </div>
+    ${runs(calls, { color, model, owners: owners ?? undefined } as Handlers)}
   </swc-conversation-turn>`;
 }
 
@@ -881,7 +998,7 @@ export const messageCss = css`
     padding-inline-start: var(--swc-spacing-200);
   }
   details.tool,
-  details.cluster {
+  .runs {
     font-size: var(--swc-font-size-100);
     border-radius: var(--swc-corner-radius-100);
   }
@@ -907,7 +1024,7 @@ export const messageCss = css`
   summary::-webkit-details-marker {
     display: none;
   }
-  :is(details.tool, details.cluster) > summary {
+  details.tool > summary {
     padding-inline: var(--swc-spacing-100);
   }
   details.tool > summary {
@@ -922,7 +1039,8 @@ export const messageCss = css`
     gap: var(--swc-spacing-100);
     min-inline-size: 0;
   }
-  :is(details.tool, details.cluster) > summary:hover {
+  details.tool > summary:hover,
+  .runs button:hover {
     background: var(--swc-gray-100);
   }
   summary:focus-visible,
@@ -939,14 +1057,9 @@ export const messageCss = css`
   details[open] > summary .chevron {
     transform: rotate(90deg);
   }
-  .kind {
-    display: inline-flex;
-    flex: none;
-    color: var(--swc-neutral-subdued-content-color-default);
-  }
   .tool .title,
   .tool .name,
-  .cluster .names,
+  .runs .names,
   .lick .text {
     min-inline-size: 0;
     overflow: hidden;
@@ -970,13 +1083,8 @@ export const messageCss = css`
     flex: none;
     color: var(--swc-neutral-subdued-content-color-default);
   }
-  .cluster > summary .title {
-    flex: none;
-    font-weight: var(--swc-bold-font-weight);
-  }
-  .cluster > summary .names {
+  .runs .summary .names {
     flex: 0 1 auto;
-    color: var(--swc-neutral-subdued-content-color-default);
   }
   .state {
     display: inline-flex;
@@ -997,10 +1105,176 @@ export const messageCss = css`
     color: var(--swc-negative-content-color-default);
     font-weight: var(--swc-bold-font-weight);
   }
-  .calls {
-    margin-inline-start: var(--swc-spacing-300);
-    padding-inline-start: var(--swc-spacing-75);
-    border-inline-start: var(--swc-border-width-200) solid var(--swc-gray-200);
+  swc-system-message > slicc-tool-runs + slicc-tool-runs {
+    margin-block-start: var(--swc-spacing-75);
+  }
+  slicc-tool-runs {
+    display: block;
+  }
+  .runs {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-inline-size: 0;
+  }
+  .runs > details.tool.run,
+  .runs > .cards {
+    align-self: stretch;
+  }
+  details.run > summary {
+    inline-size: fit-content;
+    max-inline-size: 100%;
+    margin-inline: auto;
+    padding-inline: var(--swc-spacing-100) var(--swc-spacing-200);
+    border: var(--swc-border-width-100) solid var(--swc-gray-200);
+    border-radius: var(--swc-corner-radius-500);
+    background: var(--swc-background-layer-1-color);
+    box-sizing: border-box;
+  }
+  details.run[open] > summary {
+    margin-block-end: var(--swc-spacing-75);
+  }
+  details.run > summary :is(.name, .tool-meta, .state[data-state='done'], .state[data-state='running']),
+  details.run > summary .thumb {
+    display: none;
+  }
+  details.run > summary .state {
+    padding-inline-start: 0;
+  }
+  details.run > .call {
+    padding-inline-start: var(--swc-spacing-100);
+  }
+  .strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--swc-spacing-50) var(--swc-spacing-100);
+    max-inline-size: 100%;
+    padding: var(--swc-spacing-50) var(--swc-spacing-75);
+    border: var(--swc-border-width-100) solid var(--swc-gray-200);
+    border-radius: var(--swc-corner-radius-500);
+    background: var(--swc-background-layer-1-color);
+    box-sizing: border-box;
+  }
+  .icons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--swc-spacing-25);
+  }
+  .runs button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--swc-spacing-75);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--swc-corner-radius-100);
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .runs button:focus-visible {
+    outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+    outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
+  }
+  button.run {
+    justify-content: center;
+    inline-size: var(--swc-spacing-500);
+    block-size: var(--swc-spacing-500);
+  }
+  button.run[aria-expanded='true'] {
+    background: var(--swc-accent-subtle-background-color-default);
+  }
+  button.summary {
+    min-block-size: var(--swc-spacing-500);
+    min-inline-size: 0;
+    padding-inline: var(--swc-spacing-75) var(--swc-spacing-100);
+    color: var(--swc-neutral-subdued-content-color-default);
+  }
+  button.summary .state {
+    padding-inline-start: 0;
+  }
+  button.summary[aria-expanded='true'] .chevron {
+    transform: rotate(90deg);
+  }
+  .cards {
+    margin-block-start: var(--swc-spacing-75);
+  }
+  .cards[hidden],
+  .cards > [hidden] {
+    display: none;
+  }
+  .chip {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--swc-spacing-400);
+    block-size: var(--swc-spacing-400);
+    border-radius: var(--swc-corner-radius-100);
+    background: var(--swc-neutral-subtle-background-color-default);
+    color: var(--swc-neutral-subdued-content-color-default);
+  }
+  .chip .face {
+    display: inline-flex;
+  }
+  .chip :is(.file-icon, .favicon) {
+    inline-size: var(--swc-workflow-icon-small);
+    block-size: var(--swc-workflow-icon-small);
+    fill: currentColor;
+  }
+  .chip[data-state='done'] .favicon,
+  .chip[data-state='cancelled'] .favicon {
+    filter: grayscale(1);
+    opacity: 0.6;
+  }
+  .chip .glyph {
+    position: absolute;
+    inset-inline-end: calc(-1 * var(--swc-spacing-75));
+    inset-block-end: calc(-1 * var(--swc-spacing-75));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--swc-spacing-300);
+    block-size: var(--swc-spacing-300);
+    border-radius: var(--swc-corner-radius-1000);
+    background: var(--swc-background-layer-2-color);
+  }
+  .chip .glyph > * {
+    --swc-icon-inline-size: calc(var(--swc-spacing-100) + var(--swc-spacing-50));
+    --swc-icon-block-size: calc(var(--swc-spacing-100) + var(--swc-spacing-50));
+  }
+  .chip[data-state='running'] {
+    background: var(--swc-accent-subtle-background-color-default);
+    color: var(--swc-neutral-content-color-default);
+  }
+  .chip[data-state='running'] .face {
+    animation: run-pulse var(--swc-animation-duration-2000) var(--swc-animation-ease-in-out) infinite;
+  }
+  .chip[data-state='error'] {
+    background: var(--swc-negative-subtle-background-color-default);
+    color: var(--swc-negative-content-color-default);
+  }
+  .chip[data-state='error'] .glyph {
+    color: var(--swc-negative-content-color-default);
+  }
+  @keyframes run-pulse {
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .chip[data-state='running'] .face {
+      animation: none;
+    }
+    .chip[data-state='running'] {
+      outline: var(--swc-border-width-100) dashed var(--swc-neutral-content-color-default);
+      outline-offset: calc(-1 * var(--swc-border-width-100));
+    }
   }
   .call {
     display: flex;
