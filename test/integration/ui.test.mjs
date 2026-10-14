@@ -1923,18 +1923,20 @@ test('tool cards show the command, its timeout, and an edit as a diff', async (t
   const page = await open(t);
   await page.evaluate(() => window.model.agent.select('cone-harbor'));
   await page.until(() =>
-    window.$('slicc-app', 'slicc-dock', 'slicc-chat')?.shadowRoot?.querySelector('details.cluster')
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat')
+      ?.shadowRoot?.querySelector('.runs[data-runs=cluster]')
   );
   const cards = await page.evaluate(async () => {
     const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot;
-    const cluster = root.querySelector('details.cluster');
-    cluster.open = true;
+    const cluster = root.querySelector('.runs[data-runs=cluster]');
+    cluster.querySelector('button.summary').click();
     const all = [...cluster.querySelectorAll('details.tool')];
     for (const card of all) card.open = true;
     await new Promise((resolve) => setTimeout(resolve, 300));
     for (const card of all) card.open = card.dataset.tool !== 'read_file';
     window.clusterSummary = cluster
-      .querySelector('summary')
+      .querySelector('button.summary')
       .textContent.replace(/\s+/g, ' ')
       .trim();
     return [...cluster.querySelectorAll('details.tool')].map((card) => ({
@@ -1944,10 +1946,7 @@ test('tool cards show the command, its timeout, and an edit as a diff', async (t
       diff: card.querySelector('slicc-diff-view')?.getAttribute('path') ?? null,
     }));
   });
-  assert.equal(
-    await page.evaluate(() => window.clusterSummary),
-    '4 tools · 2 commands, 1 read, 1 edit Done'
-  );
+  assert.equal(await page.evaluate(() => window.clusterSummary), '2 commands, 1 read, 1 edit Done');
   assert.deepEqual(
     cards.find((card) => card.input === '$ npm test'),
     { name: 'bash', meta: 'timeout 120s', input: '$ npm test', diff: null }
@@ -1987,6 +1986,147 @@ test('tool cards show the command, its timeout, and an edit as a diff', async (t
   assert.deepEqual(page.errors, []);
 });
 
+test('tool runs cluster across messages, pick their icons, and open from the keyboard', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.model.agent.select('cone-kitchen'));
+  await page.until(() => !!window.chatPart('[data-id=k-m8] slicc-tool-runs .runs'));
+  const shape = await page.evaluate(() => {
+    const root = window.chatPart().shadowRoot;
+    const groups = (id) =>
+      [...root.querySelectorAll(`[data-id=${id}] slicc-tool-runs > .runs`)].map((runs) => [
+        runs.dataset.runs,
+        runs.querySelectorAll('details.tool').length,
+        runs.dataset.status,
+      ]);
+    const icons = (index) =>
+      [
+        ...root
+          .querySelectorAll('[data-id=k-m8] slicc-tool-runs')
+          [index].querySelectorAll('.icons .chip'),
+      ].map((chip) => [chip.dataset.icon, chip.dataset.target ?? null, chip.dataset.state]);
+    const card = root.querySelector('details.tool[data-id=k-tool1]');
+    return {
+      m3: groups('k-m3'),
+      m8: groups('k-m8'),
+      single: groups('k-tool2'),
+      absorbed: !!root.querySelector('swc-conversation-turn[data-id=k-tool1]'),
+      card: card?.id,
+      ran: card?.querySelector('.call > .ran')?.textContent,
+      first: icons(0),
+      second: icons(1),
+    };
+  });
+  assert.deepEqual(shape.m3, [['cluster', 17, 'running']]);
+  assert.deepEqual(shape.m8, [
+    ['cluster', 4, 'done'],
+    ['cluster', 5, 'running'],
+  ]);
+  assert.deepEqual(shape.single, [['single', 1, 'done']]);
+  assert.equal(shape.absorbed, false);
+  assert.equal(shape.card, 'run-k-t15');
+  assert.match(shape.ran, /^Ran at \d\d:\d\d$/);
+  assert.deepEqual(shape.first, [
+    ['favicon', 'api.example.com', 'done'],
+    ['file', '/workspace/harbor/docs/forecast.md', 'done'],
+    ['command', null, 'done'],
+    ['read', null, 'done'],
+  ]);
+  assert.deepEqual(shape.second, [
+    ['edit', null, 'done'],
+    ['command', null, 'done'],
+    ['file', 'src/lib/units.test.ts', 'error'],
+    ['favicon', 'git.example.com', 'cancelled'],
+    ['command', null, 'running'],
+  ]);
+
+  const focused = () => {
+    const active = window.chatPart().shadowRoot.activeElement;
+    return active ? (active.dataset.target ?? active.dataset.action ?? active.localName) : null;
+  };
+  const shown = () =>
+    [
+      ...window
+        .chatPart()
+        .shadowRoot.querySelectorAll('[data-id=k-m8] slicc-tool-runs')[1]
+        .querySelectorAll('.cards > .slot'),
+    ].map((slot) => (slot.hidden ? '-' : slot.querySelector('details').open ? 'open' : 'shown'));
+  await page.evaluate(() =>
+    window.chatPart().shadowRoot.querySelector('[data-action=open-run][data-target=k-r5]').focus()
+  );
+  await page.press('Tab');
+  await page.press('Tab');
+  assert.equal(await page.evaluate(focused), 'k-r7');
+  assert.equal(
+    await page.evaluate(() =>
+      window.chatPart().shadowRoot.activeElement.getAttribute('aria-label')
+    ),
+    'Run the unit tests, Failed'
+  );
+  await page.press('Enter');
+  await page.until(
+    () => window.chatPart('[data-target=k-r7]').getAttribute('aria-expanded') === 'true'
+  );
+  assert.deepEqual(await page.evaluate(shown), ['-', '-', 'open', '-', '-']);
+  assert.match(
+    await page.evaluate(() => window.chatPart('#run-k-r7 pre.input').textContent),
+    /^\$ npx vitest run src\/lib\/units\.test\.ts$/
+  );
+  await page.press(' ');
+  await page.until(
+    () => window.chatPart('[data-target=k-r7]').getAttribute('aria-expanded') === 'false'
+  );
+  await page.press('Tab');
+  await page.press('Tab');
+  await page.press('Tab');
+  assert.equal(await page.evaluate(focused), 'open-cluster');
+  await page.press('Enter');
+  await page.until(
+    () =>
+      window
+        .chatPart()
+        .shadowRoot.querySelectorAll('[data-id=k-m8] slicc-tool-runs')[1]
+        .querySelector('button.summary')
+        .getAttribute('aria-expanded') === 'true'
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        [
+          ...window
+            .chatPart()
+            .shadowRoot.querySelectorAll('[data-id=k-m8] slicc-tool-runs')[1]
+            .querySelectorAll('.cards > .slot'),
+        ].filter((slot) => !slot.hidden).length
+    ),
+    5
+  );
+
+  await page.evaluate(() => window.chatPart('[data-id=k-tool2] details.run > summary').focus());
+  await page.press('Enter');
+  await page.until(() => window.chatPart('[data-id=k-tool2] details.run').open === true);
+  assert.equal(
+    await page.evaluate(() =>
+      window.chatPart('[data-id=k-tool2] details.run > summary').getAttribute('aria-label')
+    ),
+    'Check the preview port, Done'
+  );
+  await page.press(' ');
+  await page.until(() => window.chatPart('[data-id=k-tool2] details.run').open === false);
+
+  const motion = () => {
+    const chip = window.chatPart('[data-target=k-r9] .chip');
+    const face = getComputedStyle(chip.querySelector('.face'));
+    return [face.animationName, getComputedStyle(chip).outlineStyle];
+  };
+  assert.deepEqual(await page.evaluate(motion), ['run-pulse', 'none']);
+  await page.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+  });
+  assert.deepEqual(await page.evaluate(motion), ['none', 'dashed']);
+  await page.send('Emulation.setEmulatedMedia', { features: [] });
+  assert.deepEqual(page.errors, []);
+});
+
 test('the kitchen sink shows every kind of message, content and lick', async (t) => {
   const page = await open(t);
   await page.evaluate(() => window.model.agent.select('cone-kitchen'));
@@ -2002,7 +2142,7 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
       steered: count('.message.user[data-mode=steer]'),
       assistant: count('.message.assistant'),
       tool: count('.message.tool-message'),
-      cluster: count('details.cluster'),
+      cluster: count('.runs[data-runs=cluster]'),
       markers: count('.marker'),
       errors: count('.error-card'),
       notices: count('.notice'),
@@ -2027,11 +2167,11 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
   });
   assert.deepEqual(kinds, {
     channels: 17,
-    user: 5,
+    user: 6,
     steered: 1,
-    assistant: 7,
+    assistant: 8,
     tool: 1,
-    cluster: 1,
+    cluster: 3,
     markers: 2,
     errors: 3,
     notices: 1,

@@ -13,6 +13,7 @@ import type {
   Message,
   SliccModel,
   Thinking,
+  ToolCall,
   UserMessage,
 } from '../model/types.ts';
 import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
@@ -25,8 +26,11 @@ import {
   type Handlers,
   lick,
   messageCss,
+  type Owner,
   system,
   toolMessage,
+  toolOnly,
+  toolTail,
   user,
 } from './messages.ts';
 import { settleModels } from './models.ts';
@@ -437,9 +441,12 @@ export class SliccChat extends ThemedElement {
     message: Message,
     agent: Agent,
     suggestion: string | null,
-    changed: boolean
+    changed: boolean,
+    extra: ToolCall[],
+    owners: ReadonlyMap<string, Owner>
   ): TemplateResult {
     const model = this.model as SliccModel;
+    const handlers = { ...this.#handlers, owners };
     switch (message.role) {
       case 'assistant': {
         const label = changed
@@ -450,15 +457,16 @@ export class SliccChat extends ThemedElement {
           message,
           agent.name,
           label as string,
-          this.#handlers,
+          handlers,
           model.settings.get().showThinking,
-          suggestion
+          suggestion,
+          extra
         );
       }
       case 'user':
         return user(message);
       case 'tool':
-        return toolMessage(message, this.#handlers.color);
+        return toolMessage(message, handlers, extra, suggestion);
       case 'system':
         return system(message, this.#handlers);
       default:
@@ -479,7 +487,24 @@ export class SliccChat extends ThemedElement {
       !model.agent.busy(agent.id)
         ? model.agent.suggestion(agent.id)
         : null;
+    const showThinking = model.settings.get().showThinking;
+    const extra = new Map<string, ToolCall[]>();
+    const owners = new Map<string, Owner>();
+    const into = new Map<string, string>();
+    let anchor: Message | null = null;
     for (const message of messages) {
+      const calls = toolOnly(message, showThinking);
+      if (anchor && calls && day(message.createdAt) === day(anchor.createdAt)) {
+        extra.set(anchor.id, [...(extra.get(anchor.id) ?? []), ...calls]);
+        owners.set(calls[0].id, { id: message.id, at: message.createdAt });
+        into.set(message.id, anchor.id);
+        continue;
+      }
+      anchor = toolTail(message, showThinking) ? message : null;
+    }
+    const target = last && (into.get(last.id) ?? last.id);
+    for (const message of messages) {
+      if (into.has(message.id)) continue;
       const label = day(message.createdAt);
       if (label !== previous) {
         out.push([
@@ -495,7 +520,14 @@ export class SliccChat extends ThemedElement {
       if (changed) shown = next;
       out.push([
         message.id,
-        this.#message(message, agent, message === last ? suggestion : null, changed),
+        this.#message(
+          message,
+          agent,
+          message.id === target ? suggestion : null,
+          changed,
+          extra.get(message.id) ?? [],
+          owners
+        ),
       ]);
     }
     return out;
