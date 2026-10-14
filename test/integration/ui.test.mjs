@@ -4929,7 +4929,7 @@ for (const [suffix, color, width, height] of passes) {
     ]);
     assert.equal(
       lines[2],
-      'HARBOR_API_KEY · Sent to api.harbor.example: GET /v2/ships, through Local proxy by cone'
+      'HARBOR_API_KEY · Sent to api.harbor.example: GET /v2/ships, through slicc on this computer by cone'
     );
     await clean(page);
     await clean(page, 'another-sample-value-7');

@@ -19,9 +19,9 @@ import { isVaultFailure } from '../model/values.ts';
 
 const exitNames: Record<string, string> = {
   page: 'This page',
-  proxy: 'Local proxy',
+  proxy: 'slicc on this computer',
   'vault-direct': 'Straight from the vault',
-  'local-proxy': 'Local proxy',
+  'local-proxy': 'slicc on this computer',
   'cli-v': 'Local SLICC, direct',
   tailscale: 'Tailscale',
   'local-link': 'Linked SLICC, through this page',
