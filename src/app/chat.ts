@@ -294,6 +294,7 @@ export class SliccChat extends ThemedElement {
   #height = 0;
   #input = Number.NEGATIVE_INFINITY;
   #up = Number.NEGATIVE_INFINITY;
+  #from = 0;
   #tail = '';
 
   #sent(agentId: string): boolean {
@@ -318,7 +319,7 @@ export class SliccChat extends ThemedElement {
   #scroll = (): void => {
     const log = this.#log();
     const reader = log.scrollHeight <= this.#height || performance.now() - this.#input < 1000;
-    const rising = performance.now() - this.#up < 1000 && log.scrollTop <= this.#last;
+    const rising = performance.now() - this.#up < 1000 && log.scrollTop <= this.#from;
     if (log.scrollHeight - log.scrollTop - log.clientHeight < 48) this.#stuck ||= !rising;
     else if (reader && log.scrollTop < this.#last) this.#stuck = false;
     this.#last = log.scrollTop;
@@ -334,7 +335,8 @@ export class SliccChat extends ThemedElement {
           ? event.deltaY < 0
           : event instanceof KeyboardEvent &&
             (upward.has(event.key) || (event.key === ' ' && event.shiftKey));
-      this.#up = up && this.#log().scrollTop > 0 ? this.#input : Number.NEGATIVE_INFINITY;
+      this.#from = this.#log().scrollTop;
+      this.#up = up && this.#from > 0 ? this.#input : Number.NEGATIVE_INFINITY;
       if (this.#up === this.#input) this.#stuck = false;
     },
   };
