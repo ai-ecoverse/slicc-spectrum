@@ -636,6 +636,8 @@ export class SliccBrowser extends ModelElement {
     this.#shots.clear();
     this.#frames.clear();
     this.#pulse.clear();
+    this.#expanded.clear();
+    this.#shown = actionPage;
     const tabs = model.browser.list();
     this.#driven = new Set(tabs.filter((tab) => tab.controlled).map((tab) => tab.id));
     this.#focus = this.#latest(model, tabs);
