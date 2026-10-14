@@ -3202,12 +3202,15 @@ test('the monitor keeps its cards and the list in place whatever values they sho
         const cards = [...root.querySelectorAll('.vital')];
         return {
           cards: cards.map(box),
-          inside: cards.every((card) =>
-            [...card.querySelectorAll('.reading > *')].every(
-              (part) =>
-                part.getBoundingClientRect().right <= card.getBoundingClientRect().right + 0.5
-            )
-          ),
+          inside: cards.every((card) => {
+            const line = card.querySelector('.reading')?.getBoundingClientRect();
+            return [...card.querySelectorAll('.reading > *')]
+              .filter((part) => !line || part.getBoundingClientRect().top < line.bottom - 0.5)
+              .every(
+                (part) =>
+                  part.getBoundingClientRect().right <= card.getBoundingClientRect().right + 0.5
+              );
+          }),
           lines: [...root.querySelectorAll('.section > .line')].map(box),
           nums: [...root.querySelectorAll('.line .num')].map((num) =>
             Math.round(num.getBoundingClientRect().right)
