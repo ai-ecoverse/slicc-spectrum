@@ -4287,18 +4287,20 @@ test('the file tree follows the app theme, not the system one', async (t) => {
     return [
       getComputedStyle(tree).colorScheme,
       light(getComputedStyle(window.row('workspace/harbor/src/lib/units.ts')).color),
-      light(getComputedStyle(tree.shadowRoot.querySelector('input')).backgroundColor),
+      light(
+        getComputedStyle(window.filesPart('sp-search').shadowRoot.querySelector('input')).color
+      ),
     ];
   };
   const toggle = () => window.$('slicc-app', 'header swc-action-button#theme').click();
-  assert.deepEqual(await page.evaluate(theme), ['light', false, true]);
+  assert.deepEqual(await page.evaluate(theme), ['light', false, false]);
   await page.evaluate(toggle);
   await page.until(
     () =>
       getComputedStyle(window.row('workspace/harbor/src/lib/units.ts').getRootNode().host)
         .colorScheme === 'dark'
   );
-  assert.deepEqual(await page.evaluate(theme), ['dark', true, false]);
+  assert.deepEqual(await page.evaluate(theme), ['dark', true, true]);
   await shot(page, 'tree-dark');
   assert.deepEqual(page.errors, []);
 });
