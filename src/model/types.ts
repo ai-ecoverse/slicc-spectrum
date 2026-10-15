@@ -755,6 +755,23 @@ export interface NetworkStatus {
   tailnet?: TailnetStatus;
   links?: NetworkLinks;
   exit?: NetworkExit;
+  leaders?: readonly Leader[];
+}
+
+export type LeaderState =
+  | 'connecting'
+  | 'reconnecting'
+  | 'connected'
+  | 'disconnected'
+  | 'failed'
+  | 'unlinked';
+
+export interface Leader {
+  id: string;
+  name: string;
+  hub: string;
+  state: LeaderState;
+  error?: string;
 }
 
 export type LinkMode = 'local' | 'remote';
@@ -861,6 +878,10 @@ export interface NetworkPort extends Subscribable<{ network: NetworkStatus }> {
   retryLinks?(): Promise<void>;
   mountFolder?(source: string): Promise<string>;
   ejectFolder?(source: string): Promise<void>;
+  retryLeader?(id: string): Promise<void>;
+  disconnectLeader?(id: string): Promise<void>;
+  reconnectLeader?(id: string): Promise<void>;
+  forgetLeader?(id: string): Promise<void>;
 }
 
 export interface NoticeAction {

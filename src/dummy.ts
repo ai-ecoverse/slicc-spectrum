@@ -9,10 +9,11 @@ export type { FollowScenario } from './dummy/follow.ts';
 export { DummyFollow, followFixtures } from './dummy/follow.ts';
 export type { DummyModel, DummyOptions } from './dummy/index.ts';
 export { createDummyModel } from './dummy/index.ts';
-export type { NetworkScenario, TailnetScenario } from './dummy/network.ts';
+export type { LeadersScenario, NetworkScenario, TailnetScenario } from './dummy/network.ts';
 export {
   DummyNetwork,
   joinUrl,
+  leadersFixtures,
   linksFixtures,
   networkFixtures,
   tailnetFixtures,
