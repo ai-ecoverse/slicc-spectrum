@@ -4542,6 +4542,135 @@ test('a read-only agent port shows its line, a notice without a close button, an
   assert.deepEqual(page.errors, []);
 });
 
+for (const [name, options, end, start] of [
+  [
+    'following without Control',
+    { follow: 'watch', surfaces: 'all' },
+    () => window.model.follow.setScenario('control'),
+    () => window.model.follow.setScenario('watch'),
+  ],
+  [
+    'the agent port is read-only',
+    { readonly: 'version' },
+    () => window.model.agent.setReadOnly(null),
+    () => window.model.agent.setReadOnly('Watch only.'),
+  ],
+]) {
+  test(`watch-only notes stand in for Accept and Revert, and the empty chat asks nothing, while ${name}`, async (t) => {
+    const page = await open(t, options);
+    const viewport = (width) =>
+      page.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 860,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+    t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+    await viewport(1280);
+    const path = '/workspace/harbor/src/lib/cache.ts';
+    await page.evaluate((path) => {
+      window.part = (id) => window.$('slicc-app', 'slicc-dock').content(id)?.shadowRoot;
+      window.diffId = `diff:${path}`;
+      window.fits = (root) => {
+        const bar = root.querySelector('.bar');
+        const note = bar.querySelector('[data-watch-note]');
+        const outer = bar.getBoundingClientRect();
+        const inner = note.getBoundingClientRect();
+        return {
+          text: note.textContent.trim(),
+          inside: inner.left >= outer.left && inner.right <= outer.right + 0.5,
+          oneLine: inner.height < outer.height,
+          overflow: bar.scrollWidth > bar.clientWidth,
+        };
+      };
+      window.model.agent.clear('cone-sliccy');
+      window.app.show('changes');
+      window.app.open('diff', path);
+      return true;
+    }, path);
+    await page.until(() => window.part('changes')?.querySelectorAll('li[data-path]').length > 0);
+    await page.until(() => !!window.part(window.diffId)?.querySelector('[data-watch-note]'));
+    await page.until(() => !!window.part('chat:cone-sliccy')?.querySelector('.empty'));
+    for (const width of [1280, 420]) {
+      await viewport(width);
+      if (width === 420)
+        await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+      for (const id of ['changes', 'diff']) {
+        await page.evaluate((id) => {
+          window.app.show(id === 'diff' ? window.diffId : id);
+          return true;
+        }, id);
+        await page.until(
+          (id) =>
+            window.part(id === 'diff' ? window.diffId : id)?.querySelector('.bar').clientWidth > 0,
+          id
+        );
+        const fit = await page.evaluate(
+          (id) => window.fits(window.part(id === 'diff' ? window.diffId : id)),
+          id
+        );
+        assert.deepEqual(
+          fit,
+          { text: 'Watch only', inside: true, oneLine: true, overflow: false },
+          `${id} at ${width}`
+        );
+      }
+      const path = await page.evaluate(() => {
+        const span = window.part(window.diffId).querySelector('.bar .path');
+        return [getComputedStyle(span).textOverflow, span.scrollWidth > span.clientWidth];
+      });
+      assert.equal(path[0], 'ellipsis');
+      if (width === 420) assert.equal(path[1], true);
+      await page.evaluate(() => {
+        window.app.show('chat:cone-sliccy');
+        return true;
+      });
+      await page.until(
+        () => window.part('chat:cone-sliccy')?.querySelector('.empty').clientWidth > 0
+      );
+      assert.deepEqual(
+        await page.evaluate(() => {
+          const empty = window.part('chat:cone-sliccy').querySelector('.empty');
+          return [empty.textContent.trim(), empty.scrollWidth <= empty.clientWidth];
+        }),
+        ['No messages yet.', true]
+      );
+    }
+    await viewport(1280);
+    await page.evaluate(end);
+    await page.until(() => !window.part('changes').querySelector('[data-watch-note]'));
+    await page.until(() => !window.part(window.diffId).querySelector('[data-watch-note]'));
+    assert.deepEqual(
+      await page.evaluate(() => [
+        !!window.part('changes').querySelector('[data-action=accept-all]'),
+        !!window.part(window.diffId).querySelector('[data-action=accept]'),
+        window.part('chat:cone-sliccy').querySelector('.empty').textContent.trim(),
+      ]),
+      [true, true, 'No messages yet. Ask sliccy something.']
+    );
+    await page.evaluate(() => {
+      window.part('changes').querySelector('[data-action=accept-all]').click();
+      return true;
+    });
+    await page.until(() => !!window.part('changes').querySelector('.note'));
+    const note = () => window.part('changes').querySelector('.note').textContent.trim();
+    assert.equal(
+      await page.evaluate(note),
+      'No pending changes. Edits by agents show up here for review.'
+    );
+    await page.evaluate(start);
+    await page.until(() => !!window.part('chat:cone-sliccy').querySelector('[data-follow=watch]'));
+    assert.deepEqual(
+      await page.evaluate(() => [
+        window.part('changes').querySelector('.note').textContent.trim(),
+        !!window.part('changes').querySelector('[data-watch-note]'),
+      ]),
+      ['No pending changes.', false]
+    );
+    assert.deepEqual(page.errors, []);
+  });
+}
+
 test('an agent port without readOnly, whose on() rejects unknown events, still binds', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {

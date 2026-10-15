@@ -79,7 +79,8 @@ if (params.has('vf')) app.variableFont = params.get('vf') || null;
 if (params.has('grammars')) app.grammarBase = params.get('grammars');
 if (model.follow) {
   const followed = new Set(['agents', 'chat', 'terminal', 'settings']);
-  app.surfaces = surfaces.filter((surface) => followed.has(surface.id));
+  if (params.get('surfaces') !== 'all')
+    app.surfaces = surfaces.filter((surface) => followed.has(surface.id));
   const leave = model.follow.leave.bind(model.follow);
   model.follow.leave = async () => {
     await leave();

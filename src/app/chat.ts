@@ -695,7 +695,7 @@ export class SliccChat extends ThemedElement {
                 )}</swc-conversation-thread>`
               : this.model?.tabs?.state().role === 'connecting'
                 ? html`<div class="empty" data-connecting>${connecting}</div>`
-                : html`<div class="empty">No messages yet. Ask ${agent?.name ?? 'the agent'} something.</div>`
+                : html`<div class="empty">${watch ? 'No messages yet.' : `No messages yet. Ask ${agent?.name ?? 'the agent'} something.`}</div>`
           }
         </div>
       </div>
