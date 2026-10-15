@@ -2329,7 +2329,7 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     assistant: 8,
     tool: 1,
     cluster: 3,
-    markers: 2,
+    markers: 3,
     errors: 3,
     notices: 1,
     days: 2,
