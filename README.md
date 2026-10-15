@@ -320,6 +320,14 @@ The Biome, TypeScript, lefthook, Renovate and CI configuration comes from [slicc
 
 Unit tests live in `test/unit/`, which is gitignored. The pre-commit hook runs them in Node against happy-dom under monocart and fails the commit unless the staged lines in `src/` are fully covered (`slicc-diff-cover`, which runs `diff-cover --fail-under 100` and needs [uv](https://docs.astral.sh/uv/)).
 
+## Design review
+
+[`.github/workflows/design-review.yml`](.github/workflows/design-review.yml) has Claude review every ready, same-repo pull request visually, against Spectrum 2 and general design guidelines, and leave a comment with screenshots. It also runs on `workflow_dispatch` with `pr_number`; fork pull requests and drafts are skipped.
+
+- **Setup** (`CERT_RUNNER`): main and the pull request are each built and served by `test/integration/chrome.mjs`, and each is open in a Chrome with a window under Xvfb, so hover works: main on CDP 9301 (`:8301/ui/?delay=0`), the pull request on CDP 9302 (`:8302`). Claude drives both with `playwright-core`, shoots the same states side by side (light and dark, desktop and a 420×860 mobile viewport), and reads spectrum.adobe.com, seeded with every URL in its sitemap.
+- **What it checks:** tokens only, never colour alone, contrast in dark, focus, copy, typography, icons, layout at 420, and the `data-*` hooks embedders test on. The prompt carries the setup pitfalls too: wait for fonts, blur focus, compare at the same scroll anchor, and use a real mobile viewport.
+- **The comment:** Claude writes `comment.md` and its screenshots. A later step publishes the screenshots as the run's `design-review-shots-<pr>` artifact and posts the comment, with each screenshot reference turned into a line naming the file, linked to that artifact. They aren't inlined: `gh pr comment --attach` needs a user token, which the workflow's token isn't.
+
 ## License
 
 Apache-2.0
