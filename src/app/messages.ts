@@ -36,6 +36,7 @@ import type {
   AssistantMessage,
   Attachment,
   CheckItem,
+  CompactionState,
   ErrorAction,
   LickChannel,
   LickMessage,
@@ -675,6 +676,22 @@ export function user(message: UserMessage, stamp = true): TemplateResult {
   </swc-conversation-turn>`;
 }
 
+const toolLoaders: Record<string, string> = {
+  edit: 'pencil',
+  read: 'page',
+  search: 'mag',
+  browser: 'eye',
+};
+
+function statusLoader(message: AssistantMessage): string {
+  if (message.parts.at(-1)?.type !== 'tool') return 'aiLogo';
+  const running = message.parts.findLast(
+    (part) => part.type === 'tool' && part.tool.status === 'running'
+  );
+  if (running?.type !== 'tool') return 'aiLogo';
+  return toolLoaders[toolKind(running.tool.name).id] ?? 'hourglass';
+}
+
 const people = new Set(['follower', 'guest']);
 
 function byline(
@@ -695,7 +712,7 @@ function status(message: AssistantMessage): TemplateResult | typeof nothing {
   }
   if (message.status !== 'streaming') return nothing;
   const calls = message.parts.flatMap((entry) => (entry.type === 'tool' ? [entry.tool] : []));
-  return html`<swc-response-status slot="status" status="active">
+  return html`<swc-response-status slot="status" status="active" loader=${statusLoader(message)}>
     ${calls.map((call) => html`<swc-response-status-step status=${stepStates[call.status]}><span slot="label">${call.name} ${call.title}</span></swc-response-status-step>`)}
   </swc-response-status>`;
 }
@@ -781,18 +798,26 @@ export function toolMessage(
   </swc-conversation-turn>`;
 }
 
+const compactionTitles: Record<CompactionState, string> = {
+  summarizing: 'Context compacted',
+  summarized: 'Context compacted',
+  fallback: 'Compaction failed, transcript truncated',
+  discarded: 'Context discarded',
+};
+
 function event(label: string, content: TemplateResult): TemplateResult {
   return html`<swc-conversation-turn type="system" class="event" accessible-label=${label}>${content}</swc-conversation-turn>`;
 }
 
 export function system(message: SystemMessage, handlers: Handlers): TemplateResult {
   if (message.kind === 'compaction') {
-    const title = message.title ?? 'Context compacted';
+    const failed = message.state === 'fallback' || message.state === 'discarded';
+    const title = message.title ?? compactionTitles[message.state ?? 'summarized'];
     return event(
       title,
       html`<div class="marker" role="status" data-id=${message.id} data-state=${message.state ?? 'summarized'}>
         <span class="line"></span>
-        <span class="marker-text">${title} · ${message.state === 'summarizing' ? html`<swc-progress-circle size="s" label="Summarizing"></swc-progress-circle>` : message.text}</span>
+        <span class="marker-text">${failed ? html`<swc-icon-alert-diamond class="fault" size="xs" aria-hidden="true"></swc-icon-alert-diamond>` : nothing}${title}${message.state === 'summarizing' ? html`<swc-progress-circle size="s" label="Summarizing"></swc-progress-circle>` : nothing}${message.text ? html`<span class="sr">. ${message.text}</span>` : nothing}</span>
         <span class="line"></span>
       </div>`
     );
@@ -800,7 +825,11 @@ export function system(message: SystemMessage, handlers: Handlers): TemplateResu
   if (message.kind === 'notice') {
     return event(
       'Notice',
-      html`<div class="notice" role="note" data-id=${message.id}><strong>${message.title}</strong> ${message.text}</div>`
+      html`<div class="marker notice" role="note" data-id=${message.id}>
+        <span class="line"></span>
+        <span class="marker-text"><span>${message.title}</span> ${message.text}</span>
+        <span class="line"></span>
+      </div>`
     );
   }
   return event(
@@ -1596,9 +1625,16 @@ export const messageCss = css`
     margin-block-start: 0;
   }
   .marker-text {
+    text-align: center;
     display: inline-flex;
     align-items: center;
     gap: var(--swc-spacing-75);
+  }
+  .marker-text .fault {
+    color: var(--swc-negative-visual-color);
+  }
+  .marker .line {
+    min-inline-size: var(--swc-spacing-300);
   }
   .marker .line,
   .day .line {
