@@ -232,6 +232,8 @@ export function networkStatus(port: NetworkPort): NetworkStatus {
   return status;
 }
 
+type LeaderAction = 'retry' | 'reconnect' | 'disconnect' | 'forget';
+
 export const leaderStates: Record<
   LeaderState,
   readonly ['neutral' | 'info' | 'positive' | 'notice' | 'negative', string]
@@ -239,24 +241,18 @@ export const leaderStates: Record<
   connecting: ['info', 'Connecting'],
   reconnecting: ['notice', 'Reconnecting'],
   connected: ['positive', 'Connected'],
+  disconnected: ['neutral', 'Disconnected'],
   failed: ['negative', 'Failed'],
   unlinked: ['neutral', 'Unlinked'],
 };
 
-export function leaderConfirm(leader: Leader, kind: 'disconnect' | 'forget'): ConfirmOptions {
-  return kind === 'disconnect'
-    ? {
-        title: `Stop following ${leader.name}?`,
-        body: 'You can join again with a new link.',
-        action: 'Disconnect',
-        variant: 'confirmation',
-      }
-    : {
-        title: `Forget ${leader.name}?`,
-        body: 'It will have to invite this SLICC again.',
-        action: 'Forget',
-        variant: 'destructive',
-      };
+export function leaderConfirm(leader: Leader): ConfirmOptions {
+  return {
+    title: `Forget ${leader.name}?`,
+    body: 'To follow it again, you’ll need a new invite from it.',
+    action: 'Forget',
+    variant: 'destructive',
+  };
 }
 
 export function remoteLight(status: NetworkStatus | undefined): RemoteLight | null {
@@ -1320,7 +1316,7 @@ export class SliccNetwork extends ModelElement {
   }
 
   #leaderAct(
-    kind: 'retry' | 'disconnect' | 'forget',
+    kind: LeaderAction,
     leader: Leader,
     run: (id: string) => Promise<void> | undefined
   ): Promise<void> {
@@ -1334,19 +1330,14 @@ export class SliccNetwork extends ModelElement {
     );
   }
 
-  async #leaderConfirm(
-    event: Event,
-    kind: 'disconnect' | 'forget',
-    leader: Leader,
-    run: (id: string) => Promise<void> | undefined
-  ): Promise<void> {
+  async #forgetLeader(event: Event, port: NetworkPort, leader: Leader): Promise<void> {
     const trigger = event.currentTarget as HTMLElement;
-    if (await confirm({ ...leaderConfirm(leader, kind), trigger }))
-      await this.#leaderAct(kind, leader, run);
+    if (await confirm({ ...leaderConfirm(leader), trigger }))
+      await this.#leaderAct('forget', leader, (id) => port.forgetLeader?.(id));
   }
 
   #leaderButton(
-    kind: 'retry' | 'disconnect' | 'forget',
+    kind: LeaderAction,
     label: string,
     leader: Leader,
     click: (event: Event) => Promise<void>
@@ -1357,12 +1348,16 @@ export class SliccNetwork extends ModelElement {
 
   #leaderActions(port: NetworkPort, leader: Leader): TemplateResult | typeof nothing {
     if (leader.state === 'unlinked') return nothing;
+    const off = leader.state === 'disconnected';
     const retry = leader.state === 'failed' && !!port.retryLeader;
-    if (!retry && !port.disconnectLeader && !port.forgetLeader) return nothing;
+    const reconnect = off && !!port.reconnectLeader;
+    const disconnect = !off && !!port.disconnectLeader;
+    if (!retry && !reconnect && !disconnect && !port.forgetLeader) return nothing;
     return html`<div class="actions">
+      ${reconnect ? this.#leaderButton('reconnect', 'Reconnect', leader, () => this.#leaderAct('reconnect', leader, (id) => port.reconnectLeader?.(id))) : nothing}
       ${retry ? this.#leaderButton('retry', 'Retry', leader, () => this.#leaderAct('retry', leader, (id) => port.retryLeader?.(id))) : nothing}
-      ${port.disconnectLeader ? this.#leaderButton('disconnect', 'Disconnect', leader, (event) => this.#leaderConfirm(event, 'disconnect', leader, (id) => port.disconnectLeader?.(id))) : nothing}
-      ${port.forgetLeader ? this.#leaderButton('forget', 'Forget', leader, (event) => this.#leaderConfirm(event, 'forget', leader, (id) => port.forgetLeader?.(id))) : nothing}
+      ${disconnect ? this.#leaderButton('disconnect', 'Disconnect', leader, () => this.#leaderAct('disconnect', leader, (id) => port.disconnectLeader?.(id))) : nothing}
+      ${port.forgetLeader ? this.#leaderButton('forget', 'Forget', leader, (event) => this.#forgetLeader(event, port, leader)) : nothing}
     </div>`;
   }
 

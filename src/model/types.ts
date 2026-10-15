@@ -758,7 +758,13 @@ export interface NetworkStatus {
   leaders?: readonly Leader[];
 }
 
-export type LeaderState = 'connecting' | 'reconnecting' | 'connected' | 'failed' | 'unlinked';
+export type LeaderState =
+  | 'connecting'
+  | 'reconnecting'
+  | 'connected'
+  | 'disconnected'
+  | 'failed'
+  | 'unlinked';
 
 export interface Leader {
   id: string;
@@ -874,6 +880,7 @@ export interface NetworkPort extends Subscribable<{ network: NetworkStatus }> {
   ejectFolder?(source: string): Promise<void>;
   retryLeader?(id: string): Promise<void>;
   disconnectLeader?(id: string): Promise<void>;
+  reconnectLeader?(id: string): Promise<void>;
   forgetLeader?(id: string): Promise<void>;
 }
 

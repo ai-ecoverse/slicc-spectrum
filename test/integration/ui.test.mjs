@@ -4549,12 +4549,14 @@ test('linked devices pick the exit, unlink, and retry local network access', asy
   assert.deepEqual(page.errors, []);
 });
 
-test('leaders disconnect and forget through their confirms', async (t) => {
+test('leaders disconnect without a confirm, reconnect, and forget through one', async (t) => {
   const page = await open(t, { leaders: 'two' });
   await page.evaluate(() => window.app.show('network'));
   await page.evaluate(() => {
     window.netPanel = () => window.$('slicc-app', 'slicc-dock').content('network')?.shadowRoot;
     window.leaderRow = (id) => window.netPanel().querySelector(`li[data-leader="${id}"]`);
+    window.leaderLight = (id) =>
+      window.leaderRow(id).querySelector('swc-status-light').textContent.trim();
   });
   await page.until(() => !!window.netPanel()?.querySelector('section[data-leaders]'));
   const cove = 'https://hub.cove-studio.example';
@@ -4571,15 +4573,27 @@ test('leaders disconnect and forget through their confirms', async (t) => {
     (id) => window.leaderRow(id).querySelector('[data-action=disconnect-leader]').click(),
     cove
   );
-  await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
+  await page.until((id) => window.leaderRow(id)?.dataset.state === 'disconnected', cove);
   assert.equal(
-    await page.evaluate(() =>
-      window.$('slicc-app', 'slicc-confirm', '[data-action]').textContent.trim()
-    ),
-    'Disconnect'
+    await page.evaluate(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]')),
+    false
   );
-  await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
-  await page.until((id) => !window.leaderRow(id), cove);
+  assert.deepEqual(
+    await page.evaluate(
+      (id) => [
+        window.leaderLight(id),
+        [...window.leaderRow(id).querySelectorAll('[data-action]')].map((b) => b.dataset.action),
+      ],
+      cove
+    ),
+    ['Disconnected', ['reconnect-leader', 'forget-leader']]
+  );
+  await page.evaluate(
+    (id) => window.leaderRow(id).querySelector('[data-action=reconnect-leader]').click(),
+    cove
+  );
+  await page.until((id) => window.leaderRow(id)?.dataset.state === 'connected', cove);
+  assert.equal(await page.evaluate((id) => window.leaderLight(id), cove), 'Connected');
   await page.evaluate(
     (id) => window.leaderRow(id).querySelector('[data-action=forget-leader]').click(),
     marsh
@@ -4593,7 +4607,8 @@ test('leaders disconnect and forget through their confirms', async (t) => {
     ['Forget', 'negative']
   );
   await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
-  await page.until(() => !window.netPanel().querySelector('section[data-leaders]'));
+  await page.until((id) => !window.leaderRow(id), marsh);
+  assert.ok(await page.evaluate((id) => !!window.leaderRow(id), cove));
   assert.deepEqual(page.errors, []);
 });
 

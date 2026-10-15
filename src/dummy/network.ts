@@ -26,7 +26,7 @@ export type LinksScenario =
   | 'remote'
   | 'followers';
 
-export type LeadersScenario = 'connected' | 'failed' | 'unlinked' | 'two';
+export type LeadersScenario = 'connected' | 'failed' | 'unlinked' | 'disconnected' | 'two';
 
 const minute = 60_000;
 
@@ -48,6 +48,7 @@ const marsh: Leader = {
 export function leadersFixtures(scenario: LeadersScenario): Leader[] {
   if (scenario === 'failed') return [marsh];
   if (scenario === 'unlinked') return [{ ...cove, state: 'unlinked' }];
+  if (scenario === 'disconnected') return [{ ...cove, state: 'disconnected' }];
   if (scenario === 'two') return [cove, marsh];
   return [cove];
 }
@@ -358,6 +359,7 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
   ejectFolder?: (source: string) => Promise<void>;
   retryLeader?: (id: string) => Promise<void>;
   disconnectLeader?: (id: string) => Promise<void>;
+  reconnectLeader?: (id: string) => Promise<void>;
   forgetLeader?: (id: string) => Promise<void>;
   #leaders: Leader[] | undefined;
   #files: DummyFiles | undefined;
@@ -390,7 +392,8 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
     if (leaders) {
       this.#leaders = leadersFixtures(leaders);
       this.retryLeader = (id) => this.#retryLeader(id);
-      this.disconnectLeader = (id) => this.#dropLeader(id);
+      this.reconnectLeader = (id) => this.#retryLeader(id);
+      this.disconnectLeader = (id) => this.#disconnectLeader(id);
       this.forgetLeader = (id) => this.#dropLeader(id);
     }
     this.#base = networkFixtures(scenario);
@@ -417,6 +420,11 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
     this.#leader(id, { state: 'connecting' });
     await this.#clock.sleep(8);
     this.#leader(id, { state: 'connected' });
+  }
+
+  async #disconnectLeader(id: string): Promise<void> {
+    await this.#clock.sleep(4);
+    this.#leader(id, { state: 'disconnected' });
   }
 
   async #dropLeader(id: string): Promise<void> {
