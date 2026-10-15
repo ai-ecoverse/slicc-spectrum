@@ -42,7 +42,7 @@ import { ModelElement } from './base.ts';
 import { type ConfirmOptions, confirm } from './confirm.ts';
 import { failure } from './files.ts';
 import { ago } from './freezer.ts';
-import { guestExpiry, invite, pendingLabel } from './guests.ts';
+import { guestCones, guestExpiry, invite, pendingLabel } from './guests.ts';
 import { qrCode } from './qr.ts';
 import { command, copyText, reach, reachStyles } from './reach.ts';
 import { connectionLabel, connectionVariant } from './tray.ts';
@@ -834,6 +834,7 @@ export class SliccNetwork extends ModelElement {
       ...(model.guests
         ? [
             model.guests.on('seats', update),
+            model.agent.on('agents', update),
             model.guests.on('unavailable', (text) => {
               this.guestsOff = text;
             }),
@@ -1475,7 +1476,7 @@ export class SliccNetwork extends ModelElement {
     if (!port) return nothing;
     const seats = port.list();
     const off = port.unavailable ? port.unavailable() : this.guestsOff;
-    const cones = (this.model as SliccModel).agent.list().some((item) => item.kind === 'cone');
+    const cones = guestCones((this.model as SliccModel).agent.list()).length > 0;
     const now = Date.now();
     return html`<section aria-labelledby="guests" data-guests=${seats.length}>
       <div class="head">

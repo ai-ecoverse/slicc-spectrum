@@ -70,7 +70,7 @@ export function gateOptions(field: GateField, cone: GuestCone): GateOption[] {
 
 export function guestCones(agents: readonly Agent[]): GuestCone[] {
   return agents
-    .filter((agent) => agent.kind === 'cone')
+    .filter((agent) => agent.kind === 'cone' && !agent.frozen)
     .map((cone) => ({
       id: cone.id,
       name: cone.name,

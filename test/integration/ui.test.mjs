@@ -5418,6 +5418,26 @@ test('guests: invite, copy the one-time link, revoke through a negative confirm'
   assert.deepEqual(page.errors, []);
 });
 
+test('guests: Invite follows the cones while the Network panel is open', async (t) => {
+  const page = await open(t, { guests: 'none' });
+  await page.evaluate(() => {
+    window.app.show('network');
+    window.netPanel = () => window.$('slicc-app', 'slicc-dock').content('network')?.shadowRoot;
+    window.inviteButton = () => window.netPanel().querySelector('[data-action=invite-guest]');
+  });
+  await page.until(() => !!window.netPanel()?.querySelector('section[data-guests]'));
+  assert.equal(await page.evaluate(() => window.inviteButton().hasAttribute('disabled')), false);
+  await page.evaluate(() => {
+    for (const agent of window.model.agent.list()) {
+      if (agent.kind === 'cone') window.model.agent.freeze(agent.id);
+    }
+  });
+  await page.until(() => window.inviteButton().hasAttribute('disabled'));
+  await page.evaluate(() => window.model.agent.createCone('reef-notes'));
+  await page.until(() => !window.inviteButton().hasAttribute('disabled'));
+  assert.deepEqual(page.errors, []);
+});
+
 test('without a network port there is no indicator and no Network panel', async (t) => {
   const page = await open(t, { network: 'off' });
   assert.deepEqual(
