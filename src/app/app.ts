@@ -417,6 +417,14 @@ export class SliccApp extends ThemedElement {
       ...(model.updates ? [model.updates.on('items', update)] : []),
       ...(model.network ? [model.network.on('network', update)] : []),
       ...(model.tabs ? [model.tabs.on('tabs', update)] : []),
+      ...(model.agent.readOnly
+        ? [
+            model.agent.on('readOnly', () => {
+              settle();
+              update();
+            }),
+          ]
+        : []),
       ...(model.follow
         ? [
             model.follow.on('follow', () => {

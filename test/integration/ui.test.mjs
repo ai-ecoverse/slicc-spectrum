@@ -4370,6 +4370,114 @@ test('a watch-only follower has no Delete cone or Drop, and its inline sprinkle 
   assert.deepEqual(page.errors, []);
 });
 
+test('a read-only agent port shows its line, a notice without a close button, an inert sprinkle, and no composer, New cone or Changes actions', async (t) => {
+  const page = await open(t, { readonly: 'version' });
+  await page.evaluate(() => {
+    window.chat = () => window.$('slicc-app', 'slicc-dock').content('chat:cone-sliccy')?.shadowRoot;
+    window.agentsRow = () => window.$('slicc-app', 'slicc-dock').content('agents')?.shadowRoot;
+    window.changes = () => window.$('slicc-app', 'slicc-dock').content('changes')?.shadowRoot;
+    window.sprinkle = () => window.chat()?.querySelector('slicc-sprinkle[inline]');
+    window.notice = () =>
+      window
+        .chat()
+        ?.querySelector('slicc-notices')
+        ?.shadowRoot.querySelector('[data-notice=readonly]');
+    return true;
+  });
+  await page.until(() => !!window.chat()?.querySelector('[data-follow=watch]'));
+  await page.until(() => !!window.notice());
+  await page.until(() => window.agentsRow()?.querySelectorAll('li').length > 0);
+  await page.until(() => window.changes()?.querySelectorAll('li[data-path]').length > 0);
+  await page.until(() => !!window.sprinkle()?.shadowRoot.querySelector('iframe'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      !!window.changes().querySelector('[data-action=accept-all], [data-action=revert-all]'),
+      !!window.changes().querySelector('li[data-path] .actions'),
+      window.sprinkle().hasAttribute('readonly'),
+      window.sprinkle().shadowRoot.querySelector('iframe').inert,
+      window.sprinkle().shadowRoot.querySelector('[data-view-only]')?.textContent.trim(),
+    ]),
+    [false, false, true, true, 'View only on this device']
+  );
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.chat().querySelector('[data-follow=watch]').textContent.trim(),
+      !!window.chat().querySelector('slicc-composer'),
+      !!window.agentsRow().querySelector('[data-action=new-cone]'),
+      !!window.$('slicc-app', 'header sp-menu-item[data-action=new-cone]'),
+      !!window.notice().querySelector('[data-dismiss]'),
+      window.notice().getAttribute('role'),
+    ]),
+    [
+      'Watch only. The SLICC you follow runs a newer version. Update this one to send prompts.',
+      false,
+      false,
+      false,
+      false,
+      'status',
+    ]
+  );
+  await page.evaluate(() => {
+    window.model.agent.setReadOnly(null);
+    return true;
+  });
+  await page.until(() => !!window.chat().querySelector('slicc-composer'));
+  await page.until(() => !!window.agentsRow().querySelector('[data-action=new-cone]'));
+  await page.until(() => !!window.changes().querySelector('[data-action=accept-all]'));
+  await page.until(() => !!window.changes().querySelector('[data-action=revert-all]'));
+  await page.until(() => !window.sprinkle().shadowRoot.querySelector('iframe').inert);
+  await page.until(() => !window.notice());
+  assert.equal(
+    await page.evaluate(() => !!window.chat().querySelector('[data-follow=watch]')),
+    false
+  );
+  await page.evaluate(() => {
+    window.model.agent.setReadOnly('Watch only.');
+    return true;
+  });
+  await page.until(() => !!window.notice() && !window.notice().querySelector('[data-dismiss]'));
+  assert.deepEqual(page.errors, []);
+});
+
+test('an agent port without readOnly, whose on() rejects unknown events, still binds', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const real = window.model.agent;
+    const agent = new Proxy(real, {
+      get(target, key) {
+        if (key === 'readOnly') return undefined;
+        if (key === 'on')
+          return (type, listener) => {
+            if (type === 'readOnly') throw new Error('unknown event: readOnly');
+            return target.on(type, listener);
+          };
+        const value = Reflect.get(target, key, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+      has(target, key) {
+        return key !== 'readOnly' && key in target;
+      },
+    });
+    window.app.model = { ...window.model, agent };
+    return true;
+  });
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:cone-sliccy')
+        ?.shadowRoot.querySelector('slicc-composer')
+  );
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('agents')
+        ?.shadowRoot.querySelector('[data-action=new-cone]')
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a dip drags out of the chat into the dock and lives on as a panel', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {
