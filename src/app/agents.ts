@@ -43,6 +43,21 @@ export async function createCone(
   return created;
 }
 
+const statusOrder: readonly Agent['status'][] = ['working', 'thinking', 'waiting', 'error', 'idle'];
+
+export function scoopSummary(scoops: readonly Agent[]): string {
+  if (scoops.length === 0) return '';
+  const counts = statusOrder
+    .map((status) => [status, scoops.filter((scoop) => scoop.status === status).length] as const)
+    .filter(([, count]) => count > 0)
+    .map(([status, count]) => `${count} ${statusLabel[status].toLowerCase()}`);
+  return `${scoops.length} scoop${scoops.length === 1 ? '' : 's'}: ${counts.join(', ')}`;
+}
+
+export function unreadCount(unread: number): string {
+  return unread > 9 ? '9+' : String(unread);
+}
+
 export function fillShown(fill: number): boolean {
   return fill >= 0.5;
 }
@@ -134,8 +149,12 @@ export class SliccAgents extends ModelElement {
       line-height: 1;
     }
     .marker.unread {
-      background: var(--swc-accent-visual-color);
-      color: #fff;
+      box-sizing: border-box;
+      inline-size: auto;
+      min-inline-size: var(--swc-spacing-200);
+      padding-inline: var(--swc-spacing-50);
+      background: var(--swc-accent-background-color-default);
+      color: var(--swc-white);
       font-weight: var(--swc-bold-font-weight);
     }
     .name {
@@ -158,6 +177,9 @@ export class SliccAgents extends ModelElement {
       line-height: 1.4;
       font-size: var(--swc-font-size-75);
       color: var(--swc-neutral-subdued-content-color-default);
+    }
+    .state {
+      color: var(--swc-neutral-content-color-default);
     }
     .ribbon {
       grid-area: ribbon;
@@ -215,11 +237,12 @@ export class SliccAgents extends ModelElement {
       align-items: center;
       padding-inline: var(--swc-spacing-100);
       background: var(--row-background);
-      visibility: hidden;
+      opacity: 0;
     }
     li:hover .drop-cell,
-    li:focus-visible .drop-cell {
-      visibility: visible;
+    li:focus-visible .drop-cell,
+    .drop-cell[data-shown] {
+      opacity: 1;
     }
     .error {
       grid-area: error;
@@ -237,7 +260,7 @@ export class SliccAgents extends ModelElement {
     }
     @media (hover: none), (pointer: coarse) {
       .drop-cell {
-        visibility: visible;
+        opacity: 1;
       }
     }
   `,
@@ -293,20 +316,49 @@ export class SliccAgents extends ModelElement {
     if (event.key in moves) {
       event.preventDefault();
       items[Math.max(0, Math.min(items.length - 1, moves[event.key]))]?.focus();
-    } else if (event.key === 'Enter' || event.key === ' ') {
+      return;
+    }
+    const agent = this.model?.agent.list().find((item) => item.id === items[index]?.dataset.id);
+    if (!agent) return;
+    if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      const agent = this.model?.agent.list().find((item) => item.id === items[index]?.dataset.id);
-      if (agent) this.#pick(agent);
+      this.#pick(agent);
+    } else if (event.key === 'ArrowRight' && this.#scoops(agent).length > 0) {
+      event.preventDefault();
+      if (this.#expanded === agent.id) items[index + 1].focus();
+      else this.#pick(agent);
+    } else if (event.key === 'ArrowLeft' && agent.kind === 'scoop') {
+      event.preventDefault();
+      items.find((item) => item.dataset.id === agent.parentId)?.focus();
+    } else if (event.key === 'ArrowLeft' && this.#expanded === agent.id) {
+      event.preventDefault();
+      this.#pick(agent);
     } else if (event.key === 'Delete') {
-      const agent = this.model?.agent.list().find((item) => item.id === items[index]?.dataset.id);
-      if (agent && this.#droppable(agent)) {
+      if (this.#droppable(agent)) {
         event.preventDefault();
         void this.#drop(agent, items[index]);
-      } else if (agent && this.#deletable(agent)) {
+      } else if (this.#deletable(agent)) {
         event.preventDefault();
         void this.#deleteCone(agent, items[index]);
       }
     }
+  }
+
+  #scoops(agent: Agent): Agent[] {
+    if (agent.kind !== 'cone') return [];
+    return (this.model as SliccModel).agent.list().filter((other) => other.parentId === agent.id);
+  }
+
+  #focusin(event: FocusEvent): void {
+    const cell = (event.target as Element).closest('.drop-cell');
+    cell?.toggleAttribute(
+      'data-shown',
+      (event.composedPath()[0] as Element).matches(':focus-visible')
+    );
+  }
+
+  #focusout(event: FocusEvent): void {
+    (event.target as Element).closest('.drop-cell')?.removeAttribute('data-shown');
   }
 
   #droppable(agent: Agent): boolean {
@@ -356,7 +408,7 @@ export class SliccAgents extends ModelElement {
     this.focus();
   }
 
-  #dropButton(agent: Agent): TemplateResult | typeof nothing {
+  #dropButton(agent: Agent, selected: boolean): TemplateResult | typeof nothing {
     if (!this.#droppable(agent)) return nothing;
     const id = `drop-${agent.id}`;
     const label = `Drop scoop ${agent.name}`;
@@ -366,7 +418,7 @@ export class SliccAgents extends ModelElement {
           class="drop"
           size="l"
           quiet
-          tabindex="-1"
+          tabindex=${selected ? '0' : '-1'}
           data-action="drop"
           accessible-label=${label}
           @click=${(event: Event) => {
@@ -378,7 +430,7 @@ export class SliccAgents extends ModelElement {
       >`;
   }
 
-  #deleteButton(agent: Agent): TemplateResult | typeof nothing {
+  #deleteButton(agent: Agent, selected: boolean): TemplateResult | typeof nothing {
     if (!this.#deletable(agent)) return nothing;
     const id = `delete-${agent.id}`;
     const label = `Delete cone ${coneLabel(this.model as SliccModel, agent)}`;
@@ -388,7 +440,7 @@ export class SliccAgents extends ModelElement {
           class="drop"
           size="l"
           quiet
-          tabindex="-1"
+          tabindex=${selected ? '0' : '-1'}
           data-action="delete-cone"
           accessible-label=${label}
           @click=${(event: Event) => {
@@ -407,36 +459,38 @@ export class SliccAgents extends ModelElement {
     )}</span>`;
   }
 
-  #row(agent: Agent, active: string, list: readonly Agent[]): TemplateResult {
+  #row(agent: Agent, active: string): TemplateResult {
     const selected = agent.id === active;
     const error = this.errors[agent.id];
     const model = this.model as SliccModel;
     const title = agentTitle(model, agent);
-    const scoops = agent.kind === 'cone' ? list.filter((other) => other.parentId === agent.id) : [];
+    const scoops = this.#scoops(agent);
+    const open = this.#expanded === agent.id;
     const unread = selected ? 0 : agent.unread;
-    const state =
-      agent.kind === 'cone' ? (this.#expanded === agent.id ? ', expanded' : ', collapsed') : '';
-    const subs = scoops.length
-      ? `, ${scoops.length} scoop${scoops.length === 1 ? '' : 's'}: ${scoops.map((scoop) => statusLabel[scoop.status].toLowerCase()).join(', ')}`
-      : '';
-    const label = `${coneLabel(model, agent)}: ${statusLabel[agent.status]}, ${percent(agent.contextFill)} context${state}${subs}${
+    const label = `${coneLabel(model, agent)}: ${statusLabel[agent.status]}, ${percent(agent.contextFill)} context${
       unread ? `, ${unread} unread` : ''
     }${error ? `. ${error}` : ''}`;
+    const summary = scoopSummary(scoops);
     return html`<li
-      role="option"
+      role="treeitem"
+      id=${`row-${agent.id}`}
       class=${agent.kind}
       data-id=${agent.id}
+      aria-level=${agent.kind === 'cone' ? '1' : '2'}
       aria-selected=${selected ? 'true' : 'false'}
+      aria-expanded=${scoops.length ? String(open) : nothing}
+      aria-controls=${open && scoops.length ? scoops.map((scoop) => `row-${scoop.id}`).join(' ') : nothing}
       aria-label=${label}
+      aria-description=${summary || nothing}
       tabindex=${selected ? '0' : '-1'}
       aria-keyshortcuts=${this.#droppable(agent) || this.#deletable(agent) ? 'Delete' : nothing}
-      title=${label}
+      title=${summary ? `${label}. ${summary}` : label}
       @click=${() => this.#pick(agent)}
     >
       <div class="head">
         ${
           unread
-            ? html`<span class="marker unread" aria-hidden="true">${unread > 9 ? '9+' : unread}</span>`
+            ? html`<span class="marker unread" aria-hidden="true">${unreadCount(unread)}</span>`
             : html`<span class="marker status" data-status=${agent.status} aria-hidden="true"></span>`
         }
         <span class="name">${agent.name}</span>
@@ -446,10 +500,10 @@ export class SliccAgents extends ModelElement {
           ? html`<span class="fill" data-variant=${meterVariant(agent.contextFill)}>${percent(agent.contextFill)}</span>`
           : nothing
       }
-      <span class="title">${title || untitled}</span>
+      <span class="title"><span class="state">${statusLabel[agent.status]}</span> · ${title || untitled}</span>
       ${this.#ribbon(scoops)}
-      ${this.#dropButton(agent)}
-      ${this.#deleteButton(agent)}
+      ${this.#dropButton(agent, selected)}
+      ${this.#deleteButton(agent, selected)}
       ${error ? html`<span class="error">${error}</span>` : nothing}
     </li>`;
   }
@@ -476,8 +530,8 @@ export class SliccAgents extends ModelElement {
     const rows = ordered(list).filter(
       (agent) => agent.kind === 'cone' || agent.parentId === this.#expanded
     );
-    return html`<div class="list"><ul role="listbox" aria-label="Cones and scoops" @keydown=${this.#keydown}>
-        ${rows.map((agent) => this.#row(agent, active, list))}
+    return html`<div class="list"><ul role="tree" aria-label="Cones and scoops" @keydown=${this.#keydown} @focusin=${this.#focusin} @focusout=${this.#focusout}>
+        ${rows.map((agent) => this.#row(agent, active))}
       </ul></div>${this.#actions()}
       <div class="sr" role="status">${errors.at(-1) ?? ''}</div>`;
   }
