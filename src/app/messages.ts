@@ -1566,12 +1566,16 @@ export const messageCss = css`
     margin-block-start: 0;
   }
   .marker-text {
+    text-align: center;
     display: inline-flex;
     align-items: center;
     gap: var(--swc-spacing-75);
   }
   .marker-text .fault {
     color: var(--swc-negative-visual-color);
+  }
+  .marker .line {
+    min-inline-size: var(--swc-spacing-300);
   }
   .marker .line,
   .day .line {

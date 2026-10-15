@@ -2496,6 +2496,21 @@ test('compaction and notices are full-width dividers that screen readers still h
     window.chatPart().shadowRoot.querySelector('[data-id=k-s1]').scrollIntoView({ block: 'center' })
   );
   await shot(page, 'dividers');
+  const narrow = await page.evaluate(async () => {
+    const chat = window.chatPart();
+    chat.style.width = '300px';
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const divider = chat.shadowRoot.querySelector('.marker.notice');
+    divider.scrollIntoView({ block: 'center' });
+    return {
+      wrapped: divider.querySelector('.marker-text').getBoundingClientRect().height > 30,
+      lines: [...divider.querySelectorAll(':scope > .line')].map(
+        (line) => line.getBoundingClientRect().width >= 12
+      ),
+    };
+  });
+  assert.deepEqual(narrow, { wrapped: true, lines: [true, true] });
+  await shot(page, 'dividers-narrow');
   assert.deepEqual(page.errors, []);
 });
 
