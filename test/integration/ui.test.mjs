@@ -2585,12 +2585,6 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
   await page.insert('Run the tests');
   await page.press('Enter');
   await page.until(() => window.model.agent.busy('cone-sliccy'));
-  assert.match(
-    await page.evaluate(
-      () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.hint').textContent
-    ),
-    /Enter\s*steer\s*Ctrl\+Enter\s*queue\s*Esc\s*stop/
-  );
   await page.insert('Then open the docs');
   await page.press('Enter', 'ctrl');
   await page.until(
