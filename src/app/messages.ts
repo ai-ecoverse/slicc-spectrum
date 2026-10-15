@@ -505,7 +505,7 @@ function question(item: Question, handlers: Handlers): TemplateResult {
 }
 
 export function questionTurn(item: Question, handlers: Handlers, pile: Pile): TemplateResult {
-  return html`<swc-conversation-turn type="system" class="message decision-turn" data-id=${item.id} data-state=${item.state} data-pending=${item.state === 'open' ? '' : nothing} style=${pileStyle(pile)} @click=${reveal}>${question(item, handlers)}</swc-conversation-turn>`;
+  return html`<swc-conversation-turn type="system" class="message decision-turn" data-id=${item.id} data-state=${item.state} data-pending=${item.state === 'open' ? '' : nothing} accessible-label=${`Question: ${item.question}`} style=${pileStyle(pile)} @click=${reveal} @keydown=${reveal}>${question(item, handlers)}</swc-conversation-turn>`;
 }
 
 const delegationVerbs = {
@@ -851,9 +851,19 @@ function clock(ms: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
+const still = (): boolean => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
 function reveal(event: Event): void {
-  if ((event.target as Element).closest('swc-button, input')) return;
-  const turn = event.currentTarget as HTMLElement;
+  if ((event.target as Element).closest('swc-button, input, textarea')) return;
+  if (
+    event instanceof KeyboardEvent &&
+    (event.key !== 'Enter' || event.target !== event.currentTarget)
+  )
+    return;
+  show(event.currentTarget as HTMLElement);
+}
+
+export function show(turn: HTMLElement): void {
   const log = turn.closest('.log');
   if (!log) return;
   const origin = log.getBoundingClientRect().top;
@@ -864,7 +874,7 @@ function reveal(event: Event): void {
   const natural = flow.top - origin;
   const bottom = Math.max(16, log.clientHeight - flow.height - 16);
   if (Math.abs(pile - natural) > 1)
-    log.scrollTo({ top: log.scrollTop + natural - bottom, behavior: 'smooth' });
+    log.scrollTo({ top: log.scrollTop + natural - bottom, behavior: still() ? 'auto' : 'smooth' });
 }
 
 export interface Pile {
@@ -877,20 +887,26 @@ function pileStyle(pile: Pile): string {
   return `--stack: ${pile.stack}`;
 }
 
+function spokenLeft(left: number, at: number): string {
+  if (left <= 0) return 'Timed out';
+  return left <= 60_000 ? 'Less than a minute left' : `Expires at ${time(at)}`;
+}
+
 function decision(message: LickMessage, handlers: Handlers, pile: Pile): TemplateResult {
-  const left = message.expiresAt === undefined ? null : message.expiresAt - Date.now();
+  const at = message.expiresAt;
+  const left = at === undefined ? null : at - Date.now();
   const expired = left !== null && left <= 0;
   const timer =
     left === null
       ? nothing
-      : html`<span class="timer" data-timer>${expired ? 'Timed out' : clock(left)}</span>`;
+      : html`<span class="timer" data-timer aria-hidden="true">${expired ? 'Timed out' : clock(left)}</span><span class="sr">${spokenLeft(left, at as number)}</span>`;
   const actions = expired
     ? nothing
     : html`<div class="decide">
         <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'dismissed')}>Deny</swc-button>
         <swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>
       </div>`;
-  return html`<swc-conversation-turn type="system" class="message decision-turn" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-pending=${expired ? nothing : ''} data-expired=${expired ? '' : nothing} style=${pileStyle(pile)} @click=${reveal}>
+  return html`<swc-conversation-turn type="system" class="message decision-turn" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-pending=${expired ? nothing : ''} data-expired=${expired ? '' : nothing} style=${pileStyle(pile)} @click=${reveal} @keydown=${reveal}>
     <div class="decision" data-kind="approval">
       <div class="decision-head"><span class="who">${message.title}</span>${timer}</div>
       <p class="decision-text">${message.text}</p>
@@ -1753,7 +1769,7 @@ export const messageCss = css`
   }
   swc-conversation-turn.decision-turn[data-pending] {
     position: sticky;
-    top: calc(var(--stack, 0) * 2.75rem);
+    top: calc(var(--stack, 0) * (var(--swc-spacing-600) + var(--swc-spacing-75)));
     z-index: calc(var(--stack, 0) + 1);
   }
   swc-conversation-turn.decision-turn[data-pinned] {
@@ -1763,7 +1779,14 @@ export const messageCss = css`
   }
   .decision-turn[data-pending] .decision {
     border-color: var(--swc-gray-300);
-    box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+    box-shadow: var(--swc-drop-shadow-elevated);
+  }
+  .decision-turn[data-pending]:focus-visible {
+    outline: none;
+  }
+  .decision-turn[data-pending]:focus-visible .decision {
+    outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+    outline-offset: var(--swc-focus-ring-gap);
   }
   .decision {
     display: flex;
@@ -1784,7 +1807,7 @@ export const messageCss = css`
     font-size: var(--swc-font-size-100);
   }
   .decision-head .who {
-    font-weight: 700;
+    font-weight: var(--swc-bold-font-weight);
   }
   .timer {
     color: var(--swc-neutral-subdued-content-color-default);

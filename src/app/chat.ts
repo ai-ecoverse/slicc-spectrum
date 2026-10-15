@@ -31,6 +31,7 @@ import {
   type Pile,
   pendingApproval,
   questionTurn,
+  show,
   stamps,
   system,
   toolMessage,
@@ -238,6 +239,7 @@ export class SliccChat extends ThemedElement {
         container-type: inline-size;
         padding: var(--swc-spacing-400) var(--swc-spacing-300) var(--swc-spacing-500);
         font-size: var(--swc-font-size-200);
+        scroll-padding-block-start: var(--pile, 0px);
       }
       @container (min-width: 600px) {
         .column {
@@ -356,6 +358,21 @@ export class SliccChat extends ThemedElement {
   #settle: ReturnType<typeof setTimeout> | undefined;
   #tick: ReturnType<typeof setInterval> | undefined;
   #tail = '';
+  #held = '';
+
+  #focused = (event: FocusEvent): void => {
+    const turn = (event.target as Element).closest<HTMLElement>('.decision-turn[data-pending]');
+    this.#held = turn?.dataset.id ?? '';
+    if (turn && Number(turn.style.getPropertyValue('--depth')) > 0) show(turn);
+  };
+
+  #refocus(): void {
+    if (!this.#held || this.renderRoot.querySelector(':focus')) return;
+    this.#held = '';
+    const next = this.renderRoot.querySelector<HTMLElement>('.decision-turn[data-pending]');
+    if (next) next.focus();
+    else this.renderRoot.querySelector<SliccComposer>('slicc-composer')?.focus();
+  }
 
   #sent(agentId: string): boolean {
     const last = this.model?.agent.messages(agentId).at(-1);
@@ -462,6 +479,7 @@ export class SliccChat extends ThemedElement {
       this.#tick = undefined;
     }
     this.#pile();
+    this.#refocus();
   }
 
   #pile(): void {
@@ -490,6 +508,13 @@ export class SliccChat extends ThemedElement {
         String(pinned.filter((other) => other.stack > stack).length)
       );
     }
+    const log = this.renderRoot.querySelector<HTMLElement>('.log');
+    const top = log?.getBoundingClientRect().top ?? 0;
+    const reach = Math.max(
+      0,
+      ...pinned.map(({ turn }) => turn.getBoundingClientRect().bottom - top)
+    );
+    log?.style.setProperty('--pile', `${reach}px`);
   }
 
   #timed(): boolean {
@@ -752,6 +777,7 @@ export class SliccChat extends ThemedElement {
         @touchmove=${this.#intent}
         @keydown=${this.#intent}
         @pointerdown=${this.#hold}
+        @focusin=${this.#focused}
       >
         <div class="column" @keydown=${this.#keys}>
           ${
