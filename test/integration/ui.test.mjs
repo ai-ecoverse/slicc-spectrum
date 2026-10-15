@@ -2366,6 +2366,10 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
       const button = card.querySelector('swc-button');
       return {
         lead: card.querySelector('.lead, strong')?.textContent.trim(),
+        alert: card.getAttribute('role') === 'alert',
+        announced: card.textContent.replace(/\s+/g, ' ').trim().startsWith('Error: '),
+        icon: card.querySelector('swc-icon-alert-diamond')?.getAttribute('aria-hidden') === 'true',
+        bold: Number(getComputedStyle(card.querySelector('.lead')).fontWeight) >= 700,
         detail: card.querySelector('.detail')?.textContent.trim() ?? null,
         oneLine: !button || button.getBoundingClientRect().height < 34,
         inside:
@@ -2375,7 +2379,10 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     });
   });
   assert.ok(
-    cards.every((card) => card.oneLine && card.inside),
+    cards.every(
+      (card) =>
+        card.oneLine && card.inside && card.alert && card.announced && card.icon && card.bold
+    ),
     JSON.stringify(cards)
   );
   assert.ok(
