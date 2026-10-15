@@ -66,6 +66,10 @@ export class SliccAgents extends ModelElement {
   static properties = { ...ModelElement.properties, errors: { state: true } };
   declare errors: Record<string, string>;
   #expanded: string | null = null;
+  #pointer = false;
+  #modality = (event: Event): void => {
+    this.#pointer = event.type === 'pointerdown';
+  };
 
   constructor() {
     super();
@@ -278,7 +282,16 @@ export class SliccAgents extends ModelElement {
       }),
       watchTitles(model, () => this.requestUpdate()),
       ...(model.follow ? [model.follow.on('follow', () => this.requestUpdate())] : []),
+      this.#watchPointer(),
     ];
+  }
+
+  #watchPointer(): () => void {
+    const types = ['pointerdown', 'keydown'];
+    for (const type of types) globalThis.addEventListener(type, this.#modality, true);
+    return () => {
+      for (const type of types) globalThis.removeEventListener(type, this.#modality, true);
+    };
   }
 
   #focused(model: SliccModel): Agent | undefined {
@@ -351,10 +364,7 @@ export class SliccAgents extends ModelElement {
 
   #focusin(event: FocusEvent): void {
     const cell = (event.target as Element).closest('.drop-cell');
-    cell?.toggleAttribute(
-      'data-shown',
-      (event.composedPath()[0] as Element).matches(':focus-visible')
-    );
+    cell?.toggleAttribute('data-shown', !this.#pointer);
   }
 
   #focusout(event: FocusEvent): void {
