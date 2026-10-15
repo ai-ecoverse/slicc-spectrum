@@ -2573,6 +2573,24 @@ test('licks sit on the right with a byline, a quiet chevron on their toggle and 
   await page.press(' ');
   await page.until(() => !window.chatPart('details.lick[data-id=k-l1]').open);
   assert.deepEqual(await page.evaluate(state), [false, false]);
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 420,
+    height: 860,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await page.until(() => window.chatPart().getBoundingClientRect().width <= 420);
+  const spill = await page.evaluate(() => {
+    const root = window.chatPart().shadowRoot;
+    return [...root.querySelectorAll('.lick-frame')]
+      .filter((frame) => {
+        const box = frame.getBoundingClientRect();
+        const bubble = frame.parentElement.getBoundingClientRect();
+        return box.left < bubble.left - 1 || box.right > bubble.right + 1;
+      })
+      .map((frame) => frame.querySelector('.lick').dataset.id);
+  });
+  assert.deepEqual(spill, []);
   assert.deepEqual(page.errors, []);
 });
 

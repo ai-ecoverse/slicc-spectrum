@@ -1607,6 +1607,8 @@ export const messageCss = css`
   }
   .lick-frame {
     position: relative;
+    min-inline-size: 0;
+    max-inline-size: 100%;
     margin-block-end: var(--swc-spacing-300);
   }
   .lick {
