@@ -648,7 +648,7 @@ export function user(message: UserMessage, stamp = true): TemplateResult {
     : message.from
       ? `Message from ${message.from}`
       : 'Your message';
-  const remote = agent || !!message.from;
+  const remote = agent || (!!message.from && !people.has(message.origin ?? 'user'));
   return html`<swc-conversation-turn type="user" class="message user" accessible-label=${label} data-id=${message.id} data-mode=${message.mode ?? 'send'} data-delivered=${delivered ?? 'run'} data-origin=${message.origin ?? 'user'} data-remote=${remote ? '' : nothing}>
     <div class="bubble">
       ${byline(message, who, stamp)}${stamp ? nothing : unseen(message.createdAt)}
@@ -658,6 +658,8 @@ export function user(message: UserMessage, stamp = true): TemplateResult {
     </div>
   </swc-conversation-turn>`;
 }
+
+const people = new Set(['follower', 'guest']);
 
 function byline(
   message: UserMessage,
@@ -901,12 +903,11 @@ export const messageCss = css`
     align-self: flex-start;
     align-items: flex-start;
   }
-  .user[data-origin='agent'] swc-user-message.body {
-    background: var(--swc-background-layer-1-color);
-    border-color: var(--swc-gray-300);
-  }
   .user[data-remote] swc-user-message.body {
-    background: var(--swc-indigo-subtle-background-color-default);
+    background: light-dark(
+      var(--swc-indigo-subtle-background-color-default),
+      color-mix(in srgb, var(--swc-indigo-900) 8%, var(--swc-gray-50))
+    );
     border-color: transparent;
   }
   .user[data-remote] .bubble {
@@ -926,7 +927,8 @@ export const messageCss = css`
     border-radius: calc(var(--swc-spacing-400) / 2);
     border: var(--swc-border-width-100) solid var(--swc-gray-300);
     background: var(--swc-background-layer-2-color);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.15);
+    box-shadow: var(--swc-drop-shadow-emphasized-default-x) var(--swc-drop-shadow-emphasized-default-y)
+      var(--swc-drop-shadow-emphasized-default-blur) var(--swc-drop-shadow-emphasized-default-color);
     font-size: var(--swc-font-size-100);
     line-height: 1;
   }
