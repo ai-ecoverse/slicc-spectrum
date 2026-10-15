@@ -156,6 +156,25 @@ function files(): Step[] {
   ];
 }
 
+function search(): Step[] {
+  return [
+    {
+      type: 'tool',
+      name: 'grep',
+      title: 'Search for the cache TTL',
+      input: 'ttl /workspace/harbor/src',
+      output:
+        'src/lib/cache.ts:4:  const ttl = 60 * 60;\nsrc/routes/forecast.ts:12:  cache.put(key, body, { ttl });',
+      paths: ['/workspace/harbor/src/lib/cache.ts', '/workspace/harbor/src/routes/forecast.ts'],
+      ticks: 20,
+    },
+    {
+      type: 'text',
+      text: 'The TTL is set once, in `src/lib/cache.ts`, to an hour. `routes/forecast.ts` passes it through unchanged.',
+    },
+  ];
+}
+
 function probe(title: string, input: string, output: string, paths: string[] = []): Step {
   return { type: 'tool', name: 'bash', title, input, output, paths, ticks: 12 };
 }
@@ -289,6 +308,7 @@ export function script(
   if (/\bforbidden\b/.test(text)) return { steps: filtered(), suggestion };
   if (/\b(ask|choose|decide)\b/.test(text)) return { steps: ask(), suggestion };
   if (/\b(debug|investigate)\b/.test(text)) return { steps: investigate(), suggestion };
+  if (/\b(search|grep)\b/.test(text)) return { steps: search(), suggestion };
   if (/\btests?\b/.test(text)) return { steps: test(), suggestion };
   if (/\b(fix|edit|add|change)\b/.test(text)) return { steps: edit(), suggestion };
   if (/\b(open|browse|page|docs)\b/.test(text)) return { steps: browse(), suggestion };

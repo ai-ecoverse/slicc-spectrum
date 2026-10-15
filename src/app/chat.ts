@@ -19,7 +19,7 @@ import type {
 import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
 import type { SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
-import { watchOnly } from './follow.ts';
+import { onWatch, watchOnly } from './follow.ts';
 import {
   assistant,
   day,
@@ -237,7 +237,8 @@ export class SliccChat extends ThemedElement {
         min-height: 0;
         overflow-y: auto;
         container-type: inline-size;
-        padding: var(--swc-spacing-400) var(--swc-spacing-300) var(--swc-spacing-500);
+        padding: var(--swc-spacing-400) var(--swc-spacing-300) calc(var(--composer-height, 0px) + var(--swc-spacing-500));
+        scroll-padding-block-end: calc(var(--composer-height, 0px) + var(--swc-spacing-200));
         font-size: var(--swc-font-size-200);
         scroll-padding-block-start: var(--pile, 0px);
       }
@@ -338,7 +339,7 @@ export class SliccChat extends ThemedElement {
       }),
       model.agent.on('agents', settle),
       ...(model.tabs ? [model.tabs.on('tabs', () => this.requestUpdate())] : []),
-      ...(model.follow ? [model.follow.on('follow', settle)] : []),
+      ...onWatch(model, settle),
       model.agent.on('messages', (agentId) => {
         if (agentId === this.#id()) this.#refresh(this.#sent(agentId));
       }),
@@ -380,6 +381,11 @@ export class SliccChat extends ThemedElement {
   }
 
   #resize = new ResizeObserver(() => this.#pin());
+  #fitted: Element | null = null;
+  #fit = new ResizeObserver(([entry]) => {
+    this.style.setProperty('--composer-height', `${(entry.target as HTMLElement).offsetHeight}px`);
+    this.#pin();
+  });
 
   #log(): HTMLElement {
     return this.renderRoot.querySelector<HTMLElement>('.log') as HTMLElement;
@@ -450,7 +456,21 @@ export class SliccChat extends ThemedElement {
     const log = this.#log();
     this.#resize.observe(log);
     this.#resize.observe(log.firstElementChild as Element);
+    this.#attach();
     this.#refresh(true);
+  }
+
+  #attach(): void {
+    const composer = this.renderRoot.querySelector('slicc-composer');
+    if (composer === this.#fitted) return;
+    this.#fit.disconnect();
+    this.#fitted = composer;
+    if (composer) this.#fit.observe(composer);
+    else this.style.setProperty('--composer-height', '0px');
+  }
+
+  protected updated(): void {
+    this.#attach();
   }
 
   connectedCallback(): void {
@@ -465,6 +485,8 @@ export class SliccChat extends ThemedElement {
     globalThis.removeEventListener('pointerup', this.#release, true);
     globalThis.removeEventListener('pointercancel', this.#release, true);
     this.#resize.disconnect();
+    this.#fit.disconnect();
+    this.#fitted = null;
     clearTimeout(this.#settle);
     clearInterval(this.#tick);
     this.#tick = undefined;

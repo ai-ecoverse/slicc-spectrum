@@ -231,3 +231,11 @@ export const shared = css`
     padding: 0 var(--swc-spacing-75);
   }
 `;
+
+export function speech<T>(): (new () => T) | undefined {
+  const scope = globalThis as {
+    SpeechRecognition?: new () => T;
+    webkitSpeechRecognition?: new () => T;
+  };
+  return scope.SpeechRecognition ?? scope.webkitSpeechRecognition;
+}

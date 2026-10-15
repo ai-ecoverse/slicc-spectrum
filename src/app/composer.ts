@@ -21,7 +21,7 @@ import type {
   VaultPort,
 } from '../model/types.ts';
 import { nameProblem, valueProblem } from '../model/values.ts';
-import { chatModels, shared, ThemedElement } from './base.ts';
+import { chatModels, shared, speech, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import { size } from './messages.ts';
 import { away, clearValues, failureText, fieldOf, type PopupDetail, take } from './vault.ts';
@@ -192,6 +192,7 @@ export class SliccComposer extends ThemedElement {
     attachments: { state: true },
     popup: { state: true },
     dictating: { state: true },
+    erasing: { state: true },
     blocked: { state: true },
     sharing: { state: true },
     secretError: { state: true },
@@ -202,6 +203,7 @@ export class SliccComposer extends ThemedElement {
   declare attachments: Attachment[];
   declare popup: Popup | null;
   declare dictating: boolean;
+  declare erasing: boolean;
   declare blocked: boolean;
   declare sharing: boolean;
   declare secretError: string | null;
@@ -214,6 +216,12 @@ export class SliccComposer extends ThemedElement {
   #next = 1;
   #abandon: ReturnType<typeof setTimeout> | undefined;
   #recognition: { stop(): void } | null = null;
+  #erase: ReturnType<typeof setTimeout> | undefined;
+  #release = (event: Event): void => {
+    const released =
+      event instanceof KeyboardEvent && (event.code === 'KeyM' || event.key === 'Alt');
+    if (this.dictating && (released || event.type === 'blur')) this.dictate();
+  };
   #keys = { capture: true, handleEvent: (event: KeyboardEvent) => this.#keydown(event) };
 
   constructor() {
@@ -222,6 +230,7 @@ export class SliccComposer extends ThemedElement {
     this.attachments = [];
     this.popup = null;
     this.dictating = false;
+    this.erasing = false;
     this.blocked = false;
     this.sharing = false;
     this.secretError = null;
@@ -234,11 +243,49 @@ export class SliccComposer extends ThemedElement {
     css`
       :host {
         display: block;
-        flex: none;
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 2;
         padding: var(--swc-spacing-100) var(--swc-spacing-200) var(--swc-spacing-200);
-        background: var(--swc-background-layer-1-color);
         font-size: var(--swc-font-size-100);
-        position: relative;
+      }
+      :host::before {
+        content: '';
+        position: absolute;
+        top: -72px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: -1;
+        pointer-events: none;
+        background: color-mix(in srgb, var(--swc-background-layer-1-color) 72%, transparent);
+        backdrop-filter: blur(16px) saturate(1.4);
+        -webkit-backdrop-filter: blur(16px) saturate(1.4);
+        mask-image: linear-gradient(to bottom, transparent, black 72px);
+        -webkit-mask-image: linear-gradient(to bottom, transparent, black 72px);
+      }
+      @media (prefers-reduced-transparency: reduce) {
+        :host::before {
+          top: 0;
+          background: var(--swc-background-layer-1-color);
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
+          mask-image: none;
+          -webkit-mask-image: none;
+        }
+      }
+      @media (forced-colors: active) {
+        :host::before {
+          top: 0;
+          background: Canvas;
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
+          mask-image: none;
+          -webkit-mask-image: none;
+          border-block-start: var(--swc-border-width-100) solid CanvasText;
+        }
       }
       .column {
         max-width: 860px;
@@ -337,54 +384,6 @@ export class SliccComposer extends ThemedElement {
       }
       .failed {
         color: var(--swc-negative-content-color-default);
-      }
-      .below {
-        display: flex;
-        align-items: center;
-        gap: var(--swc-spacing-100);
-        max-width: 860px;
-        margin: var(--swc-spacing-75) auto 0;
-        min-height: var(--swc-component-height-75);
-      }
-      .hint {
-        display: flex;
-        flex: 1;
-        flex-wrap: wrap;
-        align-items: center;
-        min-width: 0;
-        max-block-size: var(--swc-component-height-75);
-        overflow: hidden;
-        font-size: var(--swc-font-size-75);
-        color: var(--swc-neutral-subdued-content-color-default);
-      }
-      .hint > span {
-        display: flex;
-        align-items: center;
-        block-size: var(--swc-component-height-75);
-        gap: var(--swc-spacing-50);
-        white-space: nowrap;
-      }
-      .hint > span + span::before {
-        content: '·';
-        padding-inline-start: var(--swc-spacing-75);
-      }
-      .below swc-action-button {
-        margin-inline-start: auto;
-      }
-      swc-action-button.selected {
-        --swc-action-button-background-color-default: var(--swc-neutral-background-color-selected-default);
-        --swc-action-button-background-color-hover: var(--swc-neutral-background-color-selected-hover);
-        --swc-action-button-background-color-down: var(--swc-neutral-background-color-selected-down);
-        --swc-action-button-background-color-focus: var(--swc-neutral-background-color-selected-key-focus);
-        --swc-action-button-content-color-default: var(--swc-gray-25);
-        --swc-action-button-content-color-hover: var(--swc-gray-25);
-        --swc-action-button-content-color-down: var(--swc-gray-25);
-        --swc-action-button-content-color-focus: var(--swc-gray-25);
-      }
-      @media (pointer: coarse), (hover: none) {
-        .hint {
-          display: none;
-        }
       }
       .popup {
         position: absolute;
@@ -493,6 +492,8 @@ export class SliccComposer extends ThemedElement {
   connectedCallback(): void {
     super.connectedCallback();
     clearTimeout(this.#abandon);
+    globalThis.addEventListener('keyup', this.#release);
+    globalThis.addEventListener('blur', this.#release);
     if (this.hasUpdated) this.#wire();
   }
 
@@ -502,6 +503,8 @@ export class SliccComposer extends ThemedElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    globalThis.removeEventListener('keyup', this.#release);
+    globalThis.removeEventListener('blur', this.#release);
     clearValues(this.renderRoot);
     const held = [
       this.attachments,
@@ -530,6 +533,8 @@ export class SliccComposer extends ThemedElement {
       popover.triggerElement = (field.shadowRoot as ShadowRoot).querySelector<HTMLElement>(
         '.swc-PromptField-upload'
       );
+      const area = this.#textarea as HTMLTextAreaElement & { ariaDescribedByElements: Element[] };
+      area.ariaDescribedByElements = [this.renderRoot.querySelector('#keys') as Element];
     });
   }
 
@@ -908,9 +913,23 @@ export class SliccComposer extends ThemedElement {
     return false;
   }
 
+  #talking(): boolean {
+    return !!this.model?.settings.get().pushToTalk && !!speech();
+  }
+
+  #shortcut(event: KeyboardEvent): boolean {
+    if (event.key === 'Backspace' || event.key === 'Delete') this.#flash();
+    const chord = event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+    if (!chord || event.code !== 'KeyM' || !this.#talking()) return false;
+    event.preventDefault();
+    if (!event.repeat) this.dictate();
+    return true;
+  }
+
   #keydown(event: KeyboardEvent): void {
     const area = this.#textarea;
     if (event.isComposing || !area || event.composedPath()[0] !== area) return;
+    if (this.#shortcut(event)) return;
     const sendOnEnter = this.model?.settings.get().sendOnEnter ?? true;
     let handled = this.#popupKey(event) || this.#historyKey(event, area);
     if (!handled && event.key === 'Tab' && !event.shiftKey && !this.value) {
@@ -930,6 +949,35 @@ export class SliccComposer extends ThemedElement {
     }
     if (handled) event.preventDefault();
     if (handled || event.key === 'Enter') event.stopPropagation();
+  }
+
+  #flash(): void {
+    if (!this.value) return;
+    this.erasing = true;
+    clearTimeout(this.#erase);
+    this.#erase = setTimeout(() => (this.erasing = false), 700);
+  }
+
+  #loader(busy: boolean): string {
+    if (busy) return 'aiLogo';
+    if (this.dictating) return 'microphone';
+    if (this.erasing) return 'brush';
+    return this.value ? 'pencil' : 'aiLogo';
+  }
+
+  #instructions(busy: boolean): string {
+    const enter = this.model?.settings.get().sendOnEnter ?? true;
+    const keys = enter
+      ? [`Enter ${busy ? 'steers' : 'sends'}`, ...(busy ? ['Ctrl+Enter queues'] : [])]
+      : [`Ctrl+Enter ${busy ? 'queues' : 'sends'}`];
+    if (busy) keys.push('Escape stops');
+    keys.push(
+      `${enter ? 'Shift+Enter' : 'Enter'} adds a new line`,
+      '/ lists commands',
+      '@ mentions',
+      ...(this.#talking() ? ['hold Alt+M to dictate'] : [])
+    );
+    return `${keys.join(', ')}.`;
   }
 
   #input(event: CustomEvent<{ value: string }>): void {
@@ -969,24 +1017,27 @@ export class SliccComposer extends ThemedElement {
     }
   }
 
+  #toggleTalk = (event: Event): void => {
+    event.stopPropagation();
+    const settings = this.model?.settings;
+    settings?.update({ pushToTalk: !settings.get().pushToTalk });
+  };
+
   dictate(): void {
     if (this.#recognition) {
       this.#recognition.stop();
       return;
     }
-    const Speech =
-      (
-        globalThis as {
-          SpeechRecognition?: new () => SpeechLike;
-          webkitSpeechRecognition?: new () => SpeechLike;
-        }
-      ).SpeechRecognition ??
-      (globalThis as { webkitSpeechRecognition?: new () => SpeechLike }).webkitSpeechRecognition;
+    const Speech = speech<SpeechLike>();
     if (!Speech) return;
     const recognition = new Speech();
     recognition.interimResults = false;
+    recognition.continuous = true;
     recognition.onresult = (event) => {
-      const text = [...event.results].map((result) => result[0].transcript).join(' ');
+      const text = [...event.results]
+        .slice(event.resultIndex ?? 0)
+        .map((result) => result[0].transcript)
+        .join(' ');
       this.value = `${this.value}${this.value && !this.value.endsWith(' ') ? ' ' : ''}${text}`;
     };
     recognition.onend = () => {
@@ -1165,19 +1216,21 @@ export class SliccComposer extends ThemedElement {
     const agent = this.model?.agent.list().find((candidate) => candidate.id === this.#agent);
     const suggestion = this.model?.agent.suggestion(this.#agent);
     const canSend = !!this.value.trim() || this.attachments.some((attachment) => !attachment.error);
-    const speech = 'SpeechRecognition' in globalThis || 'webkitSpeechRecognition' in globalThis;
+    const pushToTalk = this.model?.settings.get().pushToTalk ?? false;
+    const talk = !!speech();
     const held = this.#held();
     return html`<div class="column">
+        <span id="keys" class="sr" aria-hidden="true">${this.#instructions(busy)}</span>
         ${this.#hold()}
         ${this.#queue()}
         ${this.#popup()}
         <swc-prompt-field
           label="Message"
+          loader=${this.#loader(busy)}
           upload-label="Add"
           stop-label="Stop"
           send-label=${busy ? 'Steer' : 'Send'}
           max-rows="10"
-          animate-loader
           ?generating=${busy && !canSend}
           ?disabled=${!!held}
           placeholder=${held ? `Reconnecting to ${held}…` : suggestion ? `${suggestion}  (Tab)` : `Message ${agent?.name ?? ''}`}
@@ -1202,6 +1255,14 @@ export class SliccComposer extends ThemedElement {
             <sp-menu-item value="screenshot">Take a screenshot of the browser tab</sp-menu-item>
             <sp-menu-item value="file">Attach a file from SLICC</sp-menu-item>
             <sp-menu-item value="secret">Share a secret</sp-menu-item>
+            ${
+              talk
+                ? html`<sp-menu-divider></sp-menu-divider>
+            <sp-menu-group selects="multiple" data-group="talk" @change=${this.#toggleTalk}>
+              <sp-menu-item value="push-to-talk" data-action="push-to-talk" ?selected=${pushToTalk}>Enable push to talk<span slot="description">Hold Alt+M to dictate</span></sp-menu-item>
+            </sp-menu-group>`
+                : nothing
+            }
           </sp-menu>
         </swc-popover>
         <input type="file" multiple @change=${(event: Event) => {
@@ -1209,36 +1270,16 @@ export class SliccComposer extends ThemedElement {
           void this.addFiles([...(input.files ?? [])]);
           input.value = '';
         }} />
-      </div>
-      <div class="below">
-        <div class="hint">
-          <span><kbd>Enter</kbd> ${busy ? 'steer' : 'send'}</span>
-          ${busy ? html`<span><kbd>Ctrl+Enter</kbd> queue</span><span><kbd>Esc</kbd> stop</span>` : nothing}
-          <span><kbd>/</kbd> commands</span>
-          <span><kbd>@</kbd> mention</span>
-          <span><kbd>Shift+Enter</kbd> new line</span>
-          <span><kbd>↑</kbd> history</span>
-        </div>
-        ${
-          speech
-            ? html`<swc-action-button
-                size="s"
-                quiet
-                class=${this.dictating ? 'selected' : ''}
-                accessible-label=${this.dictating ? 'Stop dictation' : 'Dictate'}
-                data-action="dictate"
-                @click=${() => this.dictate()}
-              ><swc-icon-microphone slot="icon"></swc-icon-microphone></swc-action-button>`
-            : nothing
-        }
       </div>`;
   }
 }
 
 interface SpeechLike {
   interimResults: boolean;
+  continuous: boolean;
   onresult:
     | ((event: {
+        resultIndex?: number;
         results: ArrayLike<ArrayLike<{ transcript: string }>> &
           Iterable<ArrayLike<{ transcript: string }>>;
       }) => void)
