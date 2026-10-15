@@ -66,4 +66,4 @@ jobs:
     with:
       runs-on: ${{ needs.runner.outputs.runner }}
       timeout-minutes: 35
-      test: NODE_OPTIONS=--max-old-space-size=8192 npm test
+      test: TEST_CONCURRENCY=4 NODE_OPTIONS=--max-old-space-size=8192 npm test
