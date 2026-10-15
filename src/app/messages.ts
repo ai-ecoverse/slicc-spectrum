@@ -945,7 +945,6 @@ export function lick(
 ): TemplateResult {
   if (pendingApproval(message)) return decision(message, handlers, pile);
   const [label] = lickLabels[message.channel];
-  const decide = message.channel === 'sudo-request' && message.state === 'pending';
   const outcome =
     message.state === 'confirmed' ? 'Allowed' : message.state === 'dismissed' ? 'Denied' : '';
   const head = html`${message.severity ? html`<span class="sr">${severities[message.severity].prefix}</span>` : nothing}
@@ -955,30 +954,20 @@ export function lick(
   const outcomeIcon =
     message.state === 'confirmed' ? '👍' : message.state === 'dismissed' ? '👎' : '';
   const reaction = html`<span class="reactions"><span class="reaction" title=${label} aria-hidden="true">${lickIcons[message.channel]}</span>${outcomeIcon ? html`<span class="reaction" title=${outcome} aria-hidden="true">${outcomeIcon}</span>` : nothing}</span>`;
-  const actions = decide
-    ? html`<div class="decide">
-        <swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>
-        <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'dismissed')}>Deny</swc-button>
-      </div>`
-    : nothing;
   const name = `${message.severity ? severities[message.severity].prefix : ''}${label} event`;
   const byline = html`<div class="meta">${message.severity ? html`<span class="severity-icon">${severities[message.severity].icon}</span>` : nothing}<span class="who">${message.title}</span>${stamp ? when(message.createdAt) : unseen(message.createdAt)}</div>`;
   if (!message.body) {
     return outside(
       name,
       byline,
-      html`<div class="lick-frame"><div class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}><div class="lick-head">${head}</div>${actions}</div>${reaction}</div>`
+      html`<div class="lick-frame"><div class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}><div class="lick-head">${head}</div></div>${reaction}</div>`
     );
   }
   const details = html`<details class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}>
     <summary class="lick-head">${head}<swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right></summary>
     <pre class="output">${message.body}</pre>
   </details>`;
-  return outside(
-    name,
-    byline,
-    html`<div class="lick-frame">${decide ? html`<div class="pending">${details}${actions}</div>` : details}${reaction}</div>`
-  );
+  return outside(name, byline, html`<div class="lick-frame">${details}${reaction}</div>`);
 }
 
 export const messageCss = css`
@@ -1774,16 +1763,6 @@ export const messageCss = css`
     display: flex;
     gap: var(--swc-spacing-85);
     padding: 0 var(--swc-spacing-100) var(--swc-spacing-100);
-  }
-  .pending {
-    border: var(--swc-border-width-100) solid var(--swc-notice-visual-color);
-    border-radius: var(--swc-corner-radius-700);
-  }
-  .pending > details.lick {
-    border: 0;
-  }
-  .pending > details.lick[data-severity] {
-    border-inline-start: var(--swc-border-width-400) solid var(--severity);
   }
   swc-conversation-turn.decision-turn {
     container-type: inline-size;
