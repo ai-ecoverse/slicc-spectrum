@@ -762,13 +762,14 @@ function event(label: string, content: TemplateResult): TemplateResult {
 
 export function system(message: SystemMessage, handlers: Handlers): TemplateResult {
   if (message.kind === 'compaction') {
-    const title = message.title ?? 'Context compacted';
     const failed = message.state === 'fallback';
+    const title =
+      message.title ?? (failed ? 'Compaction failed, transcript truncated' : 'Context compacted');
     return event(
       title,
       html`<div class="marker" role="status" data-id=${message.id} data-state=${message.state ?? 'summarized'}>
         <span class="line"></span>
-        <span class="marker-text">${failed ? html`<swc-icon-alert-diamond class="fault" size="xs" aria-hidden="true"></swc-icon-alert-diamond>` : nothing}${title}${message.state === 'summarizing' ? html`<swc-progress-circle size="s" label="Summarizing"></swc-progress-circle>` : nothing}</span>
+        <span class="marker-text">${failed ? html`<swc-icon-alert-diamond class="fault" size="xs" aria-hidden="true"></swc-icon-alert-diamond>` : nothing}${title}${message.state === 'summarizing' ? html`<swc-progress-circle size="s" label="Summarizing"></swc-progress-circle>` : nothing}${message.text ? html`<span class="sr">. ${message.text}</span>` : nothing}</span>
         <span class="line"></span>
       </div>`
     );

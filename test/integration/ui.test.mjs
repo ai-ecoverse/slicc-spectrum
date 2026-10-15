@@ -455,6 +455,17 @@ test('a content-filter stop drops the last turn and puts its prompt back in the 
     ['system', 'Rewound 1 turn']
   );
   assert.ok(!(await users()).includes('Summarize the forbidden notes'));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const divider = [...window.chatPart().shadowRoot.querySelectorAll('.marker.notice')].at(-1);
+      return [
+        divider.getAttribute('role'),
+        divider.querySelectorAll(':scope > .line').length,
+        divider.querySelector('.marker-text').textContent.replace(/\s+/g, ' ').trim(),
+      ];
+    }),
+    ['note', 2, 'Rewound 1 turn Its prompt is back in the composer.']
+  );
   await shot(page, 'filtered-after');
 
   await page.evaluate(() =>
@@ -2424,6 +2435,67 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     }, fraction);
     await shot(page, `kitchen-sink-dark-${index + 1}`);
   }
+  assert.deepEqual(page.errors, []);
+});
+
+test('compaction and notices are full-width dividers that screen readers still hear', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.model.agent.select('cone-kitchen'));
+  await page.until(() => !!window.chatPart('[data-id=k-s2]'));
+  const dividers = await page.evaluate(() => {
+    const root = window.chatPart().shadowRoot;
+    const read = (divider) => {
+      const text = divider.querySelector('.marker-text');
+      const hidden = text.querySelector('.sr')?.textContent ?? '';
+      const [start, end] = [...divider.querySelectorAll(':scope > .line')].map(
+        (line) => line.getBoundingClientRect().width
+      );
+      return {
+        role: divider.getAttribute('role'),
+        shown: text.textContent.replace(hidden, '').replace(/\s+/g, ' ').trim(),
+        heard: text.textContent.replace(/\s+/g, ' ').trim(),
+        lines: start > 20 && end > 20 && Math.abs(start - end) < 1,
+        fault: text.querySelector('.fault')?.getAttribute('aria-hidden') ?? null,
+        label: divider.closest('swc-conversation-turn').getAttribute('accessible-label'),
+      };
+    };
+    return [
+      read(root.querySelector('.marker[data-id=k-s1]')),
+      read(root.querySelector('.marker[data-id=k-s2]')),
+      read(root.querySelector('.marker.notice')),
+    ];
+  });
+  assert.deepEqual(dividers, [
+    {
+      role: 'status',
+      shown: 'Context compacted',
+      heard: 'Context compacted. 58 earlier messages were summarized.',
+      lines: true,
+      fault: null,
+      label: 'Context compacted',
+    },
+    {
+      role: 'status',
+      shown: 'Compaction failed, transcript truncated',
+      heard:
+        'Compaction failed, transcript truncated. The summary failed, so the oldest 20 messages were dropped instead.',
+      lines: true,
+      fault: 'true',
+      label: 'Compaction failed, transcript truncated',
+    },
+    {
+      role: 'note',
+      shown: 'Model changed to Claude Opus 5.5 (Anthropic)',
+      heard: 'Model changed to Claude Opus 5.5 (Anthropic)',
+      lines: true,
+      fault: null,
+      label: 'Notice',
+    },
+  ]);
+  await page.evaluate(() =>
+    window.chatPart().shadowRoot.querySelector('[data-id=k-s1]').scrollIntoView({ block: 'center' })
+  );
+  await shot(page, 'dividers');
   assert.deepEqual(page.errors, []);
 });
 
