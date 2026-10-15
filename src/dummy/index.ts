@@ -3,11 +3,12 @@ import { DummyAgent } from './agent.ts';
 import { type ApprovalScenario, DummyApprovals } from './approvals.ts';
 import { type BrowserScenario, browserHistory, DummyBrowser, drive } from './browser.ts';
 import { type ChangesScenario, DummyChanges } from './changes.ts';
-import { clock } from './clock.ts';
+import { type Clock, clock } from './clock.ts';
 import * as extras from './extras.ts';
 import { DummyFiles, type MountScenario } from './files.ts';
 import * as fixtures from './fixtures.ts';
 import { DummyFollow, type FollowScenario } from './follow.ts';
+import { DummyGuests, type GuestsScenario } from './guests.ts';
 import { DummyMemory } from './memory.ts';
 import { agentSections, DummyMonitor } from './monitor.ts';
 import {
@@ -48,6 +49,7 @@ export interface DummyOptions {
   approvals?: ApprovalScenario | 'off';
   follow?: FollowScenario | 'off';
   vault?: VaultScenario | 'off';
+  guests?: GuestsScenario | 'off';
   accounts?: 'settings' | 'vault';
   providers?: 'connected' | 'none';
   hold?: AgentHold['reason'] | 'off';
@@ -66,6 +68,7 @@ export interface DummyModel extends SliccModel {
   approvals?: DummyApprovals;
   follow?: DummyFollow;
   vault?: DummyVault;
+  guests?: DummyGuests;
 }
 
 export function vaultAccounts(accounts: readonly Account[]): Account[] {
@@ -74,6 +77,10 @@ export function vaultAccounts(accounts: readonly Account[]): Account[] {
       ? { ...account, store: 'vault' as const }
       : account
   );
+}
+
+function guestsPort(guests: GuestsScenario | 'off', time: Clock): { guests?: DummyGuests } {
+  return guests === 'off' ? {} : { guests: new DummyGuests(guests, time) };
 }
 
 export function createDummyModel({
@@ -93,6 +100,7 @@ export function createDummyModel({
   approvals = 'off',
   follow = 'off',
   vault = 'off',
+  guests = 'off',
   accounts = 'settings',
   providers = 'connected',
   hold = 'off',
@@ -183,6 +191,7 @@ export function createDummyModel({
       : {
           vault: new DummyVault(vault, time, accounts === 'vault' ? accountRecords() : []),
         }),
+    ...guestsPort(guests, time),
   };
   base.vault?.on('status', (status) => {
     if (!status.locked && agent.hold()?.reason === 'locked') agent.setHold(null);

@@ -10,6 +10,7 @@ import { SliccConfirm, SliccPrompt } from './app/confirm.ts';
 import { SliccFiles, SliccFileView } from './app/files.ts';
 import { SliccFollow } from './app/follow.ts';
 import { SliccFreezer } from './app/freezer.ts';
+import { SliccGuestInvite } from './app/guests.ts';
 import { SliccLucide } from './app/lucide.ts';
 import { SliccMemory } from './app/memory.ts';
 import { SliccMonitor } from './app/monitor.ts';
@@ -74,6 +75,7 @@ export {
   SliccFileTree,
   SliccFileView,
   SliccFollow,
+  SliccGuestInvite,
   SliccNetwork,
   SliccNotices,
   SliccPrompt,
@@ -111,6 +113,7 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-value-request': SliccValueRequest,
   'slicc-confirm': SliccConfirm,
   'slicc-prompt': SliccPrompt,
+  'slicc-guest-invite': SliccGuestInvite,
   'slicc-app': SliccApp,
 };
 

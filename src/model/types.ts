@@ -1332,6 +1332,42 @@ export interface VaultPort extends Subscribable<VaultEvents> {
   button(): VaultButton;
 }
 
+export type GuestGate = 'user' | 'cone' | 'agent' | `scoop:${string}` | 'off';
+
+export interface GuestGates {
+  messages: GuestGate;
+  tools: GuestGate;
+}
+
+export interface GuestSeat {
+  id: string;
+  label: string;
+  agentId: string;
+  createdAt: number;
+  expiresAt: number | null;
+  gates: GuestGates;
+  connected: boolean;
+  pending: number;
+}
+
+export interface GuestDraft {
+  label: string;
+  expiresAt: number | null;
+  gates: GuestGates;
+}
+
+export interface GuestEvents {
+  seats: readonly GuestSeat[];
+  unavailable: string | null;
+}
+
+export interface GuestPort extends Subscribable<GuestEvents> {
+  list(): readonly GuestSeat[];
+  mint(agentId: string, draft: GuestDraft): Promise<{ seat: GuestSeat; url: string }>;
+  revoke(id: string): Promise<void>;
+  unavailable?(): string | null;
+}
+
 export interface SliccModel {
   agent: AgentPort;
   files: FilePort;
@@ -1350,4 +1386,5 @@ export interface SliccModel {
   approvals?: ApprovalsPort;
   follow?: FollowPort;
   vault?: VaultPort;
+  guests?: GuestPort;
 }
