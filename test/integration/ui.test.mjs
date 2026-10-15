@@ -2909,6 +2909,26 @@ test('decision cards pile at the top, reveal from the keyboard and leave the pil
   }, id);
   assert.deepEqual(expired, [false, false, 'Timed out', 'Timed out']);
   await page.until(() => window.chatPart().shadowRoot.activeElement?.dataset.id === 'k-q3');
+  const late = await page.evaluate(() => {
+    const agent = window.model.agent;
+    agent.lick('cone-kitchen', 'sudo-request', 'quiet-otter', 'Wants to tag 1.9.0');
+    const message = agent.messages('cone-kitchen').at(-1);
+    message.state = 'pending';
+    agent.emit('messages', 'cone-kitchen');
+    return message.id;
+  });
+  await page.until((card) => !!window.chatPart(`.decision-turn[data-id=${card}]`), late);
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.chatPart().shadowRoot.querySelectorAll('.decision-turn[data-pending]')].map(
+        (turn) => [turn.dataset.id, turn.style.getPropertyValue('--stack').trim()]
+      )
+    ),
+    [
+      ['k-q3', '0'],
+      [late, '1'],
+    ]
+  );
   assert.deepEqual(page.errors, []);
 });
 

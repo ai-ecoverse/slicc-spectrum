@@ -29,7 +29,6 @@ import {
   messageCss,
   type Owner,
   type Pile,
-  pendingApproval,
   questionTurn,
   show,
   stamps,
@@ -38,6 +37,7 @@ import {
   toolOnly,
   toolTail,
   user,
+  waiting,
 } from './messages.ts';
 import { settleModels } from './models.ts';
 import { connecting } from './tabs.ts';
@@ -59,7 +59,7 @@ const compactWidth = 560;
 
 function pendingKeys(messages: readonly Message[]): string[] {
   return messages.flatMap((message) => {
-    if (pendingApproval(message)) return [message.id];
+    if (waiting(message)) return [message.id];
     if (message.role !== 'assistant') return [];
     return message.parts.flatMap((part) =>
       part.type === 'question' && part.question.state === 'open'
@@ -523,8 +523,7 @@ export class SliccChat extends ThemedElement {
     return model.agent
       .messages(this.#id())
       .some(
-        (message) =>
-          pendingApproval(message) && 'expiresAt' in message && message.expiresAt !== undefined
+        (message) => waiting(message) && 'expiresAt' in message && message.expiresAt !== undefined
       );
   }
 

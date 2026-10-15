@@ -880,6 +880,11 @@ export function pendingApproval(message: Message): boolean {
   );
 }
 
+export function waiting(message: Message, now = Date.now()): boolean {
+  const at = message.role === 'lick' ? message.expiresAt : undefined;
+  return pendingApproval(message) && !(at !== undefined && at <= now);
+}
+
 function clock(ms: number): string {
   const seconds = Math.ceil(ms / 1000);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
