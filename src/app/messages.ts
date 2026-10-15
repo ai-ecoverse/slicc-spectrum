@@ -628,8 +628,6 @@ function when(at: number, title: string = ''): TemplateResult {
   return html`<time class="when" datetime=${new Date(at).toISOString()} title=${title || nothing}>${time(at)}</time>`;
 }
 
-const agentSketch = new URLSearchParams(globalThis.location?.search ?? '').get('agent');
-
 export function user(message: UserMessage, stamp = true): TemplateResult {
   const delivered = message.delivered ?? (message.mode === 'steer' ? 'steer' : undefined);
   const agent = message.origin === 'agent';
@@ -640,13 +638,13 @@ export function user(message: UserMessage, stamp = true): TemplateResult {
     : message.from
       ? `Message from ${message.from}`
       : 'Your message';
-  const style = agent || message.from ? (agentSketch ?? 'current') : undefined;
-  return html`<swc-conversation-turn type="user" class="message user" accessible-label=${label} data-id=${message.id} data-mode=${message.mode ?? 'send'} data-delivered=${delivered ?? 'run'} data-origin=${message.origin ?? 'user'} data-style=${style ?? nothing}>
+  const remote = agent || !!message.from;
+  return html`<swc-conversation-turn type="user" class="message user" accessible-label=${label} data-id=${message.id} data-mode=${message.mode ?? 'send'} data-delivered=${delivered ?? 'run'} data-origin=${message.origin ?? 'user'} data-remote=${remote ? '' : nothing}>
     <div class="bubble">
-      ${byline(message, who, stamp, style)}
+      ${byline(message, who, stamp)}
       ${message.text ? html`<swc-user-message class="body"><span class="text">${message.text}</span></swc-user-message>` : nothing}
       ${message.attachments?.length ? html`<div class="attachments">${message.attachments.map(attachment)}</div>` : nothing}
-      ${style === 'reaction' ? html`<span class="reaction" aria-hidden="true">🤖</span>` : nothing}
+      ${remote ? html`<span class="reaction" aria-hidden="true">🤖</span>` : nothing}
     </div>
   </swc-conversation-turn>`;
 }
@@ -654,12 +652,10 @@ export function user(message: UserMessage, stamp = true): TemplateResult {
 function byline(
   message: UserMessage,
   who: string,
-  stamp: boolean,
-  style: string | undefined
+  stamp: boolean
 ): TemplateResult | typeof nothing {
   if (!who && !stamp) return nothing;
   return html`<div class="meta">
-    ${style === 'icon' ? html`<span class="avatar" aria-hidden="true"><swc-icon-plugin size="xs"></swc-icon-plugin></span>` : nothing}
     ${who ? html`<span class="who">${who}</span>` : nothing}${stamp ? when(message.createdAt) : nothing}
     ${message.origin === 'agent' ? html`<swc-badge class="origin" size="s" variant="indigo">Agent</swc-badge>` : nothing}
   </div>`;
@@ -899,22 +895,11 @@ export const messageCss = css`
     background: var(--swc-background-layer-1-color);
     border-color: var(--swc-gray-300);
   }
-  .user[data-style='icon'] swc-user-message.body,
-  .user[data-style='reaction'] swc-user-message.body {
+  .user[data-remote] swc-user-message.body {
     background: var(--swc-indigo-subtle-background-color-default);
     border-color: transparent;
   }
-  .user[data-style='icon'] .avatar {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: var(--swc-spacing-300);
-    block-size: var(--swc-spacing-300);
-    border-radius: 50%;
-    background: var(--swc-indigo-subtle-background-color-default);
-    color: var(--swc-indigo-1000);
-  }
-  .user[data-style='reaction'] .bubble {
+  .user[data-remote] .bubble {
     position: relative;
     margin-block-end: var(--swc-spacing-300);
   }
