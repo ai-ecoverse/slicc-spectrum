@@ -535,6 +535,7 @@ export interface MonitorVital {
   delta?: string;
   series?: number[];
   ratio?: number;
+  hint?: string;
 }
 
 export interface MonitorRow {
