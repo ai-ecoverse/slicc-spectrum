@@ -216,6 +216,7 @@ export class SliccChat extends ThemedElement {
         overflow-y: auto;
         container-type: inline-size;
         padding: var(--swc-spacing-400) var(--swc-spacing-300) calc(var(--composer-height, 0px) + var(--swc-spacing-500));
+        scroll-padding-block-end: calc(var(--composer-height, 0px) + var(--swc-spacing-200));
         font-size: var(--swc-font-size-200);
       }
       @container (min-width: 600px) {

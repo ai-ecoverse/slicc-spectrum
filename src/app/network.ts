@@ -19,6 +19,8 @@ import type {
   AccessKey,
   BrowserAutomation,
   DeviceAccess,
+  Leader,
+  LeaderState,
   LinkedDevice,
   LinkedFolder,
   LinkState,
@@ -218,14 +220,39 @@ export function deviceName(name: string): string {
   return name.replace(/^slicc\b/i, 'SLICC');
 }
 
+function named<T extends { name: string }>(items: readonly T[]): T[] {
+  return items.map((item) => ({ ...item, name: deviceName(item.name) }));
+}
+
 export function networkStatus(port: NetworkPort): NetworkStatus {
-  const status = port.status();
-  if (!status.links) return status;
-  const devices = status.links.devices.map((device) => ({
-    ...device,
-    name: deviceName(device.name),
-  }));
-  return { ...status, links: { ...status.links, devices } };
+  let status = port.status();
+  if (status.links)
+    status = { ...status, links: { ...status.links, devices: named(status.links.devices) } };
+  if (status.leaders) status = { ...status, leaders: named(status.leaders) };
+  return status;
+}
+
+type LeaderAction = 'retry' | 'reconnect' | 'disconnect' | 'forget';
+
+export const leaderStates: Record<
+  LeaderState,
+  readonly ['neutral' | 'info' | 'positive' | 'notice' | 'negative', string]
+> = {
+  connecting: ['info', 'Connecting'],
+  reconnecting: ['notice', 'Reconnecting'],
+  connected: ['positive', 'Connected'],
+  disconnected: ['neutral', 'Disconnected'],
+  failed: ['negative', 'Failed'],
+  unlinked: ['neutral', 'Unlinked'],
+};
+
+export function leaderConfirm(leader: Leader): ConfirmOptions {
+  return {
+    title: `Forget ${leader.name}?`,
+    body: 'To follow it again, you’ll need a new invite from it.',
+    action: 'Forget',
+    variant: 'destructive',
+  };
 }
 
 export function remoteLight(status: NetworkStatus | undefined): RemoteLight | null {
@@ -414,6 +441,7 @@ export class SliccNetwork extends ModelElement {
     revealed: { state: true },
     linksError: { state: true },
     syncError: { state: true },
+    leaderError: { state: true },
   };
   declare checking: boolean;
   declare copied: string | null;
@@ -425,6 +453,8 @@ export class SliccNetwork extends ModelElement {
   declare revealed: Record<string, string>;
   declare linksError: string;
   declare syncError: string;
+  declare leaderError: string;
+  #leaderId = '';
 
   constructor() {
     super();
@@ -438,6 +468,7 @@ export class SliccNetwork extends ModelElement {
     this.revealed = {};
     this.linksError = '';
     this.syncError = '';
+    this.leaderError = '';
   }
 
   static styles = [
@@ -763,6 +794,7 @@ export class SliccNetwork extends ModelElement {
     this.tailnetError = '';
     this.linksError = '';
     this.syncError = '';
+    this.leaderError = '';
     const update = () => this.requestUpdate();
     return [
       model.tray.on('status', update),
@@ -814,7 +846,7 @@ export class SliccNetwork extends ModelElement {
   async #act(
     action: string,
     run: () => Promise<void> | undefined,
-    area: 'error' | 'tailnetError' | 'linksError' | 'syncError' | 'syncError'
+    area: 'error' | 'tailnetError' | 'linksError' | 'syncError' | 'leaderError'
   ): Promise<void> {
     if (this.busy) return;
     this.busy = action;
@@ -1283,6 +1315,79 @@ export class SliccNetwork extends ModelElement {
     </section>`;
   }
 
+  #leaderAct(
+    kind: LeaderAction,
+    leader: Leader,
+    run: (id: string) => Promise<void> | undefined
+  ): Promise<void> {
+    return this.#act(
+      `leader:${kind}:${leader.id}`,
+      () => {
+        this.#leaderId = leader.id;
+        return run(leader.id);
+      },
+      'leaderError'
+    );
+  }
+
+  async #forgetLeader(event: Event, port: NetworkPort, leader: Leader): Promise<void> {
+    const trigger = event.currentTarget as HTMLElement;
+    if (await confirm({ ...leaderConfirm(leader), trigger }))
+      await this.#leaderAct('forget', leader, (id) => port.forgetLeader?.(id));
+  }
+
+  #leaderButton(
+    kind: LeaderAction,
+    label: string,
+    leader: Leader,
+    click: (event: Event) => Promise<void>
+  ): TemplateResult {
+    const action = `leader:${kind}:${leader.id}`;
+    return html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${`${kind}-leader`} accessible-label=${`${label} ${leader.name}`} ?pending=${this.busy === action} ?disabled=${this.#waiting(action)} @click=${click}>${label}</swc-button>`;
+  }
+
+  #leaderActions(port: NetworkPort, leader: Leader): TemplateResult | typeof nothing {
+    if (leader.state === 'unlinked') return nothing;
+    const off = leader.state === 'disconnected';
+    const retry = leader.state === 'failed' && !!port.retryLeader;
+    const reconnect = off && !!port.reconnectLeader;
+    const disconnect = !off && !!port.disconnectLeader;
+    if (!retry && !reconnect && !disconnect && !port.forgetLeader) return nothing;
+    return html`<div class="actions">
+      ${reconnect ? this.#leaderButton('reconnect', 'Reconnect', leader, () => this.#leaderAct('reconnect', leader, (id) => port.reconnectLeader?.(id))) : nothing}
+      ${retry ? this.#leaderButton('retry', 'Retry', leader, () => this.#leaderAct('retry', leader, (id) => port.retryLeader?.(id))) : nothing}
+      ${disconnect ? this.#leaderButton('disconnect', 'Disconnect', leader, () => this.#leaderAct('disconnect', leader, (id) => port.disconnectLeader?.(id))) : nothing}
+      ${port.forgetLeader ? this.#leaderButton('forget', 'Forget', leader, (event) => this.#forgetLeader(event, port, leader)) : nothing}
+    </div>`;
+  }
+
+  #leader(port: NetworkPort, leader: Leader): TemplateResult {
+    const [variant, label] = leaderStates[leader.state];
+    return html`<li class="device leader" data-leader=${leader.id} data-state=${leader.state}>
+      <div class="who">
+        <span class="name" title=${leader.name}>${leader.name}</span>
+        <swc-status-light size="s" variant=${variant}>${label}</swc-status-light>
+      </div>
+      <span class="where">${leader.hub}</span>
+      ${leader.state === 'failed' ? html`<p data-leader-error>${leader.error ?? 'Couldn’t reach its hub.'}</p>` : nothing}
+      ${leader.state === 'unlinked' ? html`<p class="muted" data-unlinked>${leader.name} stopped sharing with this SLICC.</p>` : nothing}
+      ${this.#leaderActions(port, leader)}
+      ${
+        this.leaderError && this.#leaderId === leader.id
+          ? html`<div class="error" role="alert" data-error="leader"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.leaderError}</span></div>`
+          : nothing
+      }
+    </li>`;
+  }
+
+  #leadersSection(port: NetworkPort, status: NetworkStatus): TemplateResult | typeof nothing {
+    if (!status.leaders?.length) return nothing;
+    return html`<section aria-labelledby="leaders" data-leaders=${status.leaders.length}>
+      <h2 id="leaders">Leaders</h2>
+      <ul aria-labelledby="leaders">${status.leaders.map((leader) => this.#leader(port, leader))}</ul>
+    </section>`;
+  }
+
   #exit(event: Event, port: NetworkPort): void {
     const value = (event.target as HTMLElement & { value: string }).value;
     void this.#tailnet('exit', () => port.setExitNode?.(value === 'none' ? null : value));
@@ -1456,6 +1561,7 @@ export class SliccNetwork extends ModelElement {
     return html`<div class="page" tabindex="-1">
       ${this.#state(port, status)}
       ${this.#sync((this.model as SliccModel).tray)}
+      ${this.#leadersSection(port, status)}
       ${this.#tailnetSection(port, status)}
       ${this.#linksSection(port, status)}
       ${this.#whole(status)}
