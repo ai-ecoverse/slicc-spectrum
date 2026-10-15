@@ -40,6 +40,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   #queues = new Map<string, UserMessage[]>();
   #frozen: FrozenCone[] = [];
   #hold: AgentHold | null = null;
+  #readOnly: string | null = null;
   #ice = new Map<string, Array<{ agent: Agent; messages: Message[] }>>();
   #suggestions = new Map<string, string>();
   #runs = new Map<string, Run>();
@@ -562,6 +563,15 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   setHold(hold: AgentHold | null): void {
     this.#hold = hold && { ...hold };
     this.emit('hold', this.hold());
+  }
+
+  readOnly(): string | null {
+    return this.#readOnly;
+  }
+
+  setReadOnly(text: string | null): void {
+    this.#readOnly = text || null;
+    this.emit('readOnly', this.#readOnly);
   }
 
   frozen(): readonly FrozenCone[] {

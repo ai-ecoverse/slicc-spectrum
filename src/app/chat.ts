@@ -19,7 +19,7 @@ import type {
 import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
 import type { SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
-import { watchOnly } from './follow.ts';
+import { onWatch, watchOnly } from './follow.ts';
 import {
   assistant,
   day,
@@ -314,7 +314,7 @@ export class SliccChat extends ThemedElement {
       }),
       model.agent.on('agents', settle),
       ...(model.tabs ? [model.tabs.on('tabs', () => this.requestUpdate())] : []),
-      ...(model.follow ? [model.follow.on('follow', settle)] : []),
+      ...onWatch(model, settle),
       model.agent.on('messages', (agentId) => {
         if (agentId === this.#id()) this.#refresh(this.#sent(agentId));
       }),

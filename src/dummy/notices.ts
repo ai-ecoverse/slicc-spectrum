@@ -2,9 +2,12 @@ import { Emitter } from '../model/emitter.ts';
 import type { Notice, NoticesPort } from '../model/types.ts';
 import type { Clock } from './clock.ts';
 
-export type NoticeScenario = 'storage' | 'mixed' | 'fail';
+export type NoticeScenario = 'storage' | 'mixed' | 'fail' | 'readonly';
 
-export const noticeFixtures: Record<'storage' | 'welcome', Notice> = {
+export const readOnlyText =
+  'Watch only. The SLICC you follow runs a newer version. Update this one to send prompts.';
+
+export const noticeFixtures: Record<'storage' | 'welcome' | 'readonly', Notice> = {
   storage: {
     id: 'storage',
     tone: 'warning',
@@ -18,6 +21,14 @@ export const noticeFixtures: Record<'storage' | 'welcome', Notice> = {
     title: 'Everything stays in this browser',
     body: 'Seven keeps your files and chats on this computer. Nothing is uploaded unless you send it.',
     actions: [],
+  },
+  readonly: {
+    id: 'readonly',
+    tone: 'warning',
+    title: 'Update SLICC to send prompts',
+    body: 'The SLICC you follow moved to a newer version. Until you update SLICC on this device, it can only watch.',
+    actions: [],
+    dismissible: false,
   },
 };
 
@@ -33,7 +44,9 @@ export class DummyNotices extends Emitter<{ notices: readonly Notice[] }> implem
     this.#notices =
       scenario === 'mixed'
         ? [noticeFixtures.storage, noticeFixtures.welcome]
-        : [noticeFixtures.storage];
+        : scenario === 'readonly'
+          ? [noticeFixtures.readonly]
+          : [noticeFixtures.storage];
   }
 
   list(): readonly Notice[] {

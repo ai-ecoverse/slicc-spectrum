@@ -4077,6 +4077,52 @@ test('a watch-only follower has no Delete cone or Drop, and its inline sprinkle 
   assert.deepEqual(page.errors, []);
 });
 
+test('a read-only agent port shows its line, a notice without a close button, and no composer or New cone', async (t) => {
+  const page = await open(t, { readonly: 'version' });
+  await page.evaluate(() => {
+    window.chat = () => window.$('slicc-app', 'slicc-dock').content('chat:cone-sliccy')?.shadowRoot;
+    window.agentsRow = () => window.$('slicc-app', 'slicc-dock').content('agents')?.shadowRoot;
+    window.notice = () =>
+      window
+        .chat()
+        ?.querySelector('slicc-notices')
+        ?.shadowRoot.querySelector('[data-notice=readonly]');
+    return true;
+  });
+  await page.until(() => !!window.chat()?.querySelector('[data-follow=watch]'));
+  await page.until(() => !!window.notice());
+  await page.until(() => window.agentsRow()?.querySelectorAll('li').length > 0);
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.chat().querySelector('[data-follow=watch]').textContent.trim(),
+      !!window.chat().querySelector('slicc-composer'),
+      !!window.agentsRow().querySelector('[data-action=new-cone]'),
+      !!window.$('slicc-app', 'header sp-menu-item[data-action=new-cone]'),
+      !!window.notice().querySelector('[data-dismiss]'),
+      window.notice().getAttribute('role'),
+    ]),
+    [
+      'Watch only. The SLICC you follow runs a newer version. Update this one to send prompts.',
+      false,
+      false,
+      false,
+      false,
+      'status',
+    ]
+  );
+  await page.evaluate(() => {
+    window.model.agent.setReadOnly(null);
+    return true;
+  });
+  await page.until(() => !!window.chat().querySelector('slicc-composer'));
+  await page.until(() => !!window.agentsRow().querySelector('[data-action=new-cone]'));
+  assert.equal(
+    await page.evaluate(() => !!window.chat().querySelector('[data-follow=watch]')),
+    false
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a dip drags out of the chat into the dock and lives on as a panel', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {

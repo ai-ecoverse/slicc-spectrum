@@ -3,7 +3,7 @@ import { keyed } from 'lit/directives/keyed.js';
 import type { SliccModel, Sprinkle, SprinkleMethod, SprinklePort } from '../model/types.ts';
 import { type Color, ThemedElement } from './base.ts';
 import { Dips, dipsOf, dipType } from './dips.ts';
-import { watchOnly } from './follow.ts';
+import { onWatch, watchOnly } from './follow.ts';
 import { type FontFile, installedFonts } from './fonts.ts';
 import { icons } from './lucide.ts';
 import theme from './sprinkle-theme.css';
@@ -414,7 +414,7 @@ export class SliccSprinkle extends ThemedElement {
       () => globalThis.removeEventListener('message', this.#message),
       model.sprinkles.on('sprinkles', () => this.requestUpdate()),
       this.#dips.on('change', () => this.requestUpdate()),
-      ...(model.follow ? [model.follow.on('follow', () => this.requestUpdate())] : []),
+      ...onWatch(model, () => this.requestUpdate()),
     ];
   }
 

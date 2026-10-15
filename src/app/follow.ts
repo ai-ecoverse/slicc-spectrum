@@ -89,9 +89,18 @@ export function following(model: SliccModel | null | undefined): FollowState | n
 }
 
 export function watchOnly(model: SliccModel | null | undefined): string {
+  const text = model?.agent?.readOnly?.();
+  if (text) return text;
   const state = following(model);
   if (!state || state.access.control) return '';
   return `Watch only. To send prompts from this device, allow Control for it on ${state.owner}.`;
+}
+
+export function onWatch(model: SliccModel, listener: () => void): Array<() => void> {
+  return [
+    model.agent.on('readOnly', listener),
+    ...(model.follow ? [model.follow.on('follow', listener)] : []),
+  ];
 }
 
 export function terminalsAllowed(model: SliccModel | null | undefined): boolean {

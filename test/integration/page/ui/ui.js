@@ -40,6 +40,7 @@ const model = createDummyModel({
   accounts: params.get('accounts') ?? 'settings',
   providers: params.get('providers') ?? 'connected',
   hold: params.get('hold') ?? 'off',
+  readonly: params.get('readonly') ?? 'off',
   browser: params.get('browser') ?? 'idle',
   sprinkles: params.get('sprinkles') ?? 'builtin',
   monitor: params.get('monitor') ?? 'dummy',

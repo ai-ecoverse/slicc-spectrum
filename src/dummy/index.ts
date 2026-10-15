@@ -16,7 +16,7 @@ import {
   type NetworkScenario,
   type TailnetScenario,
 } from './network.ts';
-import { DummyNotices, type NoticeScenario } from './notices.ts';
+import { DummyNotices, type NoticeScenario, readOnlyText } from './notices.ts';
 import { DummySettings } from './settings.ts';
 import { DummySprinkles } from './sprinkles.ts';
 import { DummyTabs, type TabsScenario } from './tabs.ts';
@@ -49,6 +49,7 @@ export interface DummyOptions {
   accounts?: 'settings' | 'vault';
   providers?: 'connected' | 'none';
   hold?: AgentHold['reason'] | 'off';
+  readonly?: 'version' | 'off';
   browser?: BrowserScenario;
   sprinkles?: 'builtin' | 'cones';
   monitor?: 'dummy' | 'agent';
@@ -92,6 +93,7 @@ export function createDummyModel({
   accounts = 'settings',
   providers = 'connected',
   hold = 'off',
+  readonly = 'off',
   browser: scenario = 'idle',
   sprinkles = 'builtin',
   monitor = 'dummy',
@@ -121,6 +123,8 @@ export function createDummyModel({
     browser.release(agentId);
   };
   if (hold !== 'off') agent.setHold({ reason: hold, held: 2 });
+  if (readonly !== 'off') agent.setReadOnly(readOnlyText);
+  const notice = readonly !== 'off' ? 'readonly' : notices;
   if (scenario === 'driving') void browser.run(drive);
   const base = {
     agent,
@@ -163,7 +167,7 @@ export function createDummyModel({
       ? {}
       : { network: new DummyNetwork(network, time, tailnet, links, files) }),
     ...(changes === 'files' ? {} : { changes: new DummyChanges(files, changes === 'git') }),
-    ...(notices === 'off' ? {} : { notices: new DummyNotices(notices, time) }),
+    ...(notice === 'off' ? {} : { notices: new DummyNotices(notice, time) }),
     ...(tabs === 'off' ? {} : { tabs: new DummyTabs(tabs, time) }),
     ...(approvals === 'off' ? {} : { approvals: new DummyApprovals(approvals, time) }),
     ...(follow === 'off' ? {} : { follow: new DummyFollow(follow, time) }),

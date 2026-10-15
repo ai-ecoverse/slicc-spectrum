@@ -170,7 +170,11 @@ export class SliccNotices extends ModelElement {
             : nothing
         }
       </div>
-      <swc-close-button size="m" data-dismiss accessible-label=${`Dismiss: ${notice.title}`} @click=${() => this.dismiss(notice.id)}></swc-close-button>
+      ${
+        notice.dismissible === false
+          ? nothing
+          : html`<swc-close-button size="m" data-dismiss accessible-label=${`Dismiss: ${notice.title}`} @click=${() => this.dismiss(notice.id)}></swc-close-button>`
+      }
     </div>`;
   }
 
