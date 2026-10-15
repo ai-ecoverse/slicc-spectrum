@@ -137,6 +137,8 @@ test('error and warning licks get a severity badge, an icon, an edge and a prefi
 
 test('Drop asks first; cancel keeps the scoop, confirm removes it, closes its chat and selects the cone', async (t) => {
   const page = await open(t);
+  await page.until(() => Boolean(window.agentRow('cone-harbor')));
+  await page.evaluate(() => window.agentRow('cone-harbor').click());
   await page.until(() => Boolean(window.agentRow('scoop-otter')));
   assert.deepEqual(
     await page.evaluate(() => [
@@ -201,7 +203,6 @@ test('Drop asks first; cancel keeps the scoop, confirm removes it, closes its ch
 
 test('Delete on a focused scoop row drops it, and a rejected drop shows its error in place', async (t) => {
   const page = await open(t);
-  await page.until(() => Boolean(window.agentRow('scoop-heron')));
   await page.evaluate(() => {
     window.model.agent.drop = async () => {
       throw new Error('The scoop is busy');
@@ -238,8 +239,98 @@ test('Delete on a focused scoop row drops it, and a rejected drop shows its erro
   assert.deepEqual(page.errors, []);
 });
 
+test('A drop button clicked with the pointer hides again once the pointer leaves the row', async (t) => {
+  const page = await open(t);
+  await page.until(() => Boolean(window.agentRow('cone-harbor')));
+  await page.evaluate(() => window.agentRow('cone-harbor').click());
+  await page.until(() => Boolean(window.dropButton('scoop-otter')));
+  const point = await page.evaluate(() => {
+    const box = window.dropButton('scoop-otter').getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  });
+  const mouse = (type, extra = {}) =>
+    page.send('Input.dispatchMouseEvent', {
+      type,
+      x: point.x,
+      y: point.y,
+      button: 'left',
+      clickCount: 1,
+      ...extra,
+    });
+  await mouse('mouseMoved');
+  await page.until(
+    () => getComputedStyle(window.dropButton('scoop-otter')).visibility === 'visible'
+  );
+  await mouse('mousePressed');
+  await mouse('mouseReleased');
+  await page.until(() => window.confirmShown());
+  await page.evaluate(() => window.answer(false));
+  await page.until(() => !window.$('slicc-app', 'slicc-confirm'));
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
+  await page.until(
+    () => getComputedStyle(window.dropButton('scoop-otter')).visibility === 'hidden'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('The drop strip covers the whole row height, and the context fill stays on top of it', async (t) => {
+  const page = await open(t);
+  await page.until(() => Boolean(window.agentRow('cone-release')));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const row = window.agentRow('cone-release');
+      const cell = row.querySelector('.drop-cell');
+      cell.style.visibility = 'visible';
+      const box = row.getBoundingClientRect();
+      const strip = cell.getBoundingClientRect();
+      const fill = row.querySelector('.fill').getBoundingClientRect();
+      const root = window.agents().shadowRoot;
+      const top = root.elementFromPoint(fill.left + fill.width / 2, fill.top + fill.height / 2);
+      const bottom = root.elementFromPoint(strip.left + strip.width / 2, box.bottom - 2);
+      cell.style.visibility = '';
+      return [
+        Math.round(strip.height) === Math.round(box.height),
+        Math.round(strip.top) === Math.round(box.top),
+        top?.classList.contains('fill'),
+        bottom?.closest('li')?.dataset.id,
+      ];
+    }),
+    [true, true, true, 'cone-release']
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('An unread count takes the status circle, at the same size, and replaces the dot', async (t) => {
+  const page = await open(t);
+  await page.until(() => Boolean(window.agentRow('cone-release')));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const unread = window.agentRow('cone-release').querySelector('.marker');
+      const dot = window.agentRow('cone-sliccy').querySelector('.marker');
+      const size = (node) => {
+        const box = node.getBoundingClientRect();
+        return [Math.round(box.width), Math.round(box.height)];
+      };
+      return [
+        unread.classList.contains('unread'),
+        unread.textContent.trim(),
+        window.agentRow('cone-release').querySelector('.status'),
+        dot.classList.contains('status'),
+        size(unread),
+        size(dot),
+      ];
+    }),
+    [true, '1', null, true, [12, 12], [12, 12]]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('Drop is hidden when the port has no drop', async (t) => {
   const page = await open(t);
+  await page.evaluate(() => {
+    window.model.agent.select('scoop-otter');
+    return true;
+  });
   await page.until(() => Boolean(window.dropButton('scoop-otter')));
   await page.evaluate(() => {
     window.model.agent.drop = undefined;
@@ -247,6 +338,111 @@ test('Drop is hidden when the port has no drop', async (t) => {
     return true;
   });
   await page.until(() => !window.agents().shadowRoot.querySelector('[data-action=drop]'));
+  assert.deepEqual(page.errors, []);
+});
+
+test('Cones start collapsed; a click expands only that cone, its scoops show a ribbon, rows share one height', async (t) => {
+  const page = await open(t);
+  await page.until(() => Boolean(window.agentRow('cone-harbor')));
+  await page.evaluate(() => {
+    window.ids = () =>
+      [...window.agents().shadowRoot.querySelectorAll('li')].map((li) => li.dataset.id);
+    return true;
+  });
+  assert.deepEqual(
+    await page.evaluate(() => window.ids().filter((id) => id.startsWith('scoop-'))),
+    []
+  );
+  await page.evaluate(() => window.agentRow('cone-harbor').click());
+  await page.until(() => Boolean(window.agentRow('scoop-otter')));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const ids = window.ids();
+      const harbor = ids.indexOf('cone-harbor');
+      return [
+        ids[harbor + 1],
+        ids[harbor + 2],
+        window.agentRow('cone-harbor').querySelectorAll('.segment').length,
+        window.agentRow('cone-sliccy').getAttribute('aria-label').includes('collapsed'),
+        window.agentRow('cone-harbor').getAttribute('aria-label').includes('expanded'),
+        window.agentRow('cone-harbor').getAttribute('aria-selected'),
+      ];
+    }),
+    ['scoop-otter', 'scoop-heron', 2, true, true, 'true']
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const heights = [...window.agents().shadowRoot.querySelectorAll('li')].map((li) =>
+        Math.round(li.getBoundingClientRect().height)
+      );
+      return new Set(heights).size;
+    }),
+    1
+  );
+  await page.evaluate(() => window.agentRow('cone-sliccy').click());
+  await page.until(() => !window.agentRow('scoop-otter'));
+  assert.equal(await page.evaluate(() => window.model.agent.active()), 'cone-sliccy');
+  await page.evaluate(() => window.agentRow('cone-harbor').click());
+  await page.until(() => Boolean(window.agentRow('scoop-otter')));
+  await page.evaluate(() => window.agentRow('cone-harbor').click());
+  await page.until(() => !window.agentRow('scoop-otter'));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const actions = window.agents().shadowRoot.querySelector('[data-action=new-cone]');
+      const last = window.agents().shadowRoot.querySelector('li:last-of-type');
+      return actions.getBoundingClientRect().top >= last.getBoundingClientRect().bottom;
+    }),
+    true
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('Rows carry a colour dot, a description for every agent, the fill in the corner, and the drop overlays the text', async (t) => {
+  const page = await open(t);
+  await page.until(() => Boolean(window.agentRow('cone-release')));
+  await page.evaluate(() => window.agentRow('cone-harbor').click());
+  await page.until(() => Boolean(window.agentRow('scoop-otter')));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const otter = window.agentRow('scoop-otter');
+      const head = otter.querySelector('.head').textContent.trim();
+      const dot = otter.querySelector('.status');
+      return [
+        /Working|Idle/.test(head),
+        dot.getAttribute('data-status'),
+        getComputedStyle(dot).backgroundColor ===
+          getComputedStyle(
+            window.agentRow('cone-harbor').querySelector('.segment[data-status=working]')
+          ).backgroundColor,
+        otter.querySelector('.title').textContent.trim().length > 0,
+      ];
+    }),
+    [false, 'working', true, true]
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const row = window.agentRow('cone-release');
+      const fill = row.querySelector('.fill').getBoundingClientRect();
+      const box = row.getBoundingClientRect();
+      const name = row.querySelector('.name').getBoundingClientRect();
+      return [fill.top - box.top < 12, box.right - fill.right < 24, fill.left > name.right - 1];
+    }),
+    [true, true, true]
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const row = window.agentRow('scoop-otter');
+      const title = row.querySelector('.title').getBoundingClientRect();
+      const button = window.dropButton('scoop-otter').getBoundingClientRect();
+      const box = row.getBoundingClientRect();
+      return [
+        title.right > box.right - 24,
+        button.right <= box.right,
+        button.left < title.right && button.right > title.left,
+      ];
+    }),
+    [true, true, true]
+  );
   assert.deepEqual(page.errors, []);
 });
 

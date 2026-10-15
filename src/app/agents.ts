@@ -5,7 +5,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-close.js';
 import '@adobe/spectrum-wc-icons/swc-icon-delete.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Agent, SliccModel } from '../model/types.ts';
-import { ModelElement, percent, shared, statusLabel, statusLight } from './base.ts';
+import { ModelElement, percent, shared, statusLabel } from './base.ts';
 import { confirm, prompt } from './confirm.ts';
 import { watchOnly } from './follow.ts';
 import { deleteCone } from './freezer.ts';
@@ -50,6 +50,7 @@ export function fillShown(fill: number): boolean {
 export class SliccAgents extends ModelElement {
   static properties = { ...ModelElement.properties, errors: { state: true } };
   declare errors: Record<string, string>;
+  #expanded: string | null = null;
 
   constructor() {
     super();
@@ -60,16 +61,22 @@ export class SliccAgents extends ModelElement {
     shared,
     css`
     :host {
-      display: block;
+      display: flex;
+      flex-direction: column;
       height: 100%;
-      overflow-y: auto;
+      overflow: hidden;
       background: var(--swc-background-layer-1-color);
       color: var(--swc-neutral-content-color-default);
       font-size: var(--swc-font-size-100);
     }
+    .list {
+      flex: 1;
+      min-block-size: 0;
+      overflow-y: auto;
+    }
     .actions {
       display: flex;
-      padding: var(--swc-spacing-75) var(--swc-spacing-100) 0;
+      padding: var(--swc-spacing-75) var(--swc-spacing-100);
     }
     ul {
       list-style: none;
@@ -77,31 +84,63 @@ export class SliccAgents extends ModelElement {
       padding: var(--swc-spacing-75) 0;
     }
     li {
+      --row-background: var(--swc-background-layer-1-color);
+      --row-head: 1lh;
+      --row-description: calc(2 * 1.4 * var(--swc-font-size-75));
+      position: relative;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto auto;
-      grid-template-areas: 'name unread fill drop' 'title unread fill drop' 'status unread fill drop' 'error error error error';
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas: 'head fill' 'description description' 'ribbon ribbon' 'error error';
+      grid-template-rows: var(--row-head) var(--row-description) var(--swc-spacing-100);
       align-items: center;
       column-gap: var(--swc-spacing-100);
       padding: var(--swc-spacing-75) var(--swc-spacing-200);
+      background: var(--row-background);
       cursor: pointer;
     }
     li.scoop {
-      grid-template-areas: 'name unread fill drop' 'status unread fill drop' 'error error error error';
       padding-inline-start: calc(var(--swc-spacing-200) + var(--swc-spacing-300));
     }
     li:hover {
-      background: var(--swc-gray-100);
+      --row-background: var(--swc-gray-100);
     }
     li[aria-selected='true'] {
-      background: var(--swc-gray-200);
-      box-shadow: inset var(--swc-spacing-50) 0 0 var(--swc-accent-visual-color);
+      --row-background: var(--swc-gray-200);
     }
     li:focus-visible {
       outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
       outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
     }
+    .head {
+      grid-area: head;
+      display: flex;
+      align-items: center;
+      gap: var(--swc-spacing-75);
+      min-inline-size: 0;
+    }
+    .head > * {
+      flex: none;
+    }
+    .marker {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      inline-size: var(--swc-spacing-200);
+      block-size: var(--swc-spacing-200);
+      border-radius: var(--swc-corner-radius-full);
+      font-size: var(--swc-font-size-25);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .marker.unread {
+      background: var(--swc-accent-visual-color);
+      color: #fff;
+      font-weight: var(--swc-bold-font-weight);
+    }
     .name {
-      grid-area: name;
+      flex: 0 1 auto;
+      min-inline-size: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -110,29 +149,55 @@ export class SliccAgents extends ModelElement {
       font-weight: var(--swc-bold-font-weight);
     }
     .title {
-      grid-area: title;
+      grid-area: description;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
       overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      overflow-wrap: anywhere;
+      line-height: 1.4;
       font-size: var(--swc-font-size-75);
       color: var(--swc-neutral-subdued-content-color-default);
     }
-    .unread {
-      --swc-badge-height: var(--swc-spacing-300);
-      --swc-badge-padding-block: var(--swc-spacing-50);
-      --swc-badge-padding-inline: var(--swc-spacing-75);
-      --swc-badge-corner-radius: var(--swc-spacing-100);
-      --swc-badge-line-height: 1;
-      grid-area: unread;
-      align-self: center;
+    .ribbon {
+      grid-area: ribbon;
+      display: flex;
+      align-items: center;
+      gap: var(--swc-spacing-50);
+      overflow: hidden;
+    }
+    .status,
+    .segment {
+      background: var(--swc-neutral-visual-color);
+    }
+    .status[data-status='thinking'],
+    .status[data-status='working'],
+    .segment[data-status='thinking'],
+    .segment[data-status='working'] {
+      background: var(--swc-informative-visual-color);
+    }
+    .status[data-status='waiting'],
+    .segment[data-status='waiting'] {
+      background: var(--swc-notice-visual-color);
+    }
+    .status[data-status='error'],
+    .segment[data-status='error'] {
+      background: var(--swc-negative-visual-color);
+    }
+    .segment {
+      flex: none;
+      inline-size: var(--swc-spacing-200);
+      block-size: var(--swc-spacing-50);
+      border-radius: var(--swc-corner-radius-full);
     }
     .fill {
       grid-area: fill;
+      position: relative;
+      z-index: 1;
+      align-self: start;
       font-size: var(--swc-font-size-75);
       font-variant-numeric: tabular-nums;
       color: var(--swc-neutral-subdued-content-color-default);
-      min-width: 4ch;
-      text-align: end;
     }
     .fill[data-variant='notice'] {
       color: var(--swc-notice-color-1000);
@@ -142,17 +207,18 @@ export class SliccAgents extends ModelElement {
       color: var(--swc-negative-color-1000);
       font-weight: var(--swc-bold-font-weight);
     }
-    swc-status-light {
-      grid-area: status;
-      justify-self: start;
-    }
-    .drop {
-      grid-area: drop;
-      margin-block: calc(-1 * var(--swc-spacing-100));
+    .drop-cell {
+      position: absolute;
+      inset-block: 0;
+      inset-inline-end: 0;
+      display: flex;
+      align-items: center;
+      padding-inline: var(--swc-spacing-100);
+      background: var(--row-background);
       visibility: hidden;
     }
-    li:hover .drop,
-    li:focus-within .drop {
+    li:hover .drop-cell,
+    li:focus-visible .drop-cell {
       visibility: visible;
     }
     .error {
@@ -170,7 +236,7 @@ export class SliccAgents extends ModelElement {
       white-space: nowrap;
     }
     @media (hover: none), (pointer: coarse) {
-      .drop {
+      .drop-cell {
         visibility: visible;
       }
     }
@@ -178,16 +244,33 @@ export class SliccAgents extends ModelElement {
   ];
 
   protected subscribe(model: SliccModel): Array<() => void> {
+    const focused = this.#focused(model);
+    this.#expanded = focused?.kind === 'scoop' ? focused.parentId : null;
     return [
       model.agent.on('agents', () => this.requestUpdate()),
-      model.agent.on('active', () => this.requestUpdate()),
+      model.agent.on('active', () => {
+        const next = this.#focused(model);
+        if (next) this.#expanded = next.kind === 'cone' ? next.id : next.parentId;
+        this.requestUpdate();
+      }),
       watchTitles(model, () => this.requestUpdate()),
       ...(model.follow ? [model.follow.on('follow', () => this.requestUpdate())] : []),
     ];
   }
 
+  #focused(model: SliccModel): Agent | undefined {
+    return model.agent.list().find((agent) => agent.id === model.agent.active());
+  }
+
   #select(id: string): void {
     this.model?.agent.select(id);
+  }
+
+  #pick(agent: Agent): void {
+    const open = agent.kind === 'cone' && this.#expanded !== agent.id;
+    this.#select(agent.id);
+    if (agent.kind === 'cone') this.#expanded = open ? agent.id : null;
+    this.requestUpdate();
   }
 
   focus(): void {
@@ -212,8 +295,8 @@ export class SliccAgents extends ModelElement {
       items[Math.max(0, Math.min(items.length - 1, moves[event.key]))]?.focus();
     } else if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      const id = items[index]?.dataset.id;
-      if (id) this.#select(id);
+      const agent = this.model?.agent.list().find((item) => item.id === items[index]?.dataset.id);
+      if (agent) this.#pick(agent);
     } else if (event.key === 'Delete') {
       const agent = this.model?.agent.list().find((item) => item.id === items[index]?.dataset.id);
       if (agent && this.#droppable(agent)) {
@@ -277,49 +360,66 @@ export class SliccAgents extends ModelElement {
     if (!this.#droppable(agent)) return nothing;
     const id = `drop-${agent.id}`;
     const label = `Drop scoop ${agent.name}`;
-    return html`<swc-action-button
-        id=${id}
-        class="drop"
-        size="l"
-        quiet
-        tabindex="-1"
-        data-action="drop"
-        accessible-label=${label}
-        @click=${(event: Event) => {
-          event.stopPropagation();
-          void this.#drop(agent, event.currentTarget as HTMLElement);
-        }}
-        ><swc-icon-close slot="icon"></swc-icon-close></swc-action-button
-      ><swc-tooltip for=${id} placement="start">${label}</swc-tooltip>`;
+    return html`<span class="drop-cell"
+        ><swc-action-button
+          id=${id}
+          class="drop"
+          size="l"
+          quiet
+          tabindex="-1"
+          data-action="drop"
+          accessible-label=${label}
+          @click=${(event: Event) => {
+            event.stopPropagation();
+            void this.#drop(agent, event.currentTarget as HTMLElement);
+          }}
+          ><swc-icon-close slot="icon"></swc-icon-close></swc-action-button
+        ><swc-tooltip for=${id} placement="start">${label}</swc-tooltip></span
+      >`;
   }
 
   #deleteButton(agent: Agent): TemplateResult | typeof nothing {
     if (!this.#deletable(agent)) return nothing;
     const id = `delete-${agent.id}`;
     const label = `Delete cone ${coneLabel(this.model as SliccModel, agent)}`;
-    return html`<swc-action-button
-        id=${id}
-        class="drop"
-        size="l"
-        quiet
-        tabindex="-1"
-        data-action="delete-cone"
-        accessible-label=${label}
-        @click=${(event: Event) => {
-          event.stopPropagation();
-          void this.#deleteCone(agent, event.currentTarget as HTMLElement);
-        }}
-        ><swc-icon-delete slot="icon"></swc-icon-delete></swc-action-button
-      ><swc-tooltip for=${id} placement="start">${label}</swc-tooltip>`;
+    return html`<span class="drop-cell"
+        ><swc-action-button
+          id=${id}
+          class="drop"
+          size="l"
+          quiet
+          tabindex="-1"
+          data-action="delete-cone"
+          accessible-label=${label}
+          @click=${(event: Event) => {
+            event.stopPropagation();
+            void this.#deleteCone(agent, event.currentTarget as HTMLElement);
+          }}
+          ><swc-icon-delete slot="icon"></swc-icon-delete></swc-action-button
+        ><swc-tooltip for=${id} placement="start">${label}</swc-tooltip></span
+      >`;
   }
 
-  #row(agent: Agent, active: string): TemplateResult {
+  #ribbon(scoops: readonly Agent[]): TemplateResult | typeof nothing {
+    if (scoops.length === 0) return nothing;
+    return html`<span class="ribbon" aria-hidden="true">${scoops.map(
+      (scoop) => html`<span class="segment" data-status=${scoop.status}></span>`
+    )}</span>`;
+  }
+
+  #row(agent: Agent, active: string, list: readonly Agent[]): TemplateResult {
     const selected = agent.id === active;
     const error = this.errors[agent.id];
     const model = this.model as SliccModel;
-    const title = agent.kind === 'cone' ? agentTitle(model, agent) : null;
+    const title = agentTitle(model, agent);
+    const scoops = agent.kind === 'cone' ? list.filter((other) => other.parentId === agent.id) : [];
     const unread = selected ? 0 : agent.unread;
-    const label = `${coneLabel(model, agent)}: ${statusLabel[agent.status]}, ${percent(agent.contextFill)} context${
+    const state =
+      agent.kind === 'cone' ? (this.#expanded === agent.id ? ', expanded' : ', collapsed') : '';
+    const subs = scoops.length
+      ? `, ${scoops.length} scoop${scoops.length === 1 ? '' : 's'}: ${scoops.map((scoop) => statusLabel[scoop.status].toLowerCase()).join(', ')}`
+      : '';
+    const label = `${coneLabel(model, agent)}: ${statusLabel[agent.status]}, ${percent(agent.contextFill)} context${state}${subs}${
       unread ? `, ${unread} unread` : ''
     }${error ? `. ${error}` : ''}`;
     return html`<li
@@ -331,21 +431,23 @@ export class SliccAgents extends ModelElement {
       tabindex=${selected ? '0' : '-1'}
       aria-keyshortcuts=${this.#droppable(agent) || this.#deletable(agent) ? 'Delete' : nothing}
       title=${label}
-      @click=${() => this.#select(agent.id)}
+      @click=${() => this.#pick(agent)}
     >
-      <span class="name">${agent.name}</span>
-      ${title === null ? nothing : html`<span class="title">${title || untitled}</span>`}
-      ${
-        unread
-          ? html`<swc-badge class="unread" size="s" variant="accent">${unread}</swc-badge>`
-          : nothing
-      }
+      <div class="head">
+        ${
+          unread
+            ? html`<span class="marker unread" aria-hidden="true">${unread > 9 ? '9+' : unread}</span>`
+            : html`<span class="marker status" data-status=${agent.status} aria-hidden="true"></span>`
+        }
+        <span class="name">${agent.name}</span>
+      </div>
       ${
         fillShown(agent.contextFill)
           ? html`<span class="fill" data-variant=${meterVariant(agent.contextFill)}>${percent(agent.contextFill)}</span>`
           : nothing
       }
-      ${statusLight(agent.status)}
+      <span class="title">${title || untitled}</span>
+      ${this.#ribbon(scoops)}
       ${this.#dropButton(agent)}
       ${this.#deleteButton(agent)}
       ${error ? html`<span class="error">${error}</span>` : nothing}
@@ -368,12 +470,15 @@ export class SliccAgents extends ModelElement {
   }
 
   render(): TemplateResult {
-    const agents = ordered(this.model?.agent.list() ?? []);
+    const list = this.model?.agent.list() ?? [];
     const active = this.model?.agent.active() ?? '';
     const errors = Object.values(this.errors);
-    return html`${this.#actions()}<ul role="listbox" aria-label="Cones and scoops" @keydown=${this.#keydown}>
-        ${agents.map((agent) => this.#row(agent, active))}
-      </ul>
+    const rows = ordered(list).filter(
+      (agent) => agent.kind === 'cone' || agent.parentId === this.#expanded
+    );
+    return html`<div class="list"><ul role="listbox" aria-label="Cones and scoops" @keydown=${this.#keydown}>
+        ${rows.map((agent) => this.#row(agent, active, list))}
+      </ul></div>${this.#actions()}
       <div class="sr" role="status">${errors.at(-1) ?? ''}</div>`;
   }
 }
