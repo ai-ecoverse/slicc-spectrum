@@ -65,6 +65,17 @@ export class DummyNotices extends Emitter<{ notices: readonly Notice[] }> implem
     this.#remove(id);
   }
 
+  readOnly(on: boolean): void {
+    const shown = this.#notices.some((notice) => notice.id === 'readonly');
+    if (on === shown) return;
+    if (on) {
+      this.#notices = [noticeFixtures.readonly, ...this.#notices];
+      this.emit('notices', this.#notices);
+    } else {
+      this.#remove('readonly');
+    }
+  }
+
   #remove(id: string): void {
     this.#notices = this.#notices.filter((notice) => notice.id !== id);
     this.emit('notices', this.#notices);

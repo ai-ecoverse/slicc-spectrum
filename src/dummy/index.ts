@@ -128,6 +128,10 @@ export function createDummyModel({
   if (hold !== 'off') agent.setHold({ reason: hold, held: 2 });
   if (readonly !== 'off') agent.setReadOnly(readOnlyText);
   const notice = readonly !== 'off' ? 'readonly' : notices;
+  const noticePort = notice === 'off' ? null : new DummyNotices(notice, time);
+  if (noticePort && readonly !== 'off') {
+    agent.on('readOnly', (text) => noticePort.readOnly(Boolean(text)));
+  }
   if (scenario === 'driving') void browser.run(drive);
   const base = {
     agent,
@@ -170,7 +174,7 @@ export function createDummyModel({
       ? {}
       : { network: new DummyNetwork(network, time, tailnet, links, files, leaders) }),
     ...(changes === 'files' ? {} : { changes: new DummyChanges(files, changes === 'git') }),
-    ...(notice === 'off' ? {} : { notices: new DummyNotices(notice, time) }),
+    ...(noticePort ? { notices: noticePort } : {}),
     ...(tabs === 'off' ? {} : { tabs: new DummyTabs(tabs, time) }),
     ...(approvals === 'off' ? {} : { approvals: new DummyApprovals(approvals, time) }),
     ...(follow === 'off' ? {} : { follow: new DummyFollow(follow, time) }),

@@ -4412,10 +4412,16 @@ test('a read-only agent port shows its line, a notice without a close button, an
   await page.until(() => !!window.changes().querySelector('[data-action=accept-all]'));
   await page.until(() => !!window.changes().querySelector('[data-action=revert-all]'));
   await page.until(() => !window.sprinkle().shadowRoot.querySelector('iframe').inert);
+  await page.until(() => !window.notice());
   assert.equal(
     await page.evaluate(() => !!window.chat().querySelector('[data-follow=watch]')),
     false
   );
+  await page.evaluate(() => {
+    window.model.agent.setReadOnly('Watch only.');
+    return true;
+  });
+  await page.until(() => !!window.notice() && !window.notice().querySelector('[data-dismiss]'));
   assert.deepEqual(page.errors, []);
 });
 

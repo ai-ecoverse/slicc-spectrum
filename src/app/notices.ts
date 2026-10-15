@@ -208,7 +208,9 @@ export class SliccNotices extends ModelElement {
 
   render(): TemplateResult | typeof nothing {
     const port: NoticesPort | undefined = this.model?.notices;
-    const notices = (port?.list() ?? []).filter((notice) => !this.dismissed.has(notice.id));
+    const notices = (port?.list() ?? []).filter(
+      (notice) => notice.dismissible === false || !this.dismissed.has(notice.id)
+    );
     const tabs = this.#tabs();
     const approvals = this.model?.approvals?.decide ? [] : waiting(this.model, Date.now());
     if (!notices.length && !approvals.length && tabs === nothing) return nothing;
