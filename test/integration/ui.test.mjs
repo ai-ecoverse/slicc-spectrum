@@ -2427,6 +2427,70 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
   assert.deepEqual(page.errors, []);
 });
 
+test('times show every two minutes, each day starts with one, and hidden times and usage stay reachable', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const messages = agent.messages.bind(agent);
+    const midnight = new Date(2026, 9, 5).getTime();
+    const minute = 60_000;
+    const usage = { input: 1200, output: 34, cost: 0.5 };
+    agent.messages = (id) =>
+      id !== 'cone-sliccy'
+        ? messages(id)
+        : [
+            { id: 'st-a', role: 'user', text: 'Late question', createdAt: midnight - 1.5 * minute },
+            {
+              id: 'st-b',
+              role: 'assistant',
+              status: 'done',
+              parts: [{ type: 'text', text: 'Late answer' }],
+              usage,
+              createdAt: midnight - minute,
+            },
+            {
+              id: 'st-c',
+              role: 'lick',
+              channel: 'cron',
+              title: 'Nightly',
+              text: 'ran',
+              createdAt: midnight - minute / 2,
+            },
+            { id: 'st-d', role: 'user', text: 'Still here', createdAt: midnight + 1000 },
+            { id: 'st-e', role: 'user', text: 'Hello again', createdAt: midnight + minute },
+            { id: 'st-f', role: 'user', text: 'Later', createdAt: midnight + 3 * minute },
+          ];
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  await page.until(() => !!window.chatPart('[data-id=st-f]'));
+  const seen = await page.evaluate(() => {
+    const root = window.chatPart().shadowRoot;
+    const ids = ['st-a', 'st-b', 'st-c', 'st-d', 'st-e', 'st-f'];
+    const reply = root.querySelector('swc-conversation-turn[data-id=st-b]');
+    return {
+      shown: ids.filter((id) =>
+        root.querySelector(`[data-id=${id}] .meta time.when, .lick[data-id=${id}] .when`)
+      ),
+      reachable: ids.filter((id) =>
+        root.querySelector(`[data-id=${id}] time[datetime], .lick[data-id=${id}] .sr`)
+      ),
+      days: root.querySelectorAll('.day').length,
+      empty: !root.querySelector('[data-id=st-b] .meta'),
+      title: root.querySelector('[data-id=st-b] .reply')?.getAttribute('title'),
+      description: reply?.getAttribute('aria-description'),
+    };
+  });
+  assert.deepEqual(seen, {
+    shown: ['st-a', 'st-d', 'st-f'],
+    reachable: ['st-a', 'st-b', 'st-c', 'st-d', 'st-e', 'st-f'],
+    days: 2,
+    empty: true,
+    title: '1,200 in · 34 out · $0.50',
+    description: '1,200 in · 34 out · $0.50',
+  });
+});
+
 test('the composer runs commands, mentions, attaches, queues and steers', async (t) => {
   const page = await open(t, { delay: '20' });
   await page.press('2', 'alt');
@@ -2562,13 +2626,33 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
         .$('slicc-app', 'slicc-dock', 'slicc-chat')
         .shadowRoot.querySelectorAll('.message.user[data-origin=user]'),
     ];
+    const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot;
+    let last = -Infinity;
+    let spaced = true;
+    for (const node of root.querySelectorAll('.day, .meta time.when')) {
+      if (node.classList.contains('day')) {
+        last = -Infinity;
+        continue;
+      }
+      const at = Date.parse(node.getAttribute('datetime'));
+      if (at - last < 120000) spaced = false;
+      last = at;
+    }
     return {
       kinds: [...new Set(turns.map((turn) => turn.dataset.delivered))].sort(),
       labels: turns.filter((turn) => turn.querySelector('.who, .tag')).length,
-      times: turns.every((turn) => turn.querySelector('.meta time.when')),
+      times: turns.every((turn) => turn.querySelector('time[datetime]')),
+      hidden: turns.some((turn) => !turn.querySelector('.meta')),
+      spaced,
     };
   });
-  assert.deepEqual(delivered, { kinds: ['follow-up', 'run', 'steer'], labels: 0, times: true });
+  assert.deepEqual(delivered, {
+    kinds: ['follow-up', 'run', 'steer'],
+    labels: 0,
+    times: true,
+    hidden: true,
+    spaced: true,
+  });
   await shot(page, 'composer-delivered');
 
   await page.press('ArrowUp');
