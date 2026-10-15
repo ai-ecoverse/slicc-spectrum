@@ -2362,13 +2362,13 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     days: 2,
     attachments: 5,
     media: 5,
-    cards: 3,
-    plan: 1,
-    check: 4,
-    diff: 1,
+    cards: 0,
+    plan: 0,
+    check: 0,
+    diff: 0,
     questions: 3,
     delegations: 4,
-    links: 1,
+    links: 0,
     tables: 1,
     code: 1,
     tasks: 2,
@@ -2463,7 +2463,7 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     [
       ...window
         .$('slicc-app', 'slicc-dock', 'slicc-chat')
-        .shadowRoot.querySelectorAll('.pending swc-button'),
+        .shadowRoot.querySelectorAll('.decision[data-kind=approval] swc-button'),
     ]
       .find((button) => button.textContent.trim() === 'Allow')
       .click()
@@ -2755,6 +2755,196 @@ test('licks sit on the right with a byline, a quiet chevron on their toggle and 
       .map((frame) => frame.querySelector('.lick').dataset.id);
   });
   assert.deepEqual(spill, []);
+  assert.deepEqual(page.errors, []);
+});
+
+test('decision cards pile at the top, reveal from the keyboard and leave the pile with focus kept', async (t) => {
+  const page = await open(t, { delay: '0' });
+  await page.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+  });
+  await page.evaluate(() => window.model.agent.select('cone-kitchen'));
+  await page.until(() => !!window.chatPart('.decision-turn[data-id=k-l17]'));
+  const bottom = () => {
+    const log = window.chatPart('.log');
+    log.scrollTop = log.scrollHeight;
+    return true;
+  };
+  const pile = () => {
+    const root = window.chatPart().shadowRoot;
+    const log = root.querySelector('.log');
+    const front = root.querySelector('.decision-turn[data-pinned]:not([style*="--depth: 1"])');
+    return {
+      cards: [...root.querySelectorAll('.decision-turn[data-pending]')].map((turn) => [
+        turn.dataset.id,
+        turn.hasAttribute('data-pinned'),
+        getComputedStyle(turn).filter,
+      ]),
+      padding: Number.parseFloat(log.style.getPropertyValue('--pile')),
+      front: front
+        ? Math.round(front.getBoundingClientRect().bottom - log.getBoundingClientRect().top)
+        : 0,
+      still: getComputedStyle(root.querySelector('.decision-turn')).transitionDuration,
+      focus: root.activeElement?.closest?.('[data-id]')?.dataset.id ?? null,
+    };
+  };
+  await page.evaluate(bottom);
+  await page.until(() =>
+    window.chatPart('.decision-turn[data-id=k-l17]').hasAttribute('data-pinned')
+  );
+  const stuck = await page.evaluate(pile);
+  assert.deepEqual(stuck.cards, [
+    ['k-q3', true, 'blur(0.6px)'],
+    ['k-l17', true, 'blur(0px)'],
+  ]);
+  assert.ok(stuck.padding > 0 && Math.abs(stuck.padding - stuck.front) <= 1);
+  assert.equal(stuck.still, '0s');
+  const timer = await page.evaluate(() => {
+    const head = window.chatPart('.decision-turn[data-id=k-l17] .decision-head');
+    return [
+      head.querySelector('.timer').getAttribute('aria-hidden'),
+      head.querySelector('.timer + .sr').textContent,
+    ];
+  });
+  assert.equal(timer[0], 'true');
+  assert.match(timer[1], /^Expires at \d\d:\d\d$/);
+
+  await page.evaluate(() => {
+    window.chatPart('.decision-turn[data-id=k-l17]').focus();
+    return true;
+  });
+  const before = await page.evaluate(() => window.chatPart('.log').scrollTop);
+  await page.press('Enter');
+  await page.until(
+    () => !window.chatPart('.decision-turn[data-id=k-l17]').hasAttribute('data-pinned')
+  );
+  const shown = await page.evaluate(pile);
+  assert.ok((await page.evaluate(() => window.chatPart('.log').scrollTop)) < before);
+  assert.deepEqual(
+    shown.cards.find(([id]) => id === 'k-l17'),
+    ['k-l17', false, 'none']
+  );
+  assert.equal(shown.focus, 'k-l17');
+
+  await page.evaluate(bottom);
+  await page.until(
+    () => window.chatPart('.decision-turn[data-id=k-q3]').style.getPropertyValue('--depth') === '1'
+  );
+  await page.evaluate(() => {
+    window
+      .chatPart('.decision-turn[data-id=k-q3] swc-button, .decision-turn[data-id=k-q3] input')
+      .focus();
+    return true;
+  });
+  await page.until(
+    () => !window.chatPart('.decision-turn[data-id=k-q3]').hasAttribute('data-pinned')
+  );
+
+  await page.evaluate(bottom);
+  await page.until(() =>
+    window.chatPart('.decision-turn[data-id=k-l17]').hasAttribute('data-pinned')
+  );
+  await page.evaluate(() => {
+    window.chatPart('.decision-turn[data-id=k-l17] swc-button[data-action=allow]').focus();
+    return true;
+  });
+  await page.press('Enter');
+  await page.until(() => !window.chatPart('.decision-turn[data-id=k-l17]'));
+  assert.equal(
+    await page.evaluate(() => window.chatPart().shadowRoot.activeElement?.dataset.id),
+    'k-q3'
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.model.agent.messages('cone-kitchen').find((message) => message.id === 'k-l17').state
+    ),
+    'confirmed'
+  );
+
+  const elsewhere = await page.evaluate(() => {
+    const agent = window.model.agent;
+    agent.lick('cone-kitchen', 'sudo-request', 'harbor', 'Wants to read the deploy key');
+    const message = agent.messages('cone-kitchen').at(-1);
+    message.state = 'pending';
+    agent.emit('messages', 'cone-kitchen');
+    return message.id;
+  });
+  await page.until(
+    (card) => !!window.chatPart(`.decision-turn[data-id=${card}] swc-button[data-action=allow]`),
+    elsewhere
+  );
+  await page.evaluate((card) => {
+    window.chatPart(`.decision-turn[data-id=${card}] swc-button[data-action=allow]`).focus();
+    window.model.agent.resolveLick('cone-kitchen', card, 'dismissed');
+    return true;
+  }, elsewhere);
+  await page.until(
+    (card) =>
+      !window.chatPart(`.decision-turn[data-id=${card}]`) &&
+      window.chatPart().shadowRoot.activeElement?.dataset.id === 'k-q3',
+    elsewhere
+  );
+
+  const id = await page.evaluate(() => {
+    const agent = window.model.agent;
+    agent.lick('cone-kitchen', 'sudo-request', 'tide-runner', 'Wants to run npm publish');
+    const message = agent.messages('cone-kitchen').at(-1);
+    message.state = 'pending';
+    message.expiresAt = Date.now() + 2500;
+    agent.emit('messages', 'cone-kitchen');
+    return message.id;
+  });
+  await page.until(
+    (card) => !!window.chatPart(`.decision-turn[data-id=${card}] swc-button[data-action=deny]`),
+    id
+  );
+  assert.equal(
+    await page.evaluate(
+      (card) => window.chatPart(`.decision-turn[data-id=${card}] .timer + .sr`).textContent,
+      id
+    ),
+    'Less than a minute left'
+  );
+  await page.evaluate((card) => {
+    window.chatPart(`.decision-turn[data-id=${card}] swc-button[data-action=deny]`).focus();
+    return true;
+  }, id);
+  await page.until(
+    (card) => window.chatPart(`.decision-turn[data-id=${card}]`).hasAttribute('data-expired'),
+    id
+  );
+  const expired = await page.evaluate((card) => {
+    const turn = window.chatPart(`.decision-turn[data-id=${card}]`);
+    return [
+      turn.hasAttribute('data-pending'),
+      !!turn.querySelector('swc-button'),
+      turn.querySelector('.timer').textContent,
+      turn.querySelector('.timer + .sr').textContent,
+    ];
+  }, id);
+  assert.deepEqual(expired, [false, false, 'Timed out', 'Timed out']);
+  await page.until(() => window.chatPart().shadowRoot.activeElement?.dataset.id === 'k-q3');
+  const late = await page.evaluate(() => {
+    const agent = window.model.agent;
+    agent.lick('cone-kitchen', 'sudo-request', 'quiet-otter', 'Wants to tag 1.9.0');
+    const message = agent.messages('cone-kitchen').at(-1);
+    message.state = 'pending';
+    agent.emit('messages', 'cone-kitchen');
+    return message.id;
+  });
+  await page.until((card) => !!window.chatPart(`.decision-turn[data-id=${card}]`), late);
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.chatPart().shadowRoot.querySelectorAll('.decision-turn[data-pending]')].map(
+        (turn) => [turn.dataset.id, turn.style.getPropertyValue('--stack').trim()]
+      )
+    ),
+    [
+      ['k-q3', '0'],
+      [late, '1'],
+    ]
+  );
   assert.deepEqual(page.errors, []);
 });
 
@@ -4758,11 +4948,6 @@ test('a dip drags out of the chat into the dock and lives on as a panel', async 
   await shot(page, 'dip-panel-light');
 
   await page.evaluate(() => {
-    window.$('slicc-app', 'slicc-dock').close('sprinkle:welcome');
-    return true;
-  });
-  await page.until(() => !!window.$('slicc-app', '.rail.right [data-surface="sprinkle:welcome"]'));
-  await page.evaluate(() => {
     window.dip().shadowRoot.querySelector('.moved sp-action-button').click();
     return true;
   });
@@ -4774,6 +4959,25 @@ test('a dip drags out of the chat into the dock and lives on as a panel', async 
   assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('slicc-ui.dips'))), [
     'welcome',
   ]);
+
+  await page.evaluate(() => {
+    window.dip = () =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:cone-sliccy')
+        ?.shadowRoot.querySelector('slicc-sprinkle[inline]');
+    window.$('slicc-app', 'slicc-dock').close('sprinkle:welcome');
+    return true;
+  });
+  await page.until(() => !!window.dip()?.shadowRoot.querySelector('.handle'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      JSON.parse(localStorage.getItem('slicc-ui.dips')),
+      !!window.dip().shadowRoot.querySelector('.moved'),
+      !!window.$('slicc-app', '.rail.right [data-surface="sprinkle:welcome"]'),
+    ]),
+    [[], false, false]
+  );
   assert.deepEqual(page.errors, []);
 });
 

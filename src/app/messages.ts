@@ -515,10 +515,14 @@ function question(item: Question, handlers: Handlers): TemplateResult {
       <swc-button size="s" variant="accent" data-action="answer" ?disabled=${handlers.readOnly} @click=${(event: Event) => (event.currentTarget as HTMLElement).closest('form')?.requestSubmit()}>Answer</swc-button>
     </form>`;
   }
-  return html`<div class="question" data-state=${item.state} data-kind=${item.kind}>
+  return html`<div class="question decision" data-state=${item.state} data-kind=${item.kind}>
     <div class="q">${item.question}</div>
     ${body}
   </div>`;
+}
+
+export function questionTurn(item: Question, handlers: Handlers, pile: Pile): TemplateResult {
+  return html`<swc-conversation-turn type="system" class="message decision-turn" data-id=${item.id} data-state=${item.state} data-pending=${item.state === 'open' ? '' : nothing} accessible-label=${`Question: ${item.question}`} style=${pileStyle(pile)} @click=${reveal} @keydown=${reveal}>${question(item, handlers)}</swc-conversation-turn>`;
 }
 
 const delegationVerbs = {
@@ -589,7 +593,9 @@ function part(entry: Exclude<MessagePart, { type: 'tool' }>, handlers: Handlers)
 
 function silent(entry: MessagePart, showThinking: boolean): boolean {
   return (
-    (entry.type === 'thinking' && !showThinking) || (entry.type === 'link' && !!host(entry.url))
+    entry.type === 'question' ||
+    (entry.type === 'thinking' && !showThinking) ||
+    (entry.type === 'link' && !!host(entry.url))
   );
 }
 
@@ -884,9 +890,95 @@ const lickIcons: Record<LickChannel, string> = {
   'sudo-request': '🔐',
 };
 
-export function lick(message: LickMessage, handlers: Handlers, stamp = true): TemplateResult {
+export function pendingApproval(message: Message): boolean {
+  return (
+    message.role === 'lick' && message.channel === 'sudo-request' && message.state === 'pending'
+  );
+}
+
+export function waiting(message: Message, now = Date.now()): boolean {
+  const at = message.role === 'lick' ? message.expiresAt : undefined;
+  return pendingApproval(message) && !(at !== undefined && at <= now);
+}
+
+function clock(ms: number): string {
+  const seconds = Math.ceil(ms / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+const still = (): boolean => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+function reveal(event: Event): void {
+  if ((event.target as Element).closest('swc-button, input, textarea')) return;
+  if (
+    event instanceof KeyboardEvent &&
+    (event.key !== 'Enter' || event.target !== event.currentTarget)
+  )
+    return;
+  show(event.currentTarget as HTMLElement);
+}
+
+export function show(turn: HTMLElement): void {
+  const log = turn.closest('.log');
+  if (!log) return;
+  const origin = log.getBoundingClientRect().top;
+  const pile = turn.getBoundingClientRect().top - origin;
+  turn.style.position = 'static';
+  const flow = turn.getBoundingClientRect();
+  turn.style.position = '';
+  const natural = flow.top - origin;
+  const bottom = Math.max(16, log.clientHeight - flow.height - 16);
+  if (Math.abs(pile - natural) > 1)
+    log.scrollTo({ top: log.scrollTop + natural - bottom, behavior: still() ? 'auto' : 'smooth' });
+}
+
+export interface Pile {
+  stack: number;
+}
+
+export const flatPile: Pile = { stack: 0 };
+
+function pileStyle(pile: Pile): string {
+  return `--stack: ${pile.stack}`;
+}
+
+function spokenLeft(left: number, at: number): string {
+  if (left <= 0) return 'Timed out';
+  return left <= 60_000 ? 'Less than a minute left' : `Expires at ${time(at)}`;
+}
+
+function decision(message: LickMessage, handlers: Handlers, pile: Pile): TemplateResult {
+  const at = message.expiresAt;
+  const left = at === undefined ? null : at - Date.now();
+  const expired = left !== null && left <= 0;
+  const timer =
+    left === null
+      ? nothing
+      : html`<span class="timer" data-timer aria-hidden="true">${expired ? 'Timed out' : clock(left)}</span><span class="sr">${spokenLeft(left, at as number)}</span>`;
+  const actions = expired
+    ? nothing
+    : html`<div class="decide">
+        <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'dismissed')}>Deny</swc-button>
+        <swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>
+      </div>`;
+  return html`<swc-conversation-turn type="system" class="message decision-turn" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-pending=${expired ? nothing : ''} data-expired=${expired ? '' : nothing} style=${pileStyle(pile)} @click=${reveal} @keydown=${reveal}>
+    <div class="decision" data-kind="approval">
+      <div class="decision-head"><span class="who">${message.title}</span>${timer}</div>
+      <p class="decision-text">${message.text}</p>
+      ${message.body ? html`<pre class="command">${message.body}</pre>` : nothing}
+      ${actions}
+    </div>
+  </swc-conversation-turn>`;
+}
+
+export function lick(
+  message: LickMessage,
+  handlers: Handlers,
+  stamp = true,
+  pile: Pile = flatPile
+): TemplateResult {
+  if (pendingApproval(message)) return decision(message, handlers, pile);
   const [label] = lickLabels[message.channel];
-  const decide = message.channel === 'sudo-request' && message.state === 'pending';
   const outcome =
     message.state === 'confirmed' ? 'Allowed' : message.state === 'dismissed' ? 'Denied' : '';
   const head = html`${message.severity ? html`<span class="sr">${severities[message.severity].prefix}</span>` : nothing}
@@ -896,30 +988,20 @@ export function lick(message: LickMessage, handlers: Handlers, stamp = true): Te
   const outcomeIcon =
     message.state === 'confirmed' ? '👍' : message.state === 'dismissed' ? '👎' : '';
   const reaction = html`<span class="reactions"><span class="reaction" title=${label} aria-hidden="true">${lickIcons[message.channel]}</span>${outcomeIcon ? html`<span class="reaction" title=${outcome} aria-hidden="true">${outcomeIcon}</span>` : nothing}</span>`;
-  const actions = decide
-    ? html`<div class="decide">
-        <swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>
-        <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'dismissed')}>Deny</swc-button>
-      </div>`
-    : nothing;
   const name = `${message.severity ? severities[message.severity].prefix : ''}${label} event`;
   const byline = html`<div class="meta">${message.severity ? html`<span class="severity-icon">${severities[message.severity].icon}</span>` : nothing}<span class="who">${message.title}</span>${stamp ? when(message.createdAt) : unseen(message.createdAt)}</div>`;
   if (!message.body) {
     return outside(
       name,
       byline,
-      html`<div class="lick-frame"><div class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}><div class="lick-head">${head}</div>${actions}</div>${reaction}</div>`
+      html`<div class="lick-frame"><div class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}><div class="lick-head">${head}</div></div>${reaction}</div>`
     );
   }
   const details = html`<details class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}>
     <summary class="lick-head">${head}<swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right></summary>
     <pre class="output">${message.body}</pre>
   </details>`;
-  return outside(
-    name,
-    byline,
-    html`<div class="lick-frame">${decide ? html`<div class="pending">${details}${actions}</div>` : details}${reaction}</div>`
-  );
+  return outside(name, byline, html`<div class="lick-frame">${details}${reaction}</div>`);
 }
 
 export const messageCss = css`
@@ -1723,14 +1805,96 @@ export const messageCss = css`
     gap: var(--swc-spacing-85);
     padding: 0 var(--swc-spacing-100) var(--swc-spacing-100);
   }
-  .pending {
-    border: var(--swc-border-width-100) solid var(--swc-notice-visual-color);
-    border-radius: var(--swc-corner-radius-700);
+  swc-conversation-turn.decision-turn {
+    container-type: inline-size;
+    transition:
+      top var(--swc-animation-duration-300) var(--swc-animation-ease-out),
+      transform var(--swc-animation-duration-300) var(--swc-animation-ease-out),
+      filter var(--swc-animation-duration-300) var(--swc-animation-ease-out);
   }
-  .pending > details.lick {
-    border: 0;
+  @media (prefers-reduced-motion: reduce) {
+    swc-conversation-turn.decision-turn {
+      transition: none;
+    }
   }
-  .pending > details.lick[data-severity] {
-    border-inline-start: var(--swc-border-width-400) solid var(--severity);
+  slicc-sprinkle[inline] {
+    position: relative;
+    inset-inline-start: 50%;
+    inline-size: calc(100cqw + var(--swc-spacing-300) * 2);
+    transform: translateX(-50%);
+  }
+  swc-conversation-turn.decision-turn[data-pending] {
+    position: sticky;
+    top: calc(var(--stack, 0) * (var(--swc-spacing-600) + var(--swc-spacing-75)));
+    z-index: calc(var(--stack, 0) + 1);
+  }
+  swc-conversation-turn.decision-turn[data-pinned] {
+    transform: scale(calc(1 - var(--depth, 0) * 0.03));
+    transform-origin: top center;
+    filter: blur(calc(var(--depth, 0) * 0.6px));
+  }
+  .decision-turn[data-pending] .decision {
+    border-color: var(--swc-gray-300);
+    box-shadow: var(--swc-drop-shadow-elevated);
+  }
+  .decision-turn[data-pending]:focus-visible {
+    outline: none;
+  }
+  .decision-turn[data-pending]:focus-visible .decision {
+    outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+    outline-offset: var(--swc-focus-ring-gap);
+  }
+  .decision {
+    display: flex;
+    flex-direction: column;
+    gap: var(--swc-spacing-100);
+    margin-inline: var(--swc-spacing-700);
+    padding: var(--swc-spacing-200) var(--swc-spacing-300);
+    border: var(--swc-border-width-100) solid var(--swc-gray-200);
+    border-radius: var(--swc-corner-radius-100);
+    background: var(--swc-background-layer-1-color);
+    font-size: var(--swc-font-size-200);
+  }
+  .decision-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--swc-spacing-100);
+    font-size: var(--swc-font-size-100);
+  }
+  .decision-head .who {
+    font-weight: var(--swc-bold-font-weight);
+  }
+  .timer {
+    color: var(--swc-neutral-subdued-content-color-default);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .decision-text {
+    margin: 0;
+  }
+  .command {
+    margin: 0;
+    padding: var(--swc-spacing-75) var(--swc-spacing-100);
+    border-radius: var(--swc-corner-radius-100);
+    background: var(--swc-background-layer-2-color);
+    font-size: var(--swc-font-size-75);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .decision .decide,
+  .question.decision .options {
+    justify-content: flex-end;
+    padding: 0;
+  }
+  .question.decision .options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--swc-spacing-85);
+  }
+  @container (inline-size < 480px) {
+    .decision {
+      margin-inline: var(--swc-spacing-300);
+    }
   }
 `;
