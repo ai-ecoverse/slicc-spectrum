@@ -667,9 +667,12 @@ const toolLoaders: Record<string, string> = {
 };
 
 function statusLoader(message: AssistantMessage): string {
-  const last = message.parts.at(-1);
-  if (last?.type !== 'tool' || last.tool.status !== 'running') return 'aiLogo';
-  return toolLoaders[toolKind(last.tool.name).id] ?? 'hourglass';
+  if (message.parts.at(-1)?.type !== 'tool') return 'aiLogo';
+  const running = message.parts.findLast(
+    (part) => part.type === 'tool' && part.tool.status === 'running'
+  );
+  if (running?.type !== 'tool') return 'aiLogo';
+  return toolLoaders[toolKind(running.tool.name).id] ?? 'hourglass';
 }
 
 const people = new Set(['follower', 'guest']);

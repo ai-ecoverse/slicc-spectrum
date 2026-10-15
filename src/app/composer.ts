@@ -951,6 +951,7 @@ export class SliccComposer extends ThemedElement {
   }
 
   #flash(): void {
+    if (!this.value) return;
     this.erasing = true;
     clearTimeout(this.#erase);
     this.#erase = setTimeout(() => (this.erasing = false), 700);
@@ -959,7 +960,7 @@ export class SliccComposer extends ThemedElement {
   #loader(busy: boolean): string {
     if (busy) return 'aiLogo';
     if (this.dictating) return 'microphone';
-    if (this.erasing && this.value) return 'brush';
+    if (this.erasing) return 'brush';
     return this.value ? 'pencil' : 'aiLogo';
   }
 
