@@ -270,7 +270,9 @@ test('A drop button clicked with the pointer hides again once the pointer leaves
   await page.until(() => !window.$('slicc-app', 'slicc-confirm'));
   await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
   await page.until(
-    () => getComputedStyle(window.dropButton('scoop-otter').parentElement).opacity === '0'
+    () =>
+      getComputedStyle(window.dropButton('scoop-otter').parentElement).opacity ===
+      (matchMedia('(hover: none), (pointer: coarse)').matches ? '1' : '0')
   );
   assert.deepEqual(page.errors, []);
 });
