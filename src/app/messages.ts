@@ -12,6 +12,7 @@ import '@adobe/spectrum-wc/patterns/ai-toolkit/system-message/swc-system-message
 import '@adobe/spectrum-wc/patterns/ai-toolkit/user-message/swc-user-message.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
+import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
 import '@adobe/spectrum-wc-icons/swc-icon-cancel.js';
 import '@adobe/spectrum-wc-icons/swc-icon-checkmark.js';
 import '@adobe/spectrum-wc-icons/swc-icon-clock-pending.js';
@@ -852,7 +853,7 @@ export function lick(message: LickMessage, handlers: Handlers, stamp = true): Te
       </div>`
     : nothing;
   const name = `${message.severity ? severities[message.severity].prefix : ''}${label} event`;
-  const byline = html`<div class="meta"><span class="who">${message.title}</span>${stamp ? when(message.createdAt) : nothing}</div>`;
+  const byline = html`<div class="meta">${message.severity ? html`<span class="severity-icon">${severities[message.severity].icon}</span>` : nothing}<span class="who">${message.title}</span>${stamp ? when(message.createdAt) : unseen(message.createdAt)}</div>`;
   if (!message.body) {
     return outside(
       name,
@@ -861,7 +862,7 @@ export function lick(message: LickMessage, handlers: Handlers, stamp = true): Te
     );
   }
   const details = html`<details class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}>
-    <summary class="lick-head">${head}</summary>
+    <summary class="lick-head">${head}<swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right></summary>
     <pre class="output">${message.body}</pre>
   </details>`;
   return outside(
@@ -1611,12 +1612,16 @@ export const messageCss = css`
   .lick {
     border-style: dashed;
   }
-  .channel,
-  .lick .severity {
-    flex: none;
+  .severity-icon {
+    display: inline-flex;
+    align-self: center;
+    color: var(--severity);
   }
-  .lick strong {
-    white-space: nowrap;
+  .lick-turn:has(.lick[data-severity='error']) {
+    --severity: var(--swc-negative-visual-color);
+  }
+  .lick-turn:has(.lick[data-severity='warn']) {
+    --severity: var(--swc-notice-visual-color);
   }
   .lick[data-severity] {
     border-inline-start: var(--swc-border-width-400) solid var(--severity);
@@ -1635,8 +1640,7 @@ export const messageCss = css`
     clip-path: inset(50%);
     white-space: nowrap;
   }
-  .lick .times,
-  .lick .when {
+  .lick .times {
     color: var(--swc-neutral-subdued-content-color-default);
     white-space: nowrap;
   }
