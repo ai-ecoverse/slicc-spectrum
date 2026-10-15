@@ -315,6 +315,22 @@ function actionLabel(action: ErrorAction, handlers: Handlers, messageId: string)
   return count > 1 ? `Drop ${count} failed turns` : actionLabels[action];
 }
 
+function errorCard(
+  item: { id?: string; title: string; text?: string; action?: ErrorAction },
+  handlers: Handlers
+): TemplateResult {
+  const id = item.id ?? '';
+  const action = item.action
+    ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${item.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(item.action as ErrorAction, id)}>${actionLabel(item.action, handlers, id)}</swc-button>`
+    : nothing;
+  return html`<div class="error-card" role="alert" data-id=${id || nothing}>
+    <swc-icon-alert-diamond class="icon" size="s" aria-hidden="true"></swc-icon-alert-diamond>
+    <span class="lead">${item.title}</span>
+    ${item.text ? html`<span class="detail">${item.text}</span>` : nothing}
+    ${action}
+  </div>`;
+}
+
 export function time(at: number): string {
   return new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
@@ -542,10 +558,10 @@ function part(entry: Exclude<MessagePart, { type: 'tool' }>, handlers: Handlers)
     case 'link':
       return html`<div class="link-text">${entry.title}</div>`;
     default:
-      return html`<div class="error-card" role="alert">
-        <div class="error-text"><span class="lead">${entry.message}</span>${entry.detail ? html`<span class="detail">${entry.detail}</span>` : nothing}</div>
-        ${entry.action ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${entry.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(entry.action as ErrorAction)}>${actionLabel(entry.action, handlers, '')}</swc-button>` : nothing}
-      </div>`;
+      return errorCard(
+        { title: entry.message, text: entry.detail, action: entry.action },
+        handlers
+      );
   }
 }
 
@@ -745,10 +761,15 @@ export function system(message: SystemMessage, handlers: Handlers): TemplateResu
   }
   return event(
     'Error',
-    html`<div class="error-card system-error" role="alert" data-id=${message.id}>
-      <div class="error-text"><strong>${message.title}</strong><span>${message.text}</span></div>
-      ${message.action ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${message.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(message.action as ErrorAction, message.id)}>${actionLabel(message.action, handlers, message.id)}</swc-button>` : nothing}
-    </div>`
+    errorCard(
+      {
+        id: message.id,
+        title: message.title ?? 'Error',
+        text: message.text,
+        action: message.action,
+      },
+      handlers
+    )
   );
 }
 
@@ -1447,29 +1468,40 @@ export const messageCss = css`
     color: var(--swc-neutral-content-color-default);
   }
   .error-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--swc-spacing-100);
-    border: var(--swc-border-width-100) solid var(--swc-negative-visual-color);
-    border-inline-start-width: var(--swc-border-width-400);
-    border-radius: var(--swc-corner-radius-100);
-    padding: var(--swc-spacing-200) var(--swc-spacing-300);
-    font-size: var(--swc-font-size-100);
-  }
-  .error-card .error-text {
     display: grid;
-    gap: var(--swc-spacing-50);
-    flex: 1;
-    min-inline-size: 0;
-    overflow-wrap: anywhere;
-  }
-  .error-card .detail {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--swc-spacing-50) var(--swc-spacing-200);
+    margin-inline: var(--swc-spacing-700);
+    padding: var(--swc-spacing-200) var(--swc-spacing-300);
+    border: var(--swc-border-width-100) solid var(--swc-gray-200);
+    border-radius: var(--swc-corner-radius-100);
+    background: var(--swc-background-layer-1-color);
+    font-size: var(--swc-font-size-100);
     color: var(--swc-neutral-subdued-content-color-default);
   }
+  .error-card .icon {
+    grid-row: span 2;
+    color: var(--swc-negative-visual-color);
+  }
+  .error-card .lead {
+    grid-column: 2;
+    font-weight: 700;
+    color: var(--swc-neutral-content-color-default);
+  }
+  .error-card .detail {
+    grid-column: 2;
+    overflow-wrap: anywhere;
+  }
   .error-card swc-button {
-    flex: none;
+    grid-column: 3;
+    grid-row: span 2;
     white-space: nowrap;
+  }
+  @container (inline-size < 480px) {
+    .error-card {
+      margin-inline: var(--swc-spacing-300);
+    }
   }
   .marker,
   .day {
