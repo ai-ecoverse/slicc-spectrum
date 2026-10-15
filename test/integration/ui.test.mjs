@@ -4512,11 +4512,6 @@ test('a dip drags out of the chat into the dock and lives on as a panel', async 
   await shot(page, 'dip-panel-light');
 
   await page.evaluate(() => {
-    window.$('slicc-app', 'slicc-dock').close('sprinkle:welcome');
-    return true;
-  });
-  await page.until(() => !!window.$('slicc-app', '.rail.right [data-surface="sprinkle:welcome"]'));
-  await page.evaluate(() => {
     window.dip().shadowRoot.querySelector('.moved sp-action-button').click();
     return true;
   });
@@ -4528,6 +4523,25 @@ test('a dip drags out of the chat into the dock and lives on as a panel', async 
   assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('slicc-ui.dips'))), [
     'welcome',
   ]);
+
+  await page.evaluate(() => {
+    window.dip = () =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:cone-sliccy')
+        ?.shadowRoot.querySelector('slicc-sprinkle[inline]');
+    window.$('slicc-app', 'slicc-dock').close('sprinkle:welcome');
+    return true;
+  });
+  await page.until(() => !!window.dip()?.shadowRoot.querySelector('.handle'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      JSON.parse(localStorage.getItem('slicc-ui.dips')),
+      !!window.dip().shadowRoot.querySelector('.moved'),
+      !!window.$('slicc-app', '.rail.right [data-surface="sprinkle:welcome"]'),
+    ]),
+    [[], false, false]
+  );
   assert.deepEqual(page.errors, []);
 });
 
