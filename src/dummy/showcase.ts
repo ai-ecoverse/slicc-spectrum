@@ -572,72 +572,7 @@ function work(): Message[] {
       model: 'claude-sonnet-5-5',
       parts: [
         { type: 'text', text: 'Here is where things stand.' },
-        {
-          type: 'card',
-          card: {
-            variant: 'pr',
-            number: 58,
-            title: 'Add retries for upstream timeouts',
-            branch: 'fix/retry-upstream',
-            checks: '4 of 4 checks passed',
-            additions: 42,
-            deletions: 7,
-            files: 3,
-            tone: 'positive',
-          },
-        },
-        {
-          type: 'card',
-          card: {
-            variant: 'tool',
-            title: 'Visual regression suite',
-            badge: 'bash',
-            status: '2 snapshots changed',
-            files: ['forecast-card.png', 'forecast-card-dark.png'],
-            tone: 'notice',
-          },
-        },
-        {
-          type: 'card',
-          card: {
-            variant: 'light',
-            title: 'Staging is healthy',
-            detail: '/health answered in 2 ms',
-            tone: 'informative',
-          },
-        },
-        {
-          type: 'plan',
-          items: [
-            'Merge the retry pull request',
-            'Move the cache to KV',
-            'Update the forecast docs to Celsius',
-            'Tag 1.9.0',
-          ],
-        },
-        {
-          type: 'check',
-          items: [
-            { text: 'TTL fix merged' },
-            { text: 'Retries reviewed', tone: 'informative' },
-            { text: 'Docs pass running', tone: 'notice' },
-            { text: 'KV migration not started', tone: 'negative' },
-          ],
-        },
-        {
-          type: 'diff',
-          path: '/workspace/harbor/src/lib/units.ts',
-          before:
-            'export function toCelsius(f: number): number {\n  return ((f - 32) * 5) / 9;\n}\n',
-          after:
-            'export function toCelsius(f: number): number {\n  return Math.round(((f - 32) * 5) / 9);\n}\n',
-        },
-        {
-          type: 'link',
-          url: 'https://api.example.com/docs/v2/forecast',
-          title: 'Forecast API reference',
-          description: 'Parameters, units and rate limits for /v2/forecast.',
-        },
+        { type: 'sprinkle', sprinkle: 'status' },
         {
           type: 'delegation',
           kind: 'scoop',

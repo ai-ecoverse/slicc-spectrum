@@ -1,6 +1,7 @@
 import type { FrozenCone, Memory, Message, Sprinkle, TrayStatus } from '../model/types.ts';
 import suggestions from './sprinkles/suggestions.shtml';
 import welcome from './sprinkles/welcome.shtml';
+import { status } from './status.ts';
 
 const day = 86_400_000;
 const now = Date.UTC(2026, 9, 5, 9, 0);
@@ -208,6 +209,15 @@ export const sprinkles: Sprinkle[] = [
     icon: 'ice-cream-cone',
     agentId: 'cone-sliccy',
     html: suggestions,
+  },
+  {
+    id: 'status',
+    name: 'status',
+    title: 'Status',
+    icon: 'list-checks',
+    agentId: 'cone-kitchen',
+    html: status,
+    inline: true,
   },
 ];
 
