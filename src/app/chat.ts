@@ -469,10 +469,6 @@ export class SliccChat extends ThemedElement {
     else this.style.setProperty('--composer-height', '0px');
   }
 
-  protected updated(): void {
-    this.#attach();
-  }
-
   connectedCallback(): void {
     super.connectedCallback();
     globalThis.addEventListener('pointerup', this.#release, true);
@@ -493,6 +489,7 @@ export class SliccChat extends ThemedElement {
   }
 
   protected updated(): void {
+    this.#attach();
     const timed = this.#timed();
     if (timed && this.#tick === undefined)
       this.#tick = setInterval(() => this.requestUpdate(), 1000);
