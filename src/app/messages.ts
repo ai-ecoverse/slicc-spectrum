@@ -1551,4 +1551,10 @@ export const messageCss = css`
   .pending > details.lick[data-severity] {
     border-inline-start: var(--swc-border-width-400) solid var(--severity);
   }
+  slicc-sprinkle[inline] {
+    position: relative;
+    inset-inline-start: 50%;
+    inline-size: calc(100cqw + var(--swc-spacing-300) * 2);
+    transform: translateX(-50%);
+  }
 `;
