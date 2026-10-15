@@ -838,7 +838,7 @@ function decision(message: LickMessage, handlers: Handlers, stack: number): Temp
   const timer =
     left === null
       ? nothing
-      : html`<span class="timer" data-timer>${expired ? 'Timed out' : `Times out in ${clock(left)}`}</span>`;
+      : html`<span class="timer" data-timer>${expired ? 'Timed out' : clock(left)}</span>`;
   const actions = expired
     ? nothing
     : html`<div class="decide">
