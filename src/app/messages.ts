@@ -321,11 +321,11 @@ function errorCard(
 ): TemplateResult {
   const id = item.id ?? '';
   const action = item.action
-    ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${item.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(item.action as ErrorAction, id)}>${actionLabel(item.action, handlers, id)}</swc-button>`
+    ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${item.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(item.action as ErrorAction, item.id)}>${actionLabel(item.action, handlers, id)}</swc-button>`
     : nothing;
   return html`<div class="error-card" role="alert" data-id=${id || nothing}>
     <swc-icon-alert-diamond class="icon" size="s" aria-hidden="true"></swc-icon-alert-diamond>
-    <span class="lead">${item.title}</span>
+    <span class="sr">Error: </span><span class="lead">${item.title}</span>
     ${item.text ? html`<span class="detail">${item.text}</span>` : nothing}
     ${action}
   </div>`;
@@ -1486,7 +1486,7 @@ export const messageCss = css`
   }
   .error-card .lead {
     grid-column: 2;
-    font-weight: 700;
+    font-weight: var(--swc-bold-font-weight);
     color: var(--swc-neutral-content-color-default);
   }
   .error-card .detail {
@@ -1555,7 +1555,8 @@ export const messageCss = css`
     --severity: var(--swc-notice-visual-color);
   }
   .lick .sr,
-  .notes .sr {
+  .notes .sr,
+  .error-card .sr {
     position: absolute;
     inline-size: 1px;
     block-size: 1px;
