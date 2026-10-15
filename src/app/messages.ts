@@ -781,7 +781,7 @@ export function system(message: SystemMessage, handlers: Handlers): TemplateResu
   return event(
     'Error',
     html`<div class="error-card system-error" role="alert" data-id=${message.id}>
-      <div class="error-text"><strong>${message.title}</strong><span>${message.text}</span></div>
+      <div class="error-text"><span class="lead">${message.title}</span>${message.text ? html`<span class="detail">${message.text}</span>` : nothing}</div>
       ${message.action ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${message.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(message.action as ErrorAction, message.id)}>${actionLabel(message.action, handlers, message.id)}</swc-button>` : nothing}
     </div>`
   );
@@ -1498,6 +1498,9 @@ export const messageCss = css`
     flex: 1;
     min-inline-size: 0;
     overflow-wrap: anywhere;
+  }
+  .error-card .lead {
+    font-weight: var(--swc-bold-font-weight);
   }
   .error-card .detail {
     color: var(--swc-neutral-subdued-content-color-default);
