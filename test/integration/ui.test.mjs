@@ -4123,6 +4123,45 @@ test('a read-only agent port shows its line, a notice without a close button, an
   assert.deepEqual(page.errors, []);
 });
 
+test('an agent port without readOnly, whose on() rejects unknown events, still binds', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const real = window.model.agent;
+    const agent = new Proxy(real, {
+      get(target, key) {
+        if (key === 'readOnly') return undefined;
+        if (key === 'on')
+          return (type, listener) => {
+            if (type === 'readOnly') throw new Error('unknown event: readOnly');
+            return target.on(type, listener);
+          };
+        const value = Reflect.get(target, key, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+      has(target, key) {
+        return key !== 'readOnly' && key in target;
+      },
+    });
+    window.app.model = { ...window.model, agent };
+    return true;
+  });
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:cone-sliccy')
+        ?.shadowRoot.querySelector('slicc-composer')
+  );
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('agents')
+        ?.shadowRoot.querySelector('[data-action=new-cone]')
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a dip drags out of the chat into the dock and lives on as a panel', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {
