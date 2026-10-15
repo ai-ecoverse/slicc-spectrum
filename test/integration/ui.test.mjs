@@ -2366,6 +2366,10 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
       const button = card.querySelector('swc-button');
       return {
         lead: card.querySelector('.lead, strong')?.textContent.trim(),
+        alert: card.getAttribute('role') === 'alert',
+        announced: card.textContent.replace(/\s+/g, ' ').trim().startsWith('Error: '),
+        icon: card.querySelector('swc-icon-alert-diamond')?.getAttribute('aria-hidden') === 'true',
+        bold: Number(getComputedStyle(card.querySelector('.lead')).fontWeight) >= 700,
         detail: card.querySelector('.detail')?.textContent.trim() ?? null,
         oneLine: !button || button.getBoundingClientRect().height < 34,
         inside:
@@ -2375,7 +2379,10 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     });
   });
   assert.ok(
-    cards.every((card) => card.oneLine && card.inside),
+    cards.every(
+      (card) =>
+        card.oneLine && card.inside && card.alert && card.announced && card.icon && card.bold
+    ),
     JSON.stringify(cards)
   );
   assert.ok(
@@ -2386,6 +2393,29 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     )
   );
   await shot(page, 'error-cards-narrow');
+  const stacked = await page.evaluate(async () => {
+    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    chat.style.width = '300px';
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    return [...chat.shadowRoot.querySelectorAll('.error-card')]
+      .filter((card) => card.querySelector('swc-button') && card.querySelector('.detail'))
+      .map((card) => {
+        const box = card.getBoundingClientRect();
+        const button = card.querySelector('swc-button').getBoundingClientRect();
+        const detail = card.querySelector('.detail').getBoundingClientRect();
+        return {
+          below: button.top >= detail.bottom - 0.5,
+          inside: button.right <= box.right + 0.5 && button.bottom <= box.bottom + 0.5,
+          wide: detail.width > box.width / 2,
+        };
+      });
+  });
+  assert.ok(stacked.length > 0);
+  assert.ok(
+    stacked.every((card) => card.below && card.inside && card.wide),
+    JSON.stringify(stacked)
+  );
+  await shot(page, 'error-cards-stacked');
   await page.evaluate(() => {
     window.$('slicc-app', 'slicc-dock', 'slicc-chat').style.width = '';
   });
