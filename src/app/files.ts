@@ -81,6 +81,11 @@ export const panelCss = css`
   .spacer {
     flex: 1;
   }
+  .bar [data-watch-note] {
+    flex: none;
+    font-size: var(--swc-font-size-75);
+    color: var(--swc-neutral-subdued-content-color-default);
+  }
   .body {
     flex: 1;
     min-height: 0;
