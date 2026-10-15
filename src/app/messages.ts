@@ -664,13 +664,26 @@ export function user(message: UserMessage, stamp = true): TemplateResult {
   </swc-conversation-turn>`;
 }
 
+const toolLoaders: Record<string, string> = {
+  edit: 'pencil',
+  read: 'page',
+  search: 'mag',
+  browser: 'eye',
+};
+
+function statusLoader(message: AssistantMessage): string {
+  const last = message.parts.at(-1);
+  if (last?.type !== 'tool' || last.tool.status !== 'running') return 'aiLogo';
+  return toolLoaders[toolKind(last.tool.name).id] ?? 'hourglass';
+}
+
 function status(message: AssistantMessage): TemplateResult | typeof nothing {
   if (message.status === 'stopped') {
     return html`<swc-response-status slot="status" status="stopped"></swc-response-status>`;
   }
   if (message.status !== 'streaming') return nothing;
   const calls = message.parts.flatMap((entry) => (entry.type === 'tool' ? [entry.tool] : []));
-  return html`<swc-response-status slot="status" status="active">
+  return html`<swc-response-status slot="status" status="active" loader=${statusLoader(message)}>
     ${calls.map((call) => html`<swc-response-status-step status=${stepStates[call.status]}><span slot="label">${call.name} ${call.title}</span></swc-response-status-step>`)}
   </swc-response-status>`;
 }
