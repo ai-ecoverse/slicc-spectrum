@@ -27,6 +27,7 @@ import {
   lick,
   messageCss,
   type Owner,
+  stamps,
   system,
   toolMessage,
   toolOnly,
@@ -496,7 +497,8 @@ export class SliccChat extends ThemedElement {
     suggestion: string | null,
     changed: boolean,
     extra: ToolCall[],
-    owners: ReadonlyMap<string, Owner>
+    owners: ReadonlyMap<string, Owner>,
+    stamp: boolean
   ): TemplateResult {
     const model = this.model as SliccModel;
     const handlers = { ...this.#handlers, owners };
@@ -513,17 +515,18 @@ export class SliccChat extends ThemedElement {
           handlers,
           model.settings.get().showThinking,
           suggestion,
-          extra
+          extra,
+          stamp
         );
       }
       case 'user':
-        return user(message);
+        return user(message, stamp);
       case 'tool':
-        return toolMessage(message, handlers, extra, suggestion);
+        return toolMessage(message, handlers, extra, suggestion, stamp);
       case 'system':
         return system(message, this.#handlers);
       default:
-        return lick(message, this.#handlers);
+        return lick(message, this.#handlers, stamp);
     }
   }
 
@@ -544,12 +547,17 @@ export class SliccChat extends ThemedElement {
     const extra = new Map<string, ToolCall[]>();
     const owners = new Map<string, Owner>();
     const into = new Map<string, string>();
+    const stamped = stamps(messages);
     let anchor: Message | null = null;
     for (const message of messages) {
       const calls = toolOnly(message, showThinking);
       if (anchor && calls && day(message.createdAt) === day(anchor.createdAt)) {
         extra.set(anchor.id, [...(extra.get(anchor.id) ?? []), ...calls]);
-        owners.set(calls[0].id, { id: message.id, at: message.createdAt });
+        owners.set(calls[0].id, {
+          id: message.id,
+          at: message.createdAt,
+          stamp: stamped.has(message.id),
+        });
         into.set(message.id, anchor.id);
         continue;
       }
@@ -579,7 +587,8 @@ export class SliccChat extends ThemedElement {
           message.id === target ? suggestion : null,
           changed,
           extra.get(message.id) ?? [],
-          owners
+          owners,
+          stamped.has(message.id)
         ),
       ]);
     }
