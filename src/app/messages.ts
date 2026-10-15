@@ -316,35 +316,18 @@ function actionLabel(action: ErrorAction, handlers: Handlers, messageId: string)
   return count > 1 ? `Drop ${count} failed turns` : actionLabels[action];
 }
 
-const faultSketch = globalThis.location ? new URLSearchParams(location.search).get('error') : null;
-
-interface Fault {
-  id?: string;
-  title: string;
-  text?: string;
-  action?: ErrorAction;
-  tone: 'negative' | 'informative';
-}
-
-function fault(item: Fault, handlers: Handlers): TemplateResult {
+function errorCard(
+  item: { id?: string; title: string; text?: string; action?: ErrorAction },
+  handlers: Handlers
+): TemplateResult {
   const id = item.id ?? '';
-  const icon =
-    item.tone === 'negative'
-      ? html`<swc-icon-alert-diamond class="fault-icon" size="s" aria-hidden="true"></swc-icon-alert-diamond>`
-      : html`<swc-icon-info-circle class="fault-icon" size="s" aria-hidden="true"></swc-icon-info-circle>`;
   const action = item.action
-    ? html`<swc-button class="fault-action" size="s" variant="secondary" fill-style="outline" data-action=${item.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(item.action as ErrorAction, id)}>${actionLabel(item.action, handlers, id)}</swc-button>`
+    ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${item.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(item.action as ErrorAction, id)}>${actionLabel(item.action, handlers, id)}</swc-button>`
     : nothing;
-  if (faultSketch === 'c') {
-    return html`<details class="fault" data-style="c" data-tone=${item.tone} role="alert" data-id=${id || nothing}>
-      <summary>${icon}<strong class="fault-title">${item.title}</strong></summary>
-      ${item.text ? html`<span class="fault-text">${item.text}</span>` : nothing}
-      ${action}
-    </details>`;
-  }
-  return html`<div class="fault" data-style=${faultSketch ?? 'current'} data-tone=${item.tone} role="alert" data-id=${id || nothing}>
-    ${icon}<strong class="fault-title">${item.title}</strong>
-    ${item.text ? html`<span class="fault-text">${item.text}</span>` : nothing}
+  return html`<div class="error-card" role="alert" data-id=${id || nothing}>
+    <swc-icon-alert-diamond class="icon" size="s" aria-hidden="true"></swc-icon-alert-diamond>
+    <span class="lead">${item.title}</span>
+    ${item.text ? html`<span class="detail">${item.text}</span>` : nothing}
     ${action}
   </div>`;
 }
@@ -593,16 +576,10 @@ function part(entry: Exclude<MessagePart, { type: 'tool' }>, handlers: Handlers)
     case 'link':
       return html`<div class="link-text">${entry.title}</div>`;
     default:
-      if (faultSketch) {
-        return fault(
-          { title: entry.message, text: entry.detail, action: entry.action, tone: 'negative' },
-          handlers
-        );
-      }
-      return html`<div class="error-card" role="alert">
-        <div class="error-text"><span class="lead">${entry.message}</span>${entry.detail ? html`<span class="detail">${entry.detail}</span>` : nothing}</div>
-        ${entry.action ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${entry.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(entry.action as ErrorAction)}>${actionLabel(entry.action, handlers, '')}</swc-button>` : nothing}
-      </div>`;
+      return errorCard(
+        { title: entry.message, text: entry.detail, action: entry.action },
+        handlers
+      );
   }
 }
 
@@ -818,27 +795,6 @@ export function system(message: SystemMessage, handlers: Handlers): TemplateResu
       </div>`
     );
   }
-  if (faultSketch && message.kind === 'notice') {
-    return event(
-      'Notice',
-      fault({ title: message.title ?? 'Notice', text: message.text, tone: 'informative' }, handlers)
-    );
-  }
-  if (faultSketch) {
-    return event(
-      'Error',
-      fault(
-        {
-          id: message.id,
-          title: message.title ?? 'Error',
-          text: message.text,
-          action: message.action,
-          tone: 'negative',
-        },
-        handlers
-      )
-    );
-  }
   if (message.kind === 'notice') {
     return event(
       'Notice',
@@ -847,10 +803,15 @@ export function system(message: SystemMessage, handlers: Handlers): TemplateResu
   }
   return event(
     'Error',
-    html`<div class="error-card system-error" role="alert" data-id=${message.id}>
-      <div class="error-text"><strong>${message.title}</strong><span>${message.text}</span></div>
-      ${message.action ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${message.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(message.action as ErrorAction, message.id)}>${actionLabel(message.action, handlers, message.id)}</swc-button>` : nothing}
-    </div>`
+    errorCard(
+      {
+        id: message.id,
+        title: message.title ?? 'Error',
+        text: message.text,
+        action: message.action,
+      },
+      handlers
+    )
   );
 }
 
@@ -1664,32 +1625,7 @@ export const messageCss = css`
   .delegation strong {
     color: var(--swc-neutral-content-color-default);
   }
-  .fault {
-    --tone: var(--swc-negative-visual-color);
-    font-size: var(--swc-font-size-100);
-    color: var(--swc-neutral-subdued-content-color-default);
-  }
-  .fault[data-tone='informative'] {
-    --tone: var(--swc-informative-visual-color);
-  }
-  .fault-icon {
-    flex: none;
-    color: var(--tone);
-  }
-  .fault-title {
-    color: var(--swc-neutral-content-color-default);
-  }
-  .fault-action {
-    flex: none;
-  }
-  .fault[data-style='a'] {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: var(--swc-spacing-75) var(--swc-spacing-100);
-  }
-  .fault[data-style='b'] {
+  .error-card {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
@@ -1699,60 +1635,31 @@ export const messageCss = css`
     border: var(--swc-border-width-100) solid var(--swc-gray-200);
     border-radius: var(--swc-corner-radius-100);
     background: var(--swc-background-layer-1-color);
-  }
-  .fault[data-style='b'] .fault-icon {
-    grid-row: span 2;
-  }
-  .fault[data-style='b'] .fault-title,
-  .fault[data-style='b'] .fault-text {
-    grid-column: 2;
-  }
-  .fault[data-style='b'] .fault-action {
-    grid-column: 3;
-    grid-row: span 2;
-  }
-  .fault[data-style='c'] {
-    display: grid;
-    justify-items: center;
-    gap: var(--swc-spacing-100);
-  }
-  .fault[data-style='c'] summary {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--swc-spacing-75);
-    padding: var(--swc-spacing-25) var(--swc-spacing-150);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--tone) 12%, var(--swc-background-layer-1-color));
-    cursor: pointer;
-    list-style: none;
-  }
-  .fault[data-style='c'] summary::-webkit-details-marker {
-    display: none;
-  }
-  .error-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--swc-spacing-100);
-    border: var(--swc-border-width-100) solid var(--swc-negative-visual-color);
-    border-inline-start-width: var(--swc-border-width-400);
-    border-radius: var(--swc-corner-radius-100);
-    padding: var(--swc-spacing-200) var(--swc-spacing-300);
     font-size: var(--swc-font-size-100);
-  }
-  .error-card .error-text {
-    display: grid;
-    gap: var(--swc-spacing-50);
-    flex: 1;
-    min-inline-size: 0;
-    overflow-wrap: anywhere;
-  }
-  .error-card .detail {
     color: var(--swc-neutral-subdued-content-color-default);
   }
+  .error-card .icon {
+    grid-row: span 2;
+    color: var(--swc-negative-visual-color);
+  }
+  .error-card .lead {
+    grid-column: 2;
+    font-weight: 700;
+    color: var(--swc-neutral-content-color-default);
+  }
+  .error-card .detail {
+    grid-column: 2;
+    overflow-wrap: anywhere;
+  }
   .error-card swc-button {
-    flex: none;
+    grid-column: 3;
+    grid-row: span 2;
     white-space: nowrap;
+  }
+  @container (inline-size < 480px) {
+    .error-card {
+      margin-inline: var(--swc-spacing-300);
+    }
   }
   .marker,
   .day {
