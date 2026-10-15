@@ -654,7 +654,7 @@ function events(): Message[] {
       id: 'k-s2',
       role: 'system',
       kind: 'compaction',
-      title: 'Compaction fell back',
+      title: 'Compaction failed, transcript truncated',
       text: 'The summary failed, so the oldest 20 messages were dropped instead.',
       trigger: 'overflow',
       state: 'fallback',
@@ -737,7 +737,7 @@ function events(): Message[] {
       role: 'system',
       kind: 'notice',
       title: 'Model changed',
-      text: 'This cone now uses Claude Opus 5.5.',
+      text: 'to Claude Opus 5.5 (Anthropic)',
       createdAt: at(1478),
     },
   ];
