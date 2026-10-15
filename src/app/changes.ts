@@ -19,6 +19,8 @@ import {
 import { onWatch, watchOnly } from './follow.ts';
 import { breakable } from './reach.ts';
 
+const watchNote = html`<span data-watch-note>Watch only</span>`;
+
 const layouts = [
   ['unified', 'Unified'],
   ['split', 'Split'],
@@ -388,14 +390,16 @@ export class SliccChanges extends ModelElement {
         <span class="summary">${changes.length} pending ${changes.length === 1 ? 'change' : 'changes'}</span>
         <span class="spacer"></span>
         ${
-          changes.length && !watchOnly(this.model)
-            ? html`<swc-action-button size="s" quiet data-action="accept-all" @click=${() => this.#all('accept')}>Accept all</swc-action-button>
+          !changes.length
+            ? nothing
+            : watchOnly(this.model)
+              ? watchNote
+              : html`<swc-action-button size="s" quiet data-action="accept-all" @click=${() => this.#all('accept')}>Accept all</swc-action-button>
               <swc-action-button size="s" quiet data-action="revert-all" @click=${() => this.#all('revert')}>Revert all</swc-action-button>`
-            : nothing
         }
       </div>
       ${errorLine(this.error)}
-      ${changes.length ? this.#list(changes) : html`<div class="note">No pending changes. Edits by agents show up here for review.</div>`}`;
+      ${changes.length ? this.#list(changes) : html`<div class="note">${watchOnly(this.model) ? 'No pending changes.' : 'No pending changes. Edits by agents show up here for review.'}</div>`}`;
   }
 }
 
@@ -526,7 +530,7 @@ export class SliccDiffPanel extends ThemedElement {
         }
         ${
           watchOnly(model)
-            ? nothing
+            ? watchNote
             : html`<swc-action-button size="s" quiet data-action="accept" accessible-label="Accept" title="Accept" @click=${() => port?.accept(this.path)}>
           <swc-icon-checkmark slot="icon"></swc-icon-checkmark><span class="label">Accept</span>
         </swc-action-button>
