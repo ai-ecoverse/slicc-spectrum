@@ -2562,10 +2562,19 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
         .$('slicc-app', 'slicc-dock', 'slicc-chat')
         .shadowRoot.querySelectorAll('.message.user[data-origin=user]'),
     ];
+    const timed = new Set();
+    let last = -Infinity;
+    for (const message of window.model.agent.messages('cone-sliccy')) {
+      if (message.role === 'system' || message.createdAt - last < 120000) continue;
+      timed.add(message.id);
+      last = message.createdAt;
+    }
     return {
       kinds: [...new Set(turns.map((turn) => turn.dataset.delivered))].sort(),
       labels: turns.filter((turn) => turn.querySelector('.who, .tag')).length,
-      times: turns.every((turn) => turn.querySelector('.meta time.when')),
+      times: turns.every(
+        (turn) => !!turn.querySelector('.meta time.when') === timed.has(turn.dataset.id)
+      ),
     };
   });
   assert.deepEqual(delivered, { kinds: ['follow-up', 'run', 'steer'], labels: 0, times: true });
