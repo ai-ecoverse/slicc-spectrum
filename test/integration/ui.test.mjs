@@ -455,6 +455,17 @@ test('a content-filter stop drops the last turn and puts its prompt back in the 
     ['system', 'Rewound 1 turn']
   );
   assert.ok(!(await users()).includes('Summarize the forbidden notes'));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const divider = [...window.chatPart().shadowRoot.querySelectorAll('.marker.notice')].at(-1);
+      return [
+        divider.getAttribute('role'),
+        divider.querySelectorAll(':scope > .line').length,
+        divider.querySelector('.marker-text').textContent.replace(/\s+/g, ' ').trim(),
+      ];
+    }),
+    ['note', 2, 'Rewound 1 turn Its prompt is back in the composer.']
+  );
   await shot(page, 'filtered-after');
 
   await page.evaluate(() =>
@@ -2329,7 +2340,7 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     assistant: 8,
     tool: 1,
     cluster: 3,
-    markers: 2,
+    markers: 3,
     errors: 3,
     notices: 1,
     days: 2,
@@ -2454,6 +2465,113 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     }, fraction);
     await shot(page, `kitchen-sink-dark-${index + 1}`);
   }
+  assert.deepEqual(page.errors, []);
+});
+
+test('compaction and notices are full-width dividers that screen readers still hear', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.model.agent.select('cone-kitchen'));
+  await page.until(() => !!window.chatPart('[data-id=k-s2]'));
+  const dividers = await page.evaluate(() => {
+    const root = window.chatPart().shadowRoot;
+    const read = (divider) => {
+      const text = divider.querySelector('.marker-text');
+      const hidden = text.querySelector('.sr')?.textContent ?? '';
+      const [start, end] = [...divider.querySelectorAll(':scope > .line')].map(
+        (line) => line.getBoundingClientRect().width
+      );
+      return {
+        role: divider.getAttribute('role'),
+        shown: text.textContent.replace(hidden, '').replace(/\s+/g, ' ').trim(),
+        heard: text.textContent.replace(/\s+/g, ' ').trim(),
+        lines: start > 20 && end > 20 && Math.abs(start - end) < 1,
+        fault: text.querySelector('.fault')?.getAttribute('aria-hidden') ?? null,
+        label: divider.closest('swc-conversation-turn').getAttribute('accessible-label'),
+      };
+    };
+    return [
+      read(root.querySelector('.marker[data-id=k-s1]')),
+      read(root.querySelector('.marker[data-id=k-s2]')),
+      read(root.querySelector('.marker.notice')),
+    ];
+  });
+  assert.deepEqual(dividers, [
+    {
+      role: 'status',
+      shown: 'Context compacted',
+      heard: 'Context compacted. 58 earlier messages were summarized.',
+      lines: true,
+      fault: null,
+      label: 'Context compacted',
+    },
+    {
+      role: 'status',
+      shown: 'Compaction failed, transcript truncated',
+      heard:
+        'Compaction failed, transcript truncated. The summary failed, so the oldest 20 messages were dropped instead.',
+      lines: true,
+      fault: 'true',
+      label: 'Compaction failed, transcript truncated',
+    },
+    {
+      role: 'note',
+      shown: 'Model changed to Claude Opus 5.5 (Anthropic)',
+      heard: 'Model changed to Claude Opus 5.5 (Anthropic)',
+      lines: true,
+      fault: null,
+      label: 'Notice',
+    },
+  ]);
+  await page.evaluate(() =>
+    window.chatPart().shadowRoot.querySelector('[data-id=k-s1]').scrollIntoView({ block: 'center' })
+  );
+  await shot(page, 'dividers');
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) =>
+      id !== 'cone-kitchen'
+        ? messages(id)
+        : [
+            ...messages(id),
+            {
+              id: 'dv-gone',
+              role: 'system',
+              kind: 'compaction',
+              text: 'The oldest 12 messages were dropped.',
+              state: 'discarded',
+              createdAt: Date.now(),
+            },
+          ];
+    agent.emit('messages', 'cone-kitchen');
+  });
+  await page.until(() => !!window.chatPart('[data-id=dv-gone]'));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const divider = window.chatPart('[data-id=dv-gone]');
+      return [
+        divider.closest('swc-conversation-turn').getAttribute('accessible-label'),
+        divider.querySelector('.marker-text').textContent.trim(),
+        divider.querySelector('.fault')?.getAttribute('aria-hidden') ?? null,
+      ];
+    }),
+    ['Context discarded', 'Context discarded. The oldest 12 messages were dropped.', 'true']
+  );
+  const narrow = await page.evaluate(async () => {
+    const chat = window.chatPart();
+    chat.style.width = '300px';
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const divider = chat.shadowRoot.querySelector('.marker.notice');
+    divider.scrollIntoView({ block: 'center' });
+    return {
+      wrapped: divider.querySelector('.marker-text').getBoundingClientRect().height > 30,
+      lines: [...divider.querySelectorAll(':scope > .line')].map(
+        (line) => line.getBoundingClientRect().width >= 12
+      ),
+    };
+  });
+  assert.deepEqual(narrow, { wrapped: true, lines: [true, true] });
+  await shot(page, 'dividers-narrow');
   assert.deepEqual(page.errors, []);
 });
 
@@ -2615,12 +2733,6 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
   await page.insert('Run the tests');
   await page.press('Enter');
   await page.until(() => window.model.agent.busy('cone-sliccy'));
-  assert.match(
-    await page.evaluate(
-      () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.hint').textContent
-    ),
-    /Enter\s*steer\s*Ctrl\+Enter\s*queue\s*Esc\s*stop/
-  );
   await page.insert('Then open the docs');
   await page.press('Enter', 'ctrl');
   await page.until(
@@ -3590,6 +3702,57 @@ test('SLICC sprinkles run sandboxed with Lucide icons and lick their cone, and t
       window.$('slicc-app', 'slicc-tray', '.chip swc-status-light').getAttribute('variant') ===
       'neutral'
   );
+  assert.deepEqual(page.errors, []);
+});
+
+test('an inline sprinkle that loads out of view still sizes its frame to its content', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    let tall = 40;
+    const list = window.model.sprinkles.list.bind(window.model.sprinkles);
+    window.model.sprinkles.list = () => [
+      ...list(),
+      {
+        id: 'below',
+        name: 'below',
+        title: 'Below',
+        icon: 'hand',
+        agentId: 'cone-sliccy',
+        html: `<!DOCTYPE html><html><head></head><body style="margin:0"><div style="height:${tall}px"></div><div hidden>${'<i></i>'.repeat(40000)}</div></body></html>`,
+      },
+    ];
+    window.grow = (height) => {
+      tall = height;
+      window.model.sprinkles.emit('sprinkles', window.model.sprinkles.list());
+      return true;
+    };
+    const element = document.createElement('slicc-sprinkle');
+    element.setAttribute('inline', '');
+    element.style.cssText = `position:absolute;top:${innerHeight * 4}px;left:0;width:400px`;
+    element.sprinkle = 'below';
+    element.model = window.model;
+    window.below = () => element.shadowRoot.querySelector('iframe');
+    window.loads = 0;
+    addEventListener('message', (event) => {
+      if (event.data?.type === 'slicc-ready' && event.source === window.below()?.contentWindow)
+        window.loads += 1;
+    });
+    document.body.append(element);
+    return true;
+  });
+  await page.until(() => window.loads === 1);
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))
+      )
+  );
+  for (const [round, height] of [50, 70, 90].entries()) {
+    await page.evaluate((height) => window.grow(height), height);
+    await page.until((loads) => window.loads === loads, round + 2);
+    await page.until((height) => window.below().getBoundingClientRect().height === height, height);
+  }
+  assert.ok(await page.evaluate(() => window.below().getBoundingClientRect().top > innerHeight));
   assert.deepEqual(page.errors, []);
 });
 
@@ -5078,6 +5241,240 @@ test('chat lets the reader scroll up by wheel or keyboard while content streams 
     assert.equal(result.after, result.top, JSON.stringify(result));
     assert.ok(result.gap > 200, JSON.stringify(result));
   }
+  assert.deepEqual(page.errors, []);
+});
+
+test('the composer floats clear of the log, describes its keys and shows what you and the agent are doing', async (t) => {
+  const page = await chrome.page(t);
+  await page.init(() => {
+    window.SpeechRecognition = class {
+      start() {
+        window.speech = this;
+      }
+      stop() {
+        this.onend?.();
+      }
+    };
+  });
+  const url = `/ui/?${new URLSearchParams({ delay: '40', color: 'light' })}`;
+  await page.goto(url);
+  if (!(await settled(page))) await page.goto(url);
+  await page.until(() => window.ready === true);
+  await page.until(() => window.$('slicc-app', 'slicc-dock')?.api.panels.length > 0);
+  await page.press('2', 'alt');
+  await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
+  await page.evaluate(() => {
+    const chat = () => window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    const field = () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field');
+    const frame = () =>
+      new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    window.composerProbe = async () => {
+      await frame();
+      const log = chat().shadowRoot.querySelector('.log');
+      log.scrollTop = log.scrollHeight;
+      await frame();
+      const thread = log.querySelector('swc-conversation-thread');
+      const composer = chat().shadowRoot.querySelector('slicc-composer');
+      return {
+        last: thread.lastElementChild.getBoundingClientRect().bottom,
+        top: composer.getBoundingClientRect().top,
+        height: composer.getBoundingClientRect().height,
+        gap: log.scrollHeight - log.scrollTop - log.clientHeight,
+      };
+    };
+    window.composerIcon = () => {
+      const loader = field().shadowRoot.querySelector('swc-pixel-loader');
+      return [
+        field().getAttribute('loader'),
+        loader.getAttribute('icon'),
+        loader.closest('[aria-hidden=true]') !== null,
+      ];
+    };
+    window.statusIcon = () =>
+      [...chat().shadowRoot.querySelectorAll('swc-response-status[slot=status][status=active]')]
+        .at(-1)
+        ?.getAttribute('loader') ?? null;
+    window.seenIcons = [];
+    setInterval(() => {
+      const icon = window.statusIcon();
+      if (icon && window.seenIcons.at(-1) !== icon) window.seenIcons.push(icon);
+    }, 10);
+  });
+
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').shadowRoot;
+      return [root.querySelectorAll('.hint, kbd').length, getComputedStyle(root.host).position];
+    }),
+    [0, 'absolute']
+  );
+
+  const description = async () => {
+    const { result } = await page.send('Runtime.evaluate', {
+      expression:
+        "window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field').shadowRoot.querySelector('textarea')",
+    });
+    const { nodes } = await page.send('Accessibility.getPartialAXTree', {
+      objectId: result.objectId,
+      fetchRelatives: false,
+    });
+    return [nodes[0].name?.value, nodes[0].description?.value];
+  };
+  assert.deepEqual(await description(), [
+    'Message',
+    'Enter sends, Shift+Enter adds a new line, / lists commands, @ mentions.',
+  ]);
+
+  const rest = await page.evaluate(() => window.composerProbe());
+  assert.ok(rest.gap <= 1, JSON.stringify(rest));
+  assert.ok(rest.last <= rest.top, JSON.stringify(rest));
+  assert.deepEqual(await page.evaluate(() => window.composerIcon()), ['aiLogo', 'aiLogo', true]);
+
+  await page.insert('First line');
+  await page.until(() => window.composerIcon()[0] === 'pencil');
+  assert.deepEqual(await page.evaluate(() => window.composerIcon()), ['pencil', 'pencil', true]);
+  await page.press('Enter', 'shift');
+  await page.insert('Second line');
+  await page.press('Enter', 'shift');
+  await page.insert('Third line');
+  await page.until((height) => {
+    const box = window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer')
+      .getBoundingClientRect();
+    return box.height > height + 20;
+  }, rest.height);
+  const draft = await page.evaluate(() => window.composerProbe());
+  assert.ok(draft.height > rest.height, JSON.stringify({ rest, draft }));
+  assert.ok(draft.gap <= 1, JSON.stringify(draft));
+  assert.ok(draft.last <= draft.top, JSON.stringify(draft));
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer')
+      .addFiles([new File(['Porto, 21 C'], 'porto.txt', { type: 'text/plain' })])
+  );
+  await page.until(
+    (height) =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').getBoundingClientRect()
+        .height >
+      height + 20,
+    draft.height
+  );
+  const attached = await page.evaluate(() => window.composerProbe());
+  assert.ok(attached.last <= attached.top, JSON.stringify(attached));
+
+  await page.press('Backspace');
+  assert.equal(await page.evaluate(() => window.composerIcon()[0]), 'brush');
+  await page.until(() => window.composerIcon()[0] === 'pencil');
+  await page.press('Delete');
+  assert.equal(await page.evaluate(() => window.composerIcon()[0]), 'brush');
+
+  await page.evaluate(() => {
+    const composer = window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer');
+    composer.value = '';
+    composer.attachments = [];
+  });
+  await page.until(() => window.composerIcon()[0] === 'aiLogo');
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '[data-action=dictate]')
+      .click()
+  );
+  await page.until(() => window.composerIcon()[0] === 'microphone');
+  await page.evaluate(() => {
+    window.speech.onresult({ results: [[{ transcript: 'Search for the cache TTL' }]] });
+    window.speech.stop();
+  });
+  await page.until(() => window.composerIcon()[0] === 'pencil');
+
+  await page.press('Enter');
+  await page.until(() => window.statusIcon() === 'mag');
+  assert.deepEqual(
+    await page.evaluate(() => [window.composerIcon()[0], window.composerIcon()[1]]),
+    ['aiLogo', 'aiLogo']
+  );
+  await page.insert('More');
+  assert.equal(await page.evaluate(() => window.composerIcon()[0]), 'aiLogo');
+  assert.deepEqual(await description(), [
+    'Message',
+    'Enter steers, Ctrl+Enter queues, Escape stops, Shift+Enter adds a new line, / lists commands, @ mentions.',
+  ]);
+  await page.press('Enter', 'ctrl');
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.queued')
+  );
+  const queued = await page.evaluate(() => window.composerProbe());
+  assert.ok(queued.height > rest.height, JSON.stringify({ rest, queued }));
+  assert.ok(queued.last <= queued.top, JSON.stringify(queued));
+  await page.until(
+    () => !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.queued')
+  );
+  await page.until(() => !window.model.agent.busy('cone-sliccy'));
+
+  for (const [prompt, icons] of [
+    ['Add a Kelvin helper', ['aiLogo', 'page', 'pencil', 'aiLogo']],
+    ['Run the tests', ['aiLogo', 'hourglass', 'aiLogo']],
+    ['Open the docs', ['eye', 'aiLogo']],
+  ]) {
+    await page.evaluate((text) => {
+      window.seenIcons = [];
+      void window.model.agent.send('cone-sliccy', text);
+    }, prompt);
+    await page.until(() => window.model.agent.busy('cone-sliccy'));
+    await page.until(() => !window.model.agent.busy('cone-sliccy'));
+    assert.deepEqual(await page.evaluate(() => window.seenIcons), icons, prompt);
+  }
+
+  const focus = await page.evaluate(async () => {
+    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    const log = chat.shadowRoot.querySelector('.log');
+    const composer = chat.shadowRoot.querySelector('slicc-composer');
+    const frame = () =>
+      new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const strips = [...log.querySelectorAll('summary')];
+    const target = strips[Math.floor(strips.length / 2)];
+    log.scrollTop = 0;
+    await frame();
+    log.scrollTop += target.getBoundingClientRect().top - composer.getBoundingClientRect().top + 4;
+    await frame();
+    const hidden = target.getBoundingClientRect().bottom > composer.getBoundingClientRect().top;
+    target.focus();
+    await frame();
+    return {
+      strips: strips.length,
+      hidden,
+      focused: chat.shadowRoot.activeElement === target,
+      bottom: target.getBoundingClientRect().bottom,
+      top: composer.getBoundingClientRect().top,
+    };
+  });
+  assert.ok(focus.strips > 1 && focus.hidden && focus.focused, JSON.stringify(focus));
+  assert.ok(focus.bottom <= focus.top, JSON.stringify(focus));
+
+  const frost = (features) =>
+    page.send('Emulation.setEmulatedMedia', { features }).then(() =>
+      page.evaluate(() => {
+        const style = getComputedStyle(
+          window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer'),
+          '::before'
+        );
+        return [style.backdropFilter, style.maskImage, style.borderTopStyle];
+      })
+    );
+  t.after(() => page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {}));
+  const blurred = await frost([]);
+  assert.notEqual(blurred[0], 'none');
+  assert.notEqual(blurred[1], 'none');
+  assert.deepEqual(await frost([{ name: 'prefers-reduced-transparency', value: 'reduce' }]), [
+    'none',
+    'none',
+    'none',
+  ]);
+  assert.deepEqual(await frost([{ name: 'forced-colors', value: 'active' }]), [
+    'none',
+    'none',
+    'solid',
+  ]);
   assert.deepEqual(page.errors, []);
 });
 
