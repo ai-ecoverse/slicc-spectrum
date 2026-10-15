@@ -677,6 +677,22 @@ export function user(message: UserMessage, stamp = true): TemplateResult {
   </swc-conversation-turn>`;
 }
 
+const toolLoaders: Record<string, string> = {
+  edit: 'pencil',
+  read: 'page',
+  search: 'mag',
+  browser: 'eye',
+};
+
+function statusLoader(message: AssistantMessage): string {
+  if (message.parts.at(-1)?.type !== 'tool') return 'aiLogo';
+  const running = message.parts.findLast(
+    (part) => part.type === 'tool' && part.tool.status === 'running'
+  );
+  if (running?.type !== 'tool') return 'aiLogo';
+  return toolLoaders[toolKind(running.tool.name).id] ?? 'hourglass';
+}
+
 const people = new Set(['follower', 'guest']);
 
 function byline(
@@ -697,7 +713,7 @@ function status(message: AssistantMessage): TemplateResult | typeof nothing {
   }
   if (message.status !== 'streaming') return nothing;
   const calls = message.parts.flatMap((entry) => (entry.type === 'tool' ? [entry.tool] : []));
-  return html`<swc-response-status slot="status" status="active">
+  return html`<swc-response-status slot="status" status="active" loader=${statusLoader(message)}>
     ${calls.map((call) => html`<swc-response-status-step status=${stepStates[call.status]}><span slot="label">${call.name} ${call.title}</span></swc-response-status-step>`)}
   </swc-response-status>`;
 }
