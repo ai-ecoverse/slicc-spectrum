@@ -2496,6 +2496,37 @@ test('compaction and notices are full-width dividers that screen readers still h
     window.chatPart().shadowRoot.querySelector('[data-id=k-s1]').scrollIntoView({ block: 'center' })
   );
   await shot(page, 'dividers');
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) =>
+      id !== 'cone-kitchen'
+        ? messages(id)
+        : [
+            ...messages(id),
+            {
+              id: 'dv-gone',
+              role: 'system',
+              kind: 'compaction',
+              text: 'The oldest 12 messages were dropped.',
+              state: 'discarded',
+              createdAt: Date.now(),
+            },
+          ];
+    agent.emit('messages', 'cone-kitchen');
+  });
+  await page.until(() => !!window.chatPart('[data-id=dv-gone]'));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const divider = window.chatPart('[data-id=dv-gone]');
+      return [
+        divider.closest('swc-conversation-turn').getAttribute('accessible-label'),
+        divider.querySelector('.marker-text').textContent.trim(),
+        divider.querySelector('.fault')?.getAttribute('aria-hidden') ?? null,
+      ];
+    }),
+    ['Context discarded', 'Context discarded. The oldest 12 messages were dropped.', 'true']
+  );
   const narrow = await page.evaluate(async () => {
     const chat = window.chatPart();
     chat.style.width = '300px';

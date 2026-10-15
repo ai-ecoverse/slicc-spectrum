@@ -36,6 +36,7 @@ import type {
   AssistantMessage,
   Attachment,
   CheckItem,
+  CompactionState,
   ErrorAction,
   LickChannel,
   LickMessage,
@@ -765,15 +766,21 @@ export function toolMessage(
   </swc-conversation-turn>`;
 }
 
+const compactionTitles: Record<CompactionState, string> = {
+  summarizing: 'Context compacted',
+  summarized: 'Context compacted',
+  fallback: 'Compaction failed, transcript truncated',
+  discarded: 'Context discarded',
+};
+
 function event(label: string, content: TemplateResult): TemplateResult {
   return html`<swc-conversation-turn type="system" class="event" accessible-label=${label}>${content}</swc-conversation-turn>`;
 }
 
 export function system(message: SystemMessage, handlers: Handlers): TemplateResult {
   if (message.kind === 'compaction') {
-    const failed = message.state === 'fallback';
-    const title =
-      message.title ?? (failed ? 'Compaction failed, transcript truncated' : 'Context compacted');
+    const failed = message.state === 'fallback' || message.state === 'discarded';
+    const title = message.title ?? compactionTitles[message.state ?? 'summarized'];
     return event(
       title,
       html`<div class="marker" role="status" data-id=${message.id} data-state=${message.state ?? 'summarized'}>
