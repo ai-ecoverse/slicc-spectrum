@@ -2733,12 +2733,6 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
   await page.insert('Run the tests');
   await page.press('Enter');
   await page.until(() => window.model.agent.busy('cone-sliccy'));
-  assert.match(
-    await page.evaluate(
-      () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.hint').textContent
-    ),
-    /Enter\s*steer\s*Ctrl\+Enter\s*queue\s*Esc\s*stop/
-  );
   await page.insert('Then open the docs');
   await page.press('Enter', 'ctrl');
   await page.until(
@@ -5196,6 +5190,240 @@ test('chat lets the reader scroll up by wheel or keyboard while content streams 
     assert.equal(result.after, result.top, JSON.stringify(result));
     assert.ok(result.gap > 200, JSON.stringify(result));
   }
+  assert.deepEqual(page.errors, []);
+});
+
+test('the composer floats clear of the log, describes its keys and shows what you and the agent are doing', async (t) => {
+  const page = await chrome.page(t);
+  await page.init(() => {
+    window.SpeechRecognition = class {
+      start() {
+        window.speech = this;
+      }
+      stop() {
+        this.onend?.();
+      }
+    };
+  });
+  const url = `/ui/?${new URLSearchParams({ delay: '40', color: 'light' })}`;
+  await page.goto(url);
+  if (!(await settled(page))) await page.goto(url);
+  await page.until(() => window.ready === true);
+  await page.until(() => window.$('slicc-app', 'slicc-dock')?.api.panels.length > 0);
+  await page.press('2', 'alt');
+  await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
+  await page.evaluate(() => {
+    const chat = () => window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    const field = () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field');
+    const frame = () =>
+      new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    window.composerProbe = async () => {
+      await frame();
+      const log = chat().shadowRoot.querySelector('.log');
+      log.scrollTop = log.scrollHeight;
+      await frame();
+      const thread = log.querySelector('swc-conversation-thread');
+      const composer = chat().shadowRoot.querySelector('slicc-composer');
+      return {
+        last: thread.lastElementChild.getBoundingClientRect().bottom,
+        top: composer.getBoundingClientRect().top,
+        height: composer.getBoundingClientRect().height,
+        gap: log.scrollHeight - log.scrollTop - log.clientHeight,
+      };
+    };
+    window.composerIcon = () => {
+      const loader = field().shadowRoot.querySelector('swc-pixel-loader');
+      return [
+        field().getAttribute('loader'),
+        loader.getAttribute('icon'),
+        loader.closest('[aria-hidden=true]') !== null,
+      ];
+    };
+    window.statusIcon = () =>
+      [...chat().shadowRoot.querySelectorAll('swc-response-status[slot=status][status=active]')]
+        .at(-1)
+        ?.getAttribute('loader') ?? null;
+    window.seenIcons = [];
+    setInterval(() => {
+      const icon = window.statusIcon();
+      if (icon && window.seenIcons.at(-1) !== icon) window.seenIcons.push(icon);
+    }, 10);
+  });
+
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').shadowRoot;
+      return [root.querySelectorAll('.hint, kbd').length, getComputedStyle(root.host).position];
+    }),
+    [0, 'absolute']
+  );
+
+  const description = async () => {
+    const { result } = await page.send('Runtime.evaluate', {
+      expression:
+        "window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field').shadowRoot.querySelector('textarea')",
+    });
+    const { nodes } = await page.send('Accessibility.getPartialAXTree', {
+      objectId: result.objectId,
+      fetchRelatives: false,
+    });
+    return [nodes[0].name?.value, nodes[0].description?.value];
+  };
+  assert.deepEqual(await description(), [
+    'Message',
+    'Enter sends, Shift+Enter adds a new line, / lists commands, @ mentions.',
+  ]);
+
+  const rest = await page.evaluate(() => window.composerProbe());
+  assert.ok(rest.gap <= 1, JSON.stringify(rest));
+  assert.ok(rest.last <= rest.top, JSON.stringify(rest));
+  assert.deepEqual(await page.evaluate(() => window.composerIcon()), ['aiLogo', 'aiLogo', true]);
+
+  await page.insert('First line');
+  await page.until(() => window.composerIcon()[0] === 'pencil');
+  assert.deepEqual(await page.evaluate(() => window.composerIcon()), ['pencil', 'pencil', true]);
+  await page.press('Enter', 'shift');
+  await page.insert('Second line');
+  await page.press('Enter', 'shift');
+  await page.insert('Third line');
+  await page.until((height) => {
+    const box = window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer')
+      .getBoundingClientRect();
+    return box.height > height + 20;
+  }, rest.height);
+  const draft = await page.evaluate(() => window.composerProbe());
+  assert.ok(draft.height > rest.height, JSON.stringify({ rest, draft }));
+  assert.ok(draft.gap <= 1, JSON.stringify(draft));
+  assert.ok(draft.last <= draft.top, JSON.stringify(draft));
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer')
+      .addFiles([new File(['Porto, 21 C'], 'porto.txt', { type: 'text/plain' })])
+  );
+  await page.until(
+    (height) =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').getBoundingClientRect()
+        .height >
+      height + 20,
+    draft.height
+  );
+  const attached = await page.evaluate(() => window.composerProbe());
+  assert.ok(attached.last <= attached.top, JSON.stringify(attached));
+
+  await page.press('Backspace');
+  assert.equal(await page.evaluate(() => window.composerIcon()[0]), 'brush');
+  await page.until(() => window.composerIcon()[0] === 'pencil');
+  await page.press('Delete');
+  assert.equal(await page.evaluate(() => window.composerIcon()[0]), 'brush');
+
+  await page.evaluate(() => {
+    const composer = window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer');
+    composer.value = '';
+    composer.attachments = [];
+  });
+  await page.until(() => window.composerIcon()[0] === 'aiLogo');
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '[data-action=dictate]')
+      .click()
+  );
+  await page.until(() => window.composerIcon()[0] === 'microphone');
+  await page.evaluate(() => {
+    window.speech.onresult({ results: [[{ transcript: 'Search for the cache TTL' }]] });
+    window.speech.stop();
+  });
+  await page.until(() => window.composerIcon()[0] === 'pencil');
+
+  await page.press('Enter');
+  await page.until(() => window.statusIcon() === 'mag');
+  assert.deepEqual(
+    await page.evaluate(() => [window.composerIcon()[0], window.composerIcon()[1]]),
+    ['aiLogo', 'aiLogo']
+  );
+  await page.insert('More');
+  assert.equal(await page.evaluate(() => window.composerIcon()[0]), 'aiLogo');
+  assert.deepEqual(await description(), [
+    'Message',
+    'Enter steers, Ctrl+Enter queues, Escape stops, Shift+Enter adds a new line, / lists commands, @ mentions.',
+  ]);
+  await page.press('Enter', 'ctrl');
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.queued')
+  );
+  const queued = await page.evaluate(() => window.composerProbe());
+  assert.ok(queued.height > rest.height, JSON.stringify({ rest, queued }));
+  assert.ok(queued.last <= queued.top, JSON.stringify(queued));
+  await page.until(
+    () => !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '.queued')
+  );
+  await page.until(() => !window.model.agent.busy('cone-sliccy'));
+
+  for (const [prompt, icons] of [
+    ['Add a Kelvin helper', ['aiLogo', 'page', 'pencil', 'aiLogo']],
+    ['Run the tests', ['aiLogo', 'hourglass', 'aiLogo']],
+    ['Open the docs', ['eye', 'aiLogo']],
+  ]) {
+    await page.evaluate((text) => {
+      window.seenIcons = [];
+      void window.model.agent.send('cone-sliccy', text);
+    }, prompt);
+    await page.until(() => window.model.agent.busy('cone-sliccy'));
+    await page.until(() => !window.model.agent.busy('cone-sliccy'));
+    assert.deepEqual(await page.evaluate(() => window.seenIcons), icons, prompt);
+  }
+
+  const focus = await page.evaluate(async () => {
+    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    const log = chat.shadowRoot.querySelector('.log');
+    const composer = chat.shadowRoot.querySelector('slicc-composer');
+    const frame = () =>
+      new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const strips = [...log.querySelectorAll('summary')];
+    const target = strips[Math.floor(strips.length / 2)];
+    log.scrollTop = 0;
+    await frame();
+    log.scrollTop += target.getBoundingClientRect().top - composer.getBoundingClientRect().top + 4;
+    await frame();
+    const hidden = target.getBoundingClientRect().bottom > composer.getBoundingClientRect().top;
+    target.focus();
+    await frame();
+    return {
+      strips: strips.length,
+      hidden,
+      focused: chat.shadowRoot.activeElement === target,
+      bottom: target.getBoundingClientRect().bottom,
+      top: composer.getBoundingClientRect().top,
+    };
+  });
+  assert.ok(focus.strips > 1 && focus.hidden && focus.focused, JSON.stringify(focus));
+  assert.ok(focus.bottom <= focus.top, JSON.stringify(focus));
+
+  const frost = (features) =>
+    page.send('Emulation.setEmulatedMedia', { features }).then(() =>
+      page.evaluate(() => {
+        const style = getComputedStyle(
+          window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer'),
+          '::before'
+        );
+        return [style.backdropFilter, style.maskImage, style.borderTopStyle];
+      })
+    );
+  t.after(() => page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {}));
+  const blurred = await frost([]);
+  assert.notEqual(blurred[0], 'none');
+  assert.notEqual(blurred[1], 'none');
+  assert.deepEqual(await frost([{ name: 'prefers-reduced-transparency', value: 'reduce' }]), [
+    'none',
+    'none',
+    'none',
+  ]);
+  assert.deepEqual(await frost([{ name: 'forced-colors', value: 'active' }]), [
+    'none',
+    'none',
+    'solid',
+  ]);
   assert.deepEqual(page.errors, []);
 });
 
