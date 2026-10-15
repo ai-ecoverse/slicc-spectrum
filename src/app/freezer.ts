@@ -6,7 +6,7 @@ import type { Agent, FrozenCone, FrozenKind, SliccModel } from '../model/types.t
 import { ModelElement, shared } from './base.ts';
 import { confirm } from './confirm.ts';
 import { panelCss } from './files.ts';
-import { watchOnly } from './follow.ts';
+import { onWatch, watchOnly } from './follow.ts';
 import { coneLabel, twinned, withTitle } from './names.ts';
 
 export function ago(at: number, now = Date.now()): string {
@@ -101,7 +101,7 @@ export class SliccFreezer extends ModelElement {
       model.agent.on('frozen', update),
       model.agent.on('active', update),
       model.agent.on('agents', update),
-      ...(model.follow ? [model.follow.on('follow', update)] : []),
+      ...onWatch(model, update),
     ];
   }
 

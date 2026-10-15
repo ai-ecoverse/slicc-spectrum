@@ -16,6 +16,7 @@ import {
   statusLabels,
   statusMark,
 } from './files.ts';
+import { onWatch, watchOnly } from './follow.ts';
 import { breakable } from './reach.ts';
 
 const layouts = [
@@ -226,7 +227,10 @@ export class SliccChanges extends ModelElement {
   ];
 
   protected subscribe(model: SliccModel): Array<() => void> {
-    return [changesOf(model).on('changes', () => this.requestUpdate())];
+    return [
+      changesOf(model).on('changes', () => this.requestUpdate()),
+      ...onWatch(model, () => this.requestUpdate()),
+    ];
   }
 
   focus(): void {
@@ -245,7 +249,8 @@ export class SliccChanges extends ModelElement {
   async #revert(event: Event, change: Change): Promise<void> {
     event.stopPropagation();
     this.error = '';
-    if (await confirmRevert(change)) this.error = await revertPaths(this.#port(), [change.path]);
+    if ((await confirmRevert(change)) && !watchOnly(this.model))
+      this.error = await revertPaths(this.#port(), [change.path]);
   }
 
   async #all(action: 'accept' | 'revert'): Promise<void> {
@@ -258,7 +263,10 @@ export class SliccChanges extends ModelElement {
     }
     const count = changes.length;
     const title = `Revert ${count} ${count === 1 ? 'change' : 'changes'}?`;
-    if (await confirm({ title, body: lost(changes), action: 'Revert all' }))
+    if (
+      (await confirm({ title, body: lost(changes), action: 'Revert all' })) &&
+      !watchOnly(this.model)
+    )
       this.error = await revertPaths(
         port,
         changes.map((change) => change.path)
@@ -296,7 +304,10 @@ export class SliccChanges extends ModelElement {
       ${statusMark(change.status)}
       <span class="name">${basename(change.path)}</span>
       <span class="where"><bdi>${[at, by].filter(Boolean).join(' · ')}</bdi></span>
-      <span class="actions">
+      ${
+        watchOnly(this.model)
+          ? nothing
+          : html`<span class="actions">
         <swc-action-button
           size="xs"
           quiet
@@ -315,7 +326,8 @@ export class SliccChanges extends ModelElement {
         >
           <swc-icon-revert slot="icon"></swc-icon-revert>
         </swc-action-button>
-      </span>
+      </span>`
+      }
     </li>`;
   }
 
@@ -376,9 +388,9 @@ export class SliccChanges extends ModelElement {
         <span class="summary">${changes.length} pending ${changes.length === 1 ? 'change' : 'changes'}</span>
         <span class="spacer"></span>
         ${
-          changes.length
-            ? html`<swc-action-button size="s" quiet @click=${() => this.#all('accept')}>Accept all</swc-action-button>
-              <swc-action-button size="s" quiet @click=${() => this.#all('revert')}>Revert all</swc-action-button>`
+          changes.length && !watchOnly(this.model)
+            ? html`<swc-action-button size="s" quiet data-action="accept-all" @click=${() => this.#all('accept')}>Accept all</swc-action-button>
+              <swc-action-button size="s" quiet data-action="revert-all" @click=${() => this.#all('revert')}>Revert all</swc-action-button>`
             : nothing
         }
       </div>
@@ -441,12 +453,17 @@ export class SliccDiffPanel extends ThemedElement {
   ];
 
   protected subscribe(model: SliccModel): Array<() => void> {
-    return [...super.subscribe(model), changesOf(model).on('changes', () => this.requestUpdate())];
+    return [
+      ...super.subscribe(model),
+      changesOf(model).on('changes', () => this.requestUpdate()),
+      ...onWatch(model, () => this.requestUpdate()),
+    ];
   }
 
   async #revert(port: ChangesPort, change: Change): Promise<void> {
     this.error = '';
-    if (await confirmRevert(change)) this.error = await revertPaths(port, [this.path]);
+    if ((await confirmRevert(change)) && !watchOnly(this.model))
+      this.error = await revertPaths(port, [this.path]);
   }
 
   #body(change: Change, style: 'unified' | 'split'): TemplateResult {
@@ -507,12 +524,16 @@ export class SliccDiffPanel extends ThemedElement {
           )}
         </swc-action-group>`
         }
-        <swc-action-button size="s" quiet data-action="accept" accessible-label="Accept" title="Accept" @click=${() => port?.accept(this.path)}>
+        ${
+          watchOnly(model)
+            ? nothing
+            : html`<swc-action-button size="s" quiet data-action="accept" accessible-label="Accept" title="Accept" @click=${() => port?.accept(this.path)}>
           <swc-icon-checkmark slot="icon"></swc-icon-checkmark><span class="label">Accept</span>
         </swc-action-button>
         <swc-action-button size="s" quiet data-action="revert" accessible-label="Revert" title="Revert" @click=${() => this.#revert(port as ChangesPort, change)}>
           <swc-icon-revert slot="icon"></swc-icon-revert><span class="label">Revert</span>
-        </swc-action-button>
+        </swc-action-button>`
+        }
       </div>
       ${errorLine(this.error)}
       ${this.#body(change, style)}`;

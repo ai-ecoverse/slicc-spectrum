@@ -21,7 +21,7 @@ import type {
   VaultPort,
 } from '../model/types.ts';
 import { nameProblem, valueProblem } from '../model/values.ts';
-import { chatModels, shared, ThemedElement } from './base.ts';
+import { chatModels, shared, speech, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import { size } from './messages.ts';
 import { away, clearValues, failureText, fieldOf, type PopupDetail, take } from './vault.ts';
@@ -217,6 +217,11 @@ export class SliccComposer extends ThemedElement {
   #abandon: ReturnType<typeof setTimeout> | undefined;
   #recognition: { stop(): void } | null = null;
   #erase: ReturnType<typeof setTimeout> | undefined;
+  #release = (event: Event): void => {
+    const released =
+      event instanceof KeyboardEvent && (event.code === 'KeyM' || event.key === 'Alt');
+    if (this.dictating && (released || event.type === 'blur')) this.dictate();
+  };
   #keys = { capture: true, handleEvent: (event: KeyboardEvent) => this.#keydown(event) };
 
   constructor() {
@@ -380,27 +385,6 @@ export class SliccComposer extends ThemedElement {
       .failed {
         color: var(--swc-negative-content-color-default);
       }
-      .below {
-        display: flex;
-        align-items: center;
-        gap: var(--swc-spacing-100);
-        max-width: 860px;
-        margin: var(--swc-spacing-75) auto 0;
-        min-height: var(--swc-component-height-75);
-      }
-      .below swc-action-button {
-        margin-inline-start: auto;
-      }
-      swc-action-button.selected {
-        --swc-action-button-background-color-default: var(--swc-neutral-background-color-selected-default);
-        --swc-action-button-background-color-hover: var(--swc-neutral-background-color-selected-hover);
-        --swc-action-button-background-color-down: var(--swc-neutral-background-color-selected-down);
-        --swc-action-button-background-color-focus: var(--swc-neutral-background-color-selected-key-focus);
-        --swc-action-button-content-color-default: var(--swc-gray-25);
-        --swc-action-button-content-color-hover: var(--swc-gray-25);
-        --swc-action-button-content-color-down: var(--swc-gray-25);
-        --swc-action-button-content-color-focus: var(--swc-gray-25);
-      }
       .popup {
         position: absolute;
         left: 0;
@@ -508,6 +492,8 @@ export class SliccComposer extends ThemedElement {
   connectedCallback(): void {
     super.connectedCallback();
     clearTimeout(this.#abandon);
+    globalThis.addEventListener('keyup', this.#release);
+    globalThis.addEventListener('blur', this.#release);
     if (this.hasUpdated) this.#wire();
   }
 
@@ -517,6 +503,8 @@ export class SliccComposer extends ThemedElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    globalThis.removeEventListener('keyup', this.#release);
+    globalThis.removeEventListener('blur', this.#release);
     clearValues(this.renderRoot);
     const held = [
       this.attachments,
@@ -925,10 +913,23 @@ export class SliccComposer extends ThemedElement {
     return false;
   }
 
+  #talking(): boolean {
+    return !!this.model?.settings.get().pushToTalk && !!speech();
+  }
+
+  #shortcut(event: KeyboardEvent): boolean {
+    if (event.key === 'Backspace' || event.key === 'Delete') this.#flash();
+    const chord = event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+    if (!chord || event.code !== 'KeyM' || !this.#talking()) return false;
+    event.preventDefault();
+    if (!event.repeat) this.dictate();
+    return true;
+  }
+
   #keydown(event: KeyboardEvent): void {
     const area = this.#textarea;
     if (event.isComposing || !area || event.composedPath()[0] !== area) return;
-    if (event.key === 'Backspace' || event.key === 'Delete') this.#flash();
+    if (this.#shortcut(event)) return;
     const sendOnEnter = this.model?.settings.get().sendOnEnter ?? true;
     let handled = this.#popupKey(event) || this.#historyKey(event, area);
     if (!handled && event.key === 'Tab' && !event.shiftKey && !this.value) {
@@ -973,7 +974,8 @@ export class SliccComposer extends ThemedElement {
     keys.push(
       `${enter ? 'Shift+Enter' : 'Enter'} adds a new line`,
       '/ lists commands',
-      '@ mentions'
+      '@ mentions',
+      ...(this.#talking() ? ['hold Alt+M to dictate'] : [])
     );
     return `${keys.join(', ')}.`;
   }
@@ -1015,24 +1017,27 @@ export class SliccComposer extends ThemedElement {
     }
   }
 
+  #toggleTalk = (event: Event): void => {
+    event.stopPropagation();
+    const settings = this.model?.settings;
+    settings?.update({ pushToTalk: !settings.get().pushToTalk });
+  };
+
   dictate(): void {
     if (this.#recognition) {
       this.#recognition.stop();
       return;
     }
-    const Speech =
-      (
-        globalThis as {
-          SpeechRecognition?: new () => SpeechLike;
-          webkitSpeechRecognition?: new () => SpeechLike;
-        }
-      ).SpeechRecognition ??
-      (globalThis as { webkitSpeechRecognition?: new () => SpeechLike }).webkitSpeechRecognition;
+    const Speech = speech<SpeechLike>();
     if (!Speech) return;
     const recognition = new Speech();
     recognition.interimResults = false;
+    recognition.continuous = true;
     recognition.onresult = (event) => {
-      const text = [...event.results].map((result) => result[0].transcript).join(' ');
+      const text = [...event.results]
+        .slice(event.resultIndex ?? 0)
+        .map((result) => result[0].transcript)
+        .join(' ');
       this.value = `${this.value}${this.value && !this.value.endsWith(' ') ? ' ' : ''}${text}`;
     };
     recognition.onend = () => {
@@ -1211,7 +1216,8 @@ export class SliccComposer extends ThemedElement {
     const agent = this.model?.agent.list().find((candidate) => candidate.id === this.#agent);
     const suggestion = this.model?.agent.suggestion(this.#agent);
     const canSend = !!this.value.trim() || this.attachments.some((attachment) => !attachment.error);
-    const speech = 'SpeechRecognition' in globalThis || 'webkitSpeechRecognition' in globalThis;
+    const pushToTalk = this.model?.settings.get().pushToTalk ?? false;
+    const talk = !!speech();
     const held = this.#held();
     return html`<div class="column">
         <span id="keys" class="sr" aria-hidden="true">${this.#instructions(busy)}</span>
@@ -1249,6 +1255,14 @@ export class SliccComposer extends ThemedElement {
             <sp-menu-item value="screenshot">Take a screenshot of the browser tab</sp-menu-item>
             <sp-menu-item value="file">Attach a file from SLICC</sp-menu-item>
             <sp-menu-item value="secret">Share a secret</sp-menu-item>
+            ${
+              talk
+                ? html`<sp-menu-divider></sp-menu-divider>
+            <sp-menu-group selects="multiple" data-group="talk" @change=${this.#toggleTalk}>
+              <sp-menu-item value="push-to-talk" data-action="push-to-talk" ?selected=${pushToTalk}>Enable push to talk<span slot="description">Hold Alt+M to dictate</span></sp-menu-item>
+            </sp-menu-group>`
+                : nothing
+            }
           </sp-menu>
         </swc-popover>
         <input type="file" multiple @change=${(event: Event) => {
@@ -1256,28 +1270,16 @@ export class SliccComposer extends ThemedElement {
           void this.addFiles([...(input.files ?? [])]);
           input.value = '';
         }} />
-      </div>
-      ${
-        speech
-          ? html`<div class="below">
-              <swc-action-button
-                size="s"
-                quiet
-                class=${this.dictating ? 'selected' : ''}
-                accessible-label=${this.dictating ? 'Stop dictation' : 'Dictate'}
-                data-action="dictate"
-                @click=${() => this.dictate()}
-              ><swc-icon-microphone slot="icon"></swc-icon-microphone></swc-action-button>
-            </div>`
-          : nothing
-      }`;
+      </div>`;
   }
 }
 
 interface SpeechLike {
   interimResults: boolean;
+  continuous: boolean;
   onresult:
     | ((event: {
+        resultIndex?: number;
         results: ArrayLike<ArrayLike<{ transcript: string }>> &
           Iterable<ArrayLike<{ transcript: string }>>;
       }) => void)
