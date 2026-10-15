@@ -498,7 +498,7 @@ function question(item: Question, handlers: Handlers): TemplateResult {
 }
 
 export function questionTurn(item: Question, handlers: Handlers, stack: number): TemplateResult {
-  return html`<swc-conversation-turn type="system" class="message decision-turn" data-id=${item.id} data-state=${item.state} data-pending=${item.state === 'open' ? '' : nothing} style=${`--stack: ${stack}`}>${question(item, handlers)}</swc-conversation-turn>`;
+  return html`<swc-conversation-turn type="system" class="message decision-turn" data-id=${item.id} data-state=${item.state} data-pending=${item.state === 'open' ? '' : nothing} style=${`--stack: ${stack}`} @click=${reveal}>${question(item, handlers)}</swc-conversation-turn>`;
 }
 
 const delegationVerbs = {
@@ -838,6 +838,20 @@ function clock(ms: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
+function reveal(event: Event): void {
+  if ((event.target as Element).closest('swc-button, input')) return;
+  const turn = event.currentTarget as HTMLElement;
+  const log = turn.closest('.log');
+  if (!log) return;
+  const origin = log.getBoundingClientRect().top;
+  const pile = turn.getBoundingClientRect().top - origin;
+  turn.style.position = 'static';
+  const natural = turn.getBoundingClientRect().top - origin;
+  turn.style.position = '';
+  if (Math.abs(pile - natural) > 1)
+    log.scrollTo({ top: log.scrollTop + natural - pile, behavior: 'smooth' });
+}
+
 function decision(message: LickMessage, handlers: Handlers, stack: number): TemplateResult {
   const left = message.expiresAt === undefined ? null : message.expiresAt - Date.now();
   const expired = left !== null && left <= 0;
@@ -851,7 +865,7 @@ function decision(message: LickMessage, handlers: Handlers, stack: number): Temp
         <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'dismissed')}>Deny</swc-button>
         <swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>
       </div>`;
-  return html`<swc-conversation-turn type="system" class="message decision-turn" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-pending=${expired ? nothing : ''} data-expired=${expired ? '' : nothing} style=${`--stack: ${stack}`}>
+  return html`<swc-conversation-turn type="system" class="message decision-turn" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-pending=${expired ? nothing : ''} data-expired=${expired ? '' : nothing} style=${`--stack: ${stack}`} @click=${reveal}>
     <div class="decision" data-kind="approval">
       <div class="decision-head"><span class="who">${message.title}</span>${timer}</div>
       <p class="decision-text">${message.text}</p>
