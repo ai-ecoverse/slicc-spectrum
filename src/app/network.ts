@@ -1459,7 +1459,7 @@ export class SliccNetwork extends ModelElement {
       <div class="who">
         <span class="name" title=${seat.label}>${seat.label}</span>
         <swc-status-light size="s" variant=${seat.connected ? 'positive' : 'neutral'}>${seat.connected ? 'Connected' : 'Not connected'}</swc-status-light>
-        ${seat.pending > 0 ? html`<swc-badge size="s" variant="notice" subtle data-pending=${seat.pending}><span aria-hidden="true">${seat.pending}</span><span class="sr">${pendingLabel(seat.pending)}</span></swc-badge>` : nothing}
+        ${seat.pending > 0 ? html`<swc-badge size="s" variant="notice" subtle data-pending=${seat.pending}><span aria-hidden="true">${seat.pending} waiting</span><span class="sr">${pendingLabel(seat.pending)}</span></swc-badge>` : nothing}
       </div>
       <swc-button size="s" variant="secondary" fill-style="outline" data-action="revoke-guest" accessible-label=${`Revoke ${seat.label}`} ?pending=${this.busy === action} ?disabled=${this.#waiting(action)} @click=${(event: Event) => this.#revoke(event, port, seat)}>Revoke</swc-button>
       <span class="where"><span data-seat-cone>${cone?.name ?? seat.agentId}</span><span data-expiry>${guestExpiry(seat, now)}</span></span>

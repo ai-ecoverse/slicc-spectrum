@@ -5339,12 +5339,13 @@ test('guests: invite, copy the one-time link, revoke through a negative confirm'
         row.dataset.connected,
         row.querySelector('swc-status-light').textContent.trim(),
         row.querySelector('[data-expiry]').textContent,
+        row.querySelector('[data-pending] [aria-hidden=true]')?.textContent ?? null,
         row.querySelector('[data-pending] .sr')?.textContent ?? null,
       ])
     ),
     [
-      ['seat-mara', 'true', 'Connected', 'Expires in 5 days', '2 waiting for review'],
-      ['seat-ole', 'false', 'Not connected', 'No expiry', null],
+      ['seat-mara', 'true', 'Connected', 'Expires in 5 days', '2 waiting', '2 waiting for review'],
+      ['seat-ole', 'false', 'Not connected', 'No expiry', null, null],
     ]
   );
   await page.evaluate(() => window.netPanel().querySelector('[data-action=invite-guest]').click());
