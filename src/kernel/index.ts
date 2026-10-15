@@ -33,6 +33,7 @@ const defaults: Settings = {
   model: '',
   thinking: 'off',
   sendOnEnter: true,
+  pushToTalk: false,
   showThinking: false,
   diffStyle: 'unified',
 };

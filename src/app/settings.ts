@@ -4,7 +4,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Account, RecordKind, Settings, SliccModel, VaultPort } from '../model/types.ts';
 import { isVaultFailure, valueProblem } from '../model/values.ts';
-import { chatModels, ThemedElement } from './base.ts';
+import { chatModels, speech, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import { forgetSwitch, modelSwitch, settleModels } from './models.ts';
 import { recordKind, recordName, serverOf, upper as upperName } from './records.ts';
@@ -678,6 +678,7 @@ export class SliccSettings extends ThemedElement {
         <div class="switches">
           <sp-switch ?checked=${value.sendOnEnter} data-setting="sendOnEnter" @change=${(e: Event) => this.#update({ sendOnEnter: this.#checked(e) })}>Enter sends, Shift+Enter adds a line</sp-switch>
           <sp-switch ?checked=${value.showThinking} data-setting="showThinking" @change=${(e: Event) => this.#update({ showThinking: this.#checked(e) })}>Show thinking</sp-switch>
+          ${speech() ? html`<sp-switch ?checked=${value.pushToTalk ?? false} data-setting="pushToTalk" @change=${(e: Event) => this.#update({ pushToTalk: this.#checked(e) })}>Push to talk: hold Alt+M to dictate</sp-switch>` : nothing}
         </div>
       </div>
       <div class="row">
