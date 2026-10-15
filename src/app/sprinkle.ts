@@ -40,12 +40,13 @@ export const bridge = `(() => {
       }
       node.replaceWith(svg);
     }
+    size();
   };
   const fonts = (list) => {
     for (const font of list) {
       const face = new FontFace(font.family, font.data, { weight: String(font.weight) });
       document.fonts.add(face);
-      face.load().catch(() => {});
+      face.load().then(size, () => {});
     }
   };
   addEventListener('message', (event) => {
@@ -61,6 +62,7 @@ export const bridge = `(() => {
   };
   document.addEventListener('DOMContentLoaded', () => {
     window.LucideIcons.render();
+    size();
     new ResizeObserver(size).observe(document.body);
   });
   post({ type: 'slicc-ready' });
