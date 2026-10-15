@@ -61,9 +61,9 @@ jobs:
             await pick(hosted, context.eventName);
 
   ci:
-    needs: runner
-    uses: ai-ecoverse/slicc-shared-web/.github/workflows/node-ci.yml@v1.18.0
+    uses: ai-ecoverse/slicc-shared-web/.github/workflows/node-ci.yml@v1.18.1
     with:
       runs-on: ${{ needs.runner.outputs.runner }}
       timeout-minutes: 35
       test: TEST_CONCURRENCY=4 NODE_OPTIONS=--max-old-space-size=8192 npm test
+    needs: runner
