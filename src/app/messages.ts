@@ -757,6 +757,10 @@ function event(label: string, content: TemplateResult): TemplateResult {
   return html`<swc-conversation-turn type="system" class="event" accessible-label=${label}>${content}</swc-conversation-turn>`;
 }
 
+function outside(label: string, content: TemplateResult): TemplateResult {
+  return html`<swc-conversation-turn type="user" class="event lick-turn" accessible-label=${label}>${content}</swc-conversation-turn>`;
+}
+
 export function system(message: SystemMessage, handlers: Handlers): TemplateResult {
   if (message.kind === 'compaction') {
     const title = message.title ?? 'Context compacted';
@@ -822,7 +826,7 @@ export function lick(message: LickMessage, handlers: Handlers, stamp = true): Te
     : nothing;
   const name = `${message.severity ? severities[message.severity].prefix : ''}${label} event`;
   if (!message.body) {
-    return event(
+    return outside(
       name,
       html`<div class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}><div class="lick-head">${head}</div>${actions}</div>`
     );
@@ -831,7 +835,7 @@ export function lick(message: LickMessage, handlers: Handlers, stamp = true): Te
     <summary class="lick-head"><span class="chevron" aria-hidden="true">▸</span>${head}</summary>
     <pre class="output">${message.body}</pre>
   </details>`;
-  return event(name, decide ? html`<div class="pending">${details}${actions}</div>` : details);
+  return outside(name, decide ? html`<div class="pending">${details}${actions}</div>` : details);
 }
 
 export const messageCss = css`
