@@ -31,6 +31,7 @@ const model = createDummyModel({
   network: follow === 'off' ? (params.get('network') ?? 'limited') : 'off',
   tailnet: params.get('tailnet') ?? undefined,
   links: params.get('links') ?? undefined,
+  leaders: params.get('leaders') ?? undefined,
   changes: params.get('changes') ?? 'files',
   notices: params.get('notices') ?? 'off',
   tabs: params.get('tabs') ?? 'off',
