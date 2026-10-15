@@ -23,6 +23,7 @@ export function fallbackModel(options: readonly ModelOption[]): ModelOption | un
 }
 
 function controls(model: SliccModel): boolean {
+  if (model.agent.readOnly?.()) return false;
   const state = model.follow?.state();
   return !state || (!!state.access.control && state.link === 'connected');
 }

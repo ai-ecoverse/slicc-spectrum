@@ -23,6 +23,20 @@ async function open(t, params = {}) {
   return page;
 }
 
+async function altM(page, type) {
+  const m = { key: 'µ', code: 'KeyM', windowsVirtualKeyCode: 77, modifiers: 1 };
+  if (type === 'keyDown') {
+    await page.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'Alt',
+      code: 'AltLeft',
+      windowsVirtualKeyCode: 18,
+      modifiers: 1,
+    });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...m, text: 'µ' });
+  } else await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...m });
+}
+
 async function shot(page, name) {
   await page.evaluate(() => document.fonts.ready.then(() => true));
   await new Promise((resolve) => setTimeout(resolve, 150));
@@ -2348,13 +2362,13 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     days: 2,
     attachments: 5,
     media: 5,
-    cards: 3,
-    plan: 1,
-    check: 4,
-    diff: 1,
+    cards: 0,
+    plan: 0,
+    check: 0,
+    diff: 0,
     questions: 3,
     delegations: 4,
-    links: 1,
+    links: 0,
     tables: 1,
     code: 1,
     tasks: 2,
@@ -2449,7 +2463,7 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     [
       ...window
         .$('slicc-app', 'slicc-dock', 'slicc-chat')
-        .shadowRoot.querySelectorAll('.pending swc-button'),
+        .shadowRoot.querySelectorAll('.decision[data-kind=approval] swc-button'),
     ]
       .find((button) => button.textContent.trim() === 'Allow')
       .click()
@@ -2620,10 +2634,14 @@ test('times show every two minutes, each day starts with one, and hidden times a
     const reply = root.querySelector('swc-conversation-turn[data-id=st-b]');
     return {
       shown: ids.filter((id) =>
-        root.querySelector(`[data-id=${id}] .meta time.when, .lick[data-id=${id}] .when`)
+        root.querySelector(
+          `[data-id=${id}] .meta time.when, .lick-turn:has(.lick[data-id=${id}]) .meta time.when`
+        )
       ),
       reachable: ids.filter((id) =>
-        root.querySelector(`[data-id=${id}] time[datetime], .lick[data-id=${id}] .sr`)
+        root.querySelector(
+          `[data-id=${id}] time[datetime], .lick-turn:has(.lick[data-id=${id}]) time[datetime]`
+        )
       ),
       days: root.querySelectorAll('.day').length,
       empty: !root.querySelector('[data-id=st-b] .meta'),
@@ -2639,6 +2657,295 @@ test('times show every two minutes, each day starts with one, and hidden times a
     title: '1,200 in · 34 out · $0.50',
     description: '1,200 in · 34 out · $0.50',
   });
+});
+
+test('licks sit on the right with a byline, a quiet chevron on their toggle and named reaction pills', async (t) => {
+  const page = await open(t, { delay: '0' });
+  await page.evaluate(() => window.model.agent.select('cone-kitchen'));
+  await page.until(() => !!window.chatPart('.lick[data-id=k-l19]'));
+  const seen = await page.evaluate(() => {
+    const root = window.chatPart().shadowRoot;
+    const turns = [...root.querySelectorAll('.lick-turn')];
+    const turn = (id) => root.querySelector(`.lick[data-id=${id}]`).closest('.lick-turn');
+    const pills = (id) =>
+      [...turn(id).querySelectorAll('.reactions .reaction')].map((pill) => [
+        pill.textContent,
+        pill.title,
+        pill.getAttribute('aria-hidden'),
+      ]);
+    const thread = root.querySelector('swc-conversation-thread').getBoundingClientRect();
+    return {
+      right: turns.every((node) => {
+        const box = node.querySelector('.bubble').getBoundingClientRect();
+        return thread.right - box.right < 48 && box.left > thread.left + 48;
+      }),
+      bylines: turns.every((node) => node.querySelector('.bubble > .meta > .who')),
+      named: turns.every((node) => {
+        const pill = node.querySelector('.reaction');
+        return pill.title && pill.getAttribute('aria-hidden') === 'true';
+      }),
+      webhook: pills('k-l1'),
+      allowed: pills('k-l18'),
+      denied: pills('k-l19'),
+      spoken: ['k-l18', 'k-l19'].map((id) =>
+        [...turn(id).querySelectorAll('.lick-head .sr')].map((node) => node.textContent).join('')
+      ),
+      times: turn('k-l2').querySelector('.times').textContent,
+      chevron: !!root.querySelector(
+        'details.lick[data-id=k-l1] > summary .chevron[aria-hidden=true]'
+      ),
+      plain: root.querySelector('div.lick[data-id=k-l2] .chevron'),
+    };
+  });
+  assert.deepEqual(seen, {
+    right: true,
+    bylines: true,
+    named: true,
+    webhook: [['🪝', 'Webhook', 'true']],
+    allowed: [
+      ['🔐', 'Permission', 'true'],
+      ['👍', 'Allowed', 'true'],
+    ],
+    denied: [
+      ['🔐', 'Permission', 'true'],
+      ['👎', 'Denied', 'true'],
+    ],
+    spoken: ['Allowed. ', 'Denied. '],
+    times: '×3',
+    chevron: true,
+    plain: null,
+  });
+  const state = () => {
+    const lick = window.chatPart('details.lick[data-id=k-l1]');
+    return [
+      lick.open,
+      getComputedStyle(lick.querySelector('summary .chevron')).transform !== 'none',
+    ];
+  };
+  await page.evaluate(() => {
+    window.chatPart('details.lick[data-id=k-l1] > summary').focus();
+    return true;
+  });
+  await page.press('Enter');
+  await page.until(() => window.chatPart('details.lick[data-id=k-l1]').open);
+  assert.deepEqual(await page.evaluate(state), [true, true]);
+  await page.evaluate(() => {
+    window.chatPart('details.lick[data-id=k-l1] > pre').click();
+    return true;
+  });
+  assert.deepEqual(await page.evaluate(state), [true, true]);
+  await page.press(' ');
+  await page.until(() => !window.chatPart('details.lick[data-id=k-l1]').open);
+  assert.deepEqual(await page.evaluate(state), [false, false]);
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 420,
+    height: 860,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await page.until(() => window.chatPart().getBoundingClientRect().width <= 420);
+  const spill = await page.evaluate(() => {
+    const root = window.chatPart().shadowRoot;
+    return [...root.querySelectorAll('.lick-frame')]
+      .filter((frame) => {
+        const box = frame.getBoundingClientRect();
+        const bubble = frame.parentElement.getBoundingClientRect();
+        return box.left < bubble.left - 1 || box.right > bubble.right + 1;
+      })
+      .map((frame) => frame.querySelector('.lick').dataset.id);
+  });
+  assert.deepEqual(spill, []);
+  assert.deepEqual(page.errors, []);
+});
+
+test('decision cards pile at the top, reveal from the keyboard and leave the pile with focus kept', async (t) => {
+  const page = await open(t, { delay: '0' });
+  await page.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+  });
+  await page.evaluate(() => window.model.agent.select('cone-kitchen'));
+  await page.until(() => !!window.chatPart('.decision-turn[data-id=k-l17]'));
+  const bottom = () => {
+    const log = window.chatPart('.log');
+    log.scrollTop = log.scrollHeight;
+    return true;
+  };
+  const pile = () => {
+    const root = window.chatPart().shadowRoot;
+    const log = root.querySelector('.log');
+    const front = root.querySelector('.decision-turn[data-pinned]:not([style*="--depth: 1"])');
+    return {
+      cards: [...root.querySelectorAll('.decision-turn[data-pending]')].map((turn) => [
+        turn.dataset.id,
+        turn.hasAttribute('data-pinned'),
+        getComputedStyle(turn).filter,
+      ]),
+      padding: Number.parseFloat(log.style.getPropertyValue('--pile')),
+      front: front
+        ? Math.round(front.getBoundingClientRect().bottom - log.getBoundingClientRect().top)
+        : 0,
+      still: getComputedStyle(root.querySelector('.decision-turn')).transitionDuration,
+      focus: root.activeElement?.closest?.('[data-id]')?.dataset.id ?? null,
+    };
+  };
+  await page.evaluate(bottom);
+  await page.until(() =>
+    window.chatPart('.decision-turn[data-id=k-l17]').hasAttribute('data-pinned')
+  );
+  const stuck = await page.evaluate(pile);
+  assert.deepEqual(stuck.cards, [
+    ['k-q3', true, 'blur(0.6px)'],
+    ['k-l17', true, 'blur(0px)'],
+  ]);
+  assert.ok(stuck.padding > 0 && Math.abs(stuck.padding - stuck.front) <= 1);
+  assert.equal(stuck.still, '0s');
+  const timer = await page.evaluate(() => {
+    const head = window.chatPart('.decision-turn[data-id=k-l17] .decision-head');
+    return [
+      head.querySelector('.timer').getAttribute('aria-hidden'),
+      head.querySelector('.timer + .sr').textContent,
+    ];
+  });
+  assert.equal(timer[0], 'true');
+  assert.match(timer[1], /^Expires at \d\d:\d\d$/);
+
+  await page.evaluate(() => {
+    window.chatPart('.decision-turn[data-id=k-l17]').focus();
+    return true;
+  });
+  const before = await page.evaluate(() => window.chatPart('.log').scrollTop);
+  await page.press('Enter');
+  await page.until(
+    () => !window.chatPart('.decision-turn[data-id=k-l17]').hasAttribute('data-pinned')
+  );
+  const shown = await page.evaluate(pile);
+  assert.ok((await page.evaluate(() => window.chatPart('.log').scrollTop)) < before);
+  assert.deepEqual(
+    shown.cards.find(([id]) => id === 'k-l17'),
+    ['k-l17', false, 'none']
+  );
+  assert.equal(shown.focus, 'k-l17');
+
+  await page.evaluate(bottom);
+  await page.until(
+    () => window.chatPart('.decision-turn[data-id=k-q3]').style.getPropertyValue('--depth') === '1'
+  );
+  await page.evaluate(() => {
+    window
+      .chatPart('.decision-turn[data-id=k-q3] swc-button, .decision-turn[data-id=k-q3] input')
+      .focus();
+    return true;
+  });
+  await page.until(
+    () => !window.chatPart('.decision-turn[data-id=k-q3]').hasAttribute('data-pinned')
+  );
+
+  await page.evaluate(bottom);
+  await page.until(() =>
+    window.chatPart('.decision-turn[data-id=k-l17]').hasAttribute('data-pinned')
+  );
+  await page.evaluate(() => {
+    window.chatPart('.decision-turn[data-id=k-l17] swc-button[data-action=allow]').focus();
+    return true;
+  });
+  await page.press('Enter');
+  await page.until(() => !window.chatPart('.decision-turn[data-id=k-l17]'));
+  assert.equal(
+    await page.evaluate(() => window.chatPart().shadowRoot.activeElement?.dataset.id),
+    'k-q3'
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.model.agent.messages('cone-kitchen').find((message) => message.id === 'k-l17').state
+    ),
+    'confirmed'
+  );
+
+  const elsewhere = await page.evaluate(() => {
+    const agent = window.model.agent;
+    agent.lick('cone-kitchen', 'sudo-request', 'harbor', 'Wants to read the deploy key');
+    const message = agent.messages('cone-kitchen').at(-1);
+    message.state = 'pending';
+    agent.emit('messages', 'cone-kitchen');
+    return message.id;
+  });
+  await page.until(
+    (card) => !!window.chatPart(`.decision-turn[data-id=${card}] swc-button[data-action=allow]`),
+    elsewhere
+  );
+  await page.evaluate((card) => {
+    window.chatPart(`.decision-turn[data-id=${card}] swc-button[data-action=allow]`).focus();
+    window.model.agent.resolveLick('cone-kitchen', card, 'dismissed');
+    return true;
+  }, elsewhere);
+  await page.until(
+    (card) =>
+      !window.chatPart(`.decision-turn[data-id=${card}]`) &&
+      window.chatPart().shadowRoot.activeElement?.dataset.id === 'k-q3',
+    elsewhere
+  );
+
+  const id = await page.evaluate(() => {
+    const agent = window.model.agent;
+    agent.lick('cone-kitchen', 'sudo-request', 'tide-runner', 'Wants to run npm publish');
+    const message = agent.messages('cone-kitchen').at(-1);
+    message.state = 'pending';
+    message.expiresAt = Date.now() + 2500;
+    agent.emit('messages', 'cone-kitchen');
+    return message.id;
+  });
+  await page.until(
+    (card) => !!window.chatPart(`.decision-turn[data-id=${card}] swc-button[data-action=deny]`),
+    id
+  );
+  assert.equal(
+    await page.evaluate(
+      (card) => window.chatPart(`.decision-turn[data-id=${card}] .timer + .sr`).textContent,
+      id
+    ),
+    'Less than a minute left'
+  );
+  await page.evaluate((card) => {
+    window.chatPart(`.decision-turn[data-id=${card}] swc-button[data-action=deny]`).focus();
+    return true;
+  }, id);
+  await page.until(
+    (card) => window.chatPart(`.decision-turn[data-id=${card}]`).hasAttribute('data-expired'),
+    id
+  );
+  const expired = await page.evaluate((card) => {
+    const turn = window.chatPart(`.decision-turn[data-id=${card}]`);
+    return [
+      turn.hasAttribute('data-pending'),
+      !!turn.querySelector('swc-button'),
+      turn.querySelector('.timer').textContent,
+      turn.querySelector('.timer + .sr').textContent,
+    ];
+  }, id);
+  assert.deepEqual(expired, [false, false, 'Timed out', 'Timed out']);
+  await page.until(() => window.chatPart().shadowRoot.activeElement?.dataset.id === 'k-q3');
+  const late = await page.evaluate(() => {
+    const agent = window.model.agent;
+    agent.lick('cone-kitchen', 'sudo-request', 'quiet-otter', 'Wants to tag 1.9.0');
+    const message = agent.messages('cone-kitchen').at(-1);
+    message.state = 'pending';
+    agent.emit('messages', 'cone-kitchen');
+    return message.id;
+  });
+  await page.until((card) => !!window.chatPart(`.decision-turn[data-id=${card}]`), late);
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.chatPart().shadowRoot.querySelectorAll('.decision-turn[data-pending]')].map(
+        (turn) => [turn.dataset.id, turn.style.getPropertyValue('--stack').trim()]
+      )
+    ),
+    [
+      ['k-q3', '0'],
+      [late, '1'],
+    ]
+  );
+  assert.deepEqual(page.errors, []);
 });
 
 test('the composer runs commands, mentions, attaches, queues and steers', async (t) => {
@@ -4356,6 +4663,114 @@ test('a watch-only follower has no Delete cone or Drop, and its inline sprinkle 
   assert.deepEqual(page.errors, []);
 });
 
+test('a read-only agent port shows its line, a notice without a close button, an inert sprinkle, and no composer, New cone or Changes actions', async (t) => {
+  const page = await open(t, { readonly: 'version' });
+  await page.evaluate(() => {
+    window.chat = () => window.$('slicc-app', 'slicc-dock').content('chat:cone-sliccy')?.shadowRoot;
+    window.agentsRow = () => window.$('slicc-app', 'slicc-dock').content('agents')?.shadowRoot;
+    window.changes = () => window.$('slicc-app', 'slicc-dock').content('changes')?.shadowRoot;
+    window.sprinkle = () => window.chat()?.querySelector('slicc-sprinkle[inline]');
+    window.notice = () =>
+      window
+        .chat()
+        ?.querySelector('slicc-notices')
+        ?.shadowRoot.querySelector('[data-notice=readonly]');
+    return true;
+  });
+  await page.until(() => !!window.chat()?.querySelector('[data-follow=watch]'));
+  await page.until(() => !!window.notice());
+  await page.until(() => window.agentsRow()?.querySelectorAll('li').length > 0);
+  await page.until(() => window.changes()?.querySelectorAll('li[data-path]').length > 0);
+  await page.until(() => !!window.sprinkle()?.shadowRoot.querySelector('iframe'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      !!window.changes().querySelector('[data-action=accept-all], [data-action=revert-all]'),
+      !!window.changes().querySelector('li[data-path] .actions'),
+      window.sprinkle().hasAttribute('readonly'),
+      window.sprinkle().shadowRoot.querySelector('iframe').inert,
+      window.sprinkle().shadowRoot.querySelector('[data-view-only]')?.textContent.trim(),
+    ]),
+    [false, false, true, true, 'View only on this device']
+  );
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.chat().querySelector('[data-follow=watch]').textContent.trim(),
+      !!window.chat().querySelector('slicc-composer'),
+      !!window.agentsRow().querySelector('[data-action=new-cone]'),
+      !!window.$('slicc-app', 'header sp-menu-item[data-action=new-cone]'),
+      !!window.notice().querySelector('[data-dismiss]'),
+      window.notice().getAttribute('role'),
+    ]),
+    [
+      'Watch only. The SLICC you follow runs a newer version. Update this one to send prompts.',
+      false,
+      false,
+      false,
+      false,
+      'status',
+    ]
+  );
+  await page.evaluate(() => {
+    window.model.agent.setReadOnly(null);
+    return true;
+  });
+  await page.until(() => !!window.chat().querySelector('slicc-composer'));
+  await page.until(() => !!window.agentsRow().querySelector('[data-action=new-cone]'));
+  await page.until(() => !!window.changes().querySelector('[data-action=accept-all]'));
+  await page.until(() => !!window.changes().querySelector('[data-action=revert-all]'));
+  await page.until(() => !window.sprinkle().shadowRoot.querySelector('iframe').inert);
+  await page.until(() => !window.notice());
+  assert.equal(
+    await page.evaluate(() => !!window.chat().querySelector('[data-follow=watch]')),
+    false
+  );
+  await page.evaluate(() => {
+    window.model.agent.setReadOnly('Watch only.');
+    return true;
+  });
+  await page.until(() => !!window.notice() && !window.notice().querySelector('[data-dismiss]'));
+  assert.deepEqual(page.errors, []);
+});
+
+test('an agent port without readOnly, whose on() rejects unknown events, still binds', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const real = window.model.agent;
+    const agent = new Proxy(real, {
+      get(target, key) {
+        if (key === 'readOnly') return undefined;
+        if (key === 'on')
+          return (type, listener) => {
+            if (type === 'readOnly') throw new Error('unknown event: readOnly');
+            return target.on(type, listener);
+          };
+        const value = Reflect.get(target, key, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+      has(target, key) {
+        return key !== 'readOnly' && key in target;
+      },
+    });
+    window.app.model = { ...window.model, agent };
+    return true;
+  });
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:cone-sliccy')
+        ?.shadowRoot.querySelector('slicc-composer')
+  );
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('agents')
+        ?.shadowRoot.querySelector('[data-action=new-cone]')
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a dip drags out of the chat into the dock and lives on as a panel', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {
@@ -4404,11 +4819,6 @@ test('a dip drags out of the chat into the dock and lives on as a panel', async 
   await shot(page, 'dip-panel-light');
 
   await page.evaluate(() => {
-    window.$('slicc-app', 'slicc-dock').close('sprinkle:welcome');
-    return true;
-  });
-  await page.until(() => !!window.$('slicc-app', '.rail.right [data-surface="sprinkle:welcome"]'));
-  await page.evaluate(() => {
     window.dip().shadowRoot.querySelector('.moved sp-action-button').click();
     return true;
   });
@@ -4420,6 +4830,25 @@ test('a dip drags out of the chat into the dock and lives on as a panel', async 
   assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('slicc-ui.dips'))), [
     'welcome',
   ]);
+
+  await page.evaluate(() => {
+    window.dip = () =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:cone-sliccy')
+        ?.shadowRoot.querySelector('slicc-sprinkle[inline]');
+    window.$('slicc-app', 'slicc-dock').close('sprinkle:welcome');
+    return true;
+  });
+  await page.until(() => !!window.dip()?.shadowRoot.querySelector('.handle'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      JSON.parse(localStorage.getItem('slicc-ui.dips')),
+      !!window.dip().shadowRoot.querySelector('.moved'),
+      !!window.$('slicc-app', '.rail.right [data-surface="sprinkle:welcome"]'),
+    ]),
+    [[], false, false]
+  );
   assert.deepEqual(page.errors, []);
 });
 
@@ -5247,22 +5676,7 @@ test('chat lets the reader scroll up by wheel or keyboard while content streams 
 });
 
 test('the composer floats clear of the log, describes its keys and shows what you and the agent are doing', async (t) => {
-  const page = await chrome.page(t);
-  await page.init(() => {
-    window.SpeechRecognition = class {
-      start() {
-        window.speech = this;
-      }
-      stop() {
-        this.onend?.();
-      }
-    };
-  });
-  const url = `/ui/?${new URLSearchParams({ delay: '40', color: 'light' })}`;
-  await page.goto(url);
-  if (!(await settled(page))) await page.goto(url);
-  await page.until(() => window.ready === true);
-  await page.until(() => window.$('slicc-app', 'slicc-dock')?.api.panels.length > 0);
+  const page = await open(t, { delay: '40', speech: 'dummy' });
   await page.press('2', 'alt');
   await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
   await page.evaluate(() => {
@@ -5285,6 +5699,8 @@ test('the composer floats clear of the log, describes its keys and shows what yo
         gap: log.scrollHeight - log.scrollTop - log.clientHeight,
       };
     };
+    window.composerValue = () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').value;
     window.composerIcon = () => {
       const loader = field().shadowRoot.querySelector('swc-pixel-loader');
       return [
@@ -5377,17 +5793,16 @@ test('the composer floats clear of the log, describes its keys and shows what yo
     composer.attachments = [];
   });
   await page.until(() => window.composerIcon()[0] === 'aiLogo');
-  await page.evaluate(() =>
-    window
-      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '[data-action=dictate]')
-      .click()
-  );
-  await page.until(() => window.composerIcon()[0] === 'microphone');
   await page.evaluate(() => {
-    window.speech.onresult({ results: [[{ transcript: 'Search for the cache TTL' }]] });
-    window.speech.stop();
+    window.speechText = 'Search for the cache TTL';
+    window.model.settings.update({ pushToTalk: true });
   });
+  await altM(page, 'keyDown');
+  await page.until(() => window.composerIcon()[0] === 'microphone');
+  await page.until(() => window.composerValue() === 'Search for the cache TTL');
+  await altM(page, 'keyUp');
   await page.until(() => window.composerIcon()[0] === 'pencil');
+  await page.evaluate(() => window.model.settings.update({ pushToTalk: false }));
 
   await page.press('Enter');
   await page.until(() => window.statusIcon() === 'mag');
@@ -5477,6 +5892,189 @@ test('the composer floats clear of the log, describes its keys and shows what yo
     'none',
     'solid',
   ]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('push to talk turns on from the + menu or Settings, dictates while Alt+M is held, and stops on release or blur', async (t) => {
+  const page = await open(t, { delay: '40', speech: 'dummy' });
+  await page.press('2', 'alt');
+  await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
+  await page.evaluate(() => {
+    const composer = () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer');
+    window.talk = () => {
+      const field = composer().shadowRoot.querySelector('swc-prompt-field');
+      return {
+        value: composer().value,
+        icon: field.getAttribute('loader'),
+        log: window.speechLog.join(','),
+      };
+    };
+    window.talkItem = () => composer().shadowRoot.querySelector('sp-menu-item[value=push-to-talk]');
+  });
+  const description = async () => {
+    const { result } = await page.send('Runtime.evaluate', {
+      expression:
+        "window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field').shadowRoot.querySelector('textarea')",
+    });
+    const { nodes } = await page.send('Accessibility.getPartialAXTree', {
+      objectId: result.objectId,
+      fetchRelatives: false,
+    });
+    return nodes[0].description?.value;
+  };
+  const release = (key) =>
+    page.send(
+      'Input.dispatchKeyEvent',
+      key === 'Alt'
+        ? { type: 'keyUp', key: 'Alt', code: 'AltLeft', windowsVirtualKeyCode: 18, modifiers: 0 }
+        : { type: 'keyUp', key: 'µ', code: 'KeyM', windowsVirtualKeyCode: 77, modifiers: 1 }
+    );
+  const reset = () =>
+    page.evaluate(() => {
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').value = '';
+      window.speechLog.length = 0;
+    });
+
+  assert.equal(await page.evaluate(() => window.model.settings.get().pushToTalk), false);
+  assert.doesNotMatch(await description(), /Alt\+M/);
+  await altM(page, 'keyDown');
+  await release('M');
+  await page.until(() => window.talk().value === 'µ');
+  assert.equal(await page.evaluate(() => window.talk().log), '');
+  await reset();
+
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
+      .shadowRoot.querySelector('.swc-PromptField-upload')
+      .click()
+  );
+  await page.until(
+    () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-popover')?.open
+  );
+  const item = () =>
+    page.evaluate(() => {
+      const element = window.talkItem();
+      return [
+        element.getAttribute('role'),
+        element.getAttribute('aria-checked'),
+        element.querySelector('[slot=description]').textContent,
+      ];
+    });
+  assert.deepEqual(await item(), ['menuitemcheckbox', 'false', 'Hold Alt+M to dictate']);
+  await page.evaluate(() => window.talkItem().click());
+  await page.until(() => window.model.settings.get().pushToTalk === true);
+  await page.until(() => window.talkItem().getAttribute('aria-checked') === 'true');
+  assert.equal(
+    await page.evaluate(
+      () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-popover').open
+    ),
+    true
+  );
+  await shot(page, 'push-to-talk-menu-on');
+  await page.evaluate(() => window.talkItem().click());
+  await page.until(() => window.model.settings.get().pushToTalk === false);
+  await page.until(() => window.talkItem().getAttribute('aria-checked') === 'false');
+  await page.evaluate(() => window.talkItem().click());
+  await page.until(() => window.model.settings.get().pushToTalk === true);
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-popover').open = false;
+  });
+  await page.until(
+    () => !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-popover').open
+  );
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
+      .shadowRoot.querySelector('textarea')
+      .focus()
+  );
+  assert.match(await description(), /, hold Alt\+M to dictate\.$/);
+
+  await altM(page, 'keyDown');
+  await page.until(() => window.talk().icon === 'microphone');
+  await page.until(() => window.talk().value === 'Check the Porto forecast');
+  await page.send('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key: 'µ',
+    code: 'KeyM',
+    windowsVirtualKeyCode: 77,
+    modifiers: 1,
+    autoRepeat: true,
+    text: 'µ',
+  });
+  assert.deepEqual(await page.evaluate(() => window.talk()), {
+    value: 'Check the Porto forecast',
+    icon: 'microphone',
+    log: 'start',
+  });
+  await release('M');
+  await page.until(() => window.talk().log === 'start,stop');
+  await page.until(() => window.talk().icon === 'pencil');
+  await release('Alt');
+
+  await reset();
+  await altM(page, 'keyDown');
+  await page.until(() => window.talk().icon === 'microphone');
+  await release('Alt');
+  await page.until(() => window.talk().log === 'start,stop');
+  await release('M');
+
+  await reset();
+  await altM(page, 'keyDown');
+  await page.until(() => window.talk().icon === 'microphone');
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await page.until(() => window.talk().log === 'start,stop');
+  await release('M');
+  await release('Alt');
+  assert.equal(await page.evaluate(() => window.talk().value.includes('µ')), false);
+
+  await page.evaluate(() => window.$('slicc-app', 'header swc-action-button#settings').click());
+  await page.until(() => !!window.settingsPart('sp-switch[data-setting=pushToTalk]'));
+  assert.equal(
+    await page.evaluate(() => window.settingsPart('sp-switch[data-setting=pushToTalk]').checked),
+    true
+  );
+  await page.evaluate(() => window.settingsPart('sp-switch[data-setting=pushToTalk]').click());
+  await page.until(() => window.model.settings.get().pushToTalk === false);
+  assert.deepEqual(page.errors, []);
+});
+
+test('without speech recognition there is no push to talk, and Alt+M types as usual', async (t) => {
+  const page = await open(t, { speech: 'none' });
+  await page.evaluate(() => window.model.settings.update({ pushToTalk: true }));
+  await page.press('2', 'alt');
+  await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
+  assert.equal(
+    await page.evaluate(
+      () =>
+        !!window.$(
+          'slicc-app',
+          'slicc-dock',
+          'slicc-chat',
+          'slicc-composer',
+          'sp-menu-item[value=push-to-talk]'
+        )
+    ),
+    false
+  );
+  await altM(page, 'keyDown');
+  await page.send('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key: 'µ',
+    code: 'KeyM',
+    windowsVirtualKeyCode: 77,
+    modifiers: 1,
+  });
+  await page.until(
+    () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').value === 'µ'
+  );
+  await page.evaluate(() => window.$('slicc-app', 'header swc-action-button#settings').click());
+  await page.until(() => !!window.settingsPart('sp-switch[data-setting=sendOnEnter]'));
+  assert.equal(
+    await page.evaluate(() => !!window.settingsPart('sp-switch[data-setting=pushToTalk]')),
+    false
+  );
   assert.deepEqual(page.errors, []);
 });
 
@@ -5685,7 +6283,7 @@ for (const color of ['light', 'dark']) {
       const [hi, lo] = [lum(tint), lum(text)].sort((a, b) => b - a);
       return {
         remote: [...root.querySelectorAll('[data-remote]')].map((node) => node.dataset.id),
-        pills: [...root.querySelectorAll('.reaction')].map((pill) => [
+        pills: [...root.querySelectorAll('.message.user .reaction')].map((pill) => [
           pill.closest('[data-id]').dataset.id,
           pill.getAttribute('aria-hidden'),
           pill.textContent,

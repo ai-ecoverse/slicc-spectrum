@@ -96,16 +96,19 @@ const lickInfo = (id) => {
     .$('slicc-app', 'slicc-dock')
     .content('chat:cone-release')
     .shadowRoot.querySelector(`.lick[data-id="${id}"]`);
+  const turn = lick.closest('.lick-turn');
   const head = lick.querySelector('.lick-head');
-  const badge = head.querySelector('swc-badge.severity');
+  const cue = turn.querySelector('.meta .severity-icon');
   const style = getComputedStyle(lick);
   const hidden = head.querySelector('.sr');
   const sr = hidden ? getComputedStyle(hidden) : { display: 'none' };
   return {
     tag: lick.localName,
     severity: lick.dataset.severity,
-    variant: badge?.getAttribute('variant'),
-    icon: badge?.querySelector('[slot=icon]')?.localName,
+    icon: cue?.firstElementChild?.localName,
+    iconHidden: cue?.firstElementChild?.getAttribute('aria-hidden'),
+    iconColored: cue ? getComputedStyle(cue).color === style.borderInlineStartColor : null,
+    turn: turn.getAttribute('aria-label'),
     name: window.spoken(head),
     edge: style.borderInlineStartWidth,
     edgeColor: style.borderInlineStartColor !== style.borderTopColor,
@@ -113,18 +116,20 @@ const lickInfo = (id) => {
   };
 };
 
-test('error and warning licks get a severity badge, an icon, an edge and a prefix', async (t) => {
+test('error and warning licks get a severity icon in the byline, an edge and a prefix', async (t) => {
   const page = await open(t);
   await chatLick(page, 'm-r3');
   const error = await page.evaluate(lickInfo, 'm-r3');
   assert.deepEqual(
-    { ...error, name: error.name.slice(0, 49) },
+    { ...error, name: error.name.slice(0, 32) },
     {
       tag: 'details',
       severity: 'error',
-      variant: 'negative',
       icon: 'swc-icon-alert-diamond',
-      name: 'Error: Schedule Crontab Crontab line 3 is invalid',
+      iconHidden: 'true',
+      iconColored: true,
+      turn: 'Error: Schedule event',
+      name: 'Error: Crontab line 3 is invalid',
       edge: '4px',
       edgeColor: true,
       srVisible: true,
@@ -132,35 +137,24 @@ test('error and warning licks get a severity badge, an icon, an edge and a prefi
   );
   const warn = await page.evaluate(lickInfo, 'm-r4');
   assert.deepEqual(
-    { ...warn, name: warn.name.slice(0, 85) },
+    { ...warn, name: warn.name.slice(0, 54) },
     {
       tag: 'div',
       severity: 'warn',
-      variant: 'notice',
       icon: 'swc-icon-alert-triangle',
-      name: 'Warning: File watch /workspace/notes File watch on /workspace/notes stopped; retrying',
+      iconHidden: 'true',
+      iconColored: true,
+      turn: 'Warning: File watch event',
+      name: 'Warning: File watch on /workspace/notes stopped; retry',
       edge: '4px',
       edgeColor: true,
       srVisible: true,
     }
   );
-  assert.equal(
-    await page.evaluate(() => {
-      const root = window.$('slicc-app', 'slicc-dock').content('chat:cone-release').shadowRoot;
-      const pending = document.createElement('div');
-      pending.className = 'pending';
-      pending.append(root.querySelector('.lick[data-id="m-r3"]').cloneNode(true));
-      root.append(pending);
-      const width = getComputedStyle(pending.firstChild).borderInlineStartWidth;
-      pending.remove();
-      return width;
-    }),
-    '4px'
-  );
   const plain = await page.evaluate(lickInfo, 'm-r1');
   assert.deepEqual(
-    [plain.severity, plain.variant, plain.name.slice(0, 18)],
-    [undefined, undefined, 'Schedule Every Fri']
+    [plain.severity, plain.icon, plain.turn],
+    [undefined, undefined, 'Schedule event']
   );
   assert.deepEqual(page.errors, []);
 });

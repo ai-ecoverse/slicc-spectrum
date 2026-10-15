@@ -217,6 +217,7 @@ export interface LickMessage {
   count?: number;
   state?: LickState;
   severity?: 'warn' | 'error';
+  expiresAt?: number;
 }
 
 export type Message = UserMessage | AssistantMessage | SystemMessage | ToolMessage | LickMessage;
@@ -239,6 +240,7 @@ export interface AgentEvents {
   messages: string;
   frozen: readonly FrozenCone[];
   hold: AgentHold | null;
+  readOnly: string | null;
 }
 
 export interface AgentPort extends Subscribable<AgentEvents> {
@@ -271,6 +273,7 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   drop?(agentId: string): Promise<void>;
   createCone?(name: string): Promise<Agent>;
   hold?(): AgentHold | null;
+  readOnly?(): string | null;
 }
 
 export interface SlashCommand {
@@ -442,6 +445,7 @@ export interface Settings {
   model: string;
   thinking: Thinking;
   sendOnEnter: boolean;
+  pushToTalk?: boolean;
   showThinking: boolean;
   diffStyle: 'unified' | 'split';
 }
@@ -895,6 +899,7 @@ export interface Notice {
   title: string;
   body: string;
   actions: readonly NoticeAction[];
+  dismissible?: false;
 }
 
 export interface NoticesPort extends Subscribable<{ notices: readonly Notice[] }> {

@@ -357,6 +357,7 @@ export const defaults: Settings = {
   model: 'claude-sonnet-5-5',
   thinking: 'medium',
   sendOnEnter: true,
+  pushToTalk: false,
   showThinking: true,
   diffStyle: 'unified',
 };

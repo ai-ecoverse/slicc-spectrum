@@ -19,6 +19,32 @@ for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
 }
 
 const params = new URLSearchParams(location.search);
+if (params.get('speech') === 'none') {
+  window.SpeechRecognition = undefined;
+  window.webkitSpeechRecognition = undefined;
+}
+if (params.get('speech') === 'dummy') {
+  window.speechLog = [];
+  window.SpeechRecognition = class {
+    start() {
+      window.speech = this;
+      window.speechLog.push('start');
+      this.timer = setTimeout(
+        () =>
+          this.onresult?.({
+            results: [[{ transcript: window.speechText ?? 'Check the Porto forecast' }]],
+          }),
+        50
+      );
+    }
+    stop() {
+      clearTimeout(this.timer);
+      window.speech = null;
+      window.speechLog.push('stop');
+      this.onend?.();
+    }
+  };
+}
 const delay = Number(params.get('delay') ?? 30);
 const follow = params.get('follow') ?? 'off';
 const model = createDummyModel({
@@ -41,6 +67,7 @@ const model = createDummyModel({
   accounts: params.get('accounts') ?? 'settings',
   providers: params.get('providers') ?? 'connected',
   hold: params.get('hold') ?? 'off',
+  readonly: params.get('readonly') ?? 'off',
   browser: params.get('browser') ?? 'idle',
   sprinkles: params.get('sprinkles') ?? 'builtin',
   monitor: params.get('monitor') ?? 'dummy',

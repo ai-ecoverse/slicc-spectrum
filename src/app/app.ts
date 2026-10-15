@@ -417,6 +417,14 @@ export class SliccApp extends ThemedElement {
       ...(model.updates ? [model.updates.on('items', update)] : []),
       ...(model.network ? [model.network.on('network', update)] : []),
       ...(model.tabs ? [model.tabs.on('tabs', update)] : []),
+      ...(model.agent.readOnly
+        ? [
+            model.agent.on('readOnly', () => {
+              settle();
+              update();
+            }),
+          ]
+        : []),
       ...(model.follow
         ? [
             model.follow.on('follow', () => {
@@ -755,6 +763,12 @@ export class SliccApp extends ThemedElement {
       .sort((a, b) => order.indexOf(a.agentId) - order.indexOf(b.agentId));
   }
 
+  #panelClosed = (event: Event): void => {
+    const id = (event as CustomEvent<{ id: string }>).detail.id;
+    this.panels.closed(id);
+    if (id.startsWith('sprinkle:')) this.dips.attach(id.slice('sprinkle:'.length));
+  };
+
   #detach(id: string, place: Placement | null, open: boolean): void {
     const sprinkle = this.#sprinkle(id);
     if (!sprinkle) return;
@@ -1091,7 +1105,7 @@ export class SliccApp extends ThemedElement {
         <main>
           ${rails.left}
           <slicc-dock empty-text="All panels are closed. Open one from a rail or View." @layout-change=${this.#save}
-            @panel-close=${(event: Event) => this.panels.closed((event as CustomEvent<{ id: string }>).detail.id)}
+            @panel-close=${this.#panelClosed}
             @active-panel-change=${this.#activated}
             @external-drop=${this.#dropped}
             @detach-sprinkle=${(event: Event) => this.#detach((event as CustomEvent<{ id: string }>).detail.id, null, true)}

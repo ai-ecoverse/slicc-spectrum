@@ -19,20 +19,25 @@ import type {
 import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
 import type { SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
-import { watchOnly } from './follow.ts';
+import { onWatch, watchOnly } from './follow.ts';
 import {
   assistant,
   day,
+  flatPile,
   type Handlers,
   lick,
   messageCss,
   type Owner,
+  type Pile,
+  questionTurn,
+  show,
   stamps,
   system,
   toolMessage,
   toolOnly,
   toolTail,
   user,
+  waiting,
 } from './messages.ts';
 import { settleModels } from './models.ts';
 import { connecting } from './tabs.ts';
@@ -51,6 +56,23 @@ const navigation = new Set([
 const upward = new Set(['ArrowUp', 'PageUp', 'Home']);
 
 const compactWidth = 560;
+
+function pendingKeys(messages: readonly Message[]): string[] {
+  return messages.flatMap((message) => {
+    if (waiting(message)) return [message.id];
+    if (message.role !== 'assistant') return [];
+    return message.parts.flatMap((part) =>
+      part.type === 'question' && part.question.state === 'open'
+        ? [`${message.id}:${part.question.id}`]
+        : []
+    );
+  });
+}
+
+function pendingPiles(messages: readonly Message[]): Map<string, Pile> {
+  const keys = pendingKeys(messages);
+  return new Map(keys.map((key, stack) => [key, { stack }] as const));
+}
 
 const failed = (message: Message): boolean =>
   message.role === 'assistant'
@@ -218,6 +240,7 @@ export class SliccChat extends ThemedElement {
         padding: var(--swc-spacing-400) var(--swc-spacing-300) calc(var(--composer-height, 0px) + var(--swc-spacing-500));
         scroll-padding-block-end: calc(var(--composer-height, 0px) + var(--swc-spacing-200));
         font-size: var(--swc-font-size-200);
+        scroll-padding-block-start: var(--pile, 0px);
       }
       @container (min-width: 600px) {
         .column {
@@ -316,7 +339,7 @@ export class SliccChat extends ThemedElement {
       }),
       model.agent.on('agents', settle),
       ...(model.tabs ? [model.tabs.on('tabs', () => this.requestUpdate())] : []),
-      ...(model.follow ? [model.follow.on('follow', settle)] : []),
+      ...onWatch(model, settle),
       model.agent.on('messages', (agentId) => {
         if (agentId === this.#id()) this.#refresh(this.#sent(agentId));
       }),
@@ -334,7 +357,23 @@ export class SliccChat extends ThemedElement {
   #from = 0;
   #start = 0;
   #settle: ReturnType<typeof setTimeout> | undefined;
+  #tick: ReturnType<typeof setInterval> | undefined;
   #tail = '';
+  #held = '';
+
+  #focused = (event: FocusEvent): void => {
+    const turn = (event.target as Element).closest<HTMLElement>('.decision-turn[data-pending]');
+    this.#held = turn?.dataset.id ?? '';
+    if (turn && Number(turn.style.getPropertyValue('--depth')) > 0) show(turn);
+  };
+
+  #refocus(): void {
+    if (!this.#held || this.renderRoot.querySelector(':focus')) return;
+    this.#held = '';
+    const next = this.renderRoot.querySelector<HTMLElement>('.decision-turn[data-pending]');
+    if (next) next.focus();
+    else this.renderRoot.querySelector<SliccComposer>('slicc-composer')?.focus();
+  }
 
   #sent(agentId: string): boolean {
     const last = this.model?.agent.messages(agentId).at(-1);
@@ -371,6 +410,7 @@ export class SliccChat extends ThemedElement {
     else if (reader && log.scrollTop < this.#last) this.#stuck = false;
     this.#last = log.scrollTop;
     this.#height = log.scrollHeight;
+    this.#pile();
   };
 
   #intent = {
@@ -429,10 +469,6 @@ export class SliccChat extends ThemedElement {
     else this.style.setProperty('--composer-height', '0px');
   }
 
-  protected updated(): void {
-    this.#attach();
-  }
-
   connectedCallback(): void {
     super.connectedCallback();
     globalThis.addEventListener('pointerup', this.#release, true);
@@ -448,6 +484,66 @@ export class SliccChat extends ThemedElement {
     this.#fit.disconnect();
     this.#fitted = null;
     clearTimeout(this.#settle);
+    clearInterval(this.#tick);
+    this.#tick = undefined;
+  }
+
+  protected updated(): void {
+    this.#attach();
+    const timed = this.#timed();
+    if (timed && this.#tick === undefined)
+      this.#tick = setInterval(() => this.requestUpdate(), 1000);
+    if (!timed && this.#tick !== undefined) {
+      clearInterval(this.#tick);
+      this.#tick = undefined;
+    }
+    this.#pile();
+    this.#refocus();
+  }
+
+  #pile(): void {
+    const turns = [
+      ...this.renderRoot.querySelectorAll<HTMLElement>('.decision-turn[data-pending]'),
+    ];
+    const drawn = turns.map((turn) => turn.getBoundingClientRect().top);
+    for (const turn of turns) turn.style.position = 'static';
+    const flow = turns.map((turn) => turn.getBoundingClientRect().top);
+    for (const turn of turns) turn.style.position = '';
+    const pinned = turns.flatMap((turn, index) =>
+      drawn[index] - flow[index] > 1
+        ? [{ turn, stack: Number.parseFloat(turn.style.getPropertyValue('--stack')) }]
+        : []
+    );
+    for (const turn of turns) {
+      if (!pinned.some((entry) => entry.turn === turn)) {
+        turn.removeAttribute('data-pinned');
+        turn.style.removeProperty('--depth');
+      }
+    }
+    for (const { turn, stack } of pinned) {
+      turn.setAttribute('data-pinned', '');
+      turn.style.setProperty(
+        '--depth',
+        String(pinned.filter((other) => other.stack > stack).length)
+      );
+    }
+    const log = this.renderRoot.querySelector<HTMLElement>('.log');
+    const top = log?.getBoundingClientRect().top ?? 0;
+    const reach = Math.max(
+      0,
+      ...pinned.map(({ turn }) => turn.getBoundingClientRect().bottom - top)
+    );
+    log?.style.setProperty('--pile', `${reach}px`);
+  }
+
+  #timed(): boolean {
+    const model = this.model as SliccModel | undefined;
+    if (!model) return false;
+    return model.agent
+      .messages(this.#id())
+      .some(
+        (message) => waiting(message) && 'expiresAt' in message && message.expiresAt !== undefined
+      );
   }
 
   protected firstUpdated(): void {
@@ -520,7 +616,8 @@ export class SliccChat extends ThemedElement {
     changed: boolean,
     extra: ToolCall[],
     owners: ReadonlyMap<string, Owner>,
-    stamp: boolean
+    stamp: boolean,
+    pile: Pile
   ): TemplateResult {
     const model = this.model as SliccModel;
     const handlers = { ...this.#handlers, owners };
@@ -548,7 +645,7 @@ export class SliccChat extends ThemedElement {
       case 'system':
         return system(message, this.#handlers);
       default:
-        return lick(message, this.#handlers, stamp);
+        return lick(message, this.#handlers, stamp, pile);
     }
   }
 
@@ -570,6 +667,7 @@ export class SliccChat extends ThemedElement {
     const owners = new Map<string, Owner>();
     const into = new Map<string, string>();
     const stamped = stamps(messages);
+    const piles = pendingPiles(messages);
     let anchor: Message | null = null;
     for (const message of messages) {
       const calls = toolOnly(message, showThinking);
@@ -610,11 +708,24 @@ export class SliccChat extends ThemedElement {
           changed,
           extra.get(message.id) ?? [],
           owners,
-          stamped.has(message.id)
+          stamped.has(message.id),
+          piles.get(message.id) ?? flatPile
         ),
       ]);
+      out.push(...this.#questions(message, piles));
     }
     return out;
+  }
+
+  #questions(message: Message, piles: ReadonlyMap<string, Pile>): Array<[string, TemplateResult]> {
+    if (message.role !== 'assistant') return [];
+    return message.parts.flatMap((part) => {
+      if (part.type !== 'question') return [];
+      const key = `${message.id}:${part.question.id}`;
+      return [
+        [key, questionTurn(part.question, this.#handlers, piles.get(key) ?? flatPile)] as const,
+      ];
+    });
   }
 
   #newChat(agent: Agent): void {
@@ -684,6 +795,7 @@ export class SliccChat extends ThemedElement {
         @touchmove=${this.#intent}
         @keydown=${this.#intent}
         @pointerdown=${this.#hold}
+        @focusin=${this.#focused}
       >
         <div class="column" @keydown=${this.#keys}>
           ${
