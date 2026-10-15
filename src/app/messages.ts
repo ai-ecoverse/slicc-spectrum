@@ -846,10 +846,12 @@ function reveal(event: Event): void {
   const origin = log.getBoundingClientRect().top;
   const pile = turn.getBoundingClientRect().top - origin;
   turn.style.position = 'static';
-  const natural = turn.getBoundingClientRect().top - origin;
+  const flow = turn.getBoundingClientRect();
   turn.style.position = '';
+  const natural = flow.top - origin;
+  const bottom = Math.max(16, log.clientHeight - flow.height - 16);
   if (Math.abs(pile - natural) > 1)
-    log.scrollTo({ top: log.scrollTop + natural - pile, behavior: 'smooth' });
+    log.scrollTo({ top: log.scrollTop + natural - bottom, behavior: 'smooth' });
 }
 
 export interface Pile {
