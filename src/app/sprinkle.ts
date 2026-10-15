@@ -219,6 +219,9 @@ export class SliccSprinkle extends ThemedElement {
       height: auto;
       background: none;
     }
+    :host([inline]) .handle {
+      margin-inline-start: 20px;
+    }
     iframe {
       display: block;
       width: 100%;

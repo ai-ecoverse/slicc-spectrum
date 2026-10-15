@@ -32,6 +32,12 @@ export class Dips extends Emitter<{ change: readonly string[] }> {
     this.#storage?.setItem(this.key, JSON.stringify(this.list()));
     this.emit('change', this.list());
   }
+
+  attach(id: string): void {
+    if (!this.#out.delete(id)) return;
+    this.#storage?.setItem(this.key, JSON.stringify(this.list()));
+    this.emit('change', this.list());
+  }
 }
 
 export function dipsOf(node: Node): Dips | null {

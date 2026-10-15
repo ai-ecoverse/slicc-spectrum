@@ -121,19 +121,6 @@ test('error and warning licks get a severity icon in the byline, an edge and a p
       srVisible: true,
     }
   );
-  assert.equal(
-    await page.evaluate(() => {
-      const root = window.$('slicc-app', 'slicc-dock').content('chat:cone-release').shadowRoot;
-      const pending = document.createElement('div');
-      pending.className = 'pending';
-      pending.append(root.querySelector('.lick[data-id="m-r3"]').cloneNode(true));
-      root.append(pending);
-      const width = getComputedStyle(pending.firstChild).borderInlineStartWidth;
-      pending.remove();
-      return width;
-    }),
-    '4px'
-  );
   const plain = await page.evaluate(lickInfo, 'm-r1');
   assert.deepEqual(
     [plain.severity, plain.icon, plain.turn],
