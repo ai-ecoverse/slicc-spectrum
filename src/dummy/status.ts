@@ -15,7 +15,7 @@ export const status = `<!DOCTYPE html>
       .card {
         display: grid;
         gap: 12px;
-        padding: 4px 2px;
+        padding: 8px 20px 12px;
       }
       .row { display: flex; align-items: center; gap: 10px; }
       .dot {

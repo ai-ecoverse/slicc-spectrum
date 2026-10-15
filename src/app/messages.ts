@@ -1725,6 +1725,12 @@ export const messageCss = css`
       transition: none;
     }
   }
+  slicc-sprinkle[inline] {
+    position: relative;
+    inset-inline-start: 50%;
+    inline-size: calc(100cqw + var(--swc-spacing-300) * 2);
+    transform: translateX(-50%);
+  }
   swc-conversation-turn.decision-turn[data-pending] {
     position: sticky;
     top: calc(var(--stack, 0) * 2.75rem);
