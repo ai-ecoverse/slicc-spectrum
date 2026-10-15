@@ -12,6 +12,7 @@ import '@adobe/spectrum-wc/patterns/ai-toolkit/system-message/swc-system-message
 import '@adobe/spectrum-wc/patterns/ai-toolkit/user-message/swc-user-message.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
+import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
 import '@adobe/spectrum-wc-icons/swc-icon-cancel.js';
 import '@adobe/spectrum-wc-icons/swc-icon-checkmark.js';
 import '@adobe/spectrum-wc-icons/swc-icon-clock-pending.js';
@@ -671,7 +672,7 @@ export function user(message: UserMessage, stamp = true): TemplateResult {
       ${byline(message, who, stamp)}${stamp ? nothing : unseen(message.createdAt)}
       ${message.text ? html`<swc-user-message class="body"><span class="text">${message.text}</span></swc-user-message>` : nothing}
       ${message.attachments?.length ? html`<div class="attachments">${message.attachments.map(attachment)}</div>` : nothing}
-      ${remote ? html`<span class="reaction" aria-hidden="true">🤖</span>` : nothing}
+      ${remote ? html`<span class="reactions"><span class="reaction" aria-hidden="true">🤖</span></span>` : nothing}
     </div>
   </swc-conversation-turn>`;
 }
@@ -809,6 +810,10 @@ function event(label: string, content: TemplateResult): TemplateResult {
   return html`<swc-conversation-turn type="system" class="event" accessible-label=${label}>${content}</swc-conversation-turn>`;
 }
 
+function outside(label: string, byline: TemplateResult, content: TemplateResult): TemplateResult {
+  return html`<swc-conversation-turn type="user" class="event lick-turn" accessible-label=${label}><div class="bubble">${byline}${content}</div></swc-conversation-turn>`;
+}
+
 export function system(message: SystemMessage, handlers: Handlers): TemplateResult {
   if (message.kind === 'compaction') {
     const failed = message.state === 'fallback' || message.state === 'discarded';
@@ -859,23 +864,38 @@ const severities = {
   },
 } as const;
 
-function severityBadge(message: LickMessage, label: string): TemplateResult | null {
-  if (!message.severity) return null;
-  const { prefix, variant, icon } = severities[message.severity];
-  return html`<span class="sr">${prefix}</span><swc-badge class="severity" size="s" variant=${variant} subtle>${icon}${label}</swc-badge>`;
-}
+const lickIcons: Record<LickChannel, string> = {
+  webhook: '🪝',
+  cron: '⏰',
+  sprinkle: '✨',
+  fswatch: '👀',
+  'session-reload': '🔄',
+  navigate: '🧭',
+  discovery: '🔎',
+  upgrade: '⬆️',
+  workflow: '📋',
+  bash: '💻',
+  jshd: '📜',
+  preview: '👁️',
+  cherry: '🍒',
+  'scoop-notify': '✅',
+  'scoop-idle': '💤',
+  'scoop-wait': '⏳',
+  'sudo-request': '🔐',
+};
 
 export function lick(message: LickMessage, handlers: Handlers, stamp = true): TemplateResult {
-  const [label, variant] = lickLabels[message.channel];
+  const [label] = lickLabels[message.channel];
   const decide = message.channel === 'sudo-request' && message.state === 'pending';
   const outcome =
     message.state === 'confirmed' ? 'Allowed' : message.state === 'dismissed' ? 'Denied' : '';
-  const head = html`${severityBadge(message, label) ?? html`<swc-badge class="channel" size="s" variant=${variant} subtle>${label}</swc-badge>`}
-    <strong>${message.title}</strong>
+  const head = html`${message.severity ? html`<span class="sr">${severities[message.severity].prefix}</span>` : nothing}
+    ${outcome ? html`<span class="sr">${outcome}. </span>` : nothing}
     <span class="text">${message.text}</span>
-    ${message.count && message.count > 1 ? html`<span class="times" title="Coalesced events">×${message.count}</span>` : nothing}
-    ${outcome ? html`<swc-badge class="tag" size="s" variant=${message.state === 'confirmed' ? 'positive' : 'neutral'} subtle>${outcome}</swc-badge>` : nothing}
-    <span class=${stamp ? 'when' : 'sr'}>${time(message.createdAt)}</span>`;
+    ${message.count && message.count > 1 ? html`<span class="times" title="Coalesced events">×${message.count}</span>` : nothing}`;
+  const outcomeIcon =
+    message.state === 'confirmed' ? '👍' : message.state === 'dismissed' ? '👎' : '';
+  const reaction = html`<span class="reactions"><span class="reaction" title=${label} aria-hidden="true">${lickIcons[message.channel]}</span>${outcomeIcon ? html`<span class="reaction" title=${outcome} aria-hidden="true">${outcomeIcon}</span>` : nothing}</span>`;
   const actions = decide
     ? html`<div class="decide">
         <swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>
@@ -883,17 +903,23 @@ export function lick(message: LickMessage, handlers: Handlers, stamp = true): Te
       </div>`
     : nothing;
   const name = `${message.severity ? severities[message.severity].prefix : ''}${label} event`;
+  const byline = html`<div class="meta">${message.severity ? html`<span class="severity-icon">${severities[message.severity].icon}</span>` : nothing}<span class="who">${message.title}</span>${stamp ? when(message.createdAt) : unseen(message.createdAt)}</div>`;
   if (!message.body) {
-    return event(
+    return outside(
       name,
-      html`<div class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}><div class="lick-head">${head}</div>${actions}</div>`
+      byline,
+      html`<div class="lick-frame"><div class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}><div class="lick-head">${head}</div>${actions}</div>${reaction}</div>`
     );
   }
   const details = html`<details class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}>
-    <summary class="lick-head"><span class="chevron" aria-hidden="true">▸</span>${head}</summary>
+    <summary class="lick-head">${head}<swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right></summary>
     <pre class="output">${message.body}</pre>
   </details>`;
-  return event(name, decide ? html`<div class="pending">${details}${actions}</div>` : details);
+  return outside(
+    name,
+    byline,
+    html`<div class="lick-frame">${decide ? html`<div class="pending">${details}${actions}</div>` : details}${reaction}</div>`
+  );
 }
 
 export const messageCss = css`
@@ -964,10 +990,14 @@ export const messageCss = css`
     position: relative;
     margin-block-end: var(--swc-spacing-300);
   }
-  .reaction {
+  .reactions {
     position: absolute;
     inset-block-end: calc(var(--swc-spacing-300) * -1);
     inset-inline-end: var(--swc-spacing-200);
+    display: inline-flex;
+    gap: var(--swc-spacing-50);
+  }
+  .reaction {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1114,9 +1144,9 @@ export const messageCss = css`
   }
   .lick {
     border: var(--swc-border-width-100) solid var(--swc-gray-200);
-    border-radius: var(--swc-corner-radius-100);
+    border-radius: var(--swc-corner-radius-700);
     background: var(--swc-background-layer-1-color);
-    font-size: var(--swc-font-size-100);
+    font-size: var(--swc-font-size-200);
   }
   summary,
   .lick-head {
@@ -1647,15 +1677,25 @@ export const messageCss = css`
     color: var(--swc-neutral-subdued-content-color-default);
     text-align: center;
   }
+  .lick-frame {
+    position: relative;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    margin-block-end: var(--swc-spacing-300);
+  }
   .lick {
     border-style: dashed;
   }
-  .channel,
-  .lick .severity {
-    flex: none;
+  .severity-icon {
+    display: inline-flex;
+    align-self: center;
+    color: var(--severity);
   }
-  .lick strong {
-    white-space: nowrap;
+  .lick-turn:has(.lick[data-severity='error']) {
+    --severity: var(--swc-negative-visual-color);
+  }
+  .lick-turn:has(.lick[data-severity='warn']) {
+    --severity: var(--swc-notice-visual-color);
   }
   .lick[data-severity] {
     border-inline-start: var(--swc-border-width-400) solid var(--severity);
@@ -1674,8 +1714,7 @@ export const messageCss = css`
     clip-path: inset(50%);
     white-space: nowrap;
   }
-  .lick .times,
-  .lick .when {
+  .lick .times {
     color: var(--swc-neutral-subdued-content-color-default);
     white-space: nowrap;
   }
@@ -1686,7 +1725,7 @@ export const messageCss = css`
   }
   .pending {
     border: var(--swc-border-width-100) solid var(--swc-notice-visual-color);
-    border-radius: var(--swc-corner-radius-100);
+    border-radius: var(--swc-corner-radius-700);
   }
   .pending > details.lick {
     border: 0;

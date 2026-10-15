@@ -2634,10 +2634,14 @@ test('times show every two minutes, each day starts with one, and hidden times a
     const reply = root.querySelector('swc-conversation-turn[data-id=st-b]');
     return {
       shown: ids.filter((id) =>
-        root.querySelector(`[data-id=${id}] .meta time.when, .lick[data-id=${id}] .when`)
+        root.querySelector(
+          `[data-id=${id}] .meta time.when, .lick-turn:has(.lick[data-id=${id}]) .meta time.when`
+        )
       ),
       reachable: ids.filter((id) =>
-        root.querySelector(`[data-id=${id}] time[datetime], .lick[data-id=${id}] .sr`)
+        root.querySelector(
+          `[data-id=${id}] time[datetime], .lick-turn:has(.lick[data-id=${id}]) time[datetime]`
+        )
       ),
       days: root.querySelectorAll('.day').length,
       empty: !root.querySelector('[data-id=st-b] .meta'),
@@ -2653,6 +2657,105 @@ test('times show every two minutes, each day starts with one, and hidden times a
     title: '1,200 in · 34 out · $0.50',
     description: '1,200 in · 34 out · $0.50',
   });
+});
+
+test('licks sit on the right with a byline, a quiet chevron on their toggle and named reaction pills', async (t) => {
+  const page = await open(t, { delay: '0' });
+  await page.evaluate(() => window.model.agent.select('cone-kitchen'));
+  await page.until(() => !!window.chatPart('.lick[data-id=k-l19]'));
+  const seen = await page.evaluate(() => {
+    const root = window.chatPart().shadowRoot;
+    const turns = [...root.querySelectorAll('.lick-turn')];
+    const turn = (id) => root.querySelector(`.lick[data-id=${id}]`).closest('.lick-turn');
+    const pills = (id) =>
+      [...turn(id).querySelectorAll('.reactions .reaction')].map((pill) => [
+        pill.textContent,
+        pill.title,
+        pill.getAttribute('aria-hidden'),
+      ]);
+    const thread = root.querySelector('swc-conversation-thread').getBoundingClientRect();
+    return {
+      right: turns.every((node) => {
+        const box = node.querySelector('.bubble').getBoundingClientRect();
+        return thread.right - box.right < 48 && box.left > thread.left + 48;
+      }),
+      bylines: turns.every((node) => node.querySelector('.bubble > .meta > .who')),
+      named: turns.every((node) => {
+        const pill = node.querySelector('.reaction');
+        return pill.title && pill.getAttribute('aria-hidden') === 'true';
+      }),
+      webhook: pills('k-l1'),
+      allowed: pills('k-l18'),
+      denied: pills('k-l19'),
+      spoken: ['k-l18', 'k-l19'].map((id) =>
+        [...turn(id).querySelectorAll('.lick-head .sr')].map((node) => node.textContent).join('')
+      ),
+      times: turn('k-l2').querySelector('.times').textContent,
+      chevron: !!root.querySelector(
+        'details.lick[data-id=k-l1] > summary .chevron[aria-hidden=true]'
+      ),
+      plain: root.querySelector('div.lick[data-id=k-l2] .chevron'),
+    };
+  });
+  assert.deepEqual(seen, {
+    right: true,
+    bylines: true,
+    named: true,
+    webhook: [['🪝', 'Webhook', 'true']],
+    allowed: [
+      ['🔐', 'Permission', 'true'],
+      ['👍', 'Allowed', 'true'],
+    ],
+    denied: [
+      ['🔐', 'Permission', 'true'],
+      ['👎', 'Denied', 'true'],
+    ],
+    spoken: ['Allowed. ', 'Denied. '],
+    times: '×3',
+    chevron: true,
+    plain: null,
+  });
+  const state = () => {
+    const lick = window.chatPart('details.lick[data-id=k-l1]');
+    return [
+      lick.open,
+      getComputedStyle(lick.querySelector('summary .chevron')).transform !== 'none',
+    ];
+  };
+  await page.evaluate(() => {
+    window.chatPart('details.lick[data-id=k-l1] > summary').focus();
+    return true;
+  });
+  await page.press('Enter');
+  await page.until(() => window.chatPart('details.lick[data-id=k-l1]').open);
+  assert.deepEqual(await page.evaluate(state), [true, true]);
+  await page.evaluate(() => {
+    window.chatPart('details.lick[data-id=k-l1] > pre').click();
+    return true;
+  });
+  assert.deepEqual(await page.evaluate(state), [true, true]);
+  await page.press(' ');
+  await page.until(() => !window.chatPart('details.lick[data-id=k-l1]').open);
+  assert.deepEqual(await page.evaluate(state), [false, false]);
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 420,
+    height: 860,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await page.until(() => window.chatPart().getBoundingClientRect().width <= 420);
+  const spill = await page.evaluate(() => {
+    const root = window.chatPart().shadowRoot;
+    return [...root.querySelectorAll('.lick-frame')]
+      .filter((frame) => {
+        const box = frame.getBoundingClientRect();
+        const bubble = frame.parentElement.getBoundingClientRect();
+        return box.left < bubble.left - 1 || box.right > bubble.right + 1;
+      })
+      .map((frame) => frame.querySelector('.lick').dataset.id);
+  });
+  assert.deepEqual(spill, []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('the composer runs commands, mentions, attaches, queues and steers', async (t) => {
@@ -5976,7 +6079,7 @@ for (const color of ['light', 'dark']) {
       const [hi, lo] = [lum(tint), lum(text)].sort((a, b) => b - a);
       return {
         remote: [...root.querySelectorAll('[data-remote]')].map((node) => node.dataset.id),
-        pills: [...root.querySelectorAll('.reaction')].map((pill) => [
+        pills: [...root.querySelectorAll('.message.user .reaction')].map((pill) => [
           pill.closest('[data-id]').dataset.id,
           pill.getAttribute('aria-hidden'),
           pill.textContent,
