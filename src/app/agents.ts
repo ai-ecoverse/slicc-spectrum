@@ -1,6 +1,7 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc-icons/swc-icon-add.js';
+import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
 import '@adobe/spectrum-wc-icons/swc-icon-close.js';
 import '@adobe/spectrum-wc-icons/swc-icon-delete.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
@@ -51,11 +52,25 @@ export function scoopSummary(scoops: readonly Agent[]): string {
     .map((status) => [status, scoops.filter((scoop) => scoop.status === status).length] as const)
     .filter(([, count]) => count > 0)
     .map(([status, count]) => `${count} ${statusLabel[status].toLowerCase()}`);
-  return `${scoops.length} scoop${scoops.length === 1 ? '' : 's'}: ${counts.join(', ')}`;
+  return `${scoopCount(scoops)}: ${counts.join(', ')}`;
+}
+
+function scoopCount(scoops: readonly Agent[]): string {
+  return `${scoops.length} scoop${scoops.length === 1 ? '' : 's'}`;
+}
+
+export function scoopBrief(scoops: readonly Agent[]): string {
+  if (scoops.length === 0) return '';
+  const busy = statusOrder
+    .filter((status) => status !== 'idle')
+    .map((status) => [status, scoops.filter((scoop) => scoop.status === status).length] as const)
+    .filter(([, count]) => count > 0)
+    .map(([status, count]) => `${count} ${statusLabel[status].toLowerCase()}`);
+  return [scoopCount(scoops), busy.join(', ')].filter(Boolean).join(' · ');
 }
 
 export function unreadCount(unread: number): string {
-  return unread > 9 ? '9+' : String(unread);
+  return unread > 99 ? '99+' : String(unread);
 }
 
 export function fillShown(fill: number): boolean {
@@ -65,7 +80,7 @@ export function fillShown(fill: number): boolean {
 export class SliccAgents extends ModelElement {
   static properties = { ...ModelElement.properties, errors: { state: true } };
   declare errors: Record<string, string>;
-  #expanded: string | null = null;
+  #expanded = new Set<string>();
   #pointer = false;
   #modality = (event: Event): void => {
     this.#pointer = event.type === 'pointerdown';
@@ -104,21 +119,22 @@ export class SliccAgents extends ModelElement {
     }
     li {
       --row-background: var(--swc-background-layer-1-color);
-      --row-head: 1lh;
-      --row-description: calc(2 * 1.4 * var(--swc-font-size-75));
       position: relative;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      grid-template-areas: 'head fill' 'description description' 'ribbon ribbon' 'error error';
-      grid-template-rows: var(--row-head) var(--row-description) var(--swc-spacing-100);
-      align-items: center;
+      grid-template-columns: var(--swc-component-height-75) minmax(0, 1fr) auto;
+      grid-template-areas:
+        'toggle head fill'
+        'toggle description strip'
+        'toggle ribbon ribbon'
+        'toggle error error';
+      align-items: start;
       column-gap: var(--swc-spacing-100);
-      padding: var(--swc-spacing-75) var(--swc-spacing-200);
+      padding: var(--swc-spacing-75) var(--swc-spacing-200) var(--swc-spacing-75) var(--swc-spacing-100);
       background: var(--row-background);
       cursor: pointer;
     }
     li.scoop {
-      padding-inline-start: calc(var(--swc-spacing-200) + var(--swc-spacing-300));
+      padding-inline-start: calc(var(--swc-spacing-100) + var(--swc-spacing-300));
     }
     li:hover {
       --row-background: var(--swc-gray-100);
@@ -126,40 +142,66 @@ export class SliccAgents extends ModelElement {
     li[aria-selected='true'] {
       --row-background: var(--swc-gray-200);
     }
+    li[aria-selected='true']::before {
+      content: '';
+      position: absolute;
+      inset-block: 0;
+      inset-inline-start: 0;
+      inline-size: var(--swc-spacing-75);
+      background: var(--swc-accent-color-900);
+    }
     li:focus-visible {
       outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
       outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
     }
+    .toggle {
+      grid-area: toggle;
+      align-self: start;
+    }
+    .toggle swc-icon-chevron-right:dir(rtl) {
+      transform: scaleX(-1);
+    }
+    .toggle[data-open] swc-icon-chevron-right {
+      transform: rotate(90deg);
+    }
     .head {
       grid-area: head;
+      align-self: center;
       display: flex;
       align-items: center;
       gap: var(--swc-spacing-75);
       min-inline-size: 0;
+      min-block-size: var(--swc-component-height-75);
     }
     .head > * {
       flex: none;
     }
     .marker {
+      --status-color: var(--swc-gray-600);
       flex: none;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      box-sizing: border-box;
       inline-size: var(--swc-spacing-200);
       block-size: var(--swc-spacing-200);
       border-radius: var(--swc-corner-radius-full);
-      font-size: var(--swc-font-size-25);
-      font-variant-numeric: tabular-nums;
-      line-height: 1;
+      background: var(--status-color);
     }
     .marker.unread {
-      box-sizing: border-box;
+      --status-color: var(--swc-accent-background-color-default);
       inline-size: auto;
-      min-inline-size: var(--swc-spacing-200);
-      padding-inline: var(--swc-spacing-50);
-      background: var(--swc-accent-background-color-default);
+      min-inline-size: var(--swc-spacing-300);
+      block-size: var(--swc-spacing-300);
+      padding-inline: var(--swc-spacing-75);
       color: var(--swc-white);
+      font-size: var(--swc-font-size-50);
+      font-variant-numeric: tabular-nums;
       font-weight: var(--swc-bold-font-weight);
+      line-height: var(--swc-line-height-100);
+    }
+    .marker.unread[data-status='error'] {
+      --status-color: var(--swc-negative-background-color-default);
     }
     .name {
       flex: 0 1 auto;
@@ -173,12 +215,13 @@ export class SliccAgents extends ModelElement {
     }
     .title {
       grid-area: description;
+      align-self: start;
       display: -webkit-box;
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 2;
       overflow: hidden;
       overflow-wrap: anywhere;
-      line-height: 1.4;
+      line-height: var(--swc-line-height-100);
       font-size: var(--swc-font-size-75);
       color: var(--swc-neutral-subdued-content-color-default);
     }
@@ -189,39 +232,48 @@ export class SliccAgents extends ModelElement {
       grid-area: ribbon;
       display: flex;
       align-items: center;
+      gap: var(--swc-spacing-100);
+      min-inline-size: 0;
+      margin-block-start: var(--swc-spacing-75);
+      font-size: var(--swc-font-size-75);
+      line-height: var(--swc-line-height-100);
+      color: var(--swc-neutral-subdued-content-color-default);
+    }
+    .segments {
+      flex: none;
+      display: flex;
       gap: var(--swc-spacing-50);
+    }
+    .summary {
+      min-inline-size: 0;
       overflow: hidden;
-    }
-    .status,
-    .segment {
-      background: var(--swc-neutral-visual-color);
-    }
-    .status[data-status='thinking'],
-    .status[data-status='working'],
-    .segment[data-status='thinking'],
-    .segment[data-status='working'] {
-      background: var(--swc-informative-visual-color);
-    }
-    .status[data-status='waiting'],
-    .segment[data-status='waiting'] {
-      background: var(--swc-notice-visual-color);
-    }
-    .status[data-status='error'],
-    .segment[data-status='error'] {
-      background: var(--swc-negative-visual-color);
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .segment {
+      --status-color: var(--swc-gray-600);
       flex: none;
       inline-size: var(--swc-spacing-200);
-      block-size: var(--swc-spacing-50);
+      block-size: var(--swc-spacing-75);
       border-radius: var(--swc-corner-radius-full);
+      background: var(--status-color);
+    }
+    [data-status='thinking'],
+    [data-status='working'] {
+      --status-color: var(--swc-informative-color-900);
+    }
+    [data-status='waiting'] {
+      --status-color: var(--swc-notice-color-900);
+    }
+    [data-status='error'] {
+      --status-color: var(--swc-negative-color-900);
     }
     .fill {
       grid-area: fill;
-      position: relative;
-      z-index: 1;
-      align-self: start;
+      align-self: center;
+      justify-self: end;
       font-size: var(--swc-font-size-75);
+      line-height: var(--swc-line-height-100);
       font-variant-numeric: tabular-nums;
       color: var(--swc-neutral-subdued-content-color-default);
     }
@@ -234,13 +286,10 @@ export class SliccAgents extends ModelElement {
       font-weight: var(--swc-bold-font-weight);
     }
     .drop-cell {
-      position: absolute;
-      inset-block: 0;
-      inset-inline-end: 0;
+      grid-area: strip;
+      align-self: center;
+      justify-self: end;
       display: flex;
-      align-items: center;
-      padding-inline: var(--swc-spacing-100);
-      background: var(--row-background);
       opacity: 0;
     }
     li:hover .drop-cell,
@@ -267,17 +316,29 @@ export class SliccAgents extends ModelElement {
         opacity: 1;
       }
     }
+    @media (forced-colors: active) {
+      .marker,
+      .segment,
+      li[aria-selected='true']::before {
+        forced-color-adjust: none;
+        background: CanvasText;
+      }
+      .marker.unread,
+      li[aria-selected='true']::before {
+        background: Highlight;
+        color: HighlightText;
+      }
+    }
   `,
   ];
 
   protected subscribe(model: SliccModel): Array<() => void> {
-    const focused = this.#focused(model);
-    this.#expanded = focused?.kind === 'scoop' ? focused.parentId : null;
+    this.#expanded = new Set();
+    this.#reveal(model);
     return [
       model.agent.on('agents', () => this.requestUpdate()),
       model.agent.on('active', () => {
-        const next = this.#focused(model);
-        if (next) this.#expanded = next.kind === 'cone' ? next.id : next.parentId;
+        this.#reveal(model);
         this.requestUpdate();
       }),
       watchTitles(model, () => this.requestUpdate()),
@@ -294,18 +355,19 @@ export class SliccAgents extends ModelElement {
     };
   }
 
-  #focused(model: SliccModel): Agent | undefined {
-    return model.agent.list().find((agent) => agent.id === model.agent.active());
+  #reveal(model: SliccModel): void {
+    const focused = model.agent.list().find((agent) => agent.id === model.agent.active());
+    const cone = focused?.kind === 'cone' ? focused.id : focused?.parentId;
+    if (cone) this.#expanded.add(cone);
   }
 
-  #select(id: string): void {
-    this.model?.agent.select(id);
+  #select(agent: Agent): void {
+    this.model?.agent.select(agent.id);
   }
 
-  #pick(agent: Agent): void {
-    const open = agent.kind === 'cone' && this.#expanded !== agent.id;
-    this.#select(agent.id);
-    if (agent.kind === 'cone') this.#expanded = open ? agent.id : null;
+  #toggle(agent: Agent, open = !this.#expanded.has(agent.id)): void {
+    if (open) this.#expanded.add(agent.id);
+    else this.#expanded.delete(agent.id);
     this.requestUpdate();
   }
 
@@ -335,17 +397,17 @@ export class SliccAgents extends ModelElement {
     if (!agent) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      this.#pick(agent);
+      this.#select(agent);
     } else if (event.key === 'ArrowRight' && this.#scoops(agent).length > 0) {
       event.preventDefault();
-      if (this.#expanded === agent.id) items[index + 1].focus();
-      else this.#pick(agent);
+      if (this.#expanded.has(agent.id)) items[index + 1].focus();
+      else this.#toggle(agent, true);
     } else if (event.key === 'ArrowLeft' && agent.kind === 'scoop') {
       event.preventDefault();
       items.find((item) => item.dataset.id === agent.parentId)?.focus();
-    } else if (event.key === 'ArrowLeft' && this.#expanded === agent.id) {
+    } else if (event.key === 'ArrowLeft' && this.#expanded.has(agent.id)) {
       event.preventDefault();
-      this.#pick(agent);
+      this.#toggle(agent, false);
     } else if (event.key === 'Delete') {
       if (this.#droppable(agent)) {
         event.preventDefault();
@@ -426,7 +488,7 @@ export class SliccAgents extends ModelElement {
         ><swc-action-button
           id=${id}
           class="drop"
-          size="l"
+          size="m"
           quiet
           tabindex=${selected ? '0' : '-1'}
           data-action="drop"
@@ -448,7 +510,7 @@ export class SliccAgents extends ModelElement {
         ><swc-action-button
           id=${id}
           class="drop"
-          size="l"
+          size="m"
           quiet
           tabindex=${selected ? '0' : '-1'}
           data-action="delete-cone"
@@ -464,18 +526,42 @@ export class SliccAgents extends ModelElement {
 
   #ribbon(scoops: readonly Agent[]): TemplateResult | typeof nothing {
     if (scoops.length === 0) return nothing;
-    return html`<span class="ribbon" aria-hidden="true">${scoops.map(
+    return html`<span class="ribbon"><span class="segments" aria-hidden="true">${scoops.map(
       (scoop) => html`<span class="segment" data-status=${scoop.status}></span>`
-    )}</span>`;
+    )}</span><span class="summary">${scoopBrief(scoops)}</span></span>`;
   }
 
-  #row(agent: Agent, active: string): TemplateResult {
+  #disclosure(
+    agent: Agent,
+    scoops: readonly Agent[],
+    open: boolean
+  ): TemplateResult | typeof nothing {
+    if (scoops.length === 0) return nothing;
+    return html`<swc-action-button
+      class="toggle"
+      size="s"
+      quiet
+      tabindex="-1"
+      aria-hidden="true"
+      data-action="toggle-cone"
+      ?data-open=${open}
+      @mousedown=${(event: Event) => event.preventDefault()}
+      @click=${(event: Event) => {
+        event.stopPropagation();
+        this.#toggle(agent);
+      }}
+      ><swc-icon-chevron-right slot="icon"></swc-icon-chevron-right
+    ></swc-action-button>`;
+  }
+
+  #row(agent: Agent, active: string, anchor: string): TemplateResult {
     const selected = agent.id === active;
+    const current = agent.id === anchor;
     const error = this.errors[agent.id];
     const model = this.model as SliccModel;
     const title = agentTitle(model, agent);
     const scoops = this.#scoops(agent);
-    const open = this.#expanded === agent.id;
+    const open = this.#expanded.has(agent.id);
     const unread = selected ? 0 : agent.unread;
     const label = `${coneLabel(model, agent)}: ${statusLabel[agent.status]}, ${percent(agent.contextFill)} context${
       unread ? `, ${unread} unread` : ''
@@ -492,15 +578,16 @@ export class SliccAgents extends ModelElement {
       aria-controls=${open && scoops.length ? scoops.map((scoop) => `row-${scoop.id}`).join(' ') : nothing}
       aria-label=${label}
       aria-description=${summary || nothing}
-      tabindex=${selected ? '0' : '-1'}
+      tabindex=${current ? '0' : '-1'}
       aria-keyshortcuts=${this.#droppable(agent) || this.#deletable(agent) ? 'Delete' : nothing}
       title=${summary ? `${label}. ${summary}` : label}
-      @click=${() => this.#pick(agent)}
+      @click=${() => this.#select(agent)}
     >
+      ${this.#disclosure(agent, scoops, open)}
       <div class="head">
         ${
           unread
-            ? html`<span class="marker unread" aria-hidden="true">${unreadCount(unread)}</span>`
+            ? html`<span class="marker unread" data-status=${agent.status} aria-hidden="true">${unreadCount(unread)}</span>`
             : html`<span class="marker status" data-status=${agent.status} aria-hidden="true"></span>`
         }
         <span class="name">${agent.name}</span>
@@ -538,10 +625,12 @@ export class SliccAgents extends ModelElement {
     const active = this.model?.agent.active() ?? '';
     const errors = Object.values(this.errors);
     const rows = ordered(list).filter(
-      (agent) => agent.kind === 'cone' || agent.parentId === this.#expanded
+      (agent) => agent.kind === 'cone' || this.#expanded.has(agent.parentId as string)
     );
+    const shown = rows.find((agent) => agent.id === active);
+    const anchor = shown ? active : (list.find((agent) => agent.id === active)?.parentId ?? '');
     return html`<div class="list"><ul role="tree" aria-label="Cones and scoops" @keydown=${this.#keydown} @focusin=${this.#focusin} @focusout=${this.#focusout}>
-        ${rows.map((agent) => this.#row(agent, active))}
+        ${rows.map((agent) => this.#row(agent, active, anchor))}
       </ul></div>${this.#actions()}
       <div class="sr" role="status">${errors.at(-1) ?? ''}</div>`;
   }
