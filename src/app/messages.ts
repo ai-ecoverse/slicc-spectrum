@@ -1081,9 +1081,9 @@ export const messageCss = css`
   }
   .lick {
     border: var(--swc-border-width-100) solid var(--swc-gray-200);
-    border-radius: var(--swc-corner-radius-100);
+    border-radius: var(--swc-corner-radius-700);
     background: var(--swc-background-layer-1-color);
-    font-size: var(--swc-font-size-100);
+    font-size: var(--swc-font-size-200);
   }
   summary,
   .lick-head {
@@ -1633,7 +1633,7 @@ export const messageCss = css`
   }
   .pending {
     border: var(--swc-border-width-100) solid var(--swc-notice-visual-color);
-    border-radius: var(--swc-corner-radius-100);
+    border-radius: var(--swc-corner-radius-700);
   }
   .pending > details.lick {
     border: 0;
