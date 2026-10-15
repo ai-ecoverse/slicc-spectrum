@@ -442,6 +442,7 @@ export interface Settings {
   model: string;
   thinking: Thinking;
   sendOnEnter: boolean;
+  pushToTalk: boolean;
   showThinking: boolean;
   diffStyle: 'unified' | 'split';
 }

@@ -217,6 +217,11 @@ export class SliccComposer extends ThemedElement {
   #abandon: ReturnType<typeof setTimeout> | undefined;
   #recognition: { stop(): void } | null = null;
   #erase: ReturnType<typeof setTimeout> | undefined;
+  #release = (event: Event): void => {
+    const released =
+      event instanceof KeyboardEvent && (event.code === 'KeyM' || event.key === 'Alt');
+    if (this.dictating && (released || event.type === 'blur')) this.dictate();
+  };
   #keys = { capture: true, handleEvent: (event: KeyboardEvent) => this.#keydown(event) };
 
   constructor() {
@@ -359,27 +364,6 @@ export class SliccComposer extends ThemedElement {
       .failed {
         color: var(--swc-negative-content-color-default);
       }
-      .below {
-        display: flex;
-        align-items: center;
-        gap: var(--swc-spacing-100);
-        max-width: 860px;
-        margin: var(--swc-spacing-75) auto 0;
-        min-height: var(--swc-component-height-75);
-      }
-      .below swc-action-button {
-        margin-inline-start: auto;
-      }
-      swc-action-button.selected {
-        --swc-action-button-background-color-default: var(--swc-neutral-background-color-selected-default);
-        --swc-action-button-background-color-hover: var(--swc-neutral-background-color-selected-hover);
-        --swc-action-button-background-color-down: var(--swc-neutral-background-color-selected-down);
-        --swc-action-button-background-color-focus: var(--swc-neutral-background-color-selected-key-focus);
-        --swc-action-button-content-color-default: var(--swc-gray-25);
-        --swc-action-button-content-color-hover: var(--swc-gray-25);
-        --swc-action-button-content-color-down: var(--swc-gray-25);
-        --swc-action-button-content-color-focus: var(--swc-gray-25);
-      }
       .popup {
         position: absolute;
         left: 0;
@@ -487,6 +471,8 @@ export class SliccComposer extends ThemedElement {
   connectedCallback(): void {
     super.connectedCallback();
     clearTimeout(this.#abandon);
+    globalThis.addEventListener('keyup', this.#release);
+    globalThis.addEventListener('blur', this.#release);
     if (this.hasUpdated) this.#wire();
   }
 
@@ -496,6 +482,8 @@ export class SliccComposer extends ThemedElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    globalThis.removeEventListener('keyup', this.#release);
+    globalThis.removeEventListener('blur', this.#release);
     clearValues(this.renderRoot);
     const held = [
       this.attachments,
@@ -902,10 +890,19 @@ export class SliccComposer extends ThemedElement {
     return false;
   }
 
+  #shortcut(event: KeyboardEvent): boolean {
+    if (event.key === 'Backspace' || event.key === 'Delete') this.#flash();
+    if (!this.model?.settings.get().pushToTalk || !event.altKey || event.code !== 'KeyM')
+      return false;
+    event.preventDefault();
+    if (!event.repeat) this.dictate();
+    return true;
+  }
+
   #keydown(event: KeyboardEvent): void {
     const area = this.#textarea;
     if (event.isComposing || !area || event.composedPath()[0] !== area) return;
-    if (event.key === 'Backspace' || event.key === 'Delete') this.#flash();
+    if (this.#shortcut(event)) return;
     const sendOnEnter = this.model?.settings.get().sendOnEnter ?? true;
     let handled = this.#popupKey(event) || this.#historyKey(event, area);
     if (!handled && event.key === 'Tab' && !event.shiftKey && !this.value) {
@@ -967,7 +964,10 @@ export class SliccComposer extends ThemedElement {
     if (value === 'upload')
       this.renderRoot.querySelector<HTMLInputElement>('input[type=file]')?.click();
     else if (value === 'screenshot') void this.screenshot();
-    else {
+    else if (value === 'push-to-talk') {
+      const settings = this.model?.settings;
+      settings?.update({ pushToTalk: !settings.get().pushToTalk });
+    } else {
       this.openPopup(value as 'file' | 'secret');
       void this.updateComplete.then(() =>
         value === 'file'
@@ -1173,7 +1173,7 @@ export class SliccComposer extends ThemedElement {
     const agent = this.model?.agent.list().find((candidate) => candidate.id === this.#agent);
     const suggestion = this.model?.agent.suggestion(this.#agent);
     const canSend = !!this.value.trim() || this.attachments.some((attachment) => !attachment.error);
-    const speech = 'SpeechRecognition' in globalThis || 'webkitSpeechRecognition' in globalThis;
+    const pushToTalk = this.model?.settings.get().pushToTalk ?? false;
     const held = this.#held();
     return html`<div class="column">
         ${this.#hold()}
@@ -1210,6 +1210,7 @@ export class SliccComposer extends ThemedElement {
             <sp-menu-item value="screenshot">Take a screenshot of the browser tab</sp-menu-item>
             <sp-menu-item value="file">Attach a file from SLICC</sp-menu-item>
             <sp-menu-item value="secret">Share a secret</sp-menu-item>
+            <sp-menu-item value="push-to-talk">Enable push to talk<span slot="value">${pushToTalk ? 'On' : 'Off'}</span></sp-menu-item>
           </sp-menu>
         </swc-popover>
         <input type="file" multiple @change=${(event: Event) => {
@@ -1218,20 +1219,7 @@ export class SliccComposer extends ThemedElement {
           input.value = '';
         }} />
       </div>
-      ${
-        speech
-          ? html`<div class="below">
-              <swc-action-button
-                size="s"
-                quiet
-                class=${this.dictating ? 'selected' : ''}
-                accessible-label=${this.dictating ? 'Stop dictation' : 'Dictate'}
-                data-action="dictate"
-                @click=${() => this.dictate()}
-              ><swc-icon-microphone slot="icon"></swc-icon-microphone></swc-action-button>
-            </div>`
-          : nothing
-      }`;
+`;
   }
 }
 
