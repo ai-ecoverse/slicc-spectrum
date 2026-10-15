@@ -23,6 +23,20 @@ async function open(t, params = {}) {
   return page;
 }
 
+async function altM(page, type) {
+  const m = { key: 'µ', code: 'KeyM', windowsVirtualKeyCode: 77, modifiers: 1 };
+  if (type === 'keyDown') {
+    await page.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'Alt',
+      code: 'AltLeft',
+      windowsVirtualKeyCode: 18,
+      modifiers: 1,
+    });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...m, text: 'µ' });
+  } else await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...m });
+}
+
 async function shot(page, name) {
   await page.evaluate(() => document.fonts.ready.then(() => true));
   await new Promise((resolve) => setTimeout(resolve, 150));
@@ -5194,22 +5208,7 @@ test('chat lets the reader scroll up by wheel or keyboard while content streams 
 });
 
 test('the composer floats clear of the log, describes its keys and shows what you and the agent are doing', async (t) => {
-  const page = await chrome.page(t);
-  await page.init(() => {
-    window.SpeechRecognition = class {
-      start() {
-        window.speech = this;
-      }
-      stop() {
-        this.onend?.();
-      }
-    };
-  });
-  const url = `/ui/?${new URLSearchParams({ delay: '40', color: 'light' })}`;
-  await page.goto(url);
-  if (!(await settled(page))) await page.goto(url);
-  await page.until(() => window.ready === true);
-  await page.until(() => window.$('slicc-app', 'slicc-dock')?.api.panels.length > 0);
+  const page = await open(t, { delay: '40', speech: 'dummy' });
   await page.press('2', 'alt');
   await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
   await page.evaluate(() => {
@@ -5232,6 +5231,8 @@ test('the composer floats clear of the log, describes its keys and shows what yo
         gap: log.scrollHeight - log.scrollTop - log.clientHeight,
       };
     };
+    window.composerValue = () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').value;
     window.composerIcon = () => {
       const loader = field().shadowRoot.querySelector('swc-pixel-loader');
       return [
@@ -5324,17 +5325,16 @@ test('the composer floats clear of the log, describes its keys and shows what yo
     composer.attachments = [];
   });
   await page.until(() => window.composerIcon()[0] === 'aiLogo');
-  await page.evaluate(() =>
-    window
-      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '[data-action=dictate]')
-      .click()
-  );
-  await page.until(() => window.composerIcon()[0] === 'microphone');
   await page.evaluate(() => {
-    window.speech.onresult({ results: [[{ transcript: 'Search for the cache TTL' }]] });
-    window.speech.stop();
+    window.speechText = 'Search for the cache TTL';
+    window.model.settings.update({ pushToTalk: true });
   });
+  await altM(page, 'keyDown');
+  await page.until(() => window.composerIcon()[0] === 'microphone');
+  await page.until(() => window.composerValue() === 'Search for the cache TTL');
+  await altM(page, 'keyUp');
   await page.until(() => window.composerIcon()[0] === 'pencil');
+  await page.evaluate(() => window.model.settings.update({ pushToTalk: false }));
 
   await page.press('Enter');
   await page.until(() => window.statusIcon() === 'mag');
@@ -5424,6 +5424,189 @@ test('the composer floats clear of the log, describes its keys and shows what yo
     'none',
     'solid',
   ]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('push to talk turns on from the + menu or Settings, dictates while Alt+M is held, and stops on release or blur', async (t) => {
+  const page = await open(t, { delay: '40', speech: 'dummy' });
+  await page.press('2', 'alt');
+  await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
+  await page.evaluate(() => {
+    const composer = () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer');
+    window.talk = () => {
+      const field = composer().shadowRoot.querySelector('swc-prompt-field');
+      return {
+        value: composer().value,
+        icon: field.getAttribute('loader'),
+        log: window.speechLog.join(','),
+      };
+    };
+    window.talkItem = () => composer().shadowRoot.querySelector('sp-menu-item[value=push-to-talk]');
+  });
+  const description = async () => {
+    const { result } = await page.send('Runtime.evaluate', {
+      expression:
+        "window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field').shadowRoot.querySelector('textarea')",
+    });
+    const { nodes } = await page.send('Accessibility.getPartialAXTree', {
+      objectId: result.objectId,
+      fetchRelatives: false,
+    });
+    return nodes[0].description?.value;
+  };
+  const release = (key) =>
+    page.send(
+      'Input.dispatchKeyEvent',
+      key === 'Alt'
+        ? { type: 'keyUp', key: 'Alt', code: 'AltLeft', windowsVirtualKeyCode: 18, modifiers: 0 }
+        : { type: 'keyUp', key: 'µ', code: 'KeyM', windowsVirtualKeyCode: 77, modifiers: 1 }
+    );
+  const reset = () =>
+    page.evaluate(() => {
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').value = '';
+      window.speechLog.length = 0;
+    });
+
+  assert.equal(await page.evaluate(() => window.model.settings.get().pushToTalk), false);
+  assert.doesNotMatch(await description(), /Alt\+M/);
+  await altM(page, 'keyDown');
+  await release('M');
+  await page.until(() => window.talk().value === 'µ');
+  assert.equal(await page.evaluate(() => window.talk().log), '');
+  await reset();
+
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
+      .shadowRoot.querySelector('.swc-PromptField-upload')
+      .click()
+  );
+  await page.until(
+    () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-popover')?.open
+  );
+  const item = () =>
+    page.evaluate(() => {
+      const element = window.talkItem();
+      return [
+        element.getAttribute('role'),
+        element.getAttribute('aria-checked'),
+        element.querySelector('[slot=description]').textContent,
+      ];
+    });
+  assert.deepEqual(await item(), ['menuitemcheckbox', 'false', 'Hold Alt+M to dictate']);
+  await page.evaluate(() => window.talkItem().click());
+  await page.until(() => window.model.settings.get().pushToTalk === true);
+  await page.until(() => window.talkItem().getAttribute('aria-checked') === 'true');
+  assert.equal(
+    await page.evaluate(
+      () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-popover').open
+    ),
+    true
+  );
+  await shot(page, 'push-to-talk-menu-on');
+  await page.evaluate(() => window.talkItem().click());
+  await page.until(() => window.model.settings.get().pushToTalk === false);
+  await page.until(() => window.talkItem().getAttribute('aria-checked') === 'false');
+  await page.evaluate(() => window.talkItem().click());
+  await page.until(() => window.model.settings.get().pushToTalk === true);
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-popover').open = false;
+  });
+  await page.until(
+    () => !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-popover').open
+  );
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
+      .shadowRoot.querySelector('textarea')
+      .focus()
+  );
+  assert.match(await description(), /, hold Alt\+M to dictate\.$/);
+
+  await altM(page, 'keyDown');
+  await page.until(() => window.talk().icon === 'microphone');
+  await page.until(() => window.talk().value === 'Check the Porto forecast');
+  await page.send('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key: 'µ',
+    code: 'KeyM',
+    windowsVirtualKeyCode: 77,
+    modifiers: 1,
+    autoRepeat: true,
+    text: 'µ',
+  });
+  assert.deepEqual(await page.evaluate(() => window.talk()), {
+    value: 'Check the Porto forecast',
+    icon: 'microphone',
+    log: 'start',
+  });
+  await release('M');
+  await page.until(() => window.talk().log === 'start,stop');
+  await page.until(() => window.talk().icon === 'pencil');
+  await release('Alt');
+
+  await reset();
+  await altM(page, 'keyDown');
+  await page.until(() => window.talk().icon === 'microphone');
+  await release('Alt');
+  await page.until(() => window.talk().log === 'start,stop');
+  await release('M');
+
+  await reset();
+  await altM(page, 'keyDown');
+  await page.until(() => window.talk().icon === 'microphone');
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await page.until(() => window.talk().log === 'start,stop');
+  await release('M');
+  await release('Alt');
+  assert.equal(await page.evaluate(() => window.talk().value.includes('µ')), false);
+
+  await page.evaluate(() => window.$('slicc-app', 'header swc-action-button#settings').click());
+  await page.until(() => !!window.settingsPart('sp-switch[data-setting=pushToTalk]'));
+  assert.equal(
+    await page.evaluate(() => window.settingsPart('sp-switch[data-setting=pushToTalk]').checked),
+    true
+  );
+  await page.evaluate(() => window.settingsPart('sp-switch[data-setting=pushToTalk]').click());
+  await page.until(() => window.model.settings.get().pushToTalk === false);
+  assert.deepEqual(page.errors, []);
+});
+
+test('without speech recognition there is no push to talk, and Alt+M types as usual', async (t) => {
+  const page = await open(t, { speech: 'none' });
+  await page.evaluate(() => window.model.settings.update({ pushToTalk: true }));
+  await page.press('2', 'alt');
+  await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
+  assert.equal(
+    await page.evaluate(
+      () =>
+        !!window.$(
+          'slicc-app',
+          'slicc-dock',
+          'slicc-chat',
+          'slicc-composer',
+          'sp-menu-item[value=push-to-talk]'
+        )
+    ),
+    false
+  );
+  await altM(page, 'keyDown');
+  await page.send('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key: 'µ',
+    code: 'KeyM',
+    windowsVirtualKeyCode: 77,
+    modifiers: 1,
+  });
+  await page.until(
+    () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').value === 'µ'
+  );
+  await page.evaluate(() => window.$('slicc-app', 'header swc-action-button#settings').click());
+  await page.until(() => !!window.settingsPart('sp-switch[data-setting=sendOnEnter]'));
+  assert.equal(
+    await page.evaluate(() => !!window.settingsPart('sp-switch[data-setting=pushToTalk]')),
+    false
+  );
   assert.deepEqual(page.errors, []);
 });
 

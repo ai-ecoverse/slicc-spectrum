@@ -21,7 +21,7 @@ import type {
   VaultPort,
 } from '../model/types.ts';
 import { nameProblem, valueProblem } from '../model/values.ts';
-import { chatModels, shared, ThemedElement } from './base.ts';
+import { chatModels, shared, speech, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import { size } from './messages.ts';
 import { away, clearValues, failureText, fieldOf, type PopupDetail, take } from './vault.ts';
@@ -913,10 +913,14 @@ export class SliccComposer extends ThemedElement {
     return false;
   }
 
+  #talking(): boolean {
+    return !!this.model?.settings.get().pushToTalk && !!speech();
+  }
+
   #shortcut(event: KeyboardEvent): boolean {
     if (event.key === 'Backspace' || event.key === 'Delete') this.#flash();
-    if (!this.model?.settings.get().pushToTalk || !event.altKey || event.code !== 'KeyM')
-      return false;
+    const chord = event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+    if (!chord || event.code !== 'KeyM' || !this.#talking()) return false;
     event.preventDefault();
     if (!event.repeat) this.dictate();
     return true;
@@ -970,7 +974,8 @@ export class SliccComposer extends ThemedElement {
     keys.push(
       `${enter ? 'Shift+Enter' : 'Enter'} adds a new line`,
       '/ lists commands',
-      '@ mentions'
+      '@ mentions',
+      ...(this.#talking() ? ['hold Alt+M to dictate'] : [])
     );
     return `${keys.join(', ')}.`;
   }
@@ -1002,10 +1007,7 @@ export class SliccComposer extends ThemedElement {
     if (value === 'upload')
       this.renderRoot.querySelector<HTMLInputElement>('input[type=file]')?.click();
     else if (value === 'screenshot') void this.screenshot();
-    else if (value === 'push-to-talk') {
-      const settings = this.model?.settings;
-      settings?.update({ pushToTalk: !settings.get().pushToTalk });
-    } else {
+    else {
       this.openPopup(value as 'file' | 'secret');
       void this.updateComplete.then(() =>
         value === 'file'
@@ -1015,19 +1017,18 @@ export class SliccComposer extends ThemedElement {
     }
   }
 
+  #toggleTalk = (event: Event): void => {
+    event.stopPropagation();
+    const settings = this.model?.settings;
+    settings?.update({ pushToTalk: !settings.get().pushToTalk });
+  };
+
   dictate(): void {
     if (this.#recognition) {
       this.#recognition.stop();
       return;
     }
-    const Speech =
-      (
-        globalThis as {
-          SpeechRecognition?: new () => SpeechLike;
-          webkitSpeechRecognition?: new () => SpeechLike;
-        }
-      ).SpeechRecognition ??
-      (globalThis as { webkitSpeechRecognition?: new () => SpeechLike }).webkitSpeechRecognition;
+    const Speech = speech<SpeechLike>();
     if (!Speech) return;
     const recognition = new Speech();
     recognition.interimResults = false;
@@ -1212,6 +1213,7 @@ export class SliccComposer extends ThemedElement {
     const suggestion = this.model?.agent.suggestion(this.#agent);
     const canSend = !!this.value.trim() || this.attachments.some((attachment) => !attachment.error);
     const pushToTalk = this.model?.settings.get().pushToTalk ?? false;
+    const talk = !!speech();
     const held = this.#held();
     return html`<div class="column">
         <span id="keys" class="sr" aria-hidden="true">${this.#instructions(busy)}</span>
@@ -1249,7 +1251,14 @@ export class SliccComposer extends ThemedElement {
             <sp-menu-item value="screenshot">Take a screenshot of the browser tab</sp-menu-item>
             <sp-menu-item value="file">Attach a file from SLICC</sp-menu-item>
             <sp-menu-item value="secret">Share a secret</sp-menu-item>
-            <sp-menu-item value="push-to-talk">Enable push to talk<span slot="value">${pushToTalk ? 'On' : 'Off'}</span></sp-menu-item>
+            ${
+              talk
+                ? html`<sp-menu-divider></sp-menu-divider>
+            <sp-menu-group selects="multiple" data-group="talk" @change=${this.#toggleTalk}>
+              <sp-menu-item value="push-to-talk" data-action="push-to-talk" ?selected=${pushToTalk}>Enable push to talk<span slot="description">Hold Alt+M to dictate</span></sp-menu-item>
+            </sp-menu-group>`
+                : nothing
+            }
           </sp-menu>
         </swc-popover>
         <input type="file" multiple @change=${(event: Event) => {
@@ -1257,8 +1266,7 @@ export class SliccComposer extends ThemedElement {
           void this.addFiles([...(input.files ?? [])]);
           input.value = '';
         }} />
-      </div>
-`;
+      </div>`;
   }
 }
 
