@@ -371,6 +371,7 @@ export class SliccApprovals extends ModelElement {
   #showing: Approval | null = null;
   #pending = new Set<string>();
   #done = new Set<string>();
+  #closed = new Set<string>();
   #port: ApprovalsPort | undefined;
   #ended = new Map<string, ApprovalEnd>();
   #timer: ReturnType<typeof setInterval> | null = null;
@@ -390,6 +391,9 @@ export class SliccApprovals extends ModelElement {
     css`
       :host {
         display: contents;
+      }
+      sp-alert-dialog {
+        display: grid;
       }
       .command {
         margin: var(--swc-spacing-200) 0 0;
@@ -477,6 +481,7 @@ export class SliccApprovals extends ModelElement {
       this.failure = null;
       this.#pending.clear();
       this.#done.clear();
+      this.#closed.clear();
       this.#ended.clear();
     }
     if (!port) return [];
@@ -535,7 +540,9 @@ export class SliccApprovals extends ModelElement {
   }
 
   #current(): Approval[] {
-    return this.model?.approvals?.decide ? waiting(this.model, this.now) : [];
+    return this.model?.approvals?.decide
+      ? waiting(this.model, this.now).filter(({ id }) => !this.#closed.has(id))
+      : [];
   }
 
   protected willUpdate(changed: PropertyValues): void {
@@ -567,7 +574,9 @@ export class SliccApprovals extends ModelElement {
     const all = this.model?.approvals?.list() ?? [];
     this.#tick(this.isConnected && all.length > 0);
     const dialog = this.renderRoot.querySelector('dialog');
-    const key = dialog ? `${dialog.dataset.approval}:${dialog.dataset.gone ?? ''}` : '';
+    const key = dialog
+      ? `${dialog.dataset.approval}:${dialog.dataset.gone ?? ''}:${dialog.hasAttribute('data-rejected')}`
+      : '';
     if (key === this.#shown) return;
     if (dialog && !this.#shown) this.#trigger = origin();
     this.#shown = key;
@@ -586,9 +595,16 @@ export class SliccApprovals extends ModelElement {
     this.#showing = null;
   }
 
+  #dismiss(approval: Approval): void {
+    this.#done.add(approval.id);
+    this.#closed.add(approval.id);
+    this.failure = null;
+  }
+
   #cancel(event: Event, approval: Approval): void {
     event.preventDefault();
     if (this.gone) this.close();
+    else if (this.failure?.id === approval.id) this.#dismiss(approval);
     else void this.decide(approval, 'deny');
   }
 
@@ -613,7 +629,7 @@ export class SliccApprovals extends ModelElement {
   #dialog(approval: Approval, key: string, content: TemplateResult): unknown {
     return keyed(
       key,
-      html`<dialog role="alertdialog" aria-labelledby="title" aria-describedby="asking" data-approval=${approval.id} data-kind=${approval.kind} data-requester=${approval.requester.kind} data-gone=${this.gone?.reason ?? nothing} @cancel=${(event: Event) => this.#cancel(event, approval)}>${content}</dialog>`
+      html`<dialog role="alertdialog" aria-labelledby="title" aria-describedby="asking" data-approval=${approval.id} data-kind=${approval.kind} data-requester=${approval.requester.kind} data-gone=${this.gone?.reason ?? nothing} data-rejected=${!this.gone && this.failure?.id === approval.id ? '' : nothing} @cancel=${(event: Event) => this.#cancel(event, approval)}>${content}</dialog>`
     );
   }
 
@@ -635,6 +651,14 @@ export class SliccApprovals extends ModelElement {
     return verdict
       ? html`<p class="verdict" data-verdict=${verdict.decision}>The automatic check would ${verdict.decision} this: ${verdict.reason}</p>`
       : nothing;
+  }
+
+  #actions(approval: Approval, rejected: boolean, always: boolean): TemplateResult {
+    if (rejected)
+      return html`<swc-button slot="button" variant="secondary" fill-style="outline" data-action="close" @click=${() => this.#dismiss(approval)}>Close</swc-button>`;
+    return html`${this.#button(approval, 'deny', 'Deny', 'secondary')}
+      ${always ? this.#button(approval, 'always', inCwd(approval) ? 'Always allow in this directory' : 'Always allow', 'secondary') : nothing}
+      ${this.#button(approval, 'once', 'Allow once', 'accent')}`;
   }
 
   render(): unknown {
@@ -670,12 +694,9 @@ export class SliccApprovals extends ModelElement {
           ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${approval.cwd}</p>` : nothing}
           ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${verdict.certain ? html`<strong>This changes secret rules.</strong> It names <code>${rules}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${rules}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>` : nothing}
           ${hint ? html`<p class="hint">${hint}</p>` : nothing}
-          ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : nothing}
-          <p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>
+          ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : html`<p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>`}
           ${rest.length ? html`<p class="more" data-more>${rest.length === 1 ? '1 more request is waiting.' : `${rest.length} more requests are waiting.`}</p>` : nothing}
-          ${this.#button(approval, 'deny', 'Deny', 'secondary')}
-          ${always ? this.#button(approval, 'always', inCwd(approval) ? 'Always allow in this directory' : 'Always allow', 'secondary') : nothing}
-          ${this.#button(approval, 'once', 'Allow once', 'accent')}
+          ${this.#actions(approval, !!failure, always)}
         </sp-alert-dialog>`
     );
   }
