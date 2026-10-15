@@ -1032,8 +1032,12 @@ export class SliccComposer extends ThemedElement {
     if (!Speech) return;
     const recognition = new Speech();
     recognition.interimResults = false;
+    recognition.continuous = true;
     recognition.onresult = (event) => {
-      const text = [...event.results].map((result) => result[0].transcript).join(' ');
+      const text = [...event.results]
+        .slice(event.resultIndex ?? 0)
+        .map((result) => result[0].transcript)
+        .join(' ');
       this.value = `${this.value}${this.value && !this.value.endsWith(' ') ? ' ' : ''}${text}`;
     };
     recognition.onend = () => {
@@ -1272,8 +1276,10 @@ export class SliccComposer extends ThemedElement {
 
 interface SpeechLike {
   interimResults: boolean;
+  continuous: boolean;
   onresult:
     | ((event: {
+        resultIndex?: number;
         results: ArrayLike<ArrayLike<{ transcript: string }>> &
           Iterable<ArrayLike<{ transcript: string }>>;
       }) => void)
