@@ -92,8 +92,11 @@ test('the shell renders the default layout from the dummy model', async (t) => {
     )
   );
   assert.deepEqual(rows[0], ['cone-sliccy', 'cone', 'true']);
-  assert.deepEqual(rows[1], ['scoop-wren', 'scoop', 'false']);
-  assert.equal(rows.length, 9);
+  assert.deepEqual(rows[1], ['cone-kitchen', 'cone', 'false']);
+  assert.equal(
+    rows.some(([, kind]) => kind === 'scoop'),
+    false
+  );
   assert.deepEqual(
     await page.evaluate(() => {
       const header = window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'header');
@@ -698,7 +701,6 @@ test('the keyboard reaches every panel, agent and tab', async (t) => {
   const page = await open(t);
   await page.press('1', 'alt');
   await page.until(() => /slicc-agents > li#cone-sliccy$/.test(window.focused()));
-  await page.press('ArrowDown');
   await page.press('ArrowDown');
   await page.press('ArrowDown');
   await page.until(() => /li#cone-harbor$/.test(window.focused()));

@@ -34,7 +34,7 @@ export function watchTitles(model: SliccModel, update: () => void): () => void {
   const seen = new Map<string, string>();
   const check = (id: string) => {
     const agent = model.agent.list().find((candidate) => candidate.id === id);
-    if (agent?.kind !== 'cone') return;
+    if (!agent) return;
     const title = agentTitle(model, agent);
     if (seen.get(id) === title) return;
     seen.set(id, title);
