@@ -3593,6 +3593,57 @@ test('SLICC sprinkles run sandboxed with Lucide icons and lick their cone, and t
   assert.deepEqual(page.errors, []);
 });
 
+test('an inline sprinkle that loads out of view still sizes its frame to its content', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    let tall = 40;
+    const list = window.model.sprinkles.list.bind(window.model.sprinkles);
+    window.model.sprinkles.list = () => [
+      ...list(),
+      {
+        id: 'below',
+        name: 'below',
+        title: 'Below',
+        icon: 'hand',
+        agentId: 'cone-sliccy',
+        html: `<!DOCTYPE html><html><head></head><body style="margin:0"><div style="height:${tall}px"></div><div hidden>${'<i></i>'.repeat(40000)}</div></body></html>`,
+      },
+    ];
+    window.grow = (height) => {
+      tall = height;
+      window.model.sprinkles.emit('sprinkles', window.model.sprinkles.list());
+      return true;
+    };
+    const element = document.createElement('slicc-sprinkle');
+    element.setAttribute('inline', '');
+    element.style.cssText = `position:absolute;top:${innerHeight * 4}px;left:0;width:400px`;
+    element.sprinkle = 'below';
+    element.model = window.model;
+    window.below = () => element.shadowRoot.querySelector('iframe');
+    window.loads = 0;
+    addEventListener('message', (event) => {
+      if (event.data?.type === 'slicc-ready' && event.source === window.below()?.contentWindow)
+        window.loads += 1;
+    });
+    document.body.append(element);
+    return true;
+  });
+  await page.until(() => window.loads === 1);
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))
+      )
+  );
+  for (const [round, height] of [50, 70, 90].entries()) {
+    await page.evaluate((height) => window.grow(height), height);
+    await page.until((loads) => window.loads === loads, round + 2);
+    await page.until((height) => window.below().getBoundingClientRect().height === height, height);
+  }
+  assert.ok(await page.evaluate(() => window.below().getBoundingClientRect().top > innerHeight));
+  assert.deepEqual(page.errors, []);
+});
+
 test('sprinkle frames resolve the host Gen2 tokens and follow the theme without reloading', async (t) => {
   const page = await open(t);
   const pairs = [
