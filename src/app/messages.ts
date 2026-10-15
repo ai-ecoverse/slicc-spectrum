@@ -491,7 +491,7 @@ function question(item: Question, handlers: Handlers): TemplateResult {
       <swc-button size="s" variant="accent" data-action="answer" ?disabled=${handlers.readOnly} @click=${(event: Event) => (event.currentTarget as HTMLElement).closest('form')?.requestSubmit()}>Answer</swc-button>
     </form>`;
   }
-  return html`<div class="question" data-state=${item.state} data-kind=${item.kind}>
+  return html`<div class="question decision" data-state=${item.state} data-kind=${item.kind}>
     <div class="q">${item.question}</div>
     ${body}
   </div>`;
@@ -821,7 +821,47 @@ const lickIcons: Record<LickChannel, string> = {
   'sudo-request': '🔐',
 };
 
-export function lick(message: LickMessage, handlers: Handlers, stamp = true): TemplateResult {
+export function pendingApproval(message: Message): boolean {
+  return (
+    message.role === 'lick' && message.channel === 'sudo-request' && message.state === 'pending'
+  );
+}
+
+function clock(ms: number): string {
+  const seconds = Math.ceil(ms / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function decision(message: LickMessage, handlers: Handlers, stack: number): TemplateResult {
+  const left = message.expiresAt === undefined ? null : message.expiresAt - Date.now();
+  const expired = left !== null && left <= 0;
+  const timer =
+    left === null
+      ? nothing
+      : html`<span class="timer" data-timer>${expired ? 'Timed out' : `Times out in ${clock(left)}`}</span>`;
+  const actions = expired
+    ? nothing
+    : html`<div class="decide">
+        <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'dismissed')}>Deny</swc-button>
+        <swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>
+      </div>`;
+  return html`<swc-conversation-turn type="system" class="message decision-turn" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-expired=${expired ? '' : nothing} style=${`--stack: ${stack}`}>
+    <div class="decision" data-kind="approval">
+      <div class="decision-head"><span class="who">${message.title}</span>${timer}</div>
+      <p class="decision-text">${message.text}</p>
+      ${message.body ? html`<pre class="command">${message.body}</pre>` : nothing}
+      ${actions}
+    </div>
+  </swc-conversation-turn>`;
+}
+
+export function lick(
+  message: LickMessage,
+  handlers: Handlers,
+  stamp = true,
+  stack = 0
+): TemplateResult {
+  if (pendingApproval(message)) return decision(message, handlers, stack);
   const [label] = lickLabels[message.channel];
   const decide = message.channel === 'sudo-request' && message.state === 'pending';
   const outcome =
@@ -1640,5 +1680,75 @@ export const messageCss = css`
   }
   .pending > details.lick[data-severity] {
     border-inline-start: var(--swc-border-width-400) solid var(--severity);
+  }
+  swc-conversation-turn.decision-turn {
+    container-type: inline-size;
+    position: sticky;
+    top: calc(var(--stack, 0) * 2.75rem);
+    z-index: calc(var(--stack, 0) + 1);
+  }
+  swc-conversation-turn.decision-turn[data-expired] {
+    position: static;
+  }
+  .decision {
+    display: flex;
+    flex-direction: column;
+    gap: var(--swc-spacing-100);
+    margin-inline: var(--swc-spacing-700);
+    padding: var(--swc-spacing-200) var(--swc-spacing-300);
+    border: var(--swc-border-width-100) solid var(--swc-gray-200);
+    border-radius: var(--swc-corner-radius-100);
+    background: var(--swc-background-layer-1-color);
+    font-size: var(--swc-font-size-200);
+  }
+  .decision-turn .decision {
+    border-color: var(--swc-notice-visual-color);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  }
+  .decision-turn[data-expired] .decision {
+    border-color: var(--swc-gray-200);
+    box-shadow: none;
+  }
+  .decision-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--swc-spacing-100);
+    font-size: var(--swc-font-size-100);
+  }
+  .decision-head .who {
+    font-weight: 700;
+  }
+  .timer {
+    color: var(--swc-neutral-subdued-content-color-default);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .decision-text {
+    margin: 0;
+  }
+  .command {
+    margin: 0;
+    padding: var(--swc-spacing-75) var(--swc-spacing-100);
+    border-radius: var(--swc-corner-radius-100);
+    background: var(--swc-background-layer-2-color);
+    font-size: var(--swc-font-size-75);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .decision .decide,
+  .question.decision .options {
+    justify-content: flex-end;
+    padding: 0;
+  }
+  .question.decision .options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--swc-spacing-85);
+  }
+  @container (inline-size < 480px) {
+    .decision {
+      margin-inline: var(--swc-spacing-300);
+    }
   }
 `;

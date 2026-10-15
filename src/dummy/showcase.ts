@@ -287,7 +287,7 @@ const licks: Array<[LickChannel, string, string, string | undefined, Partial<Mes
     'docs-pass',
     'Wants to push to example/harbor (branch docs/celsius)',
     'git push origin docs/celsius',
-    { state: 'pending' } as Partial<Message>,
+    { state: 'pending', expiresAt: Date.now() + 10 * 60_000 } as Partial<Message>,
   ],
   [
     'sudo-request',

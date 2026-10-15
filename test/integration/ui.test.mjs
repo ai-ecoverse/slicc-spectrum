@@ -2406,7 +2406,7 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     [
       ...window
         .$('slicc-app', 'slicc-dock', 'slicc-chat')
-        .shadowRoot.querySelectorAll('.pending swc-button'),
+        .shadowRoot.querySelectorAll('.decision[data-kind=approval] swc-button'),
     ]
       .find((button) => button.textContent.trim() === 'Allow')
       .click()

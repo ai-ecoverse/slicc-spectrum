@@ -27,6 +27,7 @@ import {
   lick,
   messageCss,
   type Owner,
+  pendingApproval,
   stamps,
   system,
   toolMessage,
@@ -51,6 +52,14 @@ const navigation = new Set([
 const upward = new Set(['ArrowUp', 'PageUp', 'Home']);
 
 const compactWidth = 560;
+
+function approvalStacks(messages: readonly Message[]): Map<string, number> {
+  const stacks = new Map<string, number>();
+  for (const message of messages) {
+    if (pendingApproval(message)) stacks.set(message.id, stacks.size);
+  }
+  return stacks;
+}
 
 const failed = (message: Message): boolean =>
   message.role === 'assistant'
@@ -333,6 +342,7 @@ export class SliccChat extends ThemedElement {
   #from = 0;
   #start = 0;
   #settle: ReturnType<typeof setTimeout> | undefined;
+  #tick: ReturnType<typeof setInterval> | undefined;
   #tail = '';
 
   #sent(agentId: string): boolean {
@@ -426,6 +436,29 @@ export class SliccChat extends ThemedElement {
     globalThis.removeEventListener('pointercancel', this.#release, true);
     this.#resize.disconnect();
     clearTimeout(this.#settle);
+    clearInterval(this.#tick);
+    this.#tick = undefined;
+  }
+
+  protected updated(): void {
+    const timed = this.#timed();
+    if (timed && this.#tick === undefined)
+      this.#tick = setInterval(() => this.requestUpdate(), 1000);
+    if (!timed && this.#tick !== undefined) {
+      clearInterval(this.#tick);
+      this.#tick = undefined;
+    }
+  }
+
+  #timed(): boolean {
+    const model = this.model as SliccModel | undefined;
+    if (!model) return false;
+    return model.agent
+      .messages(this.#id())
+      .some(
+        (message) =>
+          pendingApproval(message) && 'expiresAt' in message && message.expiresAt !== undefined
+      );
   }
 
   protected firstUpdated(): void {
@@ -498,7 +531,8 @@ export class SliccChat extends ThemedElement {
     changed: boolean,
     extra: ToolCall[],
     owners: ReadonlyMap<string, Owner>,
-    stamp: boolean
+    stamp: boolean,
+    stack: number
   ): TemplateResult {
     const model = this.model as SliccModel;
     const handlers = { ...this.#handlers, owners };
@@ -526,7 +560,7 @@ export class SliccChat extends ThemedElement {
       case 'system':
         return system(message, this.#handlers);
       default:
-        return lick(message, this.#handlers, stamp);
+        return lick(message, this.#handlers, stamp, stack);
     }
   }
 
@@ -548,6 +582,7 @@ export class SliccChat extends ThemedElement {
     const owners = new Map<string, Owner>();
     const into = new Map<string, string>();
     const stamped = stamps(messages);
+    const stacks = approvalStacks(messages);
     let anchor: Message | null = null;
     for (const message of messages) {
       const calls = toolOnly(message, showThinking);
@@ -588,7 +623,8 @@ export class SliccChat extends ThemedElement {
           changed,
           extra.get(message.id) ?? [],
           owners,
-          stamped.has(message.id)
+          stamped.has(message.id),
+          stacks.get(message.id) ?? 0
         ),
       ]);
     }
