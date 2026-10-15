@@ -1715,6 +1715,15 @@ export const messageCss = css`
   }
   swc-conversation-turn.decision-turn {
     container-type: inline-size;
+    transition:
+      top var(--swc-animation-duration-300) var(--swc-animation-ease-out),
+      transform var(--swc-animation-duration-300) var(--swc-animation-ease-out),
+      filter var(--swc-animation-duration-300) var(--swc-animation-ease-out);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    swc-conversation-turn.decision-turn {
+      transition: none;
+    }
   }
   swc-conversation-turn.decision-turn[data-pending] {
     position: sticky;
