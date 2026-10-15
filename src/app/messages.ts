@@ -72,7 +72,7 @@ export interface Handlers {
 export interface Owner {
   id?: string;
   at: number;
-  stamp: boolean;
+  stamp?: boolean;
 }
 
 export type RunContext = Pick<Handlers, 'color' | 'model' | 'owners' | 'agentId'>;
@@ -333,7 +333,13 @@ const stampGap = 2 * 60_000;
 export function stamps(messages: readonly Message[]): Set<string> {
   const shown = new Set<string>();
   let last = -Infinity;
+  let seen = '';
   for (const message of messages) {
+    const label = day(message.createdAt);
+    if (label !== seen) {
+      seen = label;
+      last = -Infinity;
+    }
     if (message.role === 'system' || message.createdAt - last < stampGap) continue;
     shown.add(message.id);
     last = message.createdAt;
@@ -405,7 +411,7 @@ export function tool(
       ${call.notes?.length ? notes(call.notes) : nothing}
       ${call.image ? html`<img class="shot" src=${call.image} alt=${call.title} />` : nothing}
       ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
-      ${options.owner?.stamp ? html`<span class="ran">Ran at ${when(options.owner.at)}</span>` : nothing}
+      ${options.owner ? html`<span class=${options.owner.stamp === false ? 'sr' : 'ran'}>Ran at ${when(options.owner.at)}</span>` : nothing}
     </div>`;
   if (!options.run) {
     return html`<div class="tool" id=${`run-${call.id}`} role="region" aria-label=${label} data-id=${options.owner?.id ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id}>${content}</div>`;
@@ -628,6 +634,10 @@ function when(at: number, title: string = ''): TemplateResult {
   return html`<time class="when" datetime=${new Date(at).toISOString()} title=${title || nothing}>${time(at)}</time>`;
 }
 
+function unseen(at: number): TemplateResult {
+  return html`<time class="sr" datetime=${new Date(at).toISOString()}>${time(at)}</time>`;
+}
+
 export function user(message: UserMessage, stamp = true): TemplateResult {
   const delivered = message.delivered ?? (message.mode === 'steer' ? 'steer' : undefined);
   const agent = message.origin === 'agent';
@@ -638,16 +648,18 @@ export function user(message: UserMessage, stamp = true): TemplateResult {
     : message.from
       ? `Message from ${message.from}`
       : 'Your message';
-  const remote = agent || !!message.from;
+  const remote = agent || (!!message.from && !people.has(message.origin ?? 'user'));
   return html`<swc-conversation-turn type="user" class="message user" accessible-label=${label} data-id=${message.id} data-mode=${message.mode ?? 'send'} data-delivered=${delivered ?? 'run'} data-origin=${message.origin ?? 'user'} data-remote=${remote ? '' : nothing}>
     <div class="bubble">
-      ${byline(message, who, stamp)}
+      ${byline(message, who, stamp)}${stamp ? nothing : unseen(message.createdAt)}
       ${message.text ? html`<swc-user-message class="body"><span class="text">${message.text}</span></swc-user-message>` : nothing}
       ${message.attachments?.length ? html`<div class="attachments">${message.attachments.map(attachment)}</div>` : nothing}
       ${remote ? html`<span class="reactions"><span class="reaction" aria-hidden="true">🤖</span></span>` : nothing}
     </div>
   </swc-conversation-turn>`;
 }
+
+const people = new Set(['follower', 'guest']);
 
 function byline(
   message: UserMessage,
@@ -708,8 +720,8 @@ export function assistant(
     ? `${message.usage.input.toLocaleString('en')} in · ${message.usage.output.toLocaleString('en')} out · $${message.usage.cost.toFixed(2)}`
     : '';
   const failed = message.status === 'error';
-  return html`<swc-conversation-turn type="system" class="message assistant" accessible-label=${`Reply from ${name}`} data-id=${message.id} data-status=${message.status}>
-    <div class="reply">
+  return html`<swc-conversation-turn type="system" class="message assistant" accessible-label=${`Reply from ${name}`} aria-description=${usage || nothing} data-id=${message.id} data-status=${message.status}>
+    <div class="reply" title=${(!stamp && !model && usage) || nothing}>
       ${
         stamp || model || failed
           ? html`<div class="meta">
@@ -718,7 +730,7 @@ export function assistant(
         ${failed ? html`<swc-badge class="tag" size="s" variant="negative" subtle><swc-icon-alert-diamond slot="icon" size="s" aria-hidden="true"></swc-icon-alert-diamond>Failed</swc-badge>` : nothing}
       </div>`
           : nothing
-      }
+      }${stamp ? nothing : unseen(message.createdAt)}
       <swc-system-message>
         ${status(message)}
         ${parts(
@@ -782,7 +794,7 @@ export function system(message: SystemMessage, handlers: Handlers): TemplateResu
   return event(
     'Error',
     html`<div class="error-card system-error" role="alert" data-id=${message.id}>
-      <div class="error-text"><strong>${message.title}</strong><span>${message.text}</span></div>
+      <div class="error-text"><span class="lead">${message.title}</span>${message.text ? html`<span class="detail">${message.text}</span>` : nothing}</div>
       ${message.action ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${message.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(message.action as ErrorAction, message.id)}>${actionLabel(message.action, handlers, message.id)}</swc-button>` : nothing}
     </div>`
   );
@@ -916,12 +928,11 @@ export const messageCss = css`
     align-self: flex-start;
     align-items: flex-start;
   }
-  .user[data-origin='agent'] swc-user-message.body {
-    background: var(--swc-background-layer-1-color);
-    border-color: var(--swc-gray-300);
-  }
   .user[data-remote] swc-user-message.body {
-    background: var(--swc-indigo-subtle-background-color-default);
+    background: light-dark(
+      var(--swc-indigo-subtle-background-color-default),
+      color-mix(in srgb, var(--swc-indigo-900) 8%, var(--swc-gray-50))
+    );
     border-color: transparent;
   }
   .user[data-remote] .bubble {
@@ -945,7 +956,8 @@ export const messageCss = css`
     border-radius: calc(var(--swc-spacing-400) / 2);
     border: var(--swc-border-width-100) solid var(--swc-gray-300);
     background: var(--swc-background-layer-2-color);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.15);
+    box-shadow: var(--swc-drop-shadow-emphasized-default-x) var(--swc-drop-shadow-emphasized-default-y)
+      var(--swc-drop-shadow-emphasized-default-blur) var(--swc-drop-shadow-emphasized-default-color);
     font-size: var(--swc-font-size-100);
     line-height: 1;
   }
@@ -1550,6 +1562,9 @@ export const messageCss = css`
     min-inline-size: 0;
     overflow-wrap: anywhere;
   }
+  .error-card .lead {
+    font-weight: var(--swc-bold-font-weight);
+  }
   .error-card .detail {
     color: var(--swc-neutral-subdued-content-color-default);
   }
@@ -1612,8 +1627,7 @@ export const messageCss = css`
   .lick[data-severity='warn'] {
     --severity: var(--swc-notice-visual-color);
   }
-  .lick .sr,
-  .notes .sr {
+  .sr {
     position: absolute;
     inline-size: 1px;
     block-size: 1px;

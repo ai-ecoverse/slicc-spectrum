@@ -2427,6 +2427,70 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
   assert.deepEqual(page.errors, []);
 });
 
+test('times show every two minutes, each day starts with one, and hidden times and usage stay reachable', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const messages = agent.messages.bind(agent);
+    const midnight = new Date(2026, 9, 5).getTime();
+    const minute = 60_000;
+    const usage = { input: 1200, output: 34, cost: 0.5 };
+    agent.messages = (id) =>
+      id !== 'cone-sliccy'
+        ? messages(id)
+        : [
+            { id: 'st-a', role: 'user', text: 'Late question', createdAt: midnight - 1.5 * minute },
+            {
+              id: 'st-b',
+              role: 'assistant',
+              status: 'done',
+              parts: [{ type: 'text', text: 'Late answer' }],
+              usage,
+              createdAt: midnight - minute,
+            },
+            {
+              id: 'st-c',
+              role: 'lick',
+              channel: 'cron',
+              title: 'Nightly',
+              text: 'ran',
+              createdAt: midnight - minute / 2,
+            },
+            { id: 'st-d', role: 'user', text: 'Still here', createdAt: midnight + 1000 },
+            { id: 'st-e', role: 'user', text: 'Hello again', createdAt: midnight + minute },
+            { id: 'st-f', role: 'user', text: 'Later', createdAt: midnight + 3 * minute },
+          ];
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  await page.until(() => !!window.chatPart('[data-id=st-f]'));
+  const seen = await page.evaluate(() => {
+    const root = window.chatPart().shadowRoot;
+    const ids = ['st-a', 'st-b', 'st-c', 'st-d', 'st-e', 'st-f'];
+    const reply = root.querySelector('swc-conversation-turn[data-id=st-b]');
+    return {
+      shown: ids.filter((id) =>
+        root.querySelector(`[data-id=${id}] .meta time.when, .lick[data-id=${id}] .when`)
+      ),
+      reachable: ids.filter((id) =>
+        root.querySelector(`[data-id=${id}] time[datetime], .lick[data-id=${id}] .sr`)
+      ),
+      days: root.querySelectorAll('.day').length,
+      empty: !root.querySelector('[data-id=st-b] .meta'),
+      title: root.querySelector('[data-id=st-b] .reply')?.getAttribute('title'),
+      description: reply?.getAttribute('aria-description'),
+    };
+  });
+  assert.deepEqual(seen, {
+    shown: ['st-a', 'st-d', 'st-f'],
+    reachable: ['st-a', 'st-b', 'st-c', 'st-d', 'st-e', 'st-f'],
+    days: 2,
+    empty: true,
+    title: '1,200 in · 34 out · $0.50',
+    description: '1,200 in · 34 out · $0.50',
+  });
+});
+
 test('the composer runs commands, mentions, attaches, queues and steers', async (t) => {
   const page = await open(t, { delay: '20' });
   await page.press('2', 'alt');
@@ -2562,22 +2626,33 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
         .$('slicc-app', 'slicc-dock', 'slicc-chat')
         .shadowRoot.querySelectorAll('.message.user[data-origin=user]'),
     ];
-    const timed = new Set();
+    const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot;
     let last = -Infinity;
-    for (const message of window.model.agent.messages('cone-sliccy')) {
-      if (message.role === 'system' || message.createdAt - last < 120000) continue;
-      timed.add(message.id);
-      last = message.createdAt;
+    let spaced = true;
+    for (const node of root.querySelectorAll('.day, .meta time.when')) {
+      if (node.classList.contains('day')) {
+        last = -Infinity;
+        continue;
+      }
+      const at = Date.parse(node.getAttribute('datetime'));
+      if (at - last < 120000) spaced = false;
+      last = at;
     }
     return {
       kinds: [...new Set(turns.map((turn) => turn.dataset.delivered))].sort(),
       labels: turns.filter((turn) => turn.querySelector('.who, .tag')).length,
-      times: turns.every(
-        (turn) => !!turn.querySelector('.meta time.when') === timed.has(turn.dataset.id)
-      ),
+      times: turns.every((turn) => turn.querySelector('time[datetime]')),
+      hidden: turns.some((turn) => !turn.querySelector('.meta')),
+      spaced,
     };
   });
-  assert.deepEqual(delivered, { kinds: ['follow-up', 'run', 'steer'], labels: 0, times: true });
+  assert.deepEqual(delivered, {
+    kinds: ['follow-up', 'run', 'steer'],
+    labels: 0,
+    times: true,
+    hidden: true,
+    spaced: true,
+  });
   await shot(page, 'composer-delivered');
 
   await page.press('ArrowUp');
@@ -4558,6 +4633,69 @@ test('linked devices pick the exit, unlink, and retry local network access', asy
   assert.deepEqual(page.errors, []);
 });
 
+test('leaders disconnect without a confirm, reconnect, and forget through one', async (t) => {
+  const page = await open(t, { leaders: 'two' });
+  await page.evaluate(() => window.app.show('network'));
+  await page.evaluate(() => {
+    window.netPanel = () => window.$('slicc-app', 'slicc-dock').content('network')?.shadowRoot;
+    window.leaderRow = (id) => window.netPanel().querySelector(`li[data-leader="${id}"]`);
+    window.leaderLight = (id) =>
+      window.leaderRow(id).querySelector('swc-status-light').textContent.trim();
+  });
+  await page.until(() => !!window.netPanel()?.querySelector('section[data-leaders]'));
+  const cove = 'https://hub.cove-studio.example';
+  const marsh = 'https://tray.marsh-desk.example';
+  assert.deepEqual(
+    await page.evaluate(
+      ([a, b]) => [window.leaderRow(a).dataset.state, window.leaderRow(b).dataset.state],
+      [cove, marsh]
+    ),
+    ['connected', 'failed']
+  );
+  await shot(page, 'leaders-two');
+  await page.evaluate(
+    (id) => window.leaderRow(id).querySelector('[data-action=disconnect-leader]').click(),
+    cove
+  );
+  await page.until((id) => window.leaderRow(id)?.dataset.state === 'disconnected', cove);
+  assert.equal(
+    await page.evaluate(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]')),
+    false
+  );
+  assert.deepEqual(
+    await page.evaluate(
+      (id) => [
+        window.leaderLight(id),
+        [...window.leaderRow(id).querySelectorAll('[data-action]')].map((b) => b.dataset.action),
+      ],
+      cove
+    ),
+    ['Disconnected', ['reconnect-leader', 'forget-leader']]
+  );
+  await page.evaluate(
+    (id) => window.leaderRow(id).querySelector('[data-action=reconnect-leader]').click(),
+    cove
+  );
+  await page.until((id) => window.leaderRow(id)?.dataset.state === 'connected', cove);
+  assert.equal(await page.evaluate((id) => window.leaderLight(id), cove), 'Connected');
+  await page.evaluate(
+    (id) => window.leaderRow(id).querySelector('[data-action=forget-leader]').click(),
+    marsh
+  );
+  await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const button = window.$('slicc-app', 'slicc-confirm', '[data-action]');
+      return [button.textContent.trim(), button.getAttribute('variant')];
+    }),
+    ['Forget', 'negative']
+  );
+  await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
+  await page.until((id) => !window.leaderRow(id), marsh);
+  assert.ok(await page.evaluate((id) => !!window.leaderRow(id), cove));
+  assert.deepEqual(page.errors, []);
+});
+
 test('without a network port there is no indicator and no Network panel', async (t) => {
   const page = await open(t, { network: 'off' });
   assert.deepEqual(
@@ -5059,6 +5197,90 @@ test('the conversation runs on the AI toolkit and keeps its keys, suggestions an
   );
   assert.deepEqual(page.errors, []);
 });
+
+for (const color of ['light', 'dark']) {
+  test(`only other agents get the indigo bubble and the robot pill, subtle and readable in ${color}`, async (t) => {
+    const page = await open(t, { delay: '0', color });
+    await page.evaluate(() => {
+      const agent = window.model.agent;
+      const messages = agent.messages.bind(agent);
+      const at = Date.now() - 60_000;
+      const user = (id, extra) => ({
+        id,
+        role: 'user',
+        text: `Message ${id}`,
+        createdAt: at,
+        ...extra,
+      });
+      agent.messages = (id) =>
+        id !== 'cone-sliccy'
+          ? messages(id)
+          : [
+              user('rm-own', {}),
+              user('rm-cone', { from: 'harbor' }),
+              user('rm-request', { origin: 'agent', from: 'harbor' }),
+              user('rm-follower', { origin: 'follower', from: 'pier-nuc' }),
+              user('rm-guest', { origin: 'guest', from: 'Ada' }),
+              {
+                id: 'rm-lick',
+                role: 'lick',
+                channel: 'cron',
+                title: 'Nightly',
+                text: 'ran',
+                createdAt: at,
+              },
+            ];
+      agent.emit('messages', 'cone-sliccy');
+      return true;
+    });
+    await page.until(() => !!window.chatPart('[data-id=rm-lick]'));
+    const seen = await page.evaluate(() => {
+      const root = window.chatPart().shadowRoot;
+      const rgb = (value) => {
+        const parts = value.match(/[\d.]+/g).map(Number);
+        return value.startsWith('color(')
+          ? parts.slice(0, 3).map((part) => part * 255)
+          : parts.slice(0, 3);
+      };
+      const lum = (value) => {
+        const [r, g, b] = rgb(value).map((part) => {
+          const c = part / 255;
+          return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const body = (id) => root.querySelector(`[data-id=${id}] swc-user-message.body`);
+      const own = rgb(getComputedStyle(body('rm-own')).backgroundColor);
+      const tint = getComputedStyle(body('rm-cone')).backgroundColor;
+      const text = getComputedStyle(body('rm-cone').querySelector('.text')).color;
+      const [hi, lo] = [lum(tint), lum(text)].sort((a, b) => b - a);
+      return {
+        remote: [...root.querySelectorAll('[data-remote]')].map((node) => node.dataset.id),
+        pills: [...root.querySelectorAll('.reaction')].map((pill) => [
+          pill.closest('[data-id]').dataset.id,
+          pill.getAttribute('aria-hidden'),
+          pill.textContent,
+        ]),
+        names: [...root.querySelectorAll('[data-remote]')].map((node) =>
+          node.getAttribute('aria-label')
+        ),
+        contrast: (hi + 0.05) / (lo + 0.05) >= 4.5,
+        subtle: Math.hypot(...rgb(tint).map((part, i) => part - own[i])) <= 30,
+      };
+    });
+    assert.deepEqual(seen, {
+      remote: ['rm-cone', 'rm-request'],
+      pills: [
+        ['rm-cone', 'true', '🤖'],
+        ['rm-request', 'true', '🤖'],
+      ],
+      names: ['Message from harbor', 'Request from harbor'],
+      contrast: true,
+      subtle: true,
+    });
+    await shot(page, `chat-remote-${color}`);
+  });
+}
 
 test('agent requests, frozen cones and long lick bodies render as their own kind', async (t) => {
   const page = await open(t, { delay: '0' });
