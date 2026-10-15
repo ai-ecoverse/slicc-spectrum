@@ -244,9 +244,10 @@ export class SliccAgents extends ModelElement {
       color: var(--swc-neutral-subdued-content-color-default);
     }
     .segments {
-      flex: none;
       display: flex;
+      flex-wrap: wrap;
       gap: var(--swc-spacing-50);
+      min-inline-size: 0;
     }
     .summary {
       min-inline-size: 0;
@@ -363,6 +364,7 @@ export class SliccAgents extends ModelElement {
 
   #select(agent: Agent): void {
     this.model?.agent.select(agent.id);
+    if (agent.kind === 'cone') this.#toggle(agent, true);
   }
 
   #toggle(agent: Agent, open = !this.#expanded.has(agent.id)): void {

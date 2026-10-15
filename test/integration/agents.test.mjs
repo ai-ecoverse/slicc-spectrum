@@ -569,6 +569,71 @@ test('The active cone starts expanded; the chevron expands and collapses without
   assert.deepEqual(page.errors, []);
 });
 
+test('Selecting the active cone again reopens it, even when the port sends no active event', async (t) => {
+  const page = await open(t);
+  await page.until(() => Boolean(window.agentRow('scoop-wren')));
+  await page.evaluate(() => {
+    const port = window.model.agent;
+    const select = port.select.bind(port);
+    port.select = (id) => {
+      if (id !== port.active()) select(id);
+    };
+    window.agentRow('cone-sliccy').querySelector('[data-action=toggle-cone]').click();
+    return true;
+  });
+  await page.until(() => !window.agentRow('scoop-wren'));
+  await page.evaluate(() => window.agentRow('cone-sliccy').click());
+  await page.until(() => Boolean(window.agentRow('scoop-wren')));
+  await page.evaluate(() =>
+    window.agentRow('cone-sliccy').querySelector('[data-action=toggle-cone]').click()
+  );
+  await page.until(() => !window.agentRow('scoop-wren'));
+  await page.press('1', 'alt');
+  await page.until(() => /slicc-agents > li#cone-sliccy$/.test(window.focused()));
+  await page.press('Enter');
+  await page.until(() => Boolean(window.agentRow('scoop-wren')));
+  assert.equal(await page.evaluate(() => window.model.agent.active()), 'cone-sliccy');
+  assert.deepEqual(page.errors, []);
+});
+
+test('A cone with many scoops wraps its ribbon inside the row', async (t) => {
+  const page = await open(t);
+  await page.until(() => Boolean(window.agentRow('cone-harbor')));
+  await page.evaluate(() => {
+    const port = window.model.agent;
+    const list = port.list.bind(port);
+    const otter = list().find((agent) => agent.id === 'scoop-otter');
+    const extra = Array.from({ length: 40 }, (_, i) => ({
+      ...otter,
+      id: `scoop-extra-${i}`,
+      name: `extra-${i}`,
+      status: i % 3 ? 'idle' : 'waiting',
+    }));
+    port.list = () => [...list(), ...extra];
+    port.select('cone-tides');
+    return true;
+  });
+  await page.until(
+    () => window.agentRow('cone-harbor')?.querySelectorAll('.segment').length === 42
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const row = window.agentRow('cone-harbor');
+      const box = row.getBoundingClientRect();
+      const segments = row.querySelector('.segments').getBoundingClientRect();
+      const list = window.agents().shadowRoot.querySelector('.list');
+      return [
+        segments.right <= box.right,
+        row.querySelector('.segments').scrollWidth <= Math.ceil(segments.width),
+        list.scrollWidth <= list.clientWidth,
+        row.querySelector('.summary').textContent,
+      ];
+    }),
+    [true, true, true, '42 scoops · 1 working, 14 waiting']
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('On a 420 phone, a tapped cone shows its scoops when you come back to Agents, and the chevron never navigates', async (t) => {
   const page = await open(t);
   await page.send('Emulation.setDeviceMetricsOverride', {
