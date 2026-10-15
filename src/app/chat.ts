@@ -70,9 +70,7 @@ function pendingKeys(messages: readonly Message[]): string[] {
 
 function pendingPiles(messages: readonly Message[]): Map<string, Pile> {
   const keys = pendingKeys(messages);
-  return new Map(
-    keys.map((key, stack) => [key, { stack, depth: keys.length - 1 - stack }] as const)
-  );
+  return new Map(keys.map((key, stack) => [key, { stack }] as const));
 }
 
 const failed = (message: Message): boolean =>
@@ -389,6 +387,7 @@ export class SliccChat extends ThemedElement {
     else if (reader && log.scrollTop < this.#last) this.#stuck = false;
     this.#last = log.scrollTop;
     this.#height = log.scrollHeight;
+    this.#pile();
   };
 
   #intent = {
@@ -461,6 +460,35 @@ export class SliccChat extends ThemedElement {
     if (!timed && this.#tick !== undefined) {
       clearInterval(this.#tick);
       this.#tick = undefined;
+    }
+    this.#pile();
+  }
+
+  #pile(): void {
+    const turns = [
+      ...this.renderRoot.querySelectorAll<HTMLElement>('.decision-turn[data-pending]'),
+    ];
+    const drawn = turns.map((turn) => turn.getBoundingClientRect().top);
+    for (const turn of turns) turn.style.position = 'static';
+    const flow = turns.map((turn) => turn.getBoundingClientRect().top);
+    for (const turn of turns) turn.style.position = '';
+    const pinned = turns.flatMap((turn, index) =>
+      drawn[index] - flow[index] > 1
+        ? [{ turn, stack: Number.parseFloat(turn.style.getPropertyValue('--stack')) }]
+        : []
+    );
+    for (const turn of turns) {
+      if (!pinned.some((entry) => entry.turn === turn)) {
+        turn.removeAttribute('data-pinned');
+        turn.style.removeProperty('--depth');
+      }
+    }
+    for (const { turn, stack } of pinned) {
+      turn.setAttribute('data-pinned', '');
+      turn.style.setProperty(
+        '--depth',
+        String(pinned.filter((other) => other.stack > stack).length)
+      );
     }
   }
 

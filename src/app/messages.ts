@@ -856,13 +856,12 @@ function reveal(event: Event): void {
 
 export interface Pile {
   stack: number;
-  depth: number;
 }
 
-export const flatPile: Pile = { stack: 0, depth: 0 };
+export const flatPile: Pile = { stack: 0 };
 
 function pileStyle(pile: Pile): string {
-  return `--stack: ${pile.stack}; --depth: ${pile.depth}`;
+  return `--stack: ${pile.stack}`;
 }
 
 function decision(message: LickMessage, handlers: Handlers, pile: Pile): TemplateResult {
@@ -1721,6 +1720,8 @@ export const messageCss = css`
     position: sticky;
     top: calc(var(--stack, 0) * 2.75rem);
     z-index: calc(var(--stack, 0) + 1);
+  }
+  swc-conversation-turn.decision-turn[data-pinned] {
     transform: scale(calc(1 - var(--depth, 0) * 0.03));
     transform-origin: top center;
     filter: blur(calc(var(--depth, 0) * 0.6px));
