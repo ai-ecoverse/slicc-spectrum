@@ -261,6 +261,27 @@ export class SliccComposer extends ThemedElement {
         mask-image: linear-gradient(to bottom, transparent, black 72px);
         -webkit-mask-image: linear-gradient(to bottom, transparent, black 72px);
       }
+      @media (prefers-reduced-transparency: reduce) {
+        :host::before {
+          top: 0;
+          background: var(--swc-background-layer-1-color);
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
+          mask-image: none;
+          -webkit-mask-image: none;
+        }
+      }
+      @media (forced-colors: active) {
+        :host::before {
+          top: 0;
+          background: Canvas;
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
+          mask-image: none;
+          -webkit-mask-image: none;
+          border-block-start: var(--swc-border-width-100) solid CanvasText;
+        }
+      }
       .column {
         max-width: 860px;
         margin: 0 auto;
@@ -524,6 +545,8 @@ export class SliccComposer extends ThemedElement {
       popover.triggerElement = (field.shadowRoot as ShadowRoot).querySelector<HTMLElement>(
         '.swc-PromptField-upload'
       );
+      const area = this.#textarea as HTMLTextAreaElement & { ariaDescribedByElements: Element[] };
+      area.ariaDescribedByElements = [this.renderRoot.querySelector('#keys') as Element];
     });
   }
 
@@ -940,6 +963,20 @@ export class SliccComposer extends ThemedElement {
     return this.value ? 'pencil' : 'aiLogo';
   }
 
+  #instructions(busy: boolean): string {
+    const enter = this.model?.settings.get().sendOnEnter ?? true;
+    const keys = enter
+      ? [`Enter ${busy ? 'steers' : 'sends'}`, ...(busy ? ['Ctrl+Enter queues'] : [])]
+      : [`Ctrl+Enter ${busy ? 'queues' : 'sends'}`];
+    if (busy) keys.push('Escape stops');
+    keys.push(
+      `${enter ? 'Shift+Enter' : 'Enter'} adds a new line`,
+      '/ lists commands',
+      '@ mentions'
+    );
+    return `${keys.join(', ')}.`;
+  }
+
   #input(event: CustomEvent<{ value: string }>): void {
     this.value = event.detail.value;
     this.#history = -1;
@@ -1176,6 +1213,7 @@ export class SliccComposer extends ThemedElement {
     const speech = 'SpeechRecognition' in globalThis || 'webkitSpeechRecognition' in globalThis;
     const held = this.#held();
     return html`<div class="column">
+        <span id="keys" class="sr" aria-hidden="true">${this.#instructions(busy)}</span>
         ${this.#hold()}
         ${this.#queue()}
         ${this.#popup()}
