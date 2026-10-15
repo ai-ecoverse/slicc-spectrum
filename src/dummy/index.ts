@@ -12,6 +12,7 @@ import { DummyMemory } from './memory.ts';
 import { agentSections, DummyMonitor } from './monitor.ts';
 import {
   DummyNetwork,
+  type LeadersScenario,
   type LinksScenario,
   type NetworkScenario,
   type TailnetScenario,
@@ -40,6 +41,7 @@ export interface DummyOptions {
   network?: NetworkScenario | 'off';
   tailnet?: TailnetScenario;
   links?: LinksScenario;
+  leaders?: LeadersScenario;
   changes?: ChangesScenario;
   notices?: NoticeScenario | 'off';
   tabs?: TabsScenario | 'off';
@@ -83,6 +85,7 @@ export function createDummyModel({
   network = 'limited',
   tailnet,
   links,
+  leaders,
   changes = 'files',
   notices = 'off',
   tabs = 'off',
@@ -161,7 +164,7 @@ export function createDummyModel({
     }),
     ...(network === 'off'
       ? {}
-      : { network: new DummyNetwork(network, time, tailnet, links, files) }),
+      : { network: new DummyNetwork(network, time, tailnet, links, files, leaders) }),
     ...(changes === 'files' ? {} : { changes: new DummyChanges(files, changes === 'git') }),
     ...(notices === 'off' ? {} : { notices: new DummyNotices(notices, time) }),
     ...(tabs === 'off' ? {} : { tabs: new DummyTabs(tabs, time) }),

@@ -1,6 +1,7 @@
 import { Emitter } from '../model/emitter.ts';
 import type {
   AccessKey,
+  Leader,
   LinkedDevice,
   LinkedFolder,
   NetworkExit,
@@ -25,7 +26,31 @@ export type LinksScenario =
   | 'remote'
   | 'followers';
 
+export type LeadersScenario = 'connected' | 'failed' | 'unlinked' | 'two';
+
 const minute = 60_000;
+
+const cove: Leader = {
+  id: 'https://hub.cove-studio.example',
+  name: 'SLICC on cove-studio',
+  hub: 'hub.cove-studio.example',
+  state: 'connected',
+};
+
+const marsh: Leader = {
+  id: 'https://tray.marsh-desk.example',
+  name: 'SLICC on marsh-desk',
+  hub: 'tray.marsh-desk.example',
+  state: 'failed',
+  error: 'The hub didn’t answer. Check the connection and try again.',
+};
+
+export function leadersFixtures(scenario: LeadersScenario): Leader[] {
+  if (scenario === 'failed') return [marsh];
+  if (scenario === 'unlinked') return [{ ...cove, state: 'unlinked' }];
+  if (scenario === 'two') return [cove, marsh];
+  return [cove];
+}
 
 export function networkFixtures(scenario: NetworkScenario, now = Date.now()): NetworkStatus {
   const extensionUrl = 'https://extensions.example/slicc';
@@ -331,6 +356,10 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
   retryLinks?: () => Promise<void>;
   mountFolder?: (source: string) => Promise<string>;
   ejectFolder?: (source: string) => Promise<void>;
+  retryLeader?: (id: string) => Promise<void>;
+  disconnectLeader?: (id: string) => Promise<void>;
+  forgetLeader?: (id: string) => Promise<void>;
+  #leaders: Leader[] | undefined;
   #files: DummyFiles | undefined;
 
   constructor(
@@ -338,7 +367,8 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
     clock: Clock,
     tailnet?: TailnetScenario,
     links?: LinksScenario,
-    files?: DummyFiles
+    files?: DummyFiles,
+    leaders?: LeadersScenario
   ) {
     super();
     this.scenario = scenario;
@@ -357,11 +387,49 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
       this.#files = files;
       files?.on('mounts', (targets) => this.#mounted(targets));
     }
+    if (leaders) {
+      this.#leaders = leadersFixtures(leaders);
+      this.retryLeader = (id) => this.#retryLeader(id);
+      this.disconnectLeader = (id) => this.#dropLeader(id);
+      this.forgetLeader = (id) => this.#dropLeader(id);
+    }
     this.#base = networkFixtures(scenario);
     this.#status = this.#with(this.#base);
   }
 
+  #withLeaders(status: NetworkStatus): NetworkStatus {
+    const leaders = this.#leaders;
+    if (!leaders) return status;
+    this.#leaders = leaders.filter((leader) => leader.state !== 'unlinked');
+    return { ...status, leaders };
+  }
+
+  #leader(id: string, change: Partial<Leader>): void {
+    this.#leaders = (this.#leaders as Leader[]).map((leader) => {
+      if (leader.id !== id) return leader;
+      const { error: _, ...rest } = leader;
+      return { ...rest, ...change };
+    });
+    this.#emit();
+  }
+
+  async #retryLeader(id: string): Promise<void> {
+    this.#leader(id, { state: 'connecting' });
+    await this.#clock.sleep(8);
+    this.#leader(id, { state: 'connected' });
+  }
+
+  async #dropLeader(id: string): Promise<void> {
+    await this.#clock.sleep(4);
+    this.#leaders = (this.#leaders as Leader[]).filter((leader) => leader.id !== id);
+    this.#emit();
+  }
+
   #with(status: NetworkStatus): NetworkStatus {
+    return this.#withLeaders(this.#withLinks(status));
+  }
+
+  #withLinks(status: NetworkStatus): NetworkStatus {
     const links = this.#links;
     if (!links) return this.#withTailnet(status);
     const exit = this.#exit;

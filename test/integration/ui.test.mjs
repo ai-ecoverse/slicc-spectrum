@@ -4549,6 +4549,54 @@ test('linked devices pick the exit, unlink, and retry local network access', asy
   assert.deepEqual(page.errors, []);
 });
 
+test('leaders disconnect and forget through their confirms', async (t) => {
+  const page = await open(t, { leaders: 'two' });
+  await page.evaluate(() => window.app.show('network'));
+  await page.evaluate(() => {
+    window.netPanel = () => window.$('slicc-app', 'slicc-dock').content('network')?.shadowRoot;
+    window.leaderRow = (id) => window.netPanel().querySelector(`li[data-leader="${id}"]`);
+  });
+  await page.until(() => !!window.netPanel()?.querySelector('section[data-leaders]'));
+  const cove = 'https://hub.cove-studio.example';
+  const marsh = 'https://tray.marsh-desk.example';
+  assert.deepEqual(
+    await page.evaluate(
+      ([a, b]) => [window.leaderRow(a).dataset.state, window.leaderRow(b).dataset.state],
+      [cove, marsh]
+    ),
+    ['connected', 'failed']
+  );
+  await shot(page, 'leaders-two');
+  await page.evaluate(
+    (id) => window.leaderRow(id).querySelector('[data-action=disconnect-leader]').click(),
+    cove
+  );
+  await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
+  assert.equal(
+    await page.evaluate(() =>
+      window.$('slicc-app', 'slicc-confirm', '[data-action]').textContent.trim()
+    ),
+    'Disconnect'
+  );
+  await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
+  await page.until((id) => !window.leaderRow(id), cove);
+  await page.evaluate(
+    (id) => window.leaderRow(id).querySelector('[data-action=forget-leader]').click(),
+    marsh
+  );
+  await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const button = window.$('slicc-app', 'slicc-confirm', '[data-action]');
+      return [button.textContent.trim(), button.getAttribute('variant')];
+    }),
+    ['Forget', 'negative']
+  );
+  await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
+  await page.until(() => !window.netPanel().querySelector('section[data-leaders]'));
+  assert.deepEqual(page.errors, []);
+});
+
 test('without a network port there is no indicator and no Network panel', async (t) => {
   const page = await open(t, { network: 'off' });
   assert.deepEqual(
