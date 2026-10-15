@@ -664,20 +664,29 @@ export function user(message: UserMessage, stamp = true): TemplateResult {
     : message.from
       ? `Message from ${message.from}`
       : 'Your message';
-  return html`<swc-conversation-turn type="user" class="message user" accessible-label=${label} data-id=${message.id} data-mode=${message.mode ?? 'send'} data-delivered=${delivered ?? 'run'} data-origin=${message.origin ?? 'user'}>
+  const remote = agent || (!!message.from && !people.has(message.origin ?? 'user'));
+  return html`<swc-conversation-turn type="user" class="message user" accessible-label=${label} data-id=${message.id} data-mode=${message.mode ?? 'send'} data-delivered=${delivered ?? 'run'} data-origin=${message.origin ?? 'user'} data-remote=${remote ? '' : nothing}>
     <div class="bubble">
-      ${
-        who || stamp
-          ? html`<div class="meta">
-        ${who ? html`<span class="who">${who}</span>` : nothing}${stamp ? when(message.createdAt) : nothing}
-        ${agent ? html`<swc-badge class="origin" size="s" variant="indigo">Agent</swc-badge>` : nothing}
-      </div>`
-          : nothing
-      }${stamp ? nothing : unseen(message.createdAt)}
+      ${byline(message, who, stamp)}${stamp ? nothing : unseen(message.createdAt)}
       ${message.text ? html`<swc-user-message class="body"><span class="text">${message.text}</span></swc-user-message>` : nothing}
       ${message.attachments?.length ? html`<div class="attachments">${message.attachments.map(attachment)}</div>` : nothing}
+      ${remote ? html`<span class="reaction" aria-hidden="true">🤖</span>` : nothing}
     </div>
   </swc-conversation-turn>`;
+}
+
+const people = new Set(['follower', 'guest']);
+
+function byline(
+  message: UserMessage,
+  who: string,
+  stamp: boolean
+): TemplateResult | typeof nothing {
+  if (!who && !stamp) return nothing;
+  return html`<div class="meta">
+    ${who ? html`<span class="who">${who}</span>` : nothing}${stamp ? when(message.createdAt) : nothing}
+    ${message.origin === 'agent' ? html`<swc-badge class="origin" size="s" variant="indigo">Agent</swc-badge>` : nothing}
+  </div>`;
 }
 
 function status(message: AssistantMessage): TemplateResult | typeof nothing {
@@ -915,9 +924,34 @@ export const messageCss = css`
     align-self: flex-start;
     align-items: flex-start;
   }
-  .user[data-origin='agent'] swc-user-message.body {
-    background: var(--swc-background-layer-1-color);
-    border-color: var(--swc-gray-300);
+  .user[data-remote] swc-user-message.body {
+    background: light-dark(
+      var(--swc-indigo-subtle-background-color-default),
+      color-mix(in srgb, var(--swc-indigo-900) 8%, var(--swc-gray-50))
+    );
+    border-color: transparent;
+  }
+  .user[data-remote] .bubble {
+    position: relative;
+    margin-block-end: var(--swc-spacing-300);
+  }
+  .reaction {
+    position: absolute;
+    inset-block-end: calc(var(--swc-spacing-300) * -1);
+    inset-inline-end: var(--swc-spacing-200);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: var(--swc-spacing-400);
+    block-size: var(--swc-spacing-400);
+    padding-inline: var(--swc-spacing-75);
+    border-radius: calc(var(--swc-spacing-400) / 2);
+    border: var(--swc-border-width-100) solid var(--swc-gray-300);
+    background: var(--swc-background-layer-2-color);
+    box-shadow: var(--swc-drop-shadow-emphasized-default-x) var(--swc-drop-shadow-emphasized-default-y)
+      var(--swc-drop-shadow-emphasized-default-blur) var(--swc-drop-shadow-emphasized-default-color);
+    font-size: var(--swc-font-size-100);
+    line-height: 1;
   }
   swc-user-message.body .text {
     white-space: pre-wrap;
