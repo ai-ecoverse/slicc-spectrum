@@ -497,8 +497,8 @@ function question(item: Question, handlers: Handlers): TemplateResult {
   </div>`;
 }
 
-export function questionTurn(item: Question, handlers: Handlers, stack: number): TemplateResult {
-  return html`<swc-conversation-turn type="system" class="message decision-turn" data-id=${item.id} data-state=${item.state} data-pending=${item.state === 'open' ? '' : nothing} style=${`--stack: ${stack}`} @click=${reveal}>${question(item, handlers)}</swc-conversation-turn>`;
+export function questionTurn(item: Question, handlers: Handlers, pile: Pile): TemplateResult {
+  return html`<swc-conversation-turn type="system" class="message decision-turn" data-id=${item.id} data-state=${item.state} data-pending=${item.state === 'open' ? '' : nothing} style=${pileStyle(pile)} @click=${reveal}>${question(item, handlers)}</swc-conversation-turn>`;
 }
 
 const delegationVerbs = {
@@ -852,7 +852,18 @@ function reveal(event: Event): void {
     log.scrollTo({ top: log.scrollTop + natural - pile, behavior: 'smooth' });
 }
 
-function decision(message: LickMessage, handlers: Handlers, stack: number): TemplateResult {
+export interface Pile {
+  stack: number;
+  depth: number;
+}
+
+export const flatPile: Pile = { stack: 0, depth: 0 };
+
+function pileStyle(pile: Pile): string {
+  return `--stack: ${pile.stack}; --depth: ${pile.depth}`;
+}
+
+function decision(message: LickMessage, handlers: Handlers, pile: Pile): TemplateResult {
   const left = message.expiresAt === undefined ? null : message.expiresAt - Date.now();
   const expired = left !== null && left <= 0;
   const timer =
@@ -865,7 +876,7 @@ function decision(message: LickMessage, handlers: Handlers, stack: number): Temp
         <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'dismissed')}>Deny</swc-button>
         <swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>
       </div>`;
-  return html`<swc-conversation-turn type="system" class="message decision-turn" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-pending=${expired ? nothing : ''} data-expired=${expired ? '' : nothing} style=${`--stack: ${stack}`} @click=${reveal}>
+  return html`<swc-conversation-turn type="system" class="message decision-turn" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-pending=${expired ? nothing : ''} data-expired=${expired ? '' : nothing} style=${pileStyle(pile)} @click=${reveal}>
     <div class="decision" data-kind="approval">
       <div class="decision-head"><span class="who">${message.title}</span>${timer}</div>
       <p class="decision-text">${message.text}</p>
@@ -879,9 +890,9 @@ export function lick(
   message: LickMessage,
   handlers: Handlers,
   stamp = true,
-  stack = 0
+  pile: Pile = flatPile
 ): TemplateResult {
-  if (pendingApproval(message)) return decision(message, handlers, stack);
+  if (pendingApproval(message)) return decision(message, handlers, pile);
   const [label] = lickLabels[message.channel];
   const decide = message.channel === 'sudo-request' && message.state === 'pending';
   const outcome =
@@ -1708,10 +1719,13 @@ export const messageCss = css`
     position: sticky;
     top: calc(var(--stack, 0) * 2.75rem);
     z-index: calc(var(--stack, 0) + 1);
+    transform: scale(calc(1 - var(--depth, 0) * 0.03));
+    transform-origin: top center;
+    filter: blur(calc(var(--depth, 0) * 0.6px));
   }
   .decision-turn[data-pending] .decision {
-    border-color: var(--swc-notice-visual-color);
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+    border-color: var(--swc-gray-300);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
   }
   .decision {
     display: flex;
