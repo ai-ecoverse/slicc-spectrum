@@ -497,6 +497,10 @@ function question(item: Question, handlers: Handlers): TemplateResult {
   </div>`;
 }
 
+export function questionTurn(item: Question, handlers: Handlers, stack: number): TemplateResult {
+  return html`<swc-conversation-turn type="system" class="message decision-turn" data-id=${item.id} data-state=${item.state} data-pending=${item.state === 'open' ? '' : nothing} style=${`--stack: ${stack}`}>${question(item, handlers)}</swc-conversation-turn>`;
+}
+
 const delegationVerbs = {
   feed: 'fed',
   scoop: 'started',
@@ -565,7 +569,9 @@ function part(entry: Exclude<MessagePart, { type: 'tool' }>, handlers: Handlers)
 
 function silent(entry: MessagePart, showThinking: boolean): boolean {
   return (
-    (entry.type === 'thinking' && !showThinking) || (entry.type === 'link' && !!host(entry.url))
+    entry.type === 'question' ||
+    (entry.type === 'thinking' && !showThinking) ||
+    (entry.type === 'link' && !!host(entry.url))
   );
 }
 
@@ -845,7 +851,7 @@ function decision(message: LickMessage, handlers: Handlers, stack: number): Temp
         <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'dismissed')}>Deny</swc-button>
         <swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>
       </div>`;
-  return html`<swc-conversation-turn type="system" class="message decision-turn" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-expired=${expired ? '' : nothing} style=${`--stack: ${stack}`}>
+  return html`<swc-conversation-turn type="system" class="message decision-turn" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-pending=${expired ? nothing : ''} data-expired=${expired ? '' : nothing} style=${`--stack: ${stack}`}>
     <div class="decision" data-kind="approval">
       <div class="decision-head"><span class="who">${message.title}</span>${timer}</div>
       <p class="decision-text">${message.text}</p>
@@ -1683,12 +1689,15 @@ export const messageCss = css`
   }
   swc-conversation-turn.decision-turn {
     container-type: inline-size;
+  }
+  swc-conversation-turn.decision-turn[data-pending] {
     position: sticky;
     top: calc(var(--stack, 0) * 2.75rem);
     z-index: calc(var(--stack, 0) + 1);
   }
-  swc-conversation-turn.decision-turn[data-expired] {
-    position: static;
+  .decision-turn[data-pending] .decision {
+    border-color: var(--swc-notice-visual-color);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
   }
   .decision {
     display: flex;
@@ -1700,14 +1709,6 @@ export const messageCss = css`
     border-radius: var(--swc-corner-radius-100);
     background: var(--swc-background-layer-1-color);
     font-size: var(--swc-font-size-200);
-  }
-  .decision-turn .decision {
-    border-color: var(--swc-notice-visual-color);
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
-  }
-  .decision-turn[data-expired] .decision {
-    border-color: var(--swc-gray-200);
-    box-shadow: none;
   }
   .decision-head {
     display: flex;

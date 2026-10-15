@@ -28,6 +28,7 @@ import {
   messageCss,
   type Owner,
   pendingApproval,
+  questionTurn,
   stamps,
   system,
   toolMessage,
@@ -53,10 +54,16 @@ const upward = new Set(['ArrowUp', 'PageUp', 'Home']);
 
 const compactWidth = 560;
 
-function approvalStacks(messages: readonly Message[]): Map<string, number> {
+function pendingStacks(messages: readonly Message[]): Map<string, number> {
   const stacks = new Map<string, number>();
   for (const message of messages) {
     if (pendingApproval(message)) stacks.set(message.id, stacks.size);
+    if (message.role !== 'assistant') continue;
+    for (const part of message.parts) {
+      if (part.type === 'question' && part.question.state === 'open') {
+        stacks.set(`${message.id}:${part.question.id}`, stacks.size);
+      }
+    }
   }
   return stacks;
 }
@@ -582,7 +589,7 @@ export class SliccChat extends ThemedElement {
     const owners = new Map<string, Owner>();
     const into = new Map<string, string>();
     const stamped = stamps(messages);
-    const stacks = approvalStacks(messages);
+    const stacks = pendingStacks(messages);
     let anchor: Message | null = null;
     for (const message of messages) {
       const calls = toolOnly(message, showThinking);
@@ -627,8 +634,21 @@ export class SliccChat extends ThemedElement {
           stacks.get(message.id) ?? 0
         ),
       ]);
+      out.push(...this.#questions(message, stacks));
     }
     return out;
+  }
+
+  #questions(
+    message: Message,
+    stacks: ReadonlyMap<string, number>
+  ): Array<[string, TemplateResult]> {
+    if (message.role !== 'assistant') return [];
+    return message.parts.flatMap((part) => {
+      if (part.type !== 'question') return [];
+      const key = `${message.id}:${part.question.id}`;
+      return [[key, questionTurn(part.question, this.#handlers, stacks.get(key) ?? 0)] as const];
+    });
   }
 
   #newChat(agent: Agent): void {
