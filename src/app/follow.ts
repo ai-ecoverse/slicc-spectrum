@@ -98,7 +98,7 @@ export function watchOnly(model: SliccModel | null | undefined): string {
 
 export function onWatch(model: SliccModel, listener: () => void): Array<() => void> {
   return [
-    model.agent.on('readOnly', listener),
+    ...(model.agent.readOnly ? [model.agent.on('readOnly', listener)] : []),
     ...(model.follow ? [model.follow.on('follow', listener)] : []),
   ];
 }
