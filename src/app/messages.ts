@@ -1503,6 +1503,13 @@ export const messageCss = css`
       margin-inline: var(--swc-spacing-300);
     }
   }
+  @container (inline-size < 360px) {
+    .error-card swc-button {
+      grid-column: 2;
+      grid-row: auto;
+      justify-self: start;
+    }
+  }
   .marker,
   .day {
     display: flex;
