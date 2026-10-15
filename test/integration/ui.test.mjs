@@ -2562,22 +2562,33 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
         .$('slicc-app', 'slicc-dock', 'slicc-chat')
         .shadowRoot.querySelectorAll('.message.user[data-origin=user]'),
     ];
-    const timed = new Set();
+    const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot;
     let last = -Infinity;
-    for (const message of window.model.agent.messages('cone-sliccy')) {
-      if (message.role === 'system' || message.createdAt - last < 120000) continue;
-      timed.add(message.id);
-      last = message.createdAt;
+    let spaced = true;
+    for (const node of root.querySelectorAll('.day, .meta time.when')) {
+      if (node.classList.contains('day')) {
+        last = -Infinity;
+        continue;
+      }
+      const at = Date.parse(node.getAttribute('datetime'));
+      if (at - last < 120000) spaced = false;
+      last = at;
     }
     return {
       kinds: [...new Set(turns.map((turn) => turn.dataset.delivered))].sort(),
       labels: turns.filter((turn) => turn.querySelector('.who, .tag')).length,
-      times: turns.every(
-        (turn) => !!turn.querySelector('.meta time.when') === timed.has(turn.dataset.id)
-      ),
+      times: turns.every((turn) => turn.querySelector('time[datetime]')),
+      hidden: turns.some((turn) => !turn.querySelector('.meta')),
+      spaced,
     };
   });
-  assert.deepEqual(delivered, { kinds: ['follow-up', 'run', 'steer'], labels: 0, times: true });
+  assert.deepEqual(delivered, {
+    kinds: ['follow-up', 'run', 'steer'],
+    labels: 0,
+    times: true,
+    hidden: true,
+    spaced: true,
+  });
   await shot(page, 'composer-delivered');
 
   await page.press('ArrowUp');
