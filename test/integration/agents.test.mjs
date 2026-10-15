@@ -389,7 +389,7 @@ test('The strip has its own column: it never covers the text, the fill or the fo
       const text = row.querySelector('.title');
       const root = window.agents().shadowRoot;
       const box = row.getBoundingClientRect();
-      const edge = root.elementFromPoint(box.right - 1, box.top + box.height / 2);
+      const edge = root.elementFromPoint(box.right - 8, box.top + box.height / 2);
       return [text.scrollHeight > text.clientHeight, edge === row];
     }),
     [true, true]
@@ -471,6 +471,33 @@ for (const color of ['light', 'dark']) {
     assert.deepEqual(page.errors, []);
   });
 }
+
+test('Delete cone from its strip removes only that row, and nothing throws', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    window.model.agent.select('cone-kitchen');
+    return true;
+  });
+  await page.until(() => window.agentRow('cone-kitchen')?.getAttribute('tabindex') === '0');
+  await page.press('1', 'alt');
+  await page.until(() => /slicc-agents > li#cone-kitchen$/.test(window.focused()));
+  await page.press('Tab');
+  await page.until(() => /slicc-agents > swc-action-button > button$/.test(window.focused()));
+  await page.press('Enter');
+  await page.until(() => window.confirmShown());
+  await page.evaluate(() => window.answer(true));
+  await page.until(() => !window.agentRow('cone-kitchen'));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.agents().shadowRoot.querySelectorAll('li[aria-level="1"]')].map(
+        (li) => li.dataset.id
+      )
+    ),
+    ['cone-sliccy', 'cone-harbor', 'cone-release', 'cone-triage', 'cone-tides']
+  );
+  assert.deepEqual(page.errors, []);
+});
 
 test('Drop is hidden when the port has no drop', async (t) => {
   const page = await open(t);
@@ -591,10 +618,14 @@ test('On a 420 phone, a tapped cone shows its scoops when you come back to Agent
     await page.evaluate(() => [
       window.agentRow('cone-harbor').getAttribute('aria-expanded'),
       Boolean(window.dropButton('scoop-otter')),
-      Boolean(window.agentRow('scoop-wren')),
     ]),
-    ['true', true, false]
+    ['true', true]
   );
+  await tap("window.agentRow('cone-harbor').querySelector('[data-action=toggle-cone]')");
+  await page.until(() => !window.agentRow('scoop-otter'));
+  assert.equal(await page.evaluate(() => window.model.agent.active()), 'cone-harbor');
+  await tap("window.agentRow('cone-sliccy').querySelector('[data-action=toggle-cone]')");
+  await page.until(() => window.agentRow('cone-sliccy').getAttribute('aria-expanded') === 'false');
   await tap("window.agentRow('cone-sliccy').querySelector('[data-action=toggle-cone]')");
   await page.until(() => Boolean(window.agentRow('scoop-wren')));
   assert.deepEqual(

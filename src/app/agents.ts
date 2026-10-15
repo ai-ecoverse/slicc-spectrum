@@ -5,6 +5,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
 import '@adobe/spectrum-wc-icons/swc-icon-close.js';
 import '@adobe/spectrum-wc-icons/swc-icon-delete.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
+import { repeat } from 'lit/directives/repeat.js';
 import type { Agent, SliccModel } from '../model/types.ts';
 import { ModelElement, percent, shared, statusLabel } from './base.ts';
 import { confirm, prompt } from './confirm.ts';
@@ -76,6 +77,8 @@ export function unreadCount(unread: number): string {
 export function fillShown(fill: number): boolean {
   return fill >= 0.5;
 }
+
+type Tooltip = HTMLElement & { triggerElement: HTMLElement | null };
 
 export class SliccAgents extends ModelElement {
   static properties = { ...ModelElement.properties, errors: { state: true } };
@@ -231,6 +234,7 @@ export class SliccAgents extends ModelElement {
     .ribbon {
       grid-area: ribbon;
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: var(--swc-spacing-100);
       min-inline-size: 0;
@@ -246,9 +250,6 @@ export class SliccAgents extends ModelElement {
     }
     .summary {
       min-inline-size: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
     }
     .segment {
       --status-color: var(--swc-gray-600);
@@ -333,7 +334,6 @@ export class SliccAgents extends ModelElement {
   ];
 
   protected subscribe(model: SliccModel): Array<() => void> {
-    this.#expanded = new Set();
     this.#reveal(model);
     return [
       model.agent.on('agents', () => this.requestUpdate()),
@@ -620,6 +620,12 @@ export class SliccAgents extends ModelElement {
     </div>`;
   }
 
+  protected updated(): void {
+    for (const tip of this.renderRoot.querySelectorAll<Tooltip>('swc-tooltip')) {
+      tip.triggerElement = tip.previousElementSibling as HTMLElement;
+    }
+  }
+
   render(): TemplateResult {
     const list = this.model?.agent.list() ?? [];
     const active = this.model?.agent.active() ?? '';
@@ -630,7 +636,11 @@ export class SliccAgents extends ModelElement {
     const shown = rows.find((agent) => agent.id === active);
     const anchor = shown ? active : (list.find((agent) => agent.id === active)?.parentId ?? '');
     return html`<div class="list"><ul role="tree" aria-label="Cones and scoops" @keydown=${this.#keydown} @focusin=${this.#focusin} @focusout=${this.#focusout}>
-        ${rows.map((agent) => this.#row(agent, active, anchor))}
+        ${repeat(
+          rows,
+          (agent) => agent.id,
+          (agent) => this.#row(agent, active, anchor)
+        )}
       </ul></div>${this.#actions()}
       <div class="sr" role="status">${errors.at(-1) ?? ''}</div>`;
   }
