@@ -24,10 +24,21 @@ import { type Effects, label, type Step, script } from './script.ts';
 interface Run {
   stopped: boolean;
   steers: Outgoing[];
+  pace: number;
 }
+
+const paced = new Map<string, number>([['cone-kitchen', 20_000]]);
 
 function chunks(text: string): string[] {
   return text.match(/\S+\s*|\s+/g) ?? [];
+}
+
+function ticks(steps: readonly Step[]): number {
+  return steps.reduce((sum, step) => {
+    if (step.type === 'tool') return sum + step.ticks;
+    if (step.type === 'part') return sum + 2;
+    return sum + chunks(step.text).length;
+  }, 0);
 }
 
 function outgoing(input: string | Outgoing): Outgoing {
@@ -161,6 +172,13 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     this.#changed();
   }
 
+  #pace(agentId: string, steps: readonly Step[]): number {
+    const budget = paced.get(agentId);
+    const total = ticks(steps);
+    if (!budget || !total) return 1;
+    return budget / (total * this.#clock.delay);
+  }
+
   async #stream(
     agentId: string,
     reply: AssistantMessage,
@@ -169,7 +187,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     run: Run
   ): Promise<void> {
     for (const chunk of chunks(text)) {
-      await this.#clock.sleep();
+      await this.#clock.sleep(run.pace);
       if (run.stopped) return;
       part.text += chunk;
       this.emit('message', { agentId, message: reply });
@@ -194,7 +212,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     };
     reply.parts.push({ type: 'tool', tool });
     this.emit('message', { agentId, message: reply });
-    await this.#clock.sleep(step.ticks);
+    await this.#clock.sleep(step.ticks * run.pace);
     const done = run.stopped
       ? { status: 'cancelled' as const, output: 'Stopped' }
       : { status: 'done' as const, output: step.output };
@@ -206,7 +224,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   async #step(agentId: string, reply: AssistantMessage, step: Step, run: Run): Promise<void> {
     if (step.type === 'tool') return this.#tool(agentId, reply, step, run);
     if (step.type === 'part') {
-      await this.#clock.sleep(2);
+      await this.#clock.sleep(2 * run.pace);
       if (run.stopped) return;
       reply.parts.push(structuredClone(step.part) as MessagePart);
       this.emit('message', { agentId, message: reply });
@@ -282,12 +300,13 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     const agent = this.#agent(agentId) as Agent;
     const prompt = message.text.trim();
     this.#suggestions.delete(agentId);
-    const run: Run = { stopped: false, steers: [] };
+    const run: Run = { stopped: false, steers: [], pace: 1 };
     this.#runs.set(agentId, run);
     this.#post(agentId, this.#user(message, delivered));
     let reply = this.#reply(agent.model);
     this.#post(agentId, reply);
     let { steps, suggestion } = script(prompt, message.attachments ?? []);
+    run.pace = this.#pace(agentId, steps);
     while (steps.length && !run.stopped) {
       await this.#step(agentId, reply, steps[0] as Step, run);
       steps = steps.slice(1);
@@ -298,6 +317,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
         for (const steer of steers) this.#post(agentId, this.#user(steer, 'steer'));
         const latest = steers.at(-1) as Outgoing;
         ({ steps, suggestion } = script(latest.text.trim(), latest.attachments ?? []));
+        run.pace = this.#pace(agentId, steps);
         reply = this.#reply(agent.model);
         this.#post(agentId, reply);
       }
