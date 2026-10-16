@@ -2724,12 +2724,15 @@ test('licks sit on the right with a byline, a quiet chevron on their toggle and 
       getComputedStyle(lick.querySelector('summary .chevron')).transform !== 'none',
     ];
   };
+  const still = () =>
+    window.chatPart('details.lick[data-id=k-l1] > summary .chevron').getAnimations().length === 0;
   await page.evaluate(() => {
     window.chatPart('details.lick[data-id=k-l1] > summary').focus();
     return true;
   });
   await page.press('Enter');
   await page.until(() => window.chatPart('details.lick[data-id=k-l1]').open);
+  await page.until(still);
   assert.deepEqual(await page.evaluate(state), [true, true]);
   await page.evaluate(() => {
     window.chatPart('details.lick[data-id=k-l1] > pre').click();
@@ -2738,6 +2741,7 @@ test('licks sit on the right with a byline, a quiet chevron on their toggle and 
   assert.deepEqual(await page.evaluate(state), [true, true]);
   await page.press(' ');
   await page.until(() => !window.chatPart('details.lick[data-id=k-l1]').open);
+  await page.until(still);
   assert.deepEqual(await page.evaluate(state), [false, false]);
   await page.send('Emulation.setDeviceMetricsOverride', {
     width: 420,
