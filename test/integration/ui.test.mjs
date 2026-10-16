@@ -5688,6 +5688,72 @@ test('without a network port there is no indicator and no Network panel', async 
   assert.deepEqual(page.errors, []);
 });
 
+for (const follow of ['off', 'full']) {
+  test(`guests without a network port: the Network panel offers only Guests (follow ${follow})`, async (t) => {
+    const page = await open(t, { network: 'off', guests: 'on', follow });
+    await page.until(() => !!window.$('slicc-app', '[data-surface=network]'));
+    await page.evaluate(() => {
+      window.app.show('network');
+      window.netPanel = () => window.$('slicc-app', 'slicc-dock').content('network')?.shadowRoot;
+      window.invite = (selector) =>
+        window.$('slicc-app', 'slicc-guest-invite')?.shadowRoot?.querySelector(selector);
+    });
+    await page.until(() => !!window.netPanel()?.querySelector('section[data-guests]'));
+    assert.deepEqual(
+      await page.evaluate(() => [
+        [...window.netPanel().querySelectorAll('section')].map((section) =>
+          section.hasAttribute('data-guests')
+        ),
+        [...window.netPanel().querySelectorAll('h2, h3')].map((heading) => heading.textContent),
+        !!window.netPanel().querySelector('[data-action=check], [data-sync], [data-leaders]'),
+        !!window.$('slicc-app', '[data-network]'),
+        !!window.$('slicc-app', '#remote'),
+        window.$('slicc-app', 'slicc-dock').api.getPanel('network').title,
+      ]),
+      [[true], ['Guests'], false, false, false, 'Network']
+    );
+    await page.evaluate(() =>
+      window.netPanel().querySelector('[data-action=invite-guest]').click()
+    );
+    await page.until(() => !!window.invite('dialog[open]'));
+    await page.until(
+      () =>
+        window.invite('#guest-name') ===
+        window.$('slicc-app', 'slicc-guest-invite').shadowRoot.activeElement
+    );
+    await page.send('Input.insertText', { text: 'Seat 4 (Noor)' });
+    await page.evaluate(() => window.invite('[data-action=create-guest-link]').click());
+    await page.until(() => !!window.invite('dialog[data-guest-invite=link]'));
+    assert.match(
+      await page.evaluate(() => window.invite('[data-copy=guest-url]').value),
+      /^https:\/\/www\.example\.com\/guest\//
+    );
+    await page.evaluate(() => window.invite('[data-action=done-guest]').click());
+    await page.until(() =>
+      [...window.netPanel().querySelectorAll('li[data-seat] .name')].some(
+        (name) => name.textContent === 'Seat 4 (Noor)'
+      )
+    );
+    assert.deepEqual(page.errors, []);
+  });
+}
+
+test('without a network or guests port no Network panel is offered', async (t) => {
+  const page = await open(t, { network: 'off', guests: 'off' });
+  await page.evaluate(() => window.app.show('network'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      !!window.$('slicc-app', '[data-surface=network]'),
+      !!window.$('slicc-app', 'slicc-dock').api.getPanel('network'),
+      [...window.$('slicc-app').shadowRoot.querySelectorAll('sp-menu-item')].some(
+        (item) => item.value === 'network'
+      ),
+    ]),
+    [false, false, false]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a mount point that needs a folder gets one through Insert folder', async (t) => {
   const page = await open(t, { mounts: 'needs' });
   await page.evaluate(() => window.app.show('files'));

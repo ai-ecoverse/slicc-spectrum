@@ -320,6 +320,30 @@ test('a reviewed guest message waits above the composer, then ends as a declined
     role: 'note',
     queued: false,
   });
+  await write(page, 'Can you add Porto?');
+  await page.press('Enter');
+  await page.until(() => !!window.part('.marker[data-ended][data-id="g2"]'));
+  await page.until(() =>
+    [...window.chat.shadowRoot.querySelectorAll('swc-conversation-turn')].some(
+      (turn) =>
+        turn.textContent.includes('Can you add Porto?') && turn.getAttribute('type') === 'user'
+    )
+  );
+  const approved = await page.evaluate(() => {
+    const notice = window.part('.marker[data-ended][data-id="g2"]');
+    const turns = [...window.chat.shadowRoot.querySelectorAll('swc-conversation-turn')];
+    const at = turns.findIndex((turn) => turn.contains(notice));
+    return {
+      text: notice.querySelector('.marker-text').textContent,
+      next: turns[at + 1]?.getAttribute('type'),
+      own: turns[at + 1]?.textContent.includes('Can you add Porto?'),
+    };
+  });
+  assert.deepEqual(approved, {
+    text: 'It was approved.',
+    next: 'user',
+    own: true,
+  });
   assert.deepEqual(await forbidden(page), { calls: [] });
   assert.deepEqual(await page.evaluate(() => window.model.refused), []);
 });
