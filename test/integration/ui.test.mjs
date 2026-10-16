@@ -2803,7 +2803,7 @@ test('decision cards pile at the top, reveal from the keyboard and leave the pil
   assert.equal(stuck.still, '0s');
   const timer = await page.evaluate(() => {
     const head = window.chatPart('.decision-turn[data-id=k-l17] .decision-head');
-    const clock = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+    const clock = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' });
     const minutes = Array.from({ length: 30 }, (_, i) => clock.format(Date.now() + i * 60_000));
     const text = head.querySelector('.timer + .sr').textContent;
     return [

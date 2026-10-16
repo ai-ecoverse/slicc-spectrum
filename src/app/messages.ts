@@ -339,7 +339,7 @@ export function time(at: number): string {
 }
 
 export function deadline(at: number): string {
-  return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(at);
+  return new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(at);
 }
 
 export function day(at: number): string {
