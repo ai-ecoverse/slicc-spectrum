@@ -2803,13 +2803,19 @@ test('decision cards pile at the top, reveal from the keyboard and leave the pil
   assert.equal(stuck.still, '0s');
   const timer = await page.evaluate(() => {
     const head = window.chatPart('.decision-turn[data-id=k-l17] .decision-head');
+    const clock = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' });
+    const minutes = Array.from({ length: 30 }, (_, i) => clock.format(Date.now() + i * 60_000));
+    const text = head.querySelector('.timer + .sr').textContent;
     return [
       head.querySelector('.timer').getAttribute('aria-hidden'),
-      head.querySelector('.timer + .sr').textContent,
+      text,
+      minutes.some((minute) => text === `Expires at ${minute}`),
+      clock.resolvedOptions().hour12 === true && /^Expires at 0/.test(text),
     ];
   });
   assert.equal(timer[0], 'true');
-  assert.match(timer[1], /^Expires at \d\d:\d\d$/);
+  assert.equal(timer[2], true, timer[1]);
+  assert.equal(timer[3], false, timer[1]);
 
   await page.evaluate(() => {
     window.chatPart('.decision-turn[data-id=k-l17]').focus();
@@ -5505,10 +5511,15 @@ test('guests: invite, copy the one-time link, revoke through a negative confirm'
   const added = await page.evaluate(() =>
     [...window.netPanel().querySelectorAll('li[data-seat]')]
       .filter((row) => row.querySelector('.name').textContent === 'Seat 3 (Ines)')
-      .map((row) => [row.dataset.seat, row.querySelector('[data-expiry]').textContent])
+      .map((row) => [
+        row.dataset.seat,
+        row.querySelector('[data-expiry]').textContent,
+        row.querySelector('[data-seat-cone]').textContent,
+      ])
   );
   assert.equal(added.length, 1);
   assert.equal(added[0][1], 'Expires in 7 days');
+  assert.equal(added[0][2], 'on sliccy');
   assert.ok(
     await page.evaluate((u) => !window.$('slicc-app').shadowRoot.innerHTML.includes(u), url)
   );

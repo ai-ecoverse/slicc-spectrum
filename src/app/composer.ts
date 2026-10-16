@@ -22,10 +22,9 @@ import type {
   VaultPort,
 } from '../model/types.ts';
 import { nameProblem, valueProblem } from '../model/values.ts';
-import { deadline } from './approvals.ts';
 import { chatModels, shared, speech, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
-import { size } from './messages.ts';
+import { deadline, size } from './messages.ts';
 import { away, clearValues, failureText, fieldOf, type PopupDetail, take } from './vault.ts';
 
 export const limit = 25 * 1024 * 1024;
