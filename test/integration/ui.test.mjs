@@ -2724,12 +2724,15 @@ test('licks sit on the right with a byline, a quiet chevron on their toggle and 
       getComputedStyle(lick.querySelector('summary .chevron')).transform !== 'none',
     ];
   };
+  const still = () =>
+    window.chatPart('details.lick[data-id=k-l1] > summary .chevron').getAnimations().length === 0;
   await page.evaluate(() => {
     window.chatPart('details.lick[data-id=k-l1] > summary').focus();
     return true;
   });
   await page.press('Enter');
   await page.until(() => window.chatPart('details.lick[data-id=k-l1]').open);
+  await page.until(still);
   assert.deepEqual(await page.evaluate(state), [true, true]);
   await page.evaluate(() => {
     window.chatPart('details.lick[data-id=k-l1] > pre').click();
@@ -2738,6 +2741,7 @@ test('licks sit on the right with a byline, a quiet chevron on their toggle and 
   assert.deepEqual(await page.evaluate(state), [true, true]);
   await page.press(' ');
   await page.until(() => !window.chatPart('details.lick[data-id=k-l1]').open);
+  await page.until(still);
   assert.deepEqual(await page.evaluate(state), [false, false]);
   await page.send('Emulation.setDeviceMetricsOverride', {
     width: 420,
@@ -4769,6 +4773,8 @@ for (const [name, options, end, start] of [
     await page.evaluate((path) => {
       window.part = (id) => window.$('slicc-app', 'slicc-dock').content(id)?.shadowRoot;
       window.diffId = `diff:${path}`;
+      window.laidOut = (node) =>
+        node?.clientWidth > 0 && node.getBoundingClientRect().right <= innerWidth;
       window.fits = (root) => {
         const bar = root.querySelector('.bar');
         const note = bar.querySelector('[data-watch-note]');
@@ -4800,7 +4806,7 @@ for (const [name, options, end, start] of [
         }, id);
         await page.until(
           (id) =>
-            window.part(id === 'diff' ? window.diffId : id)?.querySelector('.bar').clientWidth > 0,
+            window.laidOut(window.part(id === 'diff' ? window.diffId : id)?.querySelector('.bar')),
           id
         );
         const fit = await page.evaluate(
@@ -4823,8 +4829,8 @@ for (const [name, options, end, start] of [
         window.app.show('chat:cone-sliccy');
         return true;
       });
-      await page.until(
-        () => window.part('chat:cone-sliccy')?.querySelector('.empty').clientWidth > 0
+      await page.until(() =>
+        window.laidOut(window.part('chat:cone-sliccy')?.querySelector('.empty'))
       );
       assert.deepEqual(
         await page.evaluate(() => {
