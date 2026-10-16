@@ -338,6 +338,10 @@ export function time(at: number): string {
   return new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
 
+export function deadline(at: number): string {
+  return new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(at);
+}
+
 export function day(at: number): string {
   return new Date(at).toLocaleDateString('en-GB', {
     weekday: 'short',
@@ -944,7 +948,7 @@ function pileStyle(pile: Pile): string {
 
 function spokenLeft(left: number, at: number): string {
   if (left <= 0) return 'Timed out';
-  return left <= 60_000 ? 'Less than a minute left' : `Expires at ${time(at)}`;
+  return left <= 60_000 ? 'Less than a minute left' : `Expires at ${deadline(at)}`;
 }
 
 function decision(message: LickMessage, handlers: Handlers, pile: Pile): TemplateResult {
