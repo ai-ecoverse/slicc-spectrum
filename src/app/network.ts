@@ -1662,7 +1662,7 @@ export class SliccNetwork extends ModelElement {
   render(): TemplateResult {
     const port = this.model?.network;
     if (!port) {
-      return html`<div class="page" tabindex="-1"><p class="muted">Network information is not connected.</p></div>`;
+      return html`<div class="page" tabindex="-1">${this.model?.guests ? this.#guestsSection() : html`<p class="muted">Network information is not connected.</p>`}</div>`;
     }
     const status = networkStatus(port);
     return html`<div class="page" tabindex="-1">

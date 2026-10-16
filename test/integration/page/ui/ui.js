@@ -79,7 +79,7 @@ if (params.has('fonts')) app.fontBase = params.get('fonts') || null;
 if (params.has('vf')) app.variableFont = params.get('vf') || null;
 if (params.has('grammars')) app.grammarBase = params.get('grammars');
 if (model.follow) {
-  const followed = new Set(['agents', 'chat', 'terminal', 'settings']);
+  const followed = new Set(['agents', 'chat', 'terminal', 'settings', 'network']);
   if (params.get('surfaces') !== 'all')
     app.surfaces = surfaces.filter((surface) => followed.has(surface.id));
   const leave = model.follow.leave.bind(model.follow);
