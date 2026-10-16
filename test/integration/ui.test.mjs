@@ -5511,10 +5511,15 @@ test('guests: invite, copy the one-time link, revoke through a negative confirm'
   const added = await page.evaluate(() =>
     [...window.netPanel().querySelectorAll('li[data-seat]')]
       .filter((row) => row.querySelector('.name').textContent === 'Seat 3 (Ines)')
-      .map((row) => [row.dataset.seat, row.querySelector('[data-expiry]').textContent])
+      .map((row) => [
+        row.dataset.seat,
+        row.querySelector('[data-expiry]').textContent,
+        row.querySelector('[data-seat-cone]').textContent,
+      ])
   );
   assert.equal(added.length, 1);
   assert.equal(added[0][1], 'Expires in 7 days');
+  assert.equal(added[0][2], 'on sliccy');
   assert.ok(
     await page.evaluate((u) => !window.$('slicc-app').shadowRoot.innerHTML.includes(u), url)
   );
