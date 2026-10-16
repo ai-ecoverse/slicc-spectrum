@@ -8091,7 +8091,7 @@ test('a guest approval with always offers Always allow, says what it covers and 
         ['always', 'Always allow'],
         ['once', 'Allow once'],
       ],
-      hint: 'Always allow lets sliccy run read_file for Seat 2 (Mara) without asking again.',
+      hint: 'Always allow lets sliccy run exactly this read_file call for Seat 2 (Mara) without asking again.',
     }
   );
   await page.send('Emulation.setDeviceMetricsOverride', {

@@ -313,7 +313,7 @@ export function guestAlwaysHint(approval: GuestMessageApproval | GuestToolApprov
   const agent = approval.agentName ?? 'this cone';
   return approval.kind === 'guest-message'
     ? `Always allow lets ${approval.requester.name} send messages to ${agent} without asking again.`
-    : `Always allow lets ${agent} run ${approval.tool} for ${approval.requester.name} without asking again.`;
+    : `Always allow lets ${agent} run exactly this ${approval.tool} call for ${approval.requester.name} without asking again.`;
 }
 
 export function guestAsking(approval: GuestMessageApproval | GuestToolApproval): string {
