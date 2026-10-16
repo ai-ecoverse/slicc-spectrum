@@ -28,6 +28,7 @@ import {
   type Handlers,
   lick,
   messageCss,
+  mine,
   type Owner,
   type Pile,
   questionTurn,
@@ -391,9 +392,7 @@ export class SliccChat extends ThemedElement {
     const last = this.model?.agent.messages(agentId).at(-1);
     if (last?.role !== 'user' || last.id === this.#tail) return false;
     const seat = this.model?.seat;
-    return seat
-      ? last.origin === 'guest' && last.from === seat.label
-      : (last.origin ?? 'user') === 'user';
+    return seat ? mine(last, seat) : (last.origin ?? 'user') === 'user';
   }
 
   #resize = new ResizeObserver(() => this.#pin());
@@ -655,7 +654,7 @@ export class SliccChat extends ThemedElement {
         );
       }
       case 'user':
-        return user(message, stamp, model.seat?.label);
+        return user(message, stamp, model.seat);
       case 'tool':
         return toolMessage(message, handlers, extra, suggestion, stamp);
       case 'system':

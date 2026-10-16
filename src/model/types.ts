@@ -139,6 +139,7 @@ export interface UserMessage {
   mode?: SendMode;
   queued?: boolean;
   from?: string;
+  seat?: string;
   delivered?: DeliveredAs;
   origin?: MessageOrigin;
 }

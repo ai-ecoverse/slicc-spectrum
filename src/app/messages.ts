@@ -46,6 +46,7 @@ import type {
   Message,
   MessagePart,
   Question,
+  Seat,
   SliccModel,
   SystemMessage,
   ToolCall,
@@ -673,13 +674,18 @@ function unseen(at: number): TemplateResult {
   return html`<time class="sr" datetime=${new Date(at).toISOString()}>${time(at)}</time>`;
 }
 
-function sender(message: UserMessage, seat?: string): string | undefined {
+export function mine(message: UserMessage, seat: Pick<Seat, 'id' | 'label'>): boolean {
+  if (message.origin !== 'guest') return false;
+  return message.seat === undefined ? message.from === seat.label : message.seat === seat.id;
+}
+
+function sender(message: UserMessage, seat?: Seat): string | undefined {
   if (seat === undefined) return message.from;
-  if (message.origin === 'guest' && message.from === seat) return undefined;
+  if (mine(message, seat)) return undefined;
   return message.from ?? (message.origin === 'agent' ? undefined : 'the host');
 }
 
-export function user(message: UserMessage, stamp = true, seat?: string): TemplateResult {
+export function user(message: UserMessage, stamp = true, seat?: Seat): TemplateResult {
   const delivered = message.delivered ?? (message.mode === 'steer' ? 'steer' : undefined);
   const agent = message.origin === 'agent';
   const from = sender(message, seat);

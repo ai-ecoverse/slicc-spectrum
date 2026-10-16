@@ -323,3 +323,40 @@ test('a reviewed guest message waits above the composer, then ends as a declined
   assert.deepEqual(await forbidden(page), { calls: [] });
   assert.deepEqual(await page.evaluate(() => window.model.refused), []);
 });
+
+test('a guest who starts a new draft keeps a rejected message as well', async (t) => {
+  const page = await open(t, { seat: 'reject', delay: '150' });
+  await write(page, 'Can you add Lisbon?');
+  await page.press('Enter');
+  await page.until(() => window.area().value === '');
+  await page.type('And Faro');
+  await page.until(() => !!window.box('[data-send-error]'));
+  assert.equal(await page.evaluate(() => window.area().value), 'Can you add Lisbon?\nAnd Faro');
+  assert.deepEqual(await forbidden(page), { calls: [] });
+});
+
+test('another seat with the guest’s name reads as theirs, not the guest’s own', async (t) => {
+  const page = await open(t, { seat: 'off', history: 'twin' });
+  const shown = await page.evaluate(() => {
+    const turn = (id) => window.part(`swc-conversation-turn[data-id="${id}"]`);
+    return {
+      own: turn('g-3').getAttribute('accessible-label'),
+      twin: turn('g-9').getAttribute('accessible-label'),
+      name: turn('g-9').querySelector('.who')?.textContent,
+    };
+  });
+  assert.deepEqual(shown, {
+    own: 'Your message',
+    twin: `Message from ${label}`,
+    name: `From ${label}`,
+  });
+  await page.evaluate(() => {
+    window.area().focus();
+    return true;
+  });
+  await page.press('ArrowUp');
+  assert.equal(
+    await page.evaluate(() => window.area().value),
+    'Hi! Could you add the weekend to the forecast table?'
+  );
+});

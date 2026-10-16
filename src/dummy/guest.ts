@@ -65,8 +65,22 @@ export const forecastSprinkle: Sprinkle = {
   html: "<style>body { font-family: var(--s2-font-family); color: var(--s2-content-default); padding: var(--s2-spacing-200) var(--s2-spacing-300); } table { border-collapse: collapse; } td { padding: 4px 12px 4px 0; }</style><table><tr><td>Fri</td><td>21°</td><td>Sunny</td></tr><tr><td>Sat</td><td>19°</td><td>Cloudy</td></tr><tr><td>Sun</td><td>18°</td><td>Showers</td></tr></table><script>window.slicc.lick({ action: 'viewed', data: { rows: 3 } });</script>",
 };
 
-export function guestTranscript(now = Date.now()): Message[] {
+export function guestTranscript(now = Date.now(), twin = false): Message[] {
   const at = (minutes: number) => now - minutes * minute;
+  const namesake: Message[] = twin
+    ? [
+        {
+          id: 'g-9',
+          role: 'user',
+          text: 'Same name, another seat.',
+          createdAt: at(8),
+          origin: 'guest',
+          from: guestLabel,
+          seat: 'seat-mara-2',
+          delivered: 'follow-up',
+        },
+      ]
+    : [];
   return [
     {
       id: 'g-1',
@@ -116,6 +130,7 @@ export function guestTranscript(now = Date.now()): Message[] {
       createdAt: at(30),
       origin: 'guest',
       from: guestLabel,
+      seat: 'seat-mara',
       delivered: 'follow-up',
     },
     {
@@ -147,6 +162,7 @@ export function guestTranscript(now = Date.now()): Message[] {
       createdAt: at(12),
       origin: 'guest',
       from: otherGuest,
+      seat: 'seat-jonas',
       delivered: 'follow-up',
     },
     {
@@ -189,6 +205,7 @@ export function guestTranscript(now = Date.now()): Message[] {
       action: 'retry',
       createdAt: at(9),
     },
+    ...namesake,
   ];
 }
 
@@ -360,6 +377,7 @@ export class DummyGuestAgent extends Emitter<AgentEvents> implements AgentPort {
       mode: 'queue',
       origin: 'guest',
       from: this.#seat.label,
+      seat: this.#seat.id,
     };
     this.#waiting.push(proposal);
     this.emit('messages', this.#cone.id);
@@ -379,7 +397,10 @@ export class DummyGuestAgent extends Emitter<AgentEvents> implements AgentPort {
     const text = (typeof input === 'string' ? input : input.text).trim();
     if (agentId !== this.#cone.id || !text) return;
     const gate = this.#seat.gates.messages;
-    if (gate === 'agent') throw new Error(guestReview);
+    if (gate === 'agent') {
+      await this.#clock.sleep(2);
+      throw new Error(guestReview);
+    }
     if (gate !== 'off') {
       await this.#propose(text);
       return;
@@ -391,6 +412,7 @@ export class DummyGuestAgent extends Emitter<AgentEvents> implements AgentPort {
       createdAt: Date.now(),
       origin: 'guest',
       from: this.#seat.label,
+      seat: this.#seat.id,
       delivered: 'follow-up',
     });
     this.#status('thinking');
@@ -430,7 +452,7 @@ class GuestSprinkles extends Emitter<SprinkleEvents> implements SprinklePort {
 
 export interface GuestOptions {
   seat?: SeatScenario;
-  history?: 'on' | 'none';
+  history?: 'on' | 'none' | 'twin';
   delay?: number;
   storage?: Storage | null;
 }
@@ -453,7 +475,7 @@ export function createGuestModel({
   const cone = agents.find((agent) => agent.id === seat.agentId) as Agent;
   const agent = new DummyGuestAgent(
     cone,
-    history === 'on' ? guestTranscript() : [],
+    history === 'none' ? [] : guestTranscript(Date.now(), history === 'twin'),
     seat,
     time,
     refused

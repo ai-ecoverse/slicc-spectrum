@@ -24,7 +24,7 @@ import type {
 import { nameProblem, valueProblem } from '../model/values.ts';
 import { chatModels, shared, speech, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
-import { deadline, size } from './messages.ts';
+import { deadline, mine, size } from './messages.ts';
 import { away, clearValues, failureText, fieldOf, type PopupDetail, take } from './vault.ts';
 
 export const limit = 25 * 1024 * 1024;
@@ -686,7 +686,8 @@ export class SliccComposer extends ThemedElement {
     this.failure = null;
     this.#history = -1;
     model.agent.send(this.#agent, text).catch((error: unknown) => {
-      if (!this.value) this.value = text;
+      const draft = this.value.trim();
+      this.value = draft && draft !== text ? `${text}\n${this.value}` : text;
       this.failure = error instanceof Error ? error.message : String(error);
     });
   }
@@ -937,10 +938,9 @@ export class SliccComposer extends ThemedElement {
 
   #recall(delta: number): boolean {
     const seat = this.model?.seat;
-    const mine = (message: UserMessage) =>
-      seat ? message.origin === 'guest' && message.from === seat.label : !message.from;
     const own = (this.model?.agent.messages(this.#agent) ?? []).filter(
-      (message): message is UserMessage => message.role === 'user' && mine(message)
+      (message): message is UserMessage =>
+        message.role === 'user' && (seat ? mine(message, seat) : !message.from)
     );
     const texts = own.map((message) => message.text).reverse();
     const next = this.#history + delta;
