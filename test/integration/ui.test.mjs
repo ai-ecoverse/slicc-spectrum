@@ -8025,8 +8025,34 @@ test('a guest approval with always offers Always allow, says what it covers and 
         ['always', 'Always allow'],
         ['once', 'Allow once'],
       ],
-      hint: 'Always allow this guest’s calls to read_file in sliccy.',
+      hint: 'Always allow lets sliccy run read_file for Seat 2 (Mara) without asking again.',
     }
+  );
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 420,
+    height: 860,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.approvals();
+      const dialog = root.querySelector('dialog').getBoundingClientRect();
+      const boxes = [...root.querySelectorAll('swc-button')].map((button) =>
+        button.getBoundingClientRect()
+      );
+      return {
+        order: [...root.querySelectorAll('swc-button')].map((button) => button.dataset.action),
+        rows: new Set(boxes.map((box) => Math.round(box.top))).size,
+        inside: boxes.every((box) => box.left >= dialog.left && box.right <= dialog.right),
+        apart: boxes.every((box, index) => index === 0 || box.left >= boxes[index - 1].right),
+        focused: root.activeElement?.dataset.action,
+      };
+    }),
+    { order: ['deny', 'always', 'once'], rows: 1, inside: true, apart: true, focused: 'deny' }
   );
   await page.evaluate(() => {
     window.approvals().querySelector('[data-action=always]').click();

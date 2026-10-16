@@ -310,8 +310,10 @@ export function alwaysHint(approval: SudoApproval): string {
 }
 
 export function guestAlwaysHint(approval: GuestMessageApproval | GuestToolApproval): string {
-  const what = approval.kind === 'guest-message' ? 'messages' : `calls to ${approval.tool}`;
-  return `Always allow this guest’s ${what} in ${approval.agentName ?? 'this cone'}.`;
+  const agent = approval.agentName ?? 'this cone';
+  return approval.kind === 'guest-message'
+    ? `Always allow lets ${approval.requester.name} send messages to ${agent} without asking again.`
+    : `Always allow lets ${agent} run ${approval.tool} for ${approval.requester.name} without asking again.`;
 }
 
 export function guestAsking(approval: GuestMessageApproval | GuestToolApproval): string {
