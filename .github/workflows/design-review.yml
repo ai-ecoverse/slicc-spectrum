@@ -198,7 +198,7 @@ jobs:
     name: design-review / post
     needs: review
     if: always() && needs.review.result != 'skipped' && needs.review.result != 'cancelled'
-    runs-on: ${{ vars.CERT_LIGHT_RUNNER || 'cloud-run' }}
+    runs-on: ${{ vars.CERT_LIGHT_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 15
     permissions:
       pull-requests: write
