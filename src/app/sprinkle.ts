@@ -329,7 +329,7 @@ export class SliccSprinkle extends ThemedElement {
   };
 
   #readOnly(): boolean {
-    return this.readonly || this.#frozen() || !!watchOnly(this.model);
+    return this.readonly || !!this.model?.seat || this.#frozen() || !!watchOnly(this.model);
   }
 
   #seen = new Set<string>();

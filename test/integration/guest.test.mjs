@@ -207,3 +207,24 @@ test('an expiring seat says when its link ends, and an empty chat says hello', a
   );
   assert.deepEqual(await forbidden(page), { calls: [] });
 });
+
+test('a sprinkle on a guest page is view only, even outside the chat, and never licks', async (t) => {
+  const page = await open(t, { seat: 'off' });
+  await page.evaluate(() => {
+    const sprinkle = document.createElement('slicc-sprinkle');
+    sprinkle.sprinkle = 'cone-sliccy/forecast';
+    sprinkle.model = window.model;
+    sprinkle.style.cssText = 'display:block;height:200px';
+    document.body.append(sprinkle);
+    window.panel = sprinkle;
+    return true;
+  });
+  await page.until(() => !!window.panel.shadowRoot?.querySelector('iframe'));
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  const state = await page.evaluate(() => ({
+    readonly: window.panel.hasAttribute('readonly'),
+    caption: window.panel.shadowRoot.querySelector('[data-view-only]')?.textContent,
+    refused: window.model.refused,
+  }));
+  assert.deepEqual(state, { readonly: false, caption: 'View only on this device', refused: [] });
+});

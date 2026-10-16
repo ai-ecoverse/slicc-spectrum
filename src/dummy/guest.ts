@@ -57,7 +57,7 @@ export const forecastSprinkle: Sprinkle = {
   icon: 'sun',
   agentId: 'cone-sliccy',
   inline: true,
-  html: '<style>body { font-family: var(--s2-font-family); color: var(--s2-content-default); padding: var(--s2-spacing-200) var(--s2-spacing-300); } table { border-collapse: collapse; } td { padding: 4px 12px 4px 0; }</style><table><tr><td>Fri</td><td>21°</td><td>Sunny</td></tr><tr><td>Sat</td><td>19°</td><td>Cloudy</td></tr><tr><td>Sun</td><td>18°</td><td>Showers</td></tr></table>',
+  html: "<style>body { font-family: var(--s2-font-family); color: var(--s2-content-default); padding: var(--s2-spacing-200) var(--s2-spacing-300); } table { border-collapse: collapse; } td { padding: 4px 12px 4px 0; }</style><table><tr><td>Fri</td><td>21°</td><td>Sunny</td></tr><tr><td>Sat</td><td>19°</td><td>Cloudy</td></tr><tr><td>Sun</td><td>18°</td><td>Showers</td></tr></table><script>window.slicc.lick({ action: 'viewed', data: { rows: 3 } });</script>",
 };
 
 export function guestTranscript(now = Date.now()): Message[] {
