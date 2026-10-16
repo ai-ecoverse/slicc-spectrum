@@ -28,7 +28,9 @@ jobs:
       cancel-in-progress: true
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
+    outputs:
+      shots_url: ${{ steps.shots.outputs.artifact-url }}
     env:
       LEFTHOOK: '0'
       NODE_OPTIONS: --max-old-space-size=8192
@@ -159,7 +161,7 @@ jobs:
             Surfaces to cover as the change warrants: the chat transcript (kitchen-sink at top, middle and bottom), the composer (empty, a 3-line draft, attachments, queued rows), Agents, Changes and the diff, Network (`?leaders=two`), Settings, Monitor, Files and Memory, the Browser panel, the Freezer, the approvals dialog, notices, and the follow page and watch-only footer.
 
             YOUR ANSWER
-            Write the review to `${{ runner.temp }}/review/comment.md` and put its screenshots in `${{ runner.temp }}/review/shots/` as PNG (at most 30, cropped to what matters). Reference each one from the comment as `![main, dark, composer](shots/composer-dark-main.png)`. The screenshots aren't inlined: a later step publishes them as the run's `design-review-shots` artifact and turns each reference into a line naming the file, linked to it. So name files clearly, and describe in the text what each one shows. Shoot main and the pull request in pairs where they differ. Start with a one-line verdict (looks good / minor issues / needs changes), then the findings, each with its severity, the screenshot, the Spectrum page it rests on, and a concrete fix. End with what you checked and anything about this setup that got in your way. Don't edit, commit or push anything, approve or request changes, or comment on the pull request yourself.
+            Write the review to `${{ runner.temp }}/review/comment.md` and put its screenshots in `${{ runner.temp }}/review/shots/` as PNG (at most 30, cropped to what matters). Reference each one from the comment as `![main, dark, composer](shots/composer-dark-main.png)`, with file names of letters, digits, dots, dashes and underscores only; a later step uploads them and inlines them in the comment. Shoot main and the pull request in pairs where they differ. Start with a one-line verdict (looks good / minor issues / needs changes), then the findings, each with its severity, the screenshot, the Spectrum page it rests on, and a concrete fix. End with what you checked and anything about this setup that got in your way. Don't edit, commit or push anything, approve or request changes, or comment on the pull request yourself.
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         id: shots
@@ -169,31 +171,12 @@ jobs:
           path: ${{ runner.temp }}/review/shots/
           if-no-files-found: ignore
 
-      - name: Comment, with the screenshots linked
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always() && steps.review.outcome != 'skipped'
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
-        env:
-          SHOTS_URL: ${{ steps.shots.outputs.artifact-url }}
-          REVIEW: ${{ runner.temp }}/review
         with:
-          script: |
-            const fs = require('node:fs');
-            const path = require('node:path');
-            const file = path.join(process.env.REVIEW, 'comment.md');
-            let body = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim() : '';
-            if (!body) body = `**Design review:** the reviewer wrote no comment. See ${process.env.RUN_URL}`;
-            const shots = process.env.SHOTS_URL;
-            body = body.replace(/!\[([^\]]*)\]\((?:\.\/)?shots\/([^)\s]+)\)/g, (_, alt, name) =>
-              shots ? `📷 _${alt || name}_ ([\`${name}\`](${shots}))` : `📷 _${alt || name}_ (\`${name}\`)`,
-            );
-            const footer = shots
-              ? `<sub>Screenshots: [design-review-shots-${process.env.PR_NUMBER}](${shots}) · [run](${process.env.RUN_URL})</sub>`
-              : `<sub>[run](${process.env.RUN_URL})</sub>`;
-            await github.rest.issues.createComment({
-              ...context.repo,
-              issue_number: Number(process.env.PR_NUMBER),
-              body: `${body}\n\n${footer}\n`,
-            });
+          name: design-review-comment-${{ env.PR_NUMBER }}
+          path: ${{ runner.temp }}/review/comment.md
+          if-no-files-found: ignore
 
       - name: Evidence
         if: always()
@@ -210,3 +193,86 @@ jobs:
           name: design-review-${{ github.event.pull_request.number || inputs.pr_number }}
           path: ${{ runner.temp }}/review/
           if-no-files-found: ignore
+
+  post:
+    name: design-review / post
+    needs: review
+    if: always() && needs.review.result != 'skipped' && needs.review.result != 'cancelled'
+    runs-on: ${{ vars.CERT_LIGHT_RUNNER || 'cloud-run' }}
+    timeout-minutes: 15
+    permissions:
+      pull-requests: write
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHOTS_URL: ${{ needs.review.outputs.shots_url }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || '155ec15a52a18a14801e04b019da5e5a' }}
+      R2_BUCKET: ${{ vars.R2_BUCKET || 'slicc-pr-screenshots' }}
+      R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL || 'https://pub-e4170b327f03406f9831a6f393b96e05.r2.dev' }}
+      # renovate: datasource=npm depName=wrangler
+      WRANGLER_VERSION: 4.148.0
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        continue-on-error: true
+        with:
+          name: design-review-shots-${{ env.PR_NUMBER }}
+          path: ${{ runner.temp }}/review/shots
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        continue-on-error: true
+        with:
+          name: design-review-comment-${{ env.PR_NUMBER }}
+          path: ${{ runner.temp }}/review
+
+      - name: Screenshots to R2
+        id: r2
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          prefix="slicc-spectrum/pr-$PR_NUMBER/$GITHUB_RUN_ID"
+          : > "$RUNNER_TEMP/review/uploaded.txt"
+          for f in "$RUNNER_TEMP"/review/shots/*.png; do
+            [ -f "$f" ] || continue
+            name=$(basename "$f")
+            if ! [[ "$name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+              echo "::warning::$name has characters R2 keys here don't allow; it stays in the artifact"
+              continue
+            fi
+            npx --yes "wrangler@$WRANGLER_VERSION" r2 object put "$R2_BUCKET/$prefix/$name" \
+              --file "$f" --content-type image/png --remote
+            echo "$name" >> "$RUNNER_TEMP/review/uploaded.txt"
+          done
+          echo "base=$R2_PUBLIC_BASE_URL/$prefix" >> "$GITHUB_OUTPUT"
+
+      - name: Comment, with the screenshots inline
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          REVIEW: ${{ runner.temp }}/review
+          R2_BASE: ${{ steps.r2.outputs.base }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const read = (name) => (fs.existsSync(path.join(process.env.REVIEW, name)) ? fs.readFileSync(path.join(process.env.REVIEW, name), 'utf8') : '');
+            let body = read('comment.md').trim();
+            if (!body) body = `**Design review:** the reviewer wrote no comment. See ${process.env.RUN_URL}`;
+            const uploaded = new Set(read('uploaded.txt').split('\n').filter(Boolean));
+            const base = process.env.R2_BASE;
+            const shots = process.env.SHOTS_URL;
+            body = body.replace(/!\[([^\]]*)\]\((?:\.\/)?shots\/([^)\s]+)\)/g, (_, alt, name) => {
+              if (base && uploaded.has(name)) return `![${alt || name}](${base}/${name})`;
+              return shots ? `📷 _${alt || name}_ ([\`${name}\`](${shots}))` : `📷 _${alt || name}_ (\`${name}\`)`;
+            });
+            const footer = shots
+              ? `<sub>Screenshots: [design-review-shots-${process.env.PR_NUMBER}](${shots}) · [run](${process.env.RUN_URL})</sub>`
+              : `<sub>[run](${process.env.RUN_URL})</sub>`;
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: Number(process.env.PR_NUMBER),
+              body: `${body}\n\n${footer}\n`,
+            });
