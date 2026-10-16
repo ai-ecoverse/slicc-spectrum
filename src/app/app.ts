@@ -586,7 +586,7 @@ export class SliccApp extends ThemedElement {
       const element = dock.content(panel.id) as (HTMLElement & { model?: SliccModel }) | undefined;
       if (element && 'model' in element) element.model = model;
     }
-    if (!model.network && dock.has('network')) dock.close('network');
+    if (!model.network && !model.guests && dock.has('network')) dock.close('network');
     this.#prune();
     const agent = this.#active();
     if (agent && this.#offers('chat')) openChat(dock, agent, this.screen, false, false);
@@ -970,7 +970,9 @@ export class SliccApp extends ThemedElement {
   #available(model = this.model): readonly Surface[] {
     const terminals = terminalsAllowed(model);
     return this.surfaces.filter(
-      (item) => (item.id !== 'network' || model?.network) && (item.id !== 'terminal' || terminals)
+      (item) =>
+        (item.id !== 'network' || model?.network || model?.guests) &&
+        (item.id !== 'terminal' || terminals)
     );
   }
 
@@ -1073,7 +1075,7 @@ export class SliccApp extends ThemedElement {
           ${this.#updatesIndicator()}
           ${this.#remoteIndicator()}
           ${this.#networkIndicator()}
-          ${this.#offers('chat') ? html`<slicc-tray .model=${this.model} .panels=${['network', 'monitor'].filter((id) => this.#offers(id))} ?compact=${this.screen === 'phone'} @show-surface=${this.#showSurface}></slicc-tray>` : nothing}
+          ${this.#offers('chat') ? html`<slicc-tray .model=${this.model} .panels=${['network', 'monitor'].filter((id) => this.#offers(id) && (id !== 'network' || this.model?.network))} ?compact=${this.screen === 'phone'} @show-surface=${this.#showSurface}></slicc-tray>` : nothing}
           <sp-action-menu size="s" quiet label="View" @change=${this.#view}>
             <swc-icon-view-grid slot="icon"></swc-icon-view-grid>
             <span slot="label" class="view-label">View</span>
