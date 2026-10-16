@@ -11,6 +11,7 @@ import type {
   Agent,
   ErrorAction,
   Message,
+  Seat,
   SliccModel,
   Thinking,
   ToolCall,
@@ -27,6 +28,7 @@ import {
   type Handlers,
   lick,
   messageCss,
+  mine,
   type Owner,
   type Pile,
   questionTurn,
@@ -78,6 +80,13 @@ const failed = (message: Message): boolean =>
   message.role === 'assistant'
     ? message.status === 'error'
     : message.role === 'system' && message.kind === 'error';
+
+function empty(watch: string, seat: Seat | undefined, name: string): string {
+  if (watch) return 'No messages yet.';
+  return seat
+    ? `No messages yet. Say hello to ${name}.`
+    : `No messages yet. Ask ${name} something.`;
+}
 
 export function carriesFiles(event: DragEvent): boolean {
   const types = [...(event.dataTransfer?.types ?? [])];
@@ -141,7 +150,7 @@ export class SliccChat extends ThemedElement {
   }
 
   #over = (event: DragEvent): void => {
-    if (!(carriesFiles(event) && this.#composer())) return;
+    if (!(carriesFiles(event) && this.#composer()) || this.model?.seat) return;
     event.preventDefault();
     (event.dataTransfer as DataTransfer).dropEffect = 'copy';
     if (this.dropping) return;
@@ -220,6 +229,10 @@ export class SliccChat extends ThemedElement {
         flex: 0 1 calc(var(--swc-spacing-400) * 6);
         min-width: calc(var(--swc-spacing-400) * 4.5);
         margin-inline-start: auto;
+      }
+      header .cone {
+        color: var(--swc-neutral-content-color-default);
+        font-weight: var(--swc-bold-font-weight);
       }
       header .frozen,
       header .model {
@@ -377,7 +390,9 @@ export class SliccChat extends ThemedElement {
 
   #sent(agentId: string): boolean {
     const last = this.model?.agent.messages(agentId).at(-1);
-    return last?.role === 'user' && last.id !== this.#tail && (last.origin ?? 'user') === 'user';
+    if (last?.role !== 'user' || last.id === this.#tail) return false;
+    const seat = this.model?.seat;
+    return seat ? mine(last, seat) : (last.origin ?? 'user') === 'user';
   }
 
   #resize = new ResizeObserver(() => this.#pin());
@@ -639,7 +654,7 @@ export class SliccChat extends ThemedElement {
         );
       }
       case 'user':
-        return user(message, stamp);
+        return user(message, stamp, model.seat);
       case 'tool':
         return toolMessage(message, handlers, extra, suggestion, stamp);
       case 'system':
@@ -659,6 +674,7 @@ export class SliccChat extends ThemedElement {
       last?.role === 'assistant' &&
       !agent.frozen &&
       !watchOnly(model) &&
+      !model.seat &&
       !model.agent.busy(agent.id)
         ? model.agent.suggestion(agent.id)
         : null;
@@ -736,6 +752,8 @@ export class SliccChat extends ThemedElement {
   #meta(agent: Agent, empty: boolean): TemplateResult {
     const model = this.model as SliccModel;
     const fill = Math.round(agent.contextFill * 100);
+    if (model.seat)
+      return html`<span class="cone" data-seat-cone>${agent.name}</span>${statusLight(agent.status)}`;
     const meter = html`<swc-meter size="s" label-position="side" value=${fill} variant=${meterVariant(fill)}><span slot="label">Context</span></swc-meter>`;
     if (agent.frozen) {
       return html`<swc-badge size="s" variant="informative" subtle>Frozen</swc-badge>
@@ -774,8 +792,10 @@ export class SliccChat extends ThemedElement {
     this.#handlers.model = this.model ?? null;
     const agent = this.#agent();
     const watch = watchOnly(this.model);
-    this.#handlers.readOnly = !!agent?.frozen || !!watch;
+    const seat = this.model?.seat;
+    this.#handlers.readOnly = !!agent?.frozen || !!watch || !!seat;
     this.#handlers.agentId = agent?.id;
+    this.#handlers.seat = seat?.label;
     const messages = agent ? (this.model?.agent.messages(agent.id) ?? []) : [];
     this.#tail = messages.at(-1)?.id ?? '';
     return html`
@@ -807,7 +827,7 @@ export class SliccChat extends ThemedElement {
                 )}</swc-conversation-thread>`
               : this.model?.tabs?.state().role === 'connecting'
                 ? html`<div class="empty" data-connecting>${connecting}</div>`
-                : html`<div class="empty">${watch ? 'No messages yet.' : `No messages yet. Ask ${agent?.name ?? 'the agent'} something.`}</div>`
+                : html`<div class="empty" data-empty>${empty(watch, seat, agent?.name ?? 'the agent')}</div>`
           }
         </div>
       </div>

@@ -46,6 +46,7 @@ import type {
   Message,
   MessagePart,
   Question,
+  Seat,
   SliccModel,
   SystemMessage,
   ToolCall,
@@ -69,6 +70,7 @@ export interface Handlers {
   suggest(text: string): void;
   owners?: ReadonlyMap<string, Owner>;
   agentId?: string;
+  seat?: string;
 }
 
 export interface Owner {
@@ -323,8 +325,9 @@ function errorCard(
   handlers: Handlers
 ): TemplateResult {
   const id = item.id ?? '';
-  const action = item.action
-    ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${item.action} ?disabled=${handlers.readOnly} @click=${() => handlers.action(item.action as ErrorAction, item.id)}>${actionLabel(item.action, handlers, id)}</swc-button>`
+  const fix = handlers.seat === undefined ? item.action : undefined;
+  const action = fix
+    ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${fix} ?disabled=${handlers.readOnly} @click=${() => handlers.action(fix, item.id)}>${actionLabel(fix, handlers, id)}</swc-button>`
     : nothing;
   return html`<div class="error-card" role="alert" data-id=${id || nothing}>
     <swc-icon-alert-diamond class="icon" size="s" aria-hidden="true"></swc-icon-alert-diamond>
@@ -495,10 +498,15 @@ function check(items: CheckItem[]): TemplateResult {
   </ul>`;
 }
 
+const hostAnswers = html`<div class="hint" data-host-answers>The host answers this.</div>`;
+
 function question(item: Question, handlers: Handlers): TemplateResult {
   const answer = (value: string) => handlers.answer(item.id, value);
+  const guest = handlers.seat !== undefined && item.state === 'open';
   let body: TemplateResult;
-  if (item.state === 'answered') {
+  if (guest) {
+    body = hostAnswers;
+  } else if (item.state === 'answered') {
     body = html`<div class="answer">✓ ${item.answer}</div>`;
   } else if (item.state === 'inert') {
     body = html`<div class="hint">Only the latest question can be answered here.</div>`;
@@ -519,14 +527,14 @@ function question(item: Question, handlers: Handlers): TemplateResult {
       <swc-button size="s" variant="accent" data-action="answer" ?disabled=${handlers.readOnly} @click=${(event: Event) => (event.currentTarget as HTMLElement).closest('form')?.requestSubmit()}>Answer</swc-button>
     </form>`;
   }
-  return html`<div class="question decision" data-state=${item.state} data-kind=${item.kind}>
+  return html`<div class="question decision" data-state=${item.state} data-kind=${item.kind} data-guest=${guest ? '' : nothing}>
     <div class="q">${item.question}</div>
     ${body}
   </div>`;
 }
 
 export function questionTurn(item: Question, handlers: Handlers, pile: Pile): TemplateResult {
-  return html`<swc-conversation-turn type="system" class="message decision-turn" data-id=${item.id} data-state=${item.state} data-pending=${item.state === 'open' ? '' : nothing} accessible-label=${`Question: ${item.question}`} style=${pileStyle(pile)} @click=${reveal} @keydown=${reveal}>${question(item, handlers)}</swc-conversation-turn>`;
+  return html`<swc-conversation-turn type="system" class="message decision-turn" data-id=${item.id} data-state=${item.state} data-pending=${item.state === 'open' && handlers.seat === undefined ? '' : nothing} accessible-label=${`Question: ${item.question}`} style=${pileStyle(pile)} @click=${reveal} @keydown=${reveal}>${question(item, handlers)}</swc-conversation-turn>`;
 }
 
 const delegationVerbs = {
@@ -666,16 +674,24 @@ function unseen(at: number): TemplateResult {
   return html`<time class="sr" datetime=${new Date(at).toISOString()}>${time(at)}</time>`;
 }
 
-export function user(message: UserMessage, stamp = true): TemplateResult {
+export function mine(message: UserMessage, seat: Pick<Seat, 'id' | 'label'>): boolean {
+  if (message.origin !== 'guest') return false;
+  return message.seat === undefined ? message.from === seat.label : message.seat === seat.id;
+}
+
+function sender(message: UserMessage, seat?: Seat): string | undefined {
+  if (seat === undefined) return message.from;
+  if (mine(message, seat)) return undefined;
+  return message.from ?? (message.origin === 'agent' ? undefined : 'the host');
+}
+
+export function user(message: UserMessage, stamp = true, seat?: Seat): TemplateResult {
   const delivered = message.delivered ?? (message.mode === 'steer' ? 'steer' : undefined);
   const agent = message.origin === 'agent';
-  const name = message.from ?? 'an agent';
-  const who = agent ? name : message.from ? `From ${message.from}` : '';
-  const label = agent
-    ? `Request from ${name}`
-    : message.from
-      ? `Message from ${message.from}`
-      : 'Your message';
+  const from = sender(message, seat);
+  const name = from ?? 'an agent';
+  const who = agent ? name : from ? `From ${from}` : '';
+  const label = agent ? `Request from ${name}` : from ? `Message from ${from}` : 'Your message';
   const remote = agent || (!!message.from && !people.has(message.origin ?? 'user'));
   return html`<swc-conversation-turn type="user" class="message user" accessible-label=${label} data-id=${message.id} data-mode=${message.mode ?? 'send'} data-delivered=${delivered ?? 'run'} data-origin=${message.origin ?? 'user'} data-remote=${remote ? '' : nothing}>
     <div class="bubble">
@@ -824,6 +840,8 @@ function outside(label: string, byline: TemplateResult, content: TemplateResult)
   return html`<swc-conversation-turn type="user" class="event lick-turn" accessible-label=${label}><div class="bubble">${byline}${content}</div></swc-conversation-turn>`;
 }
 
+const ended = new Set(['Nobody approved this in time.', 'It was declined.', 'It was withdrawn.']);
+
 export function system(message: SystemMessage, handlers: Handlers): TemplateResult {
   if (message.kind === 'compaction') {
     const failed = message.state === 'fallback' || message.state === 'discarded';
@@ -833,6 +851,16 @@ export function system(message: SystemMessage, handlers: Handlers): TemplateResu
       html`<div class="marker" role="status" data-id=${message.id} data-state=${message.state ?? 'summarized'}>
         <span class="line"></span>
         <span class="marker-text">${failed ? html`<swc-icon-alert-diamond class="fault" size="xs" aria-hidden="true"></swc-icon-alert-diamond>` : nothing}${title}${message.state === 'summarizing' ? html`<swc-progress-circle size="s" label="Summarizing"></swc-progress-circle>` : nothing}${message.text ? html`<span class="sr">. ${message.text}</span>` : nothing}</span>
+        <span class="line"></span>
+      </div>`
+    );
+  }
+  if (message.kind === 'notice' && handlers.seat !== undefined && ended.has(message.title ?? '')) {
+    return event(
+      'Notice',
+      html`<div class="marker notice" role="note" data-id=${message.id} data-ended>
+        <span class="line"></span>
+        <span class="marker-text"><span class="said" title=${message.text}>“${message.text}”</span> <span class="outcome">${message.title}</span></span>
         <span class="line"></span>
       </div>`
     );
@@ -955,17 +983,21 @@ function decision(message: LickMessage, handlers: Handlers, pile: Pile): Templat
   const at = message.expiresAt;
   const left = at === undefined ? null : at - Date.now();
   const expired = left !== null && left <= 0;
+  const guest = handlers.seat !== undefined;
   const timer =
-    left === null
+    left === null || (guest && !expired)
       ? nothing
       : html`<span class="timer" data-timer aria-hidden="true">${expired ? 'Timed out' : clock(left)}</span><span class="sr">${spokenLeft(left, at as number)}</span>`;
+  const settled = expired || guest;
   const actions = expired
     ? nothing
-    : html`<div class="decide">
+    : guest
+      ? hostAnswers
+      : html`<div class="decide">
         <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'dismissed')}>Deny</swc-button>
         <swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>
       </div>`;
-  return html`<swc-conversation-turn type="system" class="message decision-turn" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-pending=${expired ? nothing : ''} data-expired=${expired ? '' : nothing} style=${pileStyle(pile)} @click=${reveal} @keydown=${reveal}>
+  return html`<swc-conversation-turn type="system" class="message decision-turn" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-pending=${settled ? nothing : ''} data-expired=${expired ? '' : nothing} style=${pileStyle(pile)} @click=${reveal} @keydown=${reveal}>
     <div class="decision" data-kind="approval">
       <div class="decision-head"><span class="who">${message.title}</span>${timer}</div>
       <p class="decision-text">${message.text}</p>
@@ -1637,7 +1669,7 @@ export const messageCss = css`
     border-radius: var(--swc-corner-radius-100);
     padding: var(--swc-spacing-200) var(--swc-spacing-300);
   }
-  .question[data-state='open'] {
+  .question[data-state='open']:not([data-guest]) {
     border-color: var(--swc-accent-visual-color);
   }
   .question[data-state='inert'] {
@@ -1748,6 +1780,19 @@ export const messageCss = css`
   }
   .marker-text .fault {
     color: var(--swc-negative-visual-color);
+  }
+  .marker[data-ended] .marker-text {
+    min-inline-size: 0;
+    max-inline-size: 80%;
+  }
+  .marker[data-ended] .said {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .marker[data-ended] .outcome {
+    flex: none;
   }
   .marker .line {
     min-inline-size: var(--swc-spacing-300);
