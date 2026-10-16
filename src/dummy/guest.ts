@@ -37,6 +37,8 @@ const day = 24 * hour;
 
 export const guestDeclined = 'It was declined.';
 
+export const guestApproved = 'It was approved.';
+
 export const guestLabel = 'Seat 2 (Mara)';
 
 export const guestSettingsKey = 'slicc-guest-settings';
@@ -237,6 +239,7 @@ export class DummyGuestAgent extends Emitter<AgentEvents> implements AgentPort {
   #seat: Seat;
   #clock: Clock;
   #next = 1;
+  #reviews = 0;
 
   constructor(
     cone: Agent,
@@ -383,14 +386,27 @@ export class DummyGuestAgent extends Emitter<AgentEvents> implements AgentPort {
     this.emit('messages', this.#cone.id);
     await this.#clock.sleep(60);
     this.#waiting = this.#waiting.filter((message) => message !== proposal);
+    const approved = this.#reviews++ % 2 === 1;
     this.#post({
       id: proposal.id,
       role: 'system',
       kind: 'notice',
-      title: guestDeclined,
+      title: approved ? guestApproved : guestDeclined,
       text,
       createdAt: Date.now(),
     });
+    if (approved) {
+      this.#post({
+        id: `guest-${this.#next++}`,
+        role: 'user',
+        text,
+        createdAt: Date.now(),
+        origin: 'guest',
+        from: this.#seat.label,
+        seat: this.#seat.id,
+        delivered: 'follow-up',
+      });
+    }
   }
 
   async send(agentId: string, input: string | Outgoing): Promise<void> {
