@@ -18,9 +18,57 @@ export type ApprovalScenario =
   | 'elsewhere'
   | 'withdrawn'
   | 'secrets'
+  | 'guest'
+  | 'guest-follower'
   | 'none';
 
 const minutes = 60_000;
+
+const mara = { kind: 'guest', name: 'Seat 2 (Mara)' } as const;
+
+function guestFixtures(now = Date.now()): Approval[] {
+  return [
+    {
+      id: 'guest-note',
+      kind: 'guest-message',
+      requester: mara,
+      agentId: 'cone-sliccy',
+      agentName: 'sliccy',
+      text: 'Could you tidy the harbor schedule?\nKeep <b>Tuesday</b> as it is and **skip** the ferry rows.',
+      attachments: [
+        { name: 'schedule.csv', mimeType: 'text/csv', size: 18_432 },
+        { name: 'pier-map.png', mimeType: 'image/png', size: 2_411_725 },
+      ],
+      createdAt: now,
+      expiresAt: now + 5 * minutes,
+      always: false,
+      verdict: { decision: 'allow', reason: 'it asks for an edit inside the shared folder.' },
+    },
+    {
+      id: 'guest-fetch',
+      kind: 'guest-tool',
+      requester: mara,
+      agentId: 'scoop-docs',
+      agentName: 'docs-pass',
+      tool: 'fetch',
+      summary: 'GET https://tides.example/api/harbor?days=7',
+      createdAt: now + 1,
+      expiresAt: now + 5 * minutes,
+      always: false,
+      verdict: { decision: 'deny', reason: 'guests may not reach hosts outside the session.' },
+    },
+    {
+      id: 'guest-late',
+      kind: 'guest-message',
+      requester: { kind: 'guest', name: 'Seat 3 (Ilse)' },
+      agentId: 'cone-sliccy',
+      text: 'Is the pier map up to date?',
+      createdAt: now + 2,
+      expiresAt: now + 5 * minutes,
+      always: false,
+    },
+  ];
+}
 
 export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): Approval[] {
   const agent: Approval = {
@@ -65,6 +113,7 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
         always: true,
       },
     ];
+  if (scenario === 'guest' || scenario === 'guest-follower') return guestFixtures(now);
   if (scenario === 'none') return [];
   if (scenario === 'user') return [user];
   if (scenario === 'many') return [agent, user, cache];
@@ -84,7 +133,8 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
     this.#approvals = approvalFixtures(scenario);
     this.#time = time;
     this.#fail = scenario === 'fail';
-    if (scenario !== 'follower') this.decide = (id, decision) => this.#decide(id, decision);
+    if (scenario !== 'follower' && scenario !== 'guest-follower')
+      this.decide = (id, decision) => this.#decide(id, decision);
     if (scenario === 'elsewhere' || scenario === 'withdrawn')
       void time
         .sleep(100)
@@ -109,6 +159,7 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
   async #decide(id: string, decision: ApprovalDecision): Promise<void> {
     await this.#time.sleep(10);
     if (this.#fail) throw new Error('The kernel stopped waiting. Run the command again.');
+    if (id === 'guest-late') throw new Error('Someone else already answered this.');
     this.decisions.push([id, decision]);
     this.end(id, 'answered');
   }

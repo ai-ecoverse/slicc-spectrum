@@ -8,17 +8,21 @@ import type {
   ApprovalDecision,
   ApprovalEnd,
   ApprovalsPort,
+  GuestMessageApproval,
+  GuestToolApproval,
   SliccModel,
+  SudoApproval,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
 import { dialogStyles, focused } from './confirm.ts';
+import { size } from './messages.ts';
 
 export function countdown(ms: number): string {
   const seconds = Math.max(0, Math.ceil(ms / 1000));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-export function asking(approval: Approval): string {
+export function asking(approval: SudoApproval): string {
   const { kind, name, where } = approval.requester;
   const place = where ? ` in ${where}` : '';
   return kind === 'user'
@@ -26,7 +30,7 @@ export function asking(approval: Approval): string {
     : `${name} wants to run this with sudo${place}`;
 }
 
-export function sudo(approval: Approval): string {
+export function sudo(approval: SudoApproval): string {
   const as = approval.target && approval.target !== 'root' ? `-u ${approval.target} ` : '';
   return `sudo ${as}${approval.command}`;
 }
@@ -294,12 +298,31 @@ function origin(): HTMLElement | null {
   return (active?.closest('slicc-terminal') as HTMLElement | null) ?? active;
 }
 
-const inCwd = (approval: Approval): boolean => approval.alwaysScope === 'cwd' && !!approval.cwd;
+const inCwd = (approval: Approval): boolean =>
+  approval.kind === 'sudo' && approval.alwaysScope === 'cwd' && !!approval.cwd;
 
-export function alwaysHint(approval: Approval): string {
+export function alwaysHint(approval: SudoApproval): string {
   return inCwd(approval)
     ? `Always allow lets ${approval.requester.name} run exactly this command with sudo, in ${approval.cwd}, without asking again.`
     : `Always allow lets ${approval.requester.name} run exactly this command with sudo without asking again.`;
+}
+
+export function guestAsking(approval: GuestMessageApproval | GuestToolApproval): string {
+  return approval.kind === 'guest-message'
+    ? `${approval.requester.name} wants to send this to ${approval.agentName ?? 'this cone'}:`
+    : `${approval.agentName ?? 'This cone'} wants to run ${approval.tool} for ${approval.requester.name}:`;
+}
+
+export function guestWaiting(approval: GuestMessageApproval | GuestToolApproval): string {
+  return approval.kind === 'guest-message'
+    ? `${approval.requester.name}'s message to ${approval.agentName ?? 'this cone'} waits for approval on the device in control.`
+    : `${approval.agentName ?? 'This cone'} wants to run ${approval.tool} for ${approval.requester.name}, which waits for approval on the device in control.`;
+}
+
+const clear: SecretRulesVerdict = { certain: null, maybe: null };
+
+function rulesOf(approval: Approval): SecretRulesVerdict {
+  return approval.kind === 'sudo' ? secretRules(approval.command, approval.cwd) : clear;
 }
 
 export function waiting(model: SliccModel | null, now: number): Approval[] {
@@ -307,6 +330,24 @@ export function waiting(model: SliccModel | null, now: number): Approval[] {
     .filter((approval) => approval.expiresAt > now)
     .sort((a, b) => a.createdAt - b.createdAt);
 }
+
+const titles: Record<Approval['kind'], Record<'ask' | 'elsewhere' | 'expired', string>> = {
+  sudo: {
+    ask: 'Allow sudo?',
+    elsewhere: 'Answered in another tab',
+    expired: 'Sudo request timed out',
+  },
+  'guest-message': {
+    ask: 'Allow a guest’s message?',
+    elsewhere: 'Answered elsewhere',
+    expired: 'Guest message timed out',
+  },
+  'guest-tool': {
+    ask: 'Allow a guest’s tool call?',
+    elsewhere: 'Answered elsewhere',
+    expired: 'Guest tool call timed out',
+  },
+};
 
 function gone(reason: ApprovalEnd): 'elsewhere' | 'expired' {
   return reason === 'expired' ? 'expired' : 'elsewhere';
@@ -330,6 +371,7 @@ export class SliccApprovals extends ModelElement {
   #showing: Approval | null = null;
   #pending = new Set<string>();
   #done = new Set<string>();
+  #closed = new Set<string>();
   #port: ApprovalsPort | undefined;
   #ended = new Map<string, ApprovalEnd>();
   #timer: ReturnType<typeof setInterval> | null = null;
@@ -350,6 +392,9 @@ export class SliccApprovals extends ModelElement {
       :host {
         display: contents;
       }
+      sp-alert-dialog {
+        display: grid;
+      }
       .command {
         margin: var(--swc-spacing-200) 0 0;
         padding: var(--swc-spacing-200) var(--swc-spacing-300);
@@ -362,7 +407,24 @@ export class SliccApprovals extends ModelElement {
         max-block-size: 8lh;
         overflow: auto;
       }
+      .guest {
+        margin-block-start: var(--swc-spacing-200);
+        padding: var(--swc-spacing-200) var(--swc-spacing-300);
+        border: var(--swc-border-width-100) solid var(--swc-gray-300);
+        border-radius: var(--swc-corner-radius-medium-default);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        max-block-size: 12lh;
+        overflow: auto;
+      }
+      .files {
+        margin: var(--swc-spacing-200) 0 0;
+        padding-inline-start: var(--swc-spacing-400);
+        font-size: var(--swc-font-size-75);
+        overflow-wrap: anywhere;
+      }
       .cwd,
+      .verdict,
       .hint,
       .timer,
       .more {
@@ -419,6 +481,7 @@ export class SliccApprovals extends ModelElement {
       this.failure = null;
       this.#pending.clear();
       this.#done.clear();
+      this.#closed.clear();
       this.#ended.clear();
     }
     if (!port) return [];
@@ -456,8 +519,9 @@ export class SliccApprovals extends ModelElement {
   async decide(approval: Approval, decision: ApprovalDecision): Promise<void> {
     const port = this.model?.approvals;
     if (!port?.decide || this.busy || (decision !== 'deny' && !this.#armed)) return;
-    const verdict = secretRules(approval.command, approval.cwd);
-    if (decision === 'always' && (verdict.certain ?? verdict.maybe)) return;
+    const verdict = rulesOf(approval);
+    if (decision === 'always' && (approval.kind !== 'sudo' || verdict.certain || verdict.maybe))
+      return;
     this.busy = decision;
     this.failure = null;
     this.#pending.add(approval.id);
@@ -476,7 +540,9 @@ export class SliccApprovals extends ModelElement {
   }
 
   #current(): Approval[] {
-    return this.model?.approvals?.decide ? waiting(this.model, this.now) : [];
+    return this.model?.approvals?.decide
+      ? waiting(this.model, this.now).filter(({ id }) => !this.#closed.has(id))
+      : [];
   }
 
   protected willUpdate(changed: PropertyValues): void {
@@ -508,7 +574,9 @@ export class SliccApprovals extends ModelElement {
     const all = this.model?.approvals?.list() ?? [];
     this.#tick(this.isConnected && all.length > 0);
     const dialog = this.renderRoot.querySelector('dialog');
-    const key = dialog ? `${dialog.dataset.approval}:${dialog.dataset.gone ?? ''}` : '';
+    const key = dialog
+      ? `${dialog.dataset.approval}:${dialog.dataset.gone ?? ''}:${dialog.hasAttribute('data-rejected')}`
+      : '';
     if (key === this.#shown) return;
     if (dialog && !this.#shown) this.#trigger = origin();
     this.#shown = key;
@@ -527,9 +595,16 @@ export class SliccApprovals extends ModelElement {
     this.#showing = null;
   }
 
+  #dismiss(approval: Approval): void {
+    this.#done.add(approval.id);
+    this.#closed.add(approval.id);
+    this.failure = null;
+  }
+
   #cancel(event: Event, approval: Approval): void {
     event.preventDefault();
     if (this.gone) this.close();
+    else if (this.failure?.id === approval.id) this.#dismiss(approval);
     else void this.decide(approval, 'deny');
   }
 
@@ -554,13 +629,36 @@ export class SliccApprovals extends ModelElement {
   #dialog(approval: Approval, key: string, content: TemplateResult): unknown {
     return keyed(
       key,
-      html`<dialog role="alertdialog" aria-labelledby="title" aria-describedby="asking" data-approval=${approval.id} data-kind=${approval.kind} data-requester=${approval.requester.kind} data-gone=${this.gone?.reason ?? nothing} @cancel=${(event: Event) => this.#cancel(event, approval)}>${content}</dialog>`
+      html`<dialog role="alertdialog" aria-labelledby="title" aria-describedby="asking" data-approval=${approval.id} data-kind=${approval.kind} data-requester=${approval.requester.kind} data-gone=${this.gone?.reason ?? nothing} data-rejected=${!this.gone && this.failure?.id === approval.id ? '' : nothing} @cancel=${(event: Event) => this.#cancel(event, approval)}>${content}</dialog>`
     );
   }
 
   #request(approval: Approval): TemplateResult {
-    return html`<p id="asking">${asking(approval)}:</p>
-      <pre class="command" data-command>${sudo(approval)}</pre>`;
+    if (approval.kind === 'sudo')
+      return html`<p id="asking">${asking(approval)}:</p>
+        <pre class="command" data-command>${sudo(approval)}</pre>`;
+    if (approval.kind === 'guest-tool')
+      return html`<p id="asking">${guestAsking(approval)}</p>
+        <pre class="command" data-summary>${approval.summary}</pre>`;
+    const files = approval.attachments ?? [];
+    return html`<p id="asking">${guestAsking(approval)}</p>
+      <div class="guest" data-guest-text>${approval.text}</div>
+      ${files.length ? html`<ul class="files" data-attachments>${files.map((file) => html`<li>${file.name} · ${file.mimeType} · ${size(file.size)}</li>`)}</ul>` : nothing}`;
+  }
+
+  #verdict(approval: Approval): TemplateResult | typeof nothing {
+    const verdict = approval.kind === 'sudo' ? undefined : approval.verdict;
+    return verdict
+      ? html`<p class="verdict" data-verdict=${verdict.decision}>The automatic check would ${verdict.decision} this: ${verdict.reason}</p>`
+      : nothing;
+  }
+
+  #actions(approval: Approval, rejected: boolean, always: boolean): TemplateResult {
+    if (rejected)
+      return html`<swc-button slot="button" variant="secondary" fill-style="outline" data-action="close" @click=${() => this.#dismiss(approval)}>Close</swc-button>`;
+    return html`${this.#button(approval, 'deny', 'Deny', 'secondary')}
+      ${always ? this.#button(approval, 'always', inCwd(approval) ? 'Always allow in this directory' : 'Always allow', 'secondary') : nothing}
+      ${this.#button(approval, 'once', 'Allow once', 'accent')}`;
   }
 
   render(): unknown {
@@ -569,8 +667,8 @@ export class SliccApprovals extends ModelElement {
       return this.#dialog(
         approval,
         `gone:${approval.id}`,
-        html`<sp-alert-dialog variant="information">
-          <h2 id="title" slot="heading">${reason === 'expired' ? 'Sudo request timed out' : 'Answered in another tab'}</h2>
+        html`<sp-alert-dialog variant="information" data-approval-kind=${approval.kind}>
+          <h2 id="title" slot="heading">${titles[approval.kind][reason]}</h2>
           ${this.#request(approval)}
           ${reason === 'expired' ? html`<p class="timer" data-timer>Denied because nobody answered in time.</p>` : nothing}
           <swc-button slot="button" variant="secondary" fill-style="outline" data-action="close" @click=${() => this.close()}>Close</swc-button>
@@ -582,24 +680,23 @@ export class SliccApprovals extends ModelElement {
     const [approval, ...rest] = held ? [held, ...list.filter(({ id }) => id !== held.id)] : list;
     if (!approval) return nothing;
     const failure = this.failure?.id === approval.id ? this.failure.message : '';
-    const verdict = secretRules(approval.command, approval.cwd);
+    const verdict = rulesOf(approval);
     const rules = verdict.certain ?? verdict.maybe;
-    const always = approval.always && !rules;
+    const always = approval.kind === 'sudo' && approval.always && !rules;
+    const hint = approval.kind === 'sudo' && always ? alwaysHint(approval) : '';
     return this.#dialog(
       approval,
       approval.id,
-      html`<sp-alert-dialog variant="warning">
-          <h2 id="title" slot="heading">Allow sudo?</h2>
+      html`<sp-alert-dialog variant="warning" data-approval-kind=${approval.kind}>
+          <h2 id="title" slot="heading">${titles[approval.kind].ask}</h2>
           ${this.#request(approval)}
-          ${approval.cwd ? html`<p class="cwd">In ${approval.cwd}</p>` : nothing}
+          ${this.#verdict(approval)}
+          ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${approval.cwd}</p>` : nothing}
           ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${verdict.certain ? html`<strong>This changes secret rules.</strong> It names <code>${rules}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${rules}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>` : nothing}
-          ${always ? html`<p class="hint">${alwaysHint(approval)}</p>` : nothing}
-          ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : nothing}
-          <p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>
+          ${hint ? html`<p class="hint">${hint}</p>` : nothing}
+          ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : html`<p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>`}
           ${rest.length ? html`<p class="more" data-more>${rest.length === 1 ? '1 more request is waiting.' : `${rest.length} more requests are waiting.`}</p>` : nothing}
-          ${this.#button(approval, 'deny', 'Deny', 'secondary')}
-          ${always ? this.#button(approval, 'always', inCwd(approval) ? 'Always allow in this directory' : 'Always allow', 'secondary') : nothing}
-          ${this.#button(approval, 'once', 'Allow once', 'accent')}
+          ${this.#actions(approval, !!failure, always)}
         </sp-alert-dialog>`
     );
   }

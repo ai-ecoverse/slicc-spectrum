@@ -911,10 +911,15 @@ export interface NoticesPort extends Subscribable<{ notices: readonly Notice[] }
 export type ApprovalDecision = 'once' | 'always' | 'deny';
 
 export interface ApprovalRequester {
-  kind: 'agent' | 'user';
+  kind: 'agent' | 'user' | 'guest';
   name: string;
   agentId?: string;
   where?: string;
+}
+
+export interface ApprovalVerdict {
+  decision: 'allow' | 'deny';
+  reason: string;
 }
 
 export interface SudoApproval {
@@ -930,7 +935,35 @@ export interface SudoApproval {
   alwaysScope?: 'cwd';
 }
 
-export type Approval = SudoApproval;
+export interface GuestMessageApproval {
+  id: string;
+  kind: 'guest-message';
+  requester: ApprovalRequester;
+  agentId: string;
+  agentName?: string;
+  text: string;
+  attachments?: readonly { name: string; mimeType: string; size: number }[];
+  createdAt: number;
+  expiresAt: number;
+  always: false;
+  verdict?: ApprovalVerdict;
+}
+
+export interface GuestToolApproval {
+  id: string;
+  kind: 'guest-tool';
+  requester: ApprovalRequester;
+  agentId: string;
+  agentName?: string;
+  tool: string;
+  summary: string;
+  createdAt: number;
+  expiresAt: number;
+  always: false;
+  verdict?: ApprovalVerdict;
+}
+
+export type Approval = SudoApproval | GuestMessageApproval | GuestToolApproval;
 
 export type ApprovalEnd = 'answered' | 'withdrawn' | 'expired';
 
@@ -941,7 +974,7 @@ export interface ApprovalsEvents {
 
 export interface ApprovalsPort extends Subscribable<ApprovalsEvents> {
   list(): readonly Approval[];
-  decide?(id: string, decision: ApprovalDecision): Promise<void>;
+  decide?(id: string, decision: ApprovalDecision, reason?: string): Promise<void>;
 }
 
 export type TabRole = 'owner' | 'follower' | 'connecting' | 'alone';

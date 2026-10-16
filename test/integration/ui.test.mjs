@@ -7669,6 +7669,241 @@ test('focus goes back to the terminal after a sudo request answered elsewhere', 
   assert.deepEqual(page.errors, []);
 });
 
+test('a guest message is asked as plain text, Deny is focused, and a rejected decide shows inline', async (t) => {
+  const page = await open(t, { approvals: 'guest' });
+  await page.evaluate(() => {
+    window.approvals = () => window.$('slicc-app', 'slicc-approvals').shadowRoot;
+    return true;
+  });
+  const ask = async (id) => {
+    await page.until(
+      (id) =>
+        window.approvals().querySelector('dialog')?.dataset.approval === id &&
+        window.focused().includes('swc-button'),
+      id
+    );
+    await new Promise((resolve) => setTimeout(resolve, 600));
+  };
+  const click = async (action) => {
+    const { x, y } = await page.evaluate((action) => {
+      const box = window
+        .approvals()
+        .querySelector(`[data-action=${action}]`)
+        .getBoundingClientRect();
+      return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+    }, action);
+    for (const type of ['mousePressed', 'mouseReleased'])
+      await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  };
+  await ask('guest-note');
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.approvals();
+      const text = root.querySelector('[data-guest-text]');
+      return {
+        kind: root.querySelector('[data-approval-kind]').dataset.approvalKind,
+        title: root.querySelector('h2').textContent,
+        text: text.textContent,
+        markup: text.children.length,
+        files: root.querySelectorAll('[data-attachments] li').length,
+        verdict: root.querySelector('[data-verdict]').textContent,
+        actions: [...root.querySelectorAll('swc-button')].map((button) => button.dataset.action),
+        focused: root.activeElement?.dataset.action,
+      };
+    }),
+    {
+      kind: 'guest-message',
+      title: 'Allow a guest’s message?',
+      text: 'Could you tidy the harbor schedule?\nKeep <b>Tuesday</b> as it is and **skip** the ferry rows.',
+      markup: 0,
+      files: 2,
+      verdict:
+        'The automatic check would allow this: it asks for an edit inside the shared folder.',
+      actions: ['deny', 'once'],
+      focused: 'deny',
+    }
+  );
+  await click('deny');
+  await ask('guest-fetch');
+  assert.equal(
+    await page.evaluate(() => window.approvals().querySelector('[data-verdict]').dataset.verdict),
+    'deny'
+  );
+  await click('once');
+  await ask('guest-late');
+  await click('once');
+  await page.until(() => !!window.approvals().querySelector('[data-error]'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.approvals().querySelector('[data-error]').textContent.trim(),
+      window.approvals().querySelector('dialog').dataset.approval,
+      window.model.approvals.decisions,
+    ]),
+    [
+      'Someone else already answered this.',
+      'guest-late',
+      [
+        ['guest-note', 'deny'],
+        ['guest-fetch', 'once'],
+      ],
+    ]
+  );
+  await page.evaluate(() => window.model.approvals.end('guest-late', 'withdrawn'));
+  await page.until(() => !window.approvals().querySelector('dialog'));
+  assert.deepEqual(page.errors, []);
+});
+
+test('a rejected decide leaves only Close, which moves on, and the body fills the dialog at 420', async (t) => {
+  const page = await open(t, { approvals: 'guest' });
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 420,
+    height: 860,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+  await page.evaluate(() => {
+    window.approvals = () => window.$('slicc-app', 'slicc-approvals').shadowRoot;
+    window.span = () => {
+      const dialog = window.approvals().querySelector('dialog').getBoundingClientRect();
+      const alert = window.approvals().querySelector('sp-alert-dialog');
+      const style = getComputedStyle(alert);
+      return [...alert.shadowRoot.querySelectorAll('.grid, .header, .content, .button-group')].map(
+        (part) => {
+          const box = part.getBoundingClientRect();
+          return [
+            part.className,
+            Math.round(box.left - dialog.left - Number.parseFloat(style.paddingLeft)),
+            Math.round(dialog.right - Number.parseFloat(style.paddingRight) - box.right),
+          ];
+        }
+      );
+    };
+    return true;
+  });
+  const ask = async (id) => {
+    await page.until(
+      (id) =>
+        window.approvals().querySelector('dialog')?.dataset.approval === id &&
+        window.focused().includes('swc-button'),
+      id
+    );
+    await new Promise((resolve) => setTimeout(resolve, 600));
+  };
+  const flush = [
+    ['grid', 0, 0],
+    ['header', 0, 0],
+    ['content', 0, 0],
+    ['button-group', 0, 0],
+  ];
+  await ask('guest-note');
+  assert.deepEqual(await page.evaluate(() => window.span()), flush);
+  await page.evaluate(() => {
+    window.model.approvals.end('guest-note', 'withdrawn');
+    window.model.approvals.end('guest-fetch', 'withdrawn');
+    return true;
+  });
+  await ask('guest-late');
+  assert.deepEqual(await page.evaluate(() => window.span()), flush);
+  await page.evaluate(() => {
+    window.approvals().querySelector('[data-action=once]').click();
+    return true;
+  });
+  await page.until(() => window.approvals().activeElement?.dataset.action === 'close');
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.approvals();
+      return {
+        approval: root.querySelector('dialog').dataset.approval,
+        error: root.querySelector('[data-error]').textContent.trim(),
+        actions: [...root.querySelectorAll('swc-button')].map((button) => button.dataset.action),
+        timer: !!root.querySelector('[data-timer]'),
+        countdown: root.textContent.includes('Denied automatically'),
+      };
+    }),
+    {
+      approval: 'guest-late',
+      error: 'Someone else already answered this.',
+      actions: ['close'],
+      timer: false,
+      countdown: false,
+    }
+  );
+  await page.evaluate(() => {
+    const now = Date.now();
+    window.model.approvals.raise({
+      id: 'guest-thanks',
+      kind: 'guest-message',
+      requester: { kind: 'guest', name: 'Seat 4 (Tove)' },
+      agentId: 'cone-sliccy',
+      text: 'Thanks, that is all for today.',
+      createdAt: now,
+      expiresAt: now + 300_000,
+      always: false,
+    });
+    return true;
+  });
+  await page.press('Enter');
+  await ask('guest-thanks');
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.approvals();
+      return [
+        [...root.querySelectorAll('swc-button')].map((button) => button.dataset.action),
+        !!root.querySelector('[data-error]'),
+        !!root.querySelector('[data-timer]'),
+        root.activeElement?.dataset.action,
+      ];
+    }),
+    [['deny', 'once'], false, true, 'deny']
+  );
+  await page.press('Enter');
+  await page.until(() => !window.approvals().querySelector('dialog'));
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
+    ['guest-thanks', 'deny'],
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('without decide, guest requests wait as notices for the device in control', async (t) => {
+  const page = await open(t, { approvals: 'guest-follower' });
+  await page.evaluate(() => {
+    window.notes = () => [
+      ...(window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:cone-sliccy')
+        ?.shadowRoot.querySelector('slicc-notices')
+        ?.shadowRoot.querySelectorAll('[data-approval-notice]') ?? []),
+    ];
+    return true;
+  });
+  await page.until(() => window.notes().length === 3);
+  assert.deepEqual(
+    await page.evaluate(() => [
+      !!window.$('slicc-app', 'slicc-approvals', 'dialog'),
+      ...window
+        .notes()
+        .map((note) => [note.dataset.approvalKind, note.querySelector('p').textContent]),
+    ]),
+    [
+      false,
+      [
+        'guest-message',
+        "Seat 2 (Mara)'s message to sliccy waits for approval on the device in control.",
+      ],
+      [
+        'guest-tool',
+        'docs-pass wants to run fetch for Seat 2 (Mara), which waits for approval on the device in control.',
+      ],
+      [
+        'guest-message',
+        "Seat 3 (Ilse)'s message to this cone waits for approval on the device in control.",
+      ],
+    ]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 async function vaultHold(t, hold, color, width) {
   const page = await open(t, { hold, vault: hold === 'locked' ? 'locked' : 'off', color });
   if (width)
