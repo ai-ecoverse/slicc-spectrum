@@ -465,3 +465,20 @@ for (const [name, browser] of [
     assert.deepEqual(page.errors, []);
   });
 }
+
+test('your packages say where they live and that updates keep them', async (t) => {
+  const page = await chrome.page(t);
+  await page.goto('/ui/?updates=current&packages=user&color=light&delay=20');
+  await page.until(() => window.ready && window.app.dock.api.panels.length > 0);
+  await page.evaluate(() => window.app.show('updates'));
+  const hint = () =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-updates', 'section[data-section=user-packages] .hint')
+      ?.textContent.trim();
+  await page.until(hint);
+  assert.equal(
+    await page.evaluate(hint),
+    'Packages you added with pnpm in /opt/user. Seven’s updates keep them until you remove them.'
+  );
+  assert.deepEqual(page.errors, []);
+});
