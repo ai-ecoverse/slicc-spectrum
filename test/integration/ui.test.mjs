@@ -4769,6 +4769,8 @@ for (const [name, options, end, start] of [
     await page.evaluate((path) => {
       window.part = (id) => window.$('slicc-app', 'slicc-dock').content(id)?.shadowRoot;
       window.diffId = `diff:${path}`;
+      window.laidOut = (node) =>
+        node?.clientWidth > 0 && node.getBoundingClientRect().right <= innerWidth;
       window.fits = (root) => {
         const bar = root.querySelector('.bar');
         const note = bar.querySelector('[data-watch-note]');
@@ -4800,7 +4802,7 @@ for (const [name, options, end, start] of [
         }, id);
         await page.until(
           (id) =>
-            window.part(id === 'diff' ? window.diffId : id)?.querySelector('.bar').clientWidth > 0,
+            window.laidOut(window.part(id === 'diff' ? window.diffId : id)?.querySelector('.bar')),
           id
         );
         const fit = await page.evaluate(
@@ -4823,8 +4825,8 @@ for (const [name, options, end, start] of [
         window.app.show('chat:cone-sliccy');
         return true;
       });
-      await page.until(
-        () => window.part('chat:cone-sliccy')?.querySelector('.empty').clientWidth > 0
+      await page.until(() =>
+        window.laidOut(window.part('chat:cone-sliccy')?.querySelector('.empty'))
       );
       assert.deepEqual(
         await page.evaluate(() => {
