@@ -7845,11 +7845,27 @@ test('a guest message is asked as plain text, Deny is focused, and a rejected de
   await click('deny');
   await ask('guest-fetch');
   assert.equal(
-    await page.evaluate(() => window.approvals().querySelector('[data-verdict]').dataset.verdict),
-    'deny'
+    await page.evaluate(() => [
+      window.approvals().querySelector('[data-verdict]').dataset.verdict,
+      window
+        .approvals()
+        .querySelector('[data-verdict]')
+        .textContent.startsWith('The automatic check would deny this: '),
+    ]),
+    ['deny', true]
   );
   await click('once');
   await ask('guest-late');
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const verdict = window.approvals().querySelector('[data-verdict]');
+      return [verdict.dataset.verdict, verdict.textContent];
+    }),
+    [
+      'unsure',
+      'The automatic check wasn’t sure: it looks low-risk, but it isn’t clear it serves what the owner asked for.',
+    ]
+  );
   await click('once');
   await page.until(() => !!window.approvals().querySelector('[data-error]'));
   assert.deepEqual(
