@@ -918,7 +918,7 @@ export interface ApprovalRequester {
 }
 
 export interface ApprovalVerdict {
-  decision: 'allow' | 'deny';
+  decision: 'allow' | 'deny' | 'unsure';
   reason: string;
 }
 

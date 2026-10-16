@@ -651,7 +651,7 @@ export class SliccApprovals extends ModelElement {
   #verdict(approval: Approval): TemplateResult | typeof nothing {
     const verdict = approval.kind === 'sudo' ? undefined : approval.verdict;
     return verdict
-      ? html`<p class="verdict" data-verdict=${verdict.decision}>The automatic check would ${verdict.decision} this: ${verdict.reason}</p>`
+      ? html`<p class="verdict" data-verdict=${verdict.decision}>${verdict.decision === 'unsure' ? 'The automatic check wasn’t sure' : `The automatic check would ${verdict.decision} this`}: ${verdict.reason}</p>`
       : nothing;
   }
 

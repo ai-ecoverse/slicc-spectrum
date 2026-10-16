@@ -66,6 +66,10 @@ function guestFixtures(now = Date.now()): Approval[] {
       createdAt: now + 2,
       expiresAt: now + 5 * minutes,
       always: false,
+      verdict: {
+        decision: 'unsure',
+        reason: 'it looks low-risk, but it isn’t clear it serves what the owner asked for.',
+      },
     },
   ];
 }
