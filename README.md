@@ -303,7 +303,7 @@ The model's waiting `approvals` as a modal alert dialog, one at a time, oldest f
 Renders nothing without `approvals.decide`.
 A request that `secretRules()` flags shows a warning (`[data-secret-rules]`, the path or token) and no **Always allow (**Always allow in this directory**, with the cwd in its hint, when the approval has `alwaysScope: 'cwd'` and a `cwd`)**.
 Focus starts on Deny (on Close once `decide` rejects) and goes back, after Deny, Always allow, Allow once, <kbd>Esc</kbd> or Close, to what had it when the dialog opened; inside a terminal, to that `<slicc-terminal>` through its own `focus()`, even when it remounted meanwhile.
-Guest requests (`guest-message`, `guest-tool`) get their own copy, the guest's text as plain text (`[data-guest-text]`), attachments (`[data-attachments]`), the automatic check's verdict (`[data-verdict]`), and only Deny and Allow once; the dialog body carries `[data-approval-kind]` and fills the dialog's width at every size.
+Guest requests (`guest-message`, `guest-tool`) get their own copy, the guest's text as plain text (`[data-guest-text]`), attachments (`[data-attachments]`), the automatic check's verdict (`[data-verdict]`), and Deny and Allow once, plus **Always allow** (`data-action="always"`) with a hint saying what it covers when the approval's `always` is `true`; the dialog body carries `[data-approval-kind]` and fills the dialog's width at every size.
 
 #### `<slicc-follow>`
 
@@ -493,6 +493,7 @@ To let them back in, invite them again.") with a negative confirm; while it runs
 With no seats it says "No guests yet."
 (`[data-guests-empty]`).
 Invite opens `<slicc-guest-invite>`, a modal: **Cone** (`#guest-cone`, the active cone, or a selected scoop's cone, else the first), **Name** (`#guest-name`, required, trimmed, at most 40 characters, "Shown to you and in the cone, never set by the guest."), **Link expires** (`#guest-expiry`: 1 hour, 1 day, 7 days by default, or 30 days), **Their messages** (`#guest-messages`: You approve each one, The automatic check decides, {cone} decides, {scoop} decides for each of the cone's scoops, or No review, which are `user`, `agent`, `cone`, `scoop:<name>` and `off`) and **Their tool calls** (`#guest-tools`: `user`, `agent` and `scoop:<name>` only), both `user` by default, each with the chosen option's meaning under it.
+When the port has `gates()`, each picker offers exactly its list, in that order (`scoop:*` as one choice per scoop of the chosen cone, a concrete `scoop:<name>` only when the cone has that scoop, `off` for tool calls reading "Tool calls run without review."), and starts on `user` when the list has it, else on its first choice; a list with no choice left for the cone offers `user`.
 **Create link** (`data-action="create-guest-link"`) calls `mint(cone, { label, expiresAt, gates })`; while it runs the form is busy and Escape does nothing, and a rejection shows its message inline (`data-error="guest"`).
 On success the dialog shows the URL once (`[data-guest-invite="link"]`): a read-only field (`data-copy="guest-url"`) with **Copy** (`data-action="copy-guest-url"`), "This link is shown only once.
 Copy it now." and **Done** (`data-action="done-guest"`).
@@ -519,7 +520,7 @@ Not for direct use.
 
 #### `<slicc-guest-invite>`
 
-The invite dialog of the Network panel's Guests section.
+The invite dialog of the Network panel's Guests section; its gate pickers follow the `guests` port's `gates()` when it has one.
 Not for direct use.
 
 #### `<slicc-file-tree>`
@@ -826,14 +827,14 @@ A rejected `decide` shows its message in the dialog (`[data-error]`, `dialog[dat
 Pass `decide` in every tab: the first decision wins.
 When a request ends without a decision in this tab, emit `ended` with `{ id, reason }` and drop it from `list()`: `answered` (another tab decided) shows "Answered in another tab", `expired` shows "Sudo request timed out", each with the command and **Close** (`data-action="close"`, `dialog[data-gone]`), and `withdrawn` (the requester went away) closes the dialog silently.
 Without `ended`, a request that leaves the list reads as expired past `expiresAt` and answered before it.
-Without `decide`, each request is a warning notice in the chat panels: "Waiting for sudo approval", who asks and the command, and "Answer it in the tab running SLICC.
+Without `decide`, each request is a warning notice in the chat panels: "Waiting for sudo approval", who asks and the command, and "It waits for the owner's approval.
 Denied automatically at {time}."
-A guest request has `kind` `guest-message` (`text`, optional `attachments` of `{ name, mimeType, size }`) or `guest-tool` (`tool`, `summary`), plus `requester` (`kind` `guest`), `agentId`, optional `agentName`, `createdAt`, `expiresAt`, `always: false` and an optional `verdict` (`{ decision: 'allow' | 'deny' | 'unsure', reason }`, the automatic check's view).
+A guest request has `kind` `guest-message` (`text`, optional `attachments` of `{ name, mimeType, size }`) or `guest-tool` (`tool`, `summary`), plus `requester` (`kind` `guest`), `agentId`, optional `agentName`, `createdAt`, `expiresAt`, `always` (offer Always allow, a policy default the owner can change) and an optional `verdict` (`{ decision: 'allow' | 'deny' | 'unsure', reason }`, the automatic check's view).
 Its dialog (`[data-approval-kind]` on the body) reads "Allow a guest’s message?" with "{name} wants to send this to {agentName ?? 'this cone'}:", the text as plain text in a scrolling box (`[data-guest-text]`, never Markdown or HTML) and the attachments as name · type · size (`[data-attachments]`), or "Allow a guest’s tool call?" with "{agentName ?? 'This cone'} wants to run {tool} for {name}:" and the summary (`[data-summary]`); then "The automatic check would allow this: {reason}", "…deny this: {reason}" or "The automatic check wasn’t sure: {reason}" (`[data-verdict]`, the decision in the attribute).
-It offers only **Deny** and **Allow once**, whatever `always` says.
+It offers **Deny** and **Allow once**, and, when `always` is `true`, **Always allow** (`always`, which calls `decide(id, 'always')`) with the hint "Always allow lets {name} send messages to {agentName ?? 'this cone'} without asking again." or "Always allow lets {agentName ?? 'this cone'} run exactly this {tool} call for {name} without asking again.".
 `decide` gets no `reason` from the UI; a rejected `decide` shows its message inline (`[data-error]`) with only **Close**, as for sudo.
 Ended guest requests read "Answered elsewhere", "Guest message timed out" or "Guest tool call timed out".
-Without `decide`, a guest request's notice reads "Waiting for approval of a guest’s message" with "{name}'s message to {agentName} waits for approval on the device in control.", or "Waiting for approval of a guest’s tool call" with "{agentName} wants to run {tool} for {name}, which waits for approval on the device in control.", then "Denied automatically at {time}."
+Without `decide`, a guest request's notice reads "Waiting for approval of a guest’s message" with "{name}'s message to {agentName} waits for the owner's approval.", or "Waiting for approval of a guest’s tool call" with "{agentName} wants to run {tool} for {name}, which waits for the owner's approval.", then "Denied automatically at {time}."
 
 #### `vault` (optional)
 
@@ -857,8 +858,10 @@ Guest seats on a cone.
 Emit `seats` when it changes.
 `mint(agentId, { label, expiresAt, gates })` resolves with the `seat` and its `url`, which the panel shows once and never keeps, and `revoke(id)` ends a seat; both reject with an `Error` whose message is a sentence to show.
 The hub caps `expiresAt` at 30 days.
-`gates` (`{ messages, tools }`) are fixed at mint, so changing them means revoking and minting again; each is a `GuestGate`: `user` (a person with Control approves each one), `cone` (the shared cone itself decides, messages only), `agent` (the automatic check decides by the owner's intent and asks a person when unsure), `scoop:<name>` (that scoop decides) or `off` (no review: messages go straight in as follow-ups, messages only).
-The optional `unavailable()` returns a sentence when seats can't be minted here (no tray hub, or a follower without Control), or `null`; emit `unavailable` with it when it changes.
+`gates` (`{ messages, tools }`) are fixed at mint, so changing them means revoking and minting again; each is a `GuestGate`: `user` (a person with Control approves each one), `cone` (the shared cone itself decides, messages only unless `gates()` offers it for tools), `agent` (the automatic check decides by the owner's intent and asks a person when unsure), `scoop:<name>` (that scoop decides) or `off` (no review: messages go straight in as follow-ups, and tool calls run without review; messages only unless `gates()` offers it for tools).
+The optional `unavailable()` returns a sentence when seats can't be minted here (no tray hub), or `null`; emit `unavailable` with it when it changes.
+The optional `gates()` returns the policy's allowed choices, `{ messages, tools }`, each a list of `GuestGate`s in display order, where `scoop:*` means each of the cone's scoops; the owner can change them, and without it the invite offers the lists above.
+`mint` always gets a concrete gate, never `scoop:*`.
 With this port the Network panel is offered even without a `network` port (on a follower, say), showing only Guests.
 The dummy's `?network=off&guests=on` gives that panel, on the follow page too.
 
@@ -893,9 +896,9 @@ While the dummy tailnet runs with an exit node, the route is `tailnet` and the h
 New join URL changes the URL, and `model.network.setLinks()` switches scenarios.
 `createDummyModel({ leaders: 'connected' | 'failed' | 'unlinked' | 'disconnected' | 'two' })` (or `?leaders=` on `/ui/`, off by default) adds invented leaders and their members: cove-studio connected, marsh-desk failed with an error, cove-studio unlinked (gone on the next status), cove-studio disconnected, or both cove-studio and marsh-desk; Retry and Reconnect move a leader to connecting, then connected, Disconnect makes it disconnected and Forget drops it, each after a short wait.
 `networkFixtures`, `tailnetFixtures`, `linksFixtures`, `leadersFixtures`, `joinUrl` and `DummyNetwork` are exported from `/dummy`.
-`createDummyModel({ guests: 'on' | 'none' | 'unavailable' | 'fail' })` (or `?guests=` on `/ui/`, off by default) adds an invented `guests` port: `on` has Seat 1 (Mara) on sliccy, connected with 2 waiting and 5 days left, and Seat 2 (Ole) on harbor, not connected and without expiry; `none` has no seats; `unavailable` has none and says guests need the tray hub, so minting rejects; and `fail` makes `mint` reject with a sentence.
+`createDummyModel({ guests: 'on' | 'none' | 'unavailable' | 'fail' | 'policy' })` (or `?guests=` on `/ui/`, off by default) adds an invented `guests` port: `on` has Seat 1 (Mara) on sliccy, connected with 2 waiting and 5 days left, and Seat 2 (Ole) on harbor, not connected and without expiry; `none` has no seats; `unavailable` has none and says guests need the tray hub, so minting rejects; `fail` makes `mint` reject with a sentence; and `policy` has the `on` seats and a `gates()` (`guestsPolicy`) that also allows tools `off`.
 `mint` adds a seat after a short wait and resolves with an invented `https://www.example.com/guest/…` URL, `revoke` drops the seat, and `model.guests.setScenario()` switches scenarios.
-`guestsFixtures`, `guestsUnavailable`, `guestsRefused` and `DummyGuests` are exported from `/dummy`.
+`guestsFixtures`, `guestsPolicy`, `guestsUnavailable`, `guestsRefused` and `DummyGuests` are exported from `/dummy`.
 `createDummyModel({ changes: 'files' | 'git' | 'nogit' })` (or `?changes=` on `/ui/`, default `files`) adds a git `changes` port: `git` lists the pending changes under `/workspace/harbor` and `/workspace/skills` with their `repo` and no author, and `nogit` reports git as unavailable.
 `DummyChanges` is exported from `/dummy`.
 `createDummyModel({ notices: 'storage' | 'mixed' | 'fail' | 'off' })` (or `?notices=` on `/ui/`, off by default) adds an invented storage warning with Try again, which clears it after a short wait (`mixed` adds an informative notice without actions, and `fail` makes Try again fail).
@@ -928,8 +931,8 @@ Update this one to send prompts.", and shows a warning notice without a close bu
 `createDummyModel({ monitor: 'agent' })` (`?monitor=agent` on `/ui/`) adds the agent's Tasks (a tree by `depth`), Processes and Recent problems sections to the monitor, and its Running vital.
 Like slicc-agent's snapshot, the dummy's vitals are the budget, Spend, Active agents, Processes and Process memory (both with a `series`) and Fullest context.
 
-`createDummyModel({ approvals: 'agent' | 'user' | 'many' | 'follower' | 'fail' | 'soon' | 'elsewhere' | 'withdrawn' | 'secrets' | 'guest' | 'guest-follower' })` (`?approvals=` on `/ui/`) adds waiting sudo requests: one from an agent, one from a terminal user, three in a row (the last as `www-data`), one without `decide`, one whose `decide` fails, one that expires in 24 seconds, or two whose first is answered in another tab or withdrawn after a few seconds, or one from an agent that copies a file over `/etc/fnox/config.toml`, or (`guest`) three guest requests: a message from Seat 2 (Mara) with attachments and an allow verdict, a tool call with a deny verdict, and a message whose `decide` rejects with "Someone else already answered this."
-(`guest-follower`: the same without `decide`).
+`createDummyModel({ approvals: 'agent' | 'user' | 'many' | 'follower' | 'fail' | 'soon' | 'elsewhere' | 'withdrawn' | 'secrets' | 'guest' | 'guest-follower' | 'guest-always' })` (`?approvals=` on `/ui/`) adds waiting sudo requests: one from an agent, one from a terminal user, three in a row (the last as `www-data`), one without `decide`, one whose `decide` fails, one that expires in 24 seconds, or two whose first is answered in another tab or withdrawn after a few seconds, or one from an agent that copies a file over `/etc/fnox/config.toml`, or (`guest`) three guest requests: a message from Seat 2 (Mara) with attachments and an allow verdict, a tool call with a deny verdict, and a message whose `decide` rejects with "Someone else already answered this."
+(`guest-follower`: the same without `decide`), or (`guest-always`) one guest tool call from Seat 2 (Mara) to `read_file` with `always: true`.
 Decisions are recorded in `model.approvals.decisions`, and `model.approvals.end(id, reason)` ends a request.
 
 `createDummyModel({ vault: 'empty' | 'secrets' | 'policy' | 'locked' | 'request' | 'backup' | 'waiting' | 'off' })` (`?vault=` on `/ui/`, off by default; `notice` is kept as another name for `policy`) adds an invented vault: no secrets yet; five secrets (an API key, a jerk lease from pier-nuc revealed to `pier publish`, a Tide Mail sign-in, one without a rule and a removed one) with an activity log that pages back once; the same with a refused rule and a policy change in the log; locked before the first unlock, with a waiting request from docs-pass; unlocked with a `fnox set` request for `TIDE_STATION_TOKEN`; the secrets with a due backup reminder; or a vault that hasn't answered yet (`model.vault.arrive()` brings it).

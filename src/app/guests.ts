@@ -42,30 +42,57 @@ export type GateField = 'messages' | 'tools';
 
 const approve = 'A person with Control approves each one.';
 
-export function gateOptions(field: GateField, cone: GuestCone): GateOption[] {
-  const scoops = cone.scoops.map((name) => ({
-    value: `scoop:${name}` as GuestGate,
-    label: `${name} decides`,
-    description: `The scoop ${name} decides.`,
-  }));
-  const user = { value: 'user' as const, label: 'You approve each one', description: approve };
-  const agent = {
-    value: 'agent' as const,
-    label: 'The automatic check decides',
-    description: 'It decides by your intent, and asks a person when unsure.',
-  };
-  if (field === 'tools') return [user, agent, ...scoops];
-  return [
-    user,
-    agent,
-    {
+const defaultGates: Record<GateField, readonly GuestGate[]> = {
+  messages: ['user', 'agent', 'cone', 'scoop:*', 'off'],
+  tools: ['user', 'agent', 'scoop:*'],
+};
+
+function gateChoice(field: GateField, cone: GuestCone, gate: GuestGate): GateOption[] {
+  if (gate === 'scoop:*')
+    return cone.scoops.flatMap((name) => gateChoice(field, cone, `scoop:${name}`));
+  if (gate.startsWith('scoop:')) {
+    const name = gate.slice(6);
+    return cone.scoops.includes(name)
+      ? [{ value: gate, label: `${name} decides`, description: `The scoop ${name} decides.` }]
+      : [];
+  }
+  const choices: Record<string, GateOption> = {
+    user: { value: 'user', label: 'You approve each one', description: approve },
+    agent: {
+      value: 'agent',
+      label: 'The automatic check decides',
+      description: 'It decides by your intent, and asks a person when unsure.',
+    },
+    cone: {
       value: 'cone',
       label: `${cone.name} decides`,
       description: 'The shared cone itself decides.',
     },
-    ...scoops,
-    { value: 'off', label: 'No review', description: 'Messages go straight in as follow-ups.' },
-  ];
+    off: {
+      value: 'off',
+      label: 'No review',
+      description:
+        field === 'messages'
+          ? 'Messages go straight in as follow-ups.'
+          : 'Tool calls run without review.',
+    },
+  };
+  return choices[gate] ? [choices[gate]] : [];
+}
+
+export function gateOptions(
+  field: GateField,
+  cone: GuestCone,
+  allowed: readonly GuestGate[] = defaultGates[field]
+): GateOption[] {
+  const options = allowed
+    .flatMap((gate) => gateChoice(field, cone, gate))
+    .filter((option, index, all) => all.findIndex(({ value }) => value === option.value) === index);
+  return options.length ? options : gateChoice(field, cone, 'user');
+}
+
+export function defaultGate(options: readonly GateOption[]): GuestGate {
+  return options.some(({ value }) => value === 'user') ? 'user' : (options[0] as GateOption).value;
 }
 
 export function guestCones(agents: readonly Agent[]): GuestCone[] {
@@ -237,8 +264,18 @@ export class SliccGuestInvite extends LitElement {
     return this.cones.find((cone) => cone.id === this.cone) ?? (this.cones[0] as GuestCone);
   }
 
+  #options(field: GateField, cone: GuestCone): GateOption[] {
+    return gateOptions(field, cone, this.port?.gates?.()[field]);
+  }
+
   #keep(gate: GuestGate, field: GateField, cone: GuestCone): GuestGate {
-    return gateOptions(field, cone).some((option) => option.value === gate) ? gate : 'user';
+    const options = this.#options(field, cone);
+    return options.some((option) => option.value === gate) ? gate : defaultGate(options);
+  }
+
+  #settle(): void {
+    this.messages = this.#keep(this.messages, 'messages', this.#current);
+    this.tools = this.#keep(this.tools, 'tools', this.#current);
   }
 
   #pick(event: Event): string {
@@ -247,8 +284,10 @@ export class SliccGuestInvite extends LitElement {
 
   #setCone(event: Event): void {
     this.cone = this.#pick(event);
-    this.messages = this.#keep(this.messages, 'messages', this.#current);
-    this.tools = this.#keep(this.tools, 'tools', this.#current);
+  }
+
+  protected willUpdate(): void {
+    this.#settle();
   }
 
   #input(event: Event): void {
@@ -272,6 +311,7 @@ export class SliccGuestInvite extends LitElement {
       this.#focus('#guest-name');
       return;
     }
+    this.#settle();
     const ms = (guestExpiries.find(([key]) => key === this.expiry) as (typeof guestExpiries)[0])[2];
     this.pending = true;
     try {
@@ -313,7 +353,7 @@ export class SliccGuestInvite extends LitElement {
   }
 
   #gate(field: GateField, title: string, value: GuestGate): TemplateResult {
-    const options = gateOptions(field, this.#current);
+    const options = this.#options(field, this.#current);
     const chosen = options.find((option) => option.value === value) as GateOption;
     const id = `guest-${field}`;
     return html`<div class="field">

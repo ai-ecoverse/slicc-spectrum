@@ -25,6 +25,7 @@ export type { GuestsScenario } from './dummy/guests.ts';
 export {
   DummyGuests,
   guestsFixtures,
+  guestsPolicy,
   guestsRefused,
   guestsUnavailable,
 } from './dummy/guests.ts';

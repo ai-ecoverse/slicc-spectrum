@@ -1,8 +1,14 @@
 import { Emitter } from '../model/emitter.ts';
-import type { GuestDraft, GuestEvents, GuestPort, GuestSeat } from '../model/types.ts';
+import type {
+  GuestDraft,
+  GuestEvents,
+  GuestGateChoices,
+  GuestPort,
+  GuestSeat,
+} from '../model/types.ts';
 import type { Clock } from './clock.ts';
 
-export type GuestsScenario = 'on' | 'none' | 'unavailable' | 'fail';
+export type GuestsScenario = 'on' | 'none' | 'unavailable' | 'fail' | 'policy';
 
 const hour = 3_600_000;
 const day = 24 * hour;
@@ -12,6 +18,11 @@ export const guestsUnavailable =
   'Guests need the tray hub. Connect this SLICC to a tray to invite one.';
 
 export const guestsRefused = 'The hub couldn’t make a link right now. Try again in a minute.';
+
+export const guestsPolicy: GuestGateChoices = {
+  messages: ['user', 'agent', 'cone', 'scoop:*', 'off'],
+  tools: ['user', 'agent', 'scoop:*', 'off'],
+};
 
 export function guestsFixtures(scenario: GuestsScenario, now = Date.now()): GuestSeat[] {
   if (scenario === 'none' || scenario === 'unavailable') return [];
@@ -44,12 +55,18 @@ export class DummyGuests extends Emitter<GuestEvents> implements GuestPort {
   #seats: GuestSeat[];
   #clock: Clock;
   #count = 0;
+  gates?: () => GuestGateChoices;
 
   constructor(scenario: GuestsScenario, clock: Clock) {
     super();
     this.scenario = scenario;
     this.#clock = clock;
     this.#seats = guestsFixtures(scenario);
+    this.#policy();
+  }
+
+  #policy(): void {
+    this.gates = this.scenario === 'policy' ? () => guestsPolicy : undefined;
   }
 
   list(): readonly GuestSeat[] {
@@ -63,6 +80,7 @@ export class DummyGuests extends Emitter<GuestEvents> implements GuestPort {
   setScenario(scenario: GuestsScenario): void {
     this.scenario = scenario;
     this.#seats = guestsFixtures(scenario);
+    this.#policy();
     this.emit('unavailable', this.unavailable());
     this.emit('seats', this.#seats);
   }
