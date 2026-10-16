@@ -156,7 +156,7 @@ jobs:
                   line = Number(hunk[1]);
                   continue;
                 }
-                if (row.startsWith('-')) continue;
+                if (row.startsWith('-') || row.startsWith('\\')) continue;
                 lines.add(line);
                 line++;
               }
@@ -170,13 +170,20 @@ jobs:
               ...loose.map((f) => `- \`${f.path}:${f.line}\`: ${text(f)}`),
               `[Run](${process.env.RUN_URL})`,
             ].join('\n\n');
-            await github.rest.pulls.createReview({
-              owner,
-              repo,
-              pull_number,
-              commit_id: process.env.HEAD_SHA,
-              event: 'COMMENT',
-              body: `## Code review\n\n${body}`,
-              comments: inline.map((f) => ({ path: f.path, line: Number(f.line), side: 'RIGHT', body: text(f) })),
-            });
+            const review = (comments, extra) =>
+              github.rest.pulls.createReview({
+                owner,
+                repo,
+                pull_number,
+                commit_id: process.env.HEAD_SHA,
+                event: 'COMMENT',
+                body: `## Code review\n\n${body}${extra}`,
+                comments,
+              });
+            try {
+              await review(inline.map((f) => ({ path: f.path, line: Number(f.line), side: 'RIGHT', body: text(f) })), '');
+            } catch (error) {
+              core.warning(`inline comments were rejected: ${error.message}`);
+              await review([], `\n\n${inline.map((f) => `- \`${f.path}:${f.line}\`: ${text(f)}`).join('\n\n')}`);
+            }
             core.summary.addRaw(`${findings.length} findings, ${inline.length} inline\n`).write();
