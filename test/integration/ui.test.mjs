@@ -6405,9 +6405,7 @@ test('push to talk turns on from the + menu or Settings, dictates while Alt+M is
   await page.until(() => window.talkItem().getAttribute('aria-checked') === 'false');
   await page.evaluate(() => window.talkItem().click());
   await page.until(() => window.model.settings.get().pushToTalk === true);
-  await page.evaluate(() => {
-    window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-popover').open = false;
-  });
+  await page.press('Escape');
   await page.until(
     () => !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-popover').open
   );
@@ -6465,6 +6463,65 @@ test('push to talk turns on from the + menu or Settings, dictates while Alt+M is
   );
   await page.evaluate(() => window.settingsPart('sp-switch[data-setting=pushToTalk]').click());
   await page.until(() => window.model.settings.get().pushToTalk === false);
+  assert.deepEqual(page.errors, []);
+});
+
+test('Escape closes the + menu from a focused item and puts focus back on the + button', async (t) => {
+  const page = await open(t, { speech: 'dummy' });
+  await page.press('2', 'alt');
+  await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
+  await page.evaluate(() => {
+    const composer = () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer');
+    window.addMenu = () => composer().shadowRoot.querySelector('swc-popover');
+    window.addButton = () =>
+      composer()
+        .shadowRoot.querySelector('swc-prompt-field')
+        .shadowRoot.querySelector('.swc-PromptField-upload');
+    window.deepActive = () => {
+      let node = document.activeElement;
+      while (node?.shadowRoot?.activeElement) node = node.shadowRoot.activeElement;
+      return node;
+    };
+    window.onAdd = () => {
+      const button = window.addButton();
+      const active = window.deepActive();
+      return active === button || button.shadowRoot.contains(active);
+    };
+    window.escapes = 0;
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') window.escapes += 1;
+    });
+  });
+  const focusedItem = () =>
+    page.evaluate(() => {
+      const active = window.deepActive();
+      return active.localName === 'sp-menu-item' ? active.getAttribute('value') : active.localName;
+    });
+  const openMenu = async () => {
+    await page.evaluate(() => window.addButton().click());
+    await page.until(() => window.addMenu().open === true);
+    await page.until(() => window.deepActive()?.localName === 'sp-menu-item');
+  };
+  const moveTo = async (value) => {
+    for (let i = 0; i < 8 && (await focusedItem()) !== value; i++) await page.press('ArrowDown');
+    assert.equal(await focusedItem(), value);
+  };
+
+  await openMenu();
+  await page.press('ArrowDown');
+  assert.equal(await focusedItem(), 'screenshot');
+  await page.press('Escape');
+  await page.until(() => window.addMenu().open === false);
+  await page.until(() => window.onAdd());
+
+  await openMenu();
+  await moveTo('push-to-talk');
+  await page.press('Escape');
+  await page.until(() => window.addMenu().open === false);
+  await page.until(() => window.onAdd());
+
+  assert.equal(await page.evaluate(() => window.escapes), 0);
+  assert.equal(await page.evaluate(() => window.model.settings.get().pushToTalk), false);
   assert.deepEqual(page.errors, []);
 });
 

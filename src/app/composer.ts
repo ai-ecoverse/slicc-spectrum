@@ -1094,6 +1094,13 @@ export class SliccComposer extends ThemedElement {
     }
   }
 
+  #menuKey(event: KeyboardEvent): void {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    (event.currentTarget as HTMLElement & { open: boolean }).open = false;
+  }
+
   #toggleTalk = (event: Event): void => {
     event.stopPropagation();
     const settings = this.model?.settings;
@@ -1369,7 +1376,7 @@ export class SliccComposer extends ThemedElement {
         >
           ${this.attachments.map((attachment) => this.#attachment(attachment))}
         </swc-prompt-field>
-        <swc-popover placement="top-start" accessible-label="Add to the message" @swc-after-open=${() => this.renderRoot.querySelector<HTMLElement>('sp-menu')?.focus()}>
+        <swc-popover placement="top-start" accessible-label="Add to the message" @keydown=${this.#menuKey} @swc-after-open=${() => this.renderRoot.querySelector<HTMLElement>('sp-menu')?.focus()}>
           <sp-menu label="Add to the message" @change=${this.#add}>
             <sp-menu-item value="upload">Upload from this computer</sp-menu-item>
             <sp-menu-item value="screenshot">Take a screenshot of the browser tab</sp-menu-item>
