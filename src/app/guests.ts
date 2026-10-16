@@ -273,8 +273,7 @@ export class SliccGuestInvite extends LitElement {
     return options.some((option) => option.value === gate) ? gate : defaultGate(options);
   }
 
-  protected willUpdate(): void {
-    if (this.hasUpdated) return;
+  #settle(): void {
     this.messages = this.#keep(this.messages, 'messages', this.#current);
     this.tools = this.#keep(this.tools, 'tools', this.#current);
   }
@@ -285,8 +284,10 @@ export class SliccGuestInvite extends LitElement {
 
   #setCone(event: Event): void {
     this.cone = this.#pick(event);
-    this.messages = this.#keep(this.messages, 'messages', this.#current);
-    this.tools = this.#keep(this.tools, 'tools', this.#current);
+  }
+
+  protected willUpdate(): void {
+    this.#settle();
   }
 
   #input(event: Event): void {
@@ -310,6 +311,7 @@ export class SliccGuestInvite extends LitElement {
       this.#focus('#guest-name');
       return;
     }
+    this.#settle();
     const ms = (guestExpiries.find(([key]) => key === this.expiry) as (typeof guestExpiries)[0])[2];
     this.pending = true;
     try {
