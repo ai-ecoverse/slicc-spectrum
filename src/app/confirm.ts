@@ -31,7 +31,7 @@ export function focused(): HTMLElement | null {
   return active;
 }
 
-function themeOf(node: Node | null): Element {
+export function themeOf(node: Node | null): Element {
   for (let at = node; at; at = at.parentNode ?? (at as ShadowRoot).host ?? null) {
     if ((at as Element).localName === 'sp-theme') return at as Element;
   }

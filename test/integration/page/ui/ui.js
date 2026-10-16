@@ -64,6 +64,7 @@ const model = createDummyModel({
   approvals: params.get('approvals') ?? 'off',
   follow,
   vault: params.get('vault') ?? 'off',
+  guests: params.get('guests') ?? 'off',
   accounts: params.get('accounts') ?? 'settings',
   providers: params.get('providers') ?? 'connected',
   hold: params.get('hold') ?? 'off',

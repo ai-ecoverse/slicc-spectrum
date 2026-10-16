@@ -19,6 +19,8 @@ import type {
   AccessKey,
   BrowserAutomation,
   DeviceAccess,
+  GuestPort,
+  GuestSeat,
   Leader,
   LeaderState,
   LinkedDevice,
@@ -40,6 +42,7 @@ import { ModelElement } from './base.ts';
 import { type ConfirmOptions, confirm } from './confirm.ts';
 import { failure } from './files.ts';
 import { ago } from './freezer.ts';
+import { guestCones, guestExpiry, invite, pendingLabel } from './guests.ts';
 import { qrCode } from './qr.ts';
 import { command, copyText, reach, reachStyles } from './reach.ts';
 import { connectionLabel, connectionVariant } from './tray.ts';
@@ -255,6 +258,15 @@ export function leaderConfirm(leader: Leader): ConfirmOptions {
   };
 }
 
+export function guestConfirm(seat: GuestSeat): ConfirmOptions {
+  return {
+    title: `Revoke ${seat.label}?`,
+    body: 'Their link stops working at once. To let them back in, invite them again.',
+    action: 'Revoke',
+    variant: 'destructive',
+  };
+}
+
 export function remoteLight(status: NetworkStatus | undefined): RemoteLight | null {
   const devices = status?.links?.devices ?? [];
   const asking = devices.filter((device) => device.asking);
@@ -442,6 +454,8 @@ export class SliccNetwork extends ModelElement {
     linksError: { state: true },
     syncError: { state: true },
     leaderError: { state: true },
+    guestError: { state: true },
+    guestsOff: { state: true },
   };
   declare checking: boolean;
   declare copied: string | null;
@@ -454,7 +468,10 @@ export class SliccNetwork extends ModelElement {
   declare linksError: string;
   declare syncError: string;
   declare leaderError: string;
+  declare guestError: string;
+  declare guestsOff: string | null;
   #leaderId = '';
+  #guestId = '';
 
   constructor() {
     super();
@@ -469,6 +486,8 @@ export class SliccNetwork extends ModelElement {
     this.linksError = '';
     this.syncError = '';
     this.leaderError = '';
+    this.guestError = '';
+    this.guestsOff = null;
   }
 
   static styles = [
@@ -775,6 +794,17 @@ export class SliccNetwork extends ModelElement {
         grid-column: 1 / -1;
         font-size: var(--swc-font-size-75);
       }
+      .sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+        border: 0;
+      }
       time {
         color: var(--swc-neutral-subdued-content-color-default);
         font-size: var(--swc-font-size-75);
@@ -795,10 +825,21 @@ export class SliccNetwork extends ModelElement {
     this.linksError = '';
     this.syncError = '';
     this.leaderError = '';
+    this.guestError = '';
+    this.guestsOff = null;
     const update = () => this.requestUpdate();
     return [
       model.tray.on('status', update),
       ...(model.network ? [model.network.on('network', update)] : []),
+      ...(model.guests
+        ? [
+            model.guests.on('seats', update),
+            model.agent.on('agents', update),
+            model.guests.on('unavailable', (text) => {
+              this.guestsOff = text;
+            }),
+          ]
+        : []),
     ];
   }
 
@@ -846,7 +887,7 @@ export class SliccNetwork extends ModelElement {
   async #act(
     action: string,
     run: () => Promise<void> | undefined,
-    area: 'error' | 'tailnetError' | 'linksError' | 'syncError' | 'leaderError'
+    area: 'error' | 'tailnetError' | 'linksError' | 'syncError' | 'leaderError' | 'guestError'
   ): Promise<void> {
     if (this.busy) return;
     this.busy = action;
@@ -1388,6 +1429,72 @@ export class SliccNetwork extends ModelElement {
     </section>`;
   }
 
+  async #revoke(event: Event, port: GuestPort, seat: GuestSeat): Promise<void> {
+    const trigger = event.currentTarget as HTMLElement;
+    if (!(await confirm({ ...guestConfirm(seat), trigger }))) return;
+    await this.#act(
+      `guest:${seat.id}`,
+      () => {
+        this.#guestId = seat.id;
+        return port.revoke(seat.id);
+      },
+      'guestError'
+    );
+  }
+
+  #invite(event: Event, port: GuestPort): void {
+    const agent = (this.model as SliccModel).agent;
+    void invite({
+      port,
+      agents: agent.list(),
+      active: agent.active(),
+      trigger: event.currentTarget as HTMLElement,
+    });
+  }
+
+  #seat(port: GuestPort, seat: GuestSeat, now: number): TemplateResult {
+    const action = `guest:${seat.id}`;
+    const cone = (this.model as SliccModel).agent.list().find((item) => item.id === seat.agentId);
+    return html`<li class="device guest" data-seat=${seat.id} data-connected=${seat.connected ? 'true' : 'false'}>
+      <div class="who">
+        <span class="name" title=${seat.label}>${seat.label}</span>
+        <swc-status-light size="s" variant=${seat.connected ? 'positive' : 'neutral'}>${seat.connected ? 'Connected' : 'Not connected'}</swc-status-light>
+        ${seat.pending > 0 ? html`<swc-badge size="s" variant="notice" subtle data-pending=${seat.pending}><span aria-hidden="true">${seat.pending} waiting</span><span class="sr">${pendingLabel(seat.pending)}</span></swc-badge>` : nothing}
+      </div>
+      <swc-button size="s" variant="secondary" fill-style="outline" data-action="revoke-guest" accessible-label=${`Revoke ${seat.label}`} ?pending=${this.busy === action} ?disabled=${this.#waiting(action)} @click=${(event: Event) => this.#revoke(event, port, seat)}>Revoke</swc-button>
+      <span class="where"><span data-seat-cone>${cone?.name ?? seat.agentId}</span><span data-expiry>${guestExpiry(seat, now)}</span></span>
+      ${
+        this.guestError && this.#guestId === seat.id
+          ? html`<div class="error" role="alert" data-error="guest"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.guestError}</span></div>`
+          : nothing
+      }
+    </li>`;
+  }
+
+  #guestsSection(): TemplateResult | typeof nothing {
+    const port = this.model?.guests;
+    if (!port) return nothing;
+    const seats = port.list();
+    const off = port.unavailable ? port.unavailable() : this.guestsOff;
+    const cones = guestCones((this.model as SliccModel).agent.list()).length > 0;
+    const now = Date.now();
+    return html`<section aria-labelledby="guests" data-guests=${seats.length}>
+      <div class="head">
+        <h2 id="guests">Guests</h2>
+        ${
+          off
+            ? html`<p class="muted" data-guests-unavailable>${off}</p>`
+            : html`<swc-button size="m" variant="accent" data-action="invite-guest" ?disabled=${!cones} @click=${(event: Event) => this.#invite(event, port)}>Invite a guest</swc-button>`
+        }
+      </div>
+      ${
+        seats.length
+          ? html`<ul aria-labelledby="guests">${seats.map((seat) => this.#seat(port, seat, now))}</ul>`
+          : html`<p class="muted" data-guests-empty>No guests yet.</p>`
+      }
+    </section>`;
+  }
+
   #exit(event: Event, port: NetworkPort): void {
     const value = (event.target as HTMLElement & { value: string }).value;
     void this.#tailnet('exit', () => port.setExitNode?.(value === 'none' ? null : value));
@@ -1562,6 +1669,7 @@ export class SliccNetwork extends ModelElement {
       ${this.#state(port, status)}
       ${this.#sync((this.model as SliccModel).tray)}
       ${this.#leadersSection(port, status)}
+      ${this.#guestsSection()}
       ${this.#tailnetSection(port, status)}
       ${this.#linksSection(port, status)}
       ${this.#whole(status)}

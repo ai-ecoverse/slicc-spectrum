@@ -5451,6 +5451,125 @@ test('leaders disconnect without a confirm, reconnect, and forget through one', 
   assert.deepEqual(page.errors, []);
 });
 
+test('guests: invite, copy the one-time link, revoke through a negative confirm', async (t) => {
+  const page = await open(t, { guests: 'on' });
+  await page.evaluate(() => {
+    window.copiedText = [];
+    navigator.clipboard.writeText = async (text) => {
+      window.copiedText.push(text);
+    };
+    window.app.show('network');
+    window.netPanel = () => window.$('slicc-app', 'slicc-dock').content('network')?.shadowRoot;
+    window.invite = (selector) => window.$('slicc-app', 'slicc-guest-invite', selector);
+  });
+  await page.until(() => !!window.netPanel()?.querySelector('section[data-guests]'));
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.netPanel().querySelectorAll('li[data-seat]')].map((row) => [
+        row.dataset.seat,
+        row.dataset.connected,
+        row.querySelector('swc-status-light').textContent.trim(),
+        row.querySelector('[data-expiry]').textContent,
+        row.querySelector('[data-pending] [aria-hidden=true]')?.textContent ?? null,
+        row.querySelector('[data-pending] .sr')?.textContent ?? null,
+      ])
+    ),
+    [
+      ['seat-mara', 'true', 'Connected', 'Expires in 5 days', '2 waiting', '2 waiting for review'],
+      ['seat-ole', 'false', 'Not connected', 'No expiry', null, null],
+    ]
+  );
+  await page.evaluate(() => window.netPanel().querySelector('[data-action=invite-guest]').click());
+  await page.until(() => !!window.invite('dialog[open]'));
+  await page.evaluate(() => window.invite('[data-action=create-guest-link]').click());
+  await page.until(() => !!window.invite('#guest-name[invalid]'));
+  await page.until(
+    () =>
+      window.invite('#guest-name') ===
+      window.$('slicc-app', 'slicc-guest-invite').shadowRoot.activeElement
+  );
+  await page.send('Input.insertText', { text: '  Seat 3 (Ines)  ' });
+  await page.evaluate(() => window.invite('[data-action=create-guest-link]').click());
+  await page.until(() => !!window.invite('dialog[data-guest-invite=link]'));
+  assert.equal(
+    await page.evaluate(() => window.invite('[data-once]').textContent),
+    'This link is shown only once. Copy it now.'
+  );
+  await page.evaluate(() => window.invite('[data-action=copy-guest-url]').click());
+  await page.until(() => window.copiedText.length === 1);
+  const url = await page.evaluate(() => window.copiedText[0]);
+  assert.match(url, /^https:\/\/www\.example\.com\/guest\//);
+  assert.equal(await page.evaluate(() => window.invite('[data-copy=guest-url]').value), url);
+  await page.evaluate(() => window.invite('[data-action=done-guest]').click());
+  await page.until(() => !window.$('slicc-app', 'slicc-guest-invite'));
+  const added = await page.evaluate(() =>
+    [...window.netPanel().querySelectorAll('li[data-seat]')]
+      .filter((row) => row.querySelector('.name').textContent === 'Seat 3 (Ines)')
+      .map((row) => [row.dataset.seat, row.querySelector('[data-expiry]').textContent])
+  );
+  assert.equal(added.length, 1);
+  assert.equal(added[0][1], 'Expires in 7 days');
+  assert.ok(
+    await page.evaluate((u) => !window.$('slicc-app').shadowRoot.innerHTML.includes(u), url)
+  );
+  await page.evaluate(
+    (id) =>
+      window.netPanel().querySelector(`li[data-seat="${id}"] [data-action=revoke-guest]`).click(),
+    added[0][0]
+  );
+  await page.until(() => !!window.$('slicc-app', 'slicc-confirm', '[data-action]'));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.$('slicc-app', 'slicc-confirm').shadowRoot;
+      const button = root.querySelector('[data-action]');
+      return [
+        root.querySelector('#title').textContent,
+        root.querySelector('#body').textContent,
+        button.textContent.trim(),
+        button.getAttribute('variant'),
+      ];
+    }),
+    [
+      'Revoke Seat 3 (Ines)?',
+      'Their link stops working at once. To let them back in, invite them again.',
+      'Revoke',
+      'negative',
+    ]
+  );
+  await page.evaluate(() => window.$('slicc-app', 'slicc-confirm', '[data-action]').click());
+  await page.until((id) => !window.netPanel().querySelector(`li[data-seat="${id}"]`), added[0][0]);
+  await page.evaluate(() => window.model.guests.setScenario('unavailable'));
+  await page.until(() => !!window.netPanel().querySelector('[data-guests-unavailable]'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.netPanel().querySelector('[data-guests-unavailable]').textContent,
+      !!window.netPanel().querySelector('[data-action=invite-guest]'),
+    ]),
+    ['Guests need the tray hub. Connect this SLICC to a tray to invite one.', false]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('guests: Invite follows the cones while the Network panel is open', async (t) => {
+  const page = await open(t, { guests: 'none' });
+  await page.evaluate(() => {
+    window.app.show('network');
+    window.netPanel = () => window.$('slicc-app', 'slicc-dock').content('network')?.shadowRoot;
+    window.inviteButton = () => window.netPanel().querySelector('[data-action=invite-guest]');
+  });
+  await page.until(() => !!window.netPanel()?.querySelector('section[data-guests]'));
+  assert.equal(await page.evaluate(() => window.inviteButton().hasAttribute('disabled')), false);
+  await page.evaluate(() => {
+    for (const agent of window.model.agent.list()) {
+      if (agent.kind === 'cone') window.model.agent.freeze(agent.id);
+    }
+  });
+  await page.until(() => window.inviteButton().hasAttribute('disabled'));
+  await page.evaluate(() => window.model.agent.createCone('reef-notes'));
+  await page.until(() => !window.inviteButton().hasAttribute('disabled'));
+  assert.deepEqual(page.errors, []);
+});
+
 test('without a network port there is no indicator and no Network panel', async (t) => {
   const page = await open(t, { network: 'off' });
   assert.deepEqual(
