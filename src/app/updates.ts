@@ -694,7 +694,9 @@ export class SliccUpdates extends ModelElement {
         ? html`<section data-section="user-packages" aria-labelledby="user-packages">
             <swc-divider size="m"></swc-divider>
             <h2 id="user-packages">Your packages</h2>
-            <p class="hint">Packages you added or pinned with pnpm in /opt/agent or /opt/grammars. Seven’s updates keep them until you unpin or remove them.</p>
+            <p class="hint">
+              Packages you added with pnpm in /opt/user. Seven’s updates keep them until you remove them.${yours.some((item) => item.actions.includes('unpin')) ? ' Pinned versions stay until you unpin them.' : ''}
+            </p>
             ${this.#list(yours, all, port)}
           </section>`
         : nothing
