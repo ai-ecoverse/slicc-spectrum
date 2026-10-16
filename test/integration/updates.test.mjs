@@ -466,16 +466,36 @@ for (const [name, browser] of [
   });
 }
 
-test('your packages say where they live and that updates keep them', async (t) => {
+test('your packages say where they live, and that updates keep them until you remove or unpin them', async (t) => {
   const page = await chrome.page(t);
   await page.goto('/ui/?updates=current&packages=user&color=light&delay=20');
   await page.until(() => window.ready && window.app.dock.api.panels.length > 0);
-  await page.evaluate(() => window.app.show('updates'));
-  const hint = () =>
-    window
-      .$('slicc-app', 'slicc-dock', 'slicc-updates', 'section[data-section=user-packages] .hint')
-      ?.textContent.trim();
+  await page.evaluate(() => {
+    window.yours = (selector) =>
+      window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-updates',
+        `section[data-section=user-packages] ${selector}`
+      );
+    window.app.show('updates');
+  });
+  const hint = () => window.yours('.hint')?.textContent.trim();
   await page.until(hint);
+  assert.equal(
+    await page.evaluate(hint),
+    'Packages you added with pnpm in /opt/user. Seven’s updates keep them until you remove them. Pinned versions stay until you unpin them.'
+  );
+  assert.match(
+    await page.evaluate(
+      () => window.yours('li[data-id="user:user:@harbor/tide-math"] .meta').textContent
+    ),
+    /in \/opt\/user/
+  );
+  await page.evaluate(() =>
+    window.yours('li[data-id="user:agent:@harbor/agent-kit"] [data-action=unpin]').click()
+  );
+  await page.until(() => !window.yours('li[data-id="user:agent:@harbor/agent-kit"]'));
   assert.equal(
     await page.evaluate(hint),
     'Packages you added with pnpm in /opt/user. Seven’s updates keep them until you remove them.'

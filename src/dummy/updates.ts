@@ -109,7 +109,7 @@ const offer = (
 const fetchFailed = 'The download stopped. Check the connection and try again.';
 
 const yours = (
-  project: 'agent' | 'grammars',
+  project: 'agent' | 'grammars' | 'user',
   name: string,
   description: string,
   version: string,
@@ -138,7 +138,7 @@ const userPackages = (): PackageItem[] => [
     range: '0.24.0',
   }),
   yours(
-    'agent',
+    'user',
     '@harbor/tide-math',
     'Tide tables and harmonic constants.',
     '1.2.4',

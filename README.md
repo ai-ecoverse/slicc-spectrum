@@ -436,7 +436,7 @@ Opens at boot until the agent is ready without failures.
 Background updates stay in the header's update status; new failures reopen the panel, and after a reload into a boot that isn't ready yet such a panel closes once the agent is ready.
 Every automatic close is saved to the layout.
 When the port offers packages, an Optional packages section lists them below as compact rows, each with its state, version, download size, requirements, commands, progress, errors and Install log; packages never count in the header or keep the panel open at boot.
-Packages the user added or pinned with pnpm show up in their own Your packages section below it, with a neutral Pinned light (a hold, not a success) or a positive Added light, their version against seven's, and Unpin or Remove.
+Packages the user added with pnpm in `/opt/user`, or pinned, show up in their own Your packages section below it, under "Packages you added with pnpm in /opt/user. Seven’s updates keep them until you remove them." (plus "Pinned versions stay until you unpin them." while a row offers `unpin`), with a neutral Pinned light (a hold, not a success) or a positive Added light, their version against seven's, and Unpin or Remove.
 Also available through View and the rails.
 
 #### `<slicc-memory>`
@@ -747,8 +747,8 @@ A `failed` row with an installed `from` version reads "Update failed".
 Missing ports preserve existing adapters and report disconnected information in the panel.
 Optional `packages()` returns `PackageItem` rows for optional tools, each with a short catalog `id`, its npm `package` (shown in the name's tooltip and at the top of its Install log), `label`, a one-sentence `description`, the `commands` it provides, `requires` (other package ids, read as "Uses Python" while it's installed, or "Installs Python too" on a row that isn't installed yet; an installed row leaves out a requirement that isn't installed, since its warning says so), optional `notes` (short plain-text lines shown muted under the row, such as "1 untested dependency: …"; leave it out when there's nothing to say), optional `warnings` (lines with an alert icon, `data-warnings`, such as "Needs Python, which isn't installed.
 Install Python again to use it."; the dummy adds that one when a required package is removed), `state` (`available`, `queued`, `installing`, `installed`, `outdated`, `updating`, `removing` or `failed`), the installed `version`, the `offered` version and its `size` in bytes, `progress` counted in packages (or `null` for an indeterminate bar), `error`, `actions` (`install`, `update`, `remove`, `retry`, `unpin`) and an optional `log`.
-A row with `origin: 'user'` (ids such as `user:agent:<name>`) goes into Your packages, `section[data-section="user-packages"]`, which only shows when there is one; its `pin` holds `base` (the version seven ships, or `null` for a package seven doesn't ship), the user's `range` and the `project` folder, such as `/opt/agent`.
-An installed pin reads "Pinned" with `0.24.0 · seven ships 0.25.0 · in /opt/agent` ("the version seven ships" when they match), and an addition reads "Added" with `^1.2.0 → 1.2.4 · in /opt/agent`; `.meta[data-pin]` is `pinned` or `added`.
+A row with `origin: 'user'` (ids such as `user:user:<name>`) goes into Your packages, `section[data-section="user-packages"]`, which only shows when there is one; its `pin` holds `base` (the version seven ships, or `null` for a package seven doesn't ship), the user's `range` and the `project` folder, such as `/opt/user`.
+An installed pin reads "Pinned" with `0.24.0 · seven ships 0.25.0 · in /opt/agent` ("the version seven ships" when they match), and an addition reads "Added" with `^1.2.0 → 1.2.4 · in /opt/user`; `.meta[data-pin]` is `pinned` or `added`.
 A pin that is `removing` reads "Unpinning"; other states keep their usual lights.
 Offer `unpin` for pins and `remove` for additions.
 Emit `packages` whenever they change.
