@@ -14,6 +14,7 @@ import type {
   AgentPort,
   Attachment,
   Outgoing,
+  Seat,
   SendMode,
   SliccModel,
   Thinking,
@@ -23,7 +24,7 @@ import type {
 import { nameProblem, valueProblem } from '../model/values.ts';
 import { chatModels, shared, speech, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
-import { size } from './messages.ts';
+import { deadline, mine, size } from './messages.ts';
 import { away, clearValues, failureText, fieldOf, type PopupDetail, take } from './vault.ts';
 
 export const limit = 25 * 1024 * 1024;
@@ -180,6 +181,25 @@ export function trigger(
 
 type Field = HTMLElement & { updateComplete: Promise<boolean> };
 
+const day = 24 * 60 * 60 * 1000;
+
+export function reviewer(seat: Seat, cone: string): string | null {
+  const gate = seat.gates.messages;
+  if (gate === 'off') return null;
+  if (gate === 'user') return 'The host';
+  if (gate === 'agent') return 'An automatic check';
+  return cone;
+}
+
+export function seatNote(seat: Seat, cone: string, now = Date.now()): string {
+  const who = reviewer(seat, cone);
+  const note = who
+    ? `${who} reviews what you send before it reaches the agent.`
+    : `You’re chatting with ${cone} as ${seat.label}.`;
+  const at = seat.expiresAt;
+  return at !== null && at - now < day ? `${note} Your link expires at ${deadline(at)}.` : note;
+}
+
 export function blocked(vault: VaultPort): string | null {
   if (away(vault)) return 'Waiting for the vault';
   return vault.status()?.locked ? 'Unlock the vault first' : null;
@@ -197,6 +217,7 @@ export class SliccComposer extends ThemedElement {
     sharing: { state: true },
     secretError: { state: true },
     secretField: { state: true },
+    failure: { state: true },
     agent: {},
   };
   declare value: string;
@@ -208,6 +229,7 @@ export class SliccComposer extends ThemedElement {
   declare sharing: boolean;
   declare secretError: string | null;
   declare secretField: string | null;
+  declare failure: string | null;
   declare agent: string;
   #drafts = new Map<string, { value: string; attachments: Attachment[] }>();
   #history = -1;
@@ -235,6 +257,7 @@ export class SliccComposer extends ThemedElement {
     this.sharing = false;
     this.secretError = null;
     this.secretField = null;
+    this.failure = null;
     this.agent = '';
   }
 
@@ -385,6 +408,28 @@ export class SliccComposer extends ThemedElement {
       .failed {
         color: var(--swc-negative-content-color-default);
       }
+      .send-error {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--swc-spacing-75);
+        margin: 0 0 var(--swc-spacing-100);
+        padding: var(--swc-spacing-75) var(--swc-spacing-200);
+        border-radius: var(--swc-corner-radius-medium-default);
+        background: var(--swc-negative-subtle-background-color-default);
+        color: var(--swc-neutral-content-color-default);
+        --swc-icon-color: var(--swc-negative-content-color-default);
+      }
+      .send-error swc-icon-alert-triangle {
+        flex: none;
+        margin-block-start: var(--swc-spacing-50);
+      }
+      .seat-note {
+        margin: var(--swc-spacing-100) 0 0;
+        padding-inline: var(--swc-spacing-200);
+        font-size: var(--swc-font-size-75);
+        color: var(--swc-neutral-subdued-content-color-default);
+        text-align: center;
+      }
       .popup {
         position: absolute;
         left: 0;
@@ -526,13 +571,15 @@ export class SliccComposer extends ThemedElement {
   #wire(): void {
     const field = this.#field as Field;
     void field.updateComplete.then(() => {
-      const popover = this.renderRoot.querySelector('swc-popover') as HTMLElement & {
-        triggerElement: HTMLElement | null;
-      };
-      popover.triggerElement = null;
-      popover.triggerElement = (field.shadowRoot as ShadowRoot).querySelector<HTMLElement>(
-        '.swc-PromptField-upload'
-      );
+      const popover = this.renderRoot.querySelector('swc-popover') as
+        | (HTMLElement & { triggerElement: HTMLElement | null })
+        | null;
+      if (popover) {
+        popover.triggerElement = null;
+        popover.triggerElement = (field.shadowRoot as ShadowRoot).querySelector<HTMLElement>(
+          '.swc-PromptField-upload'
+        );
+      }
       const area = this.#textarea as HTMLTextAreaElement & { ariaDescribedByElements: Element[] };
       area.ariaDescribedByElements = [this.renderRoot.querySelector('#keys') as Element];
     });
@@ -540,9 +587,10 @@ export class SliccComposer extends ThemedElement {
 
   protected subscribe(model: SliccModel): Array<() => void> {
     this.#switch(this.agent || model.agent.active());
-    void model.files.list().then((entries) => {
-      this.#paths = entries.filter((entry) => entry.kind === 'file').map((entry) => entry.path);
-    });
+    if (!model.seat)
+      void model.files.list().then((entries) => {
+        this.#paths = entries.filter((entry) => entry.kind === 'file').map((entry) => entry.path);
+      });
     const update = () => this.requestUpdate();
     return [
       ...super.subscribe(model),
@@ -610,6 +658,10 @@ export class SliccComposer extends ThemedElement {
     const text = this.value.trim();
     const attachments = this.attachments.filter((attachment) => !attachment.error);
     if (!model || (!text && attachments.length === 0) || this.#held()) return;
+    if (model.seat) {
+      this.#propose(model, text);
+      return;
+    }
     const command = text.match(/^\/(\w+)(?:\s+(.*))?$/);
     const known = command && available(model).find((candidate) => candidate.name === command[1]);
     this.value = '';
@@ -627,6 +679,17 @@ export class SliccComposer extends ThemedElement {
     const id = this.#agent;
     const done = () => retire(model.agent, id, attachments);
     model.agent.send(id, { text, attachments, mode: resolved }).then(done, done);
+  }
+
+  #propose(model: SliccModel, text: string): void {
+    this.value = '';
+    this.failure = null;
+    this.#history = -1;
+    model.agent.send(this.#agent, text).catch((error: unknown) => {
+      const draft = this.value.trim();
+      this.value = draft && draft !== text ? `${text}\n${this.value}` : text;
+      this.failure = error instanceof Error ? error.message : String(error);
+    });
   }
 
   #id(): string {
@@ -821,7 +884,7 @@ export class SliccComposer extends ThemedElement {
 
   #refresh(): void {
     const area = this.#textarea;
-    if (!area) return;
+    if (!area || this.model?.seat) return;
     if (this.popup?.kind === 'file' || this.popup?.kind === 'secret') return;
     const found = trigger(this.value, area.selectionStart ?? this.value.length);
     const name = this.value.match(/^\/(\w+)/)?.[1];
@@ -874,8 +937,10 @@ export class SliccComposer extends ThemedElement {
   }
 
   #recall(delta: number): boolean {
+    const seat = this.model?.seat;
     const own = (this.model?.agent.messages(this.#agent) ?? []).filter(
-      (message): message is UserMessage => message.role === 'user' && !message.from
+      (message): message is UserMessage =>
+        message.role === 'user' && (seat ? mine(message, seat) : !message.from)
     );
     const texts = own.map((message) => message.text).reverse();
     const next = this.#history + delta;
@@ -914,7 +979,7 @@ export class SliccComposer extends ThemedElement {
   }
 
   #talking(): boolean {
-    return !!this.model?.settings.get().pushToTalk && !!speech();
+    return !this.model?.seat && !!this.model?.settings.get().pushToTalk && !!speech();
   }
 
   #shortcut(event: KeyboardEvent): boolean {
@@ -930,6 +995,10 @@ export class SliccComposer extends ThemedElement {
     const area = this.#textarea;
     if (event.isComposing || !area || event.composedPath()[0] !== area) return;
     if (this.#shortcut(event)) return;
+    if (this.model?.seat) {
+      this.#guestKey(event, area);
+      return;
+    }
     const sendOnEnter = this.model?.settings.get().sendOnEnter ?? true;
     let handled = this.#popupKey(event) || this.#historyKey(event, area);
     if (!handled && event.key === 'Tab' && !event.shiftKey && !this.value) {
@@ -951,6 +1020,13 @@ export class SliccComposer extends ThemedElement {
     if (handled || event.key === 'Enter') event.stopPropagation();
   }
 
+  #guestKey(event: KeyboardEvent, area: HTMLTextAreaElement): void {
+    const send = event.key === 'Enter' && !event.shiftKey;
+    if (send) this.send();
+    if (send || this.#historyKey(event, area)) event.preventDefault();
+    if (event.key === 'Enter') event.stopPropagation();
+  }
+
   #flash(): void {
     if (!this.value) return;
     this.erasing = true;
@@ -966,6 +1042,7 @@ export class SliccComposer extends ThemedElement {
   }
 
   #instructions(busy: boolean): string {
+    if (this.model?.seat) return 'Enter sends, Shift+Enter adds a new line.';
     const enter = this.model?.settings.get().sendOnEnter ?? true;
     const keys = enter
       ? [`Enter ${busy ? 'steers' : 'sends'}`, ...(busy ? ['Ctrl+Enter queues'] : [])]
@@ -1211,7 +1288,50 @@ export class SliccComposer extends ThemedElement {
     </ul>`;
   }
 
+  #waiting(): TemplateResult | typeof nothing {
+    const queued = this.model?.agent.queue(this.#agent) ?? [];
+    if (queued.length === 0) return nothing;
+    return html`<ul class="queue" aria-label="Waiting for review">
+      ${queued.map(
+        (message) => html`<li class="queued" data-id=${message.id} data-mode="review">
+          <swc-icon-clock size="s" aria-hidden="true"></swc-icon-clock>
+          <span class="text">${message.text}</span>
+          <span class="next">Waiting for review</span>
+        </li>`
+      )}
+    </ul>`;
+  }
+
+  #guest(seat: Seat): TemplateResult {
+    const agent = this.model?.agent.list().find((candidate) => candidate.id === this.#agent);
+    const cone = agent?.name ?? 'the agent';
+    return html`<div class="column">
+        <span id="keys" class="sr" aria-hidden="true">${this.#instructions(false)}</span>
+        ${this.#waiting()}
+        ${
+          this.failure
+            ? html`<p class="send-error" role="alert" data-send-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.failure}</span></p>`
+            : nothing
+        }
+        <swc-prompt-field
+          label="Message"
+          collapsed
+          loader=${this.#loader(false)}
+          send-label="Send"
+          max-rows="10"
+          placeholder=${`Message ${cone}`}
+          .value=${live(this.value)}
+          @keydown=${this.#keys}
+          @swc-prompt-field-input=${this.#input}
+          @swc-prompt-field-submit=${() => this.send()}
+        ></swc-prompt-field>
+        <p class="seat-note" data-seat-note>${seatNote(seat, cone)}</p>
+      </div>`;
+  }
+
   render(): TemplateResult {
+    const seat = this.model?.seat;
+    if (seat) return this.#guest(seat);
     const busy = this.#busy();
     const agent = this.model?.agent.list().find((candidate) => candidate.id === this.#agent);
     const suggestion = this.model?.agent.suggestion(this.#agent);

@@ -329,7 +329,7 @@ export class SliccSprinkle extends ThemedElement {
   };
 
   #readOnly(): boolean {
-    return this.readonly || this.#frozen() || !!watchOnly(this.model);
+    return this.readonly || !!this.model?.seat || this.#frozen() || !!watchOnly(this.model);
   }
 
   #seen = new Set<string>();
@@ -470,7 +470,7 @@ export class SliccSprinkle extends ThemedElement {
     const bridged = !!this.model?.sprinkles.call;
     if (bridged && !this.#held.ready) return html``;
     const state = bridged ? this.#held : undefined;
-    const watch = !!watchOnly(this.model);
+    const watch = !!watchOnly(this.model) || !!this.model?.seat;
     const caption = watch
       ? html`<span class="view-only" data-view-only>View only on this device</span>`
       : nothing;
