@@ -1383,6 +1383,14 @@ export interface GuestSeat {
   pending: number;
 }
 
+export interface Seat {
+  id: string;
+  label: string;
+  agentId: string;
+  expiresAt: number | null;
+  gates: GuestGates;
+}
+
 export interface GuestDraft {
   label: string;
   expiresAt: number | null;
@@ -1420,4 +1428,5 @@ export interface SliccModel {
   follow?: FollowPort;
   vault?: VaultPort;
   guests?: GuestPort;
+  seat?: Seat;
 }

@@ -7,6 +7,18 @@ export { DummyChanges } from './dummy/changes.ts';
 export type { DummyMount, MountScenario } from './dummy/files.ts';
 export type { FollowScenario } from './dummy/follow.ts';
 export { DummyFollow, followFixtures } from './dummy/follow.ts';
+export type { GuestModel, GuestOptions, SeatScenario } from './dummy/guest.ts';
+export {
+  createGuestModel,
+  DummyGuestAgent,
+  forecastSprinkle,
+  guestLabel,
+  guestOnly,
+  guestReview,
+  guestSeat,
+  guestTranscript,
+  otherGuest,
+} from './dummy/guest.ts';
 export type { GuestsScenario } from './dummy/guests.ts';
 export {
   DummyGuests,
