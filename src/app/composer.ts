@@ -1288,11 +1288,26 @@ export class SliccComposer extends ThemedElement {
     </ul>`;
   }
 
+  #waiting(): TemplateResult | typeof nothing {
+    const queued = this.model?.agent.queue(this.#agent) ?? [];
+    if (queued.length === 0) return nothing;
+    return html`<ul class="queue" aria-label="Waiting for review">
+      ${queued.map(
+        (message) => html`<li class="queued" data-id=${message.id} data-mode="review">
+          <swc-icon-clock size="s" aria-hidden="true"></swc-icon-clock>
+          <span class="text">${message.text}</span>
+          <span class="next">Waiting for review</span>
+        </li>`
+      )}
+    </ul>`;
+  }
+
   #guest(seat: Seat): TemplateResult {
     const agent = this.model?.agent.list().find((candidate) => candidate.id === this.#agent);
     const cone = agent?.name ?? 'the agent';
     return html`<div class="column">
         <span id="keys" class="sr" aria-hidden="true">${this.#instructions(false)}</span>
+        ${this.#waiting()}
         ${
           this.failure
             ? html`<p class="send-error" role="alert" data-send-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.failure}</span></p>`

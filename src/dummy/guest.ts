@@ -18,12 +18,13 @@ import type {
   SprinklePort,
   TerminalPort,
   TrayPort,
+  UserMessage,
 } from '../model/types.ts';
 import { type Clock, clock } from './clock.ts';
 import { agents, defaults } from './fixtures.ts';
 import { DummySettings } from './settings.ts';
 
-export type SeatScenario = 'review' | 'off' | 'expiring';
+export type SeatScenario = 'review' | 'reject' | 'off' | 'expiring';
 
 export const guestOnly = 'a guest can only watch and send messages';
 
@@ -34,11 +35,15 @@ const minute = 60_000;
 const hour = 60 * minute;
 const day = 24 * hour;
 
+export const guestDeclined = 'It was declined.';
+
 export const guestLabel = 'Seat 2 (Mara)';
 
 export const guestSettingsKey = 'slicc-guest-settings';
 
 export const otherGuest = 'Seat 3 (Jonas)';
+
+const gates = { review: 'user', reject: 'agent', off: 'off', expiring: 'user' } as const;
 
 export function guestSeat(scenario: SeatScenario, now = Date.now()): Seat {
   return {
@@ -46,7 +51,7 @@ export function guestSeat(scenario: SeatScenario, now = Date.now()): Seat {
     label: guestLabel,
     agentId: 'cone-sliccy',
     expiresAt: scenario === 'expiring' ? now + 3 * hour + 20 * minute : now + 6 * day,
-    gates: { messages: scenario === 'off' ? 'off' : 'user', tools: 'user' },
+    gates: { messages: gates[scenario], tools: 'user' },
   };
 }
 
@@ -120,6 +125,17 @@ export function guestTranscript(now = Date.now()): Message[] {
       createdAt: at(29),
       model: 'claude-sonnet-5-5',
       parts: [
+        {
+          type: 'question',
+          question: {
+            id: 'g-q0',
+            kind: 'choice',
+            question: 'Which days count as the weekend?',
+            options: ['Saturday and Sunday', 'Friday to Sunday'],
+            state: 'answered',
+            answer: 'Friday to Sunday',
+          },
+        },
         { type: 'text', text: 'Here is the table with Friday to Sunday.' },
         { type: 'sprinkle', sprinkle: forecastSprinkle.id },
       ],
@@ -200,6 +216,7 @@ export class DummyGuestAgent extends Emitter<AgentEvents> implements AgentPort {
   readonly refused: string[];
   #cone: Agent;
   #messages: Message[];
+  #waiting: UserMessage[] = [];
   #seat: Seat;
   #clock: Clock;
   #next = 1;
@@ -235,8 +252,8 @@ export class DummyGuestAgent extends Emitter<AgentEvents> implements AgentPort {
     return this.#cone.status !== 'idle';
   }
 
-  queue(): readonly never[] {
-    return [];
+  queue(agentId: string): readonly UserMessage[] {
+    return agentId === this.#cone.id ? [...this.#waiting] : [];
   }
 
   suggestion(): null {
@@ -333,10 +350,40 @@ export class DummyGuestAgent extends Emitter<AgentEvents> implements AgentPort {
     this.emit('message', { agentId: this.#cone.id, message });
   }
 
+  async #propose(text: string): Promise<void> {
+    const proposal: UserMessage = {
+      id: `g${this.#next++}`,
+      role: 'user',
+      text,
+      createdAt: Date.now(),
+      queued: true,
+      mode: 'queue',
+      origin: 'guest',
+      from: this.#seat.label,
+    };
+    this.#waiting.push(proposal);
+    this.emit('messages', this.#cone.id);
+    await this.#clock.sleep(60);
+    this.#waiting = this.#waiting.filter((message) => message !== proposal);
+    this.#post({
+      id: proposal.id,
+      role: 'system',
+      kind: 'notice',
+      title: guestDeclined,
+      text,
+      createdAt: Date.now(),
+    });
+  }
+
   async send(agentId: string, input: string | Outgoing): Promise<void> {
     const text = (typeof input === 'string' ? input : input.text).trim();
     if (agentId !== this.#cone.id || !text) return;
-    if (this.#seat.gates.messages !== 'off') throw new Error(guestReview);
+    const gate = this.#seat.gates.messages;
+    if (gate === 'agent') throw new Error(guestReview);
+    if (gate !== 'off') {
+      await this.#propose(text);
+      return;
+    }
     this.#post({
       id: `guest-${this.#next++}`,
       role: 'user',

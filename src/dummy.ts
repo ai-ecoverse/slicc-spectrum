@@ -12,6 +12,7 @@ export {
   createGuestModel,
   DummyGuestAgent,
   forecastSprinkle,
+  guestDeclined,
   guestLabel,
   guestOnly,
   guestReview,

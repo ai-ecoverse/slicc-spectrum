@@ -81,9 +81,7 @@ test('a guest chat shows only the cone, its transcript and a plain composer', as
       note: window.box('[data-seat-note]').textContent,
       decide: !!window.part('[data-action=allow], [data-action=deny]'),
       piled: !!window.part('.decision-turn[data-pending]'),
-      answers: [...window.chat.shadowRoot.querySelectorAll('[data-action=answer]')].map(
-        (button) => button.disabled
-      ),
+      answers: !!window.part('[data-action=answer]'),
       errors: !!window.part('.error-card swc-button'),
       sprinkle: sprinkle?.shadowRoot.querySelector('[data-view-only]')?.textContent,
       inert: !!sprinkle?.shadowRoot.querySelector('iframe')?.inert,
@@ -105,7 +103,7 @@ test('a guest chat shows only the cone, its transcript and a plain composer', as
     note: `You’re chatting with sliccy as ${label}.`,
     decide: false,
     piled: false,
-    answers: [true, true],
+    answers: false,
     errors: false,
     sprinkle: 'View only on this device',
     inert: true,
@@ -160,10 +158,10 @@ test('Enter sends a guest message as the reader’s own, and Shift+Enter adds a 
 });
 
 test('a rejected guest send shows its reason above the composer and keeps the draft', async (t) => {
-  const page = await open(t, { seat: 'review' });
+  const page = await open(t, { seat: 'reject' });
   assert.equal(
     await page.evaluate(() => window.box('[data-seat-note]').textContent),
-    'The host reviews what you send before it reaches the agent.'
+    'An automatic check reviews what you send before it reaches the agent.'
   );
   await write(page, 'Can you add Lisbon?');
   await page.evaluate(() => {
@@ -227,4 +225,101 @@ test('a sprinkle on a guest page is view only, even outside the chat, and never 
     refused: window.model.refused,
   }));
   assert.deepEqual(state, { readonly: false, caption: 'View only on this device', refused: [] });
+});
+
+test('on a guest page the host answers open questions and permission requests', async (t) => {
+  const page = await open(t, { seat: 'review' });
+  await page.until(() => !!window.part('swc-conversation-turn[data-id="g-7"]'));
+  const shown = await page.evaluate(() => {
+    const border = (node) => getComputedStyle(node).borderTopColor;
+    const turn = (id) => window.part(`swc-conversation-turn[data-id="${id}"]`);
+    const asked = window.part('.question[data-state="open"]');
+    const answered = window.part('.question[data-state="answered"]');
+    const request = turn('g-7');
+    const card = request.querySelector('.decision');
+    const neutral = border(answered);
+    return {
+      asked: {
+        controls: asked.querySelectorAll('swc-button, button, input, form').length,
+        neutral: border(asked) === neutral,
+        line: asked.querySelector('[data-host-answers]')?.textContent,
+        pending: !!asked.closest('[data-pending]'),
+      },
+      answered: {
+        answer: answered.querySelector('.answer')?.textContent,
+        line: !!answered.querySelector('[data-host-answers]'),
+      },
+      request: {
+        controls: card.querySelectorAll('swc-button, button, input, form').length,
+        neutral: border(card) === neutral,
+        line: card.querySelector('[data-host-answers]')?.textContent,
+        pending: request.hasAttribute('data-pending'),
+        timer: !!card.querySelector('[data-timer]'),
+      },
+    };
+  });
+  assert.deepEqual(shown, {
+    asked: { controls: 0, neutral: true, line: 'The host answers this.', pending: false },
+    answered: { answer: '✓ Friday to Sunday', line: false },
+    request: {
+      controls: 0,
+      neutral: true,
+      line: 'The host answers this.',
+      pending: false,
+      timer: false,
+    },
+  });
+  assert.deepEqual(await forbidden(page), { calls: [] });
+});
+
+test('a reviewed guest message waits above the composer, then ends as a declined notice', async (t) => {
+  const page = await open(t, { seat: 'review', delay: '10' });
+  assert.equal(
+    await page.evaluate(() => window.box('[data-seat-note]').textContent),
+    'The host reviews what you send before it reaches the agent.'
+  );
+  await write(page, 'Can you add Lisbon?');
+  await page.press('Enter');
+  await page.until(() => !!window.box('li.queued'));
+  const waiting = await page.evaluate(() => {
+    const row = window.box('li.queued');
+    const field = window.box('swc-prompt-field');
+    return {
+      mode: row.dataset.mode,
+      id: row.dataset.id,
+      text: row.querySelector('.text').textContent,
+      label: row.querySelector('.next').textContent,
+      actions: row.querySelectorAll('swc-action-button, swc-close-button, button, [data-action]')
+        .length,
+      above: row.getBoundingClientRect().bottom <= field.getBoundingClientRect().top,
+      draft: window.area().value,
+      error: !!window.box('[data-send-error]'),
+    };
+  });
+  assert.deepEqual(waiting, {
+    mode: 'review',
+    id: 'g1',
+    text: 'Can you add Lisbon?',
+    label: 'Waiting for review',
+    actions: 0,
+    above: true,
+    draft: '',
+    error: false,
+  });
+  await page.until(() => !!window.part('.marker[data-ended][data-id="g1"]'));
+  const ended = await page.evaluate(() => {
+    const notice = window.part('.marker[data-ended][data-id="g1"]');
+    return {
+      text: notice.querySelector('.marker-text').textContent,
+      role: notice.getAttribute('role'),
+      queued: !!window.box('li.queued'),
+    };
+  });
+  assert.deepEqual(ended, {
+    text: '“Can you add Lisbon?” It was declined.',
+    role: 'note',
+    queued: false,
+  });
+  assert.deepEqual(await forbidden(page), { calls: [] });
+  assert.deepEqual(await page.evaluate(() => window.model.refused), []);
 });
