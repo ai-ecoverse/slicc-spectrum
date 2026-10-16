@@ -945,7 +945,7 @@ export interface GuestMessageApproval {
   attachments?: readonly { name: string; mimeType: string; size: number }[];
   createdAt: number;
   expiresAt: number;
-  always: false;
+  always: boolean;
   verdict?: ApprovalVerdict;
 }
 
@@ -959,7 +959,7 @@ export interface GuestToolApproval {
   summary: string;
   createdAt: number;
   expiresAt: number;
-  always: false;
+  always: boolean;
   verdict?: ApprovalVerdict;
 }
 
@@ -1372,6 +1372,11 @@ export interface GuestGates {
   tools: GuestGate;
 }
 
+export interface GuestGateChoices {
+  messages: readonly GuestGate[];
+  tools: readonly GuestGate[];
+}
+
 export interface GuestSeat {
   id: string;
   label: string;
@@ -1399,6 +1404,7 @@ export interface GuestPort extends Subscribable<GuestEvents> {
   mint(agentId: string, draft: GuestDraft): Promise<{ seat: GuestSeat; url: string }>;
   revoke(id: string): Promise<void>;
   unavailable?(): string | null;
+  gates?(): GuestGateChoices;
 }
 
 export interface SliccModel {

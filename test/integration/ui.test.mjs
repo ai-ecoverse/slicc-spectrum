@@ -5457,6 +5457,101 @@ test('leaders disconnect without a confirm, reconnect, and forget through one', 
   assert.deepEqual(page.errors, []);
 });
 
+test('guests: a port whose gates() allow tools off offers No review for tool calls and mints with it', async (t) => {
+  const page = await open(t, { guests: 'policy' });
+  await page.evaluate(() => {
+    window.app.show('network');
+    window.netPanel = () => window.$('slicc-app', 'slicc-dock').content('network')?.shadowRoot;
+    window.invite = (selector) => window.$('slicc-app', 'slicc-guest-invite', selector);
+    window.minted = [];
+    const mint = window.model.guests.mint.bind(window.model.guests);
+    window.model.guests.mint = (agentId, draft) => {
+      window.minted.push(draft.gates);
+      return mint(agentId, draft);
+    };
+    return true;
+  });
+  await page.until(() => !!window.netPanel()?.querySelector('[data-action=invite-guest]'));
+  await page.evaluate(() => window.netPanel().querySelector('[data-action=invite-guest]').click());
+  await page.until(() => !!window.invite('dialog[open]'));
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      tools: [...window.invite('#guest-tools').querySelectorAll('sp-menu-item')].map((item) =>
+        item.getAttribute('value')
+      ),
+      value: window.invite('#guest-tools').value,
+    })),
+    { tools: ['user', 'agent', 'scoop:tidal-wren', 'off'], value: 'user' }
+  );
+  await page.evaluate(() => {
+    const picker = window.invite('#guest-tools');
+    picker.value = 'off';
+    picker.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  });
+  await page.until(
+    () =>
+      window.invite('[data-help=tools]')?.textContent.trim() === 'Tool calls run without review.'
+  );
+  await page.evaluate(() => window.invite('#guest-name').focus());
+  await page.send('Input.insertText', { text: 'Ines' });
+  await page.evaluate(() => window.invite('[data-action=create-guest-link]').click());
+  await page.until(() => !!window.invite('dialog[data-guest-invite=link]'));
+  assert.deepEqual(await page.evaluate(() => window.minted), [{ messages: 'user', tools: 'off' }]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('following without Control, approvals and Guests still show and work', async (t) => {
+  const page = await open(t, {
+    follow: 'watch',
+    surfaces: 'all',
+    network: 'limited',
+    approvals: 'agent',
+    guests: 'on',
+  });
+  await page.evaluate(() => {
+    window.approvals = () => window.$('slicc-app', 'slicc-approvals').shadowRoot;
+    return true;
+  });
+  await page.until(
+    () =>
+      window.approvals().querySelector('dialog')?.dataset.approval === 'sudo-jq' &&
+      window.focused().includes('swc-button')
+  );
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  await page.evaluate(() => {
+    window.approvals().querySelector('[data-action=once]').click();
+    return true;
+  });
+  await page.until(() => !window.approvals().querySelector('dialog'));
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
+    ['sudo-jq', 'once'],
+  ]);
+  await page.evaluate(() => {
+    window.app.show('network');
+    window.netPanel = () => window.$('slicc-app', 'slicc-dock').content('network')?.shadowRoot;
+    window.invite = (selector) => window.$('slicc-app', 'slicc-guest-invite', selector);
+    return true;
+  });
+  await page.until(() => !!window.netPanel()?.querySelector('[data-action=invite-guest]'));
+  await page.evaluate(() => window.netPanel().querySelector('[data-action=invite-guest]').click());
+  await page.until(() => !!window.invite('dialog[open]'));
+  await page.evaluate(() => window.invite('#guest-name').focus());
+  await page.send('Input.insertText', { text: 'Ines' });
+  await page.evaluate(() => window.invite('[data-action=create-guest-link]').click());
+  await page.until(() => !!window.invite('dialog[data-guest-invite=link]'));
+  await page.evaluate(() => window.invite('[data-action=done-guest]').click());
+  await page.until(() =>
+    [...window.netPanel().querySelectorAll('li[data-seat] .name')].some(
+      (name) => name.textContent === 'Ines'
+    )
+  );
+  assert.ok(
+    await page.evaluate(() => !!window.$('slicc-app', 'slicc-dock').content('chat:cone-sliccy'))
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('guests: invite, copy the one-time link, revoke through a negative confirm', async (t) => {
   const page = await open(t, { guests: 'on' });
   await page.evaluate(() => {
@@ -7899,6 +7994,51 @@ test('a guest message is asked as plain text, Deny is focused, and a rejected de
   assert.deepEqual(page.errors, []);
 });
 
+test('a guest approval with always offers Always allow, says what it covers and records always', async (t) => {
+  const page = await open(t, { approvals: 'guest-always' });
+  await page.evaluate(() => {
+    window.approvals = () => window.$('slicc-app', 'slicc-approvals').shadowRoot;
+    return true;
+  });
+  await page.until(
+    () =>
+      window.approvals().querySelector('dialog')?.dataset.approval === 'guest-read' &&
+      window.focused().includes('swc-button')
+  );
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.approvals();
+      return {
+        kind: root.querySelector('dialog').dataset.kind,
+        actions: [...root.querySelectorAll('swc-button')].map((button) => [
+          button.dataset.action,
+          button.textContent.trim(),
+        ]),
+        hint: root.querySelector('.hint').textContent,
+      };
+    }),
+    {
+      kind: 'guest-tool',
+      actions: [
+        ['deny', 'Deny'],
+        ['always', 'Always allow'],
+        ['once', 'Allow once'],
+      ],
+      hint: 'Always allow this guest’s calls to read_file in sliccy.',
+    }
+  );
+  await page.evaluate(() => {
+    window.approvals().querySelector('[data-action=always]').click();
+    return true;
+  });
+  await page.until(() => !window.approvals().querySelector('dialog'));
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
+    ['guest-read', 'always'],
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
 test('a rejected decide leaves only Close, which moves on, and the body fills the dialog at 420', async (t) => {
   const page = await open(t, { approvals: 'guest' });
   await page.send('Emulation.setDeviceMetricsOverride', {
@@ -8011,7 +8151,7 @@ test('a rejected decide leaves only Close, which moves on, and the body fills th
   assert.deepEqual(page.errors, []);
 });
 
-test('without decide, guest requests wait as notices for the device in control', async (t) => {
+test('without decide, guest requests wait as notices for the owner', async (t) => {
   const page = await open(t, { approvals: 'guest-follower' });
   await page.evaluate(() => {
     window.notes = () => [
@@ -8033,18 +8173,12 @@ test('without decide, guest requests wait as notices for the device in control',
     ]),
     [
       false,
-      [
-        'guest-message',
-        "Seat 2 (Mara)'s message to sliccy waits for approval on the device in control.",
-      ],
+      ['guest-message', "Seat 2 (Mara)'s message to sliccy waits for the owner's approval."],
       [
         'guest-tool',
-        'docs-pass wants to run fetch for Seat 2 (Mara), which waits for approval on the device in control.',
+        "docs-pass wants to run fetch for Seat 2 (Mara), which waits for the owner's approval.",
       ],
-      [
-        'guest-message',
-        "Seat 3 (Ilse)'s message to this cone waits for approval on the device in control.",
-      ],
+      ['guest-message', "Seat 3 (Ilse)'s message to this cone waits for the owner's approval."],
     ]
   );
   assert.deepEqual(page.errors, []);

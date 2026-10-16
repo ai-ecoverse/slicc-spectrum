@@ -54,7 +54,7 @@ const model = createDummyModel({
   packages: params.get('packages') ?? 'off',
   confirm,
   mounts: params.get('mounts') ?? 'off',
-  network: follow === 'off' ? (params.get('network') ?? 'limited') : 'off',
+  network: params.get('network') ?? (follow === 'off' ? 'limited' : 'off'),
   tailnet: params.get('tailnet') ?? undefined,
   links: params.get('links') ?? undefined,
   leaders: params.get('leaders') ?? undefined,

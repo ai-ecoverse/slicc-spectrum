@@ -309,6 +309,11 @@ export function alwaysHint(approval: SudoApproval): string {
     : `Always allow lets ${approval.requester.name} run exactly this command with sudo without asking again.`;
 }
 
+export function guestAlwaysHint(approval: GuestMessageApproval | GuestToolApproval): string {
+  const what = approval.kind === 'guest-message' ? 'messages' : `calls to ${approval.tool}`;
+  return `Always allow this guest’s ${what} in ${approval.agentName ?? 'this cone'}.`;
+}
+
 export function guestAsking(approval: GuestMessageApproval | GuestToolApproval): string {
   return approval.kind === 'guest-message'
     ? `${approval.requester.name} wants to send this to ${approval.agentName ?? 'this cone'}:`
@@ -317,8 +322,8 @@ export function guestAsking(approval: GuestMessageApproval | GuestToolApproval):
 
 export function guestWaiting(approval: GuestMessageApproval | GuestToolApproval): string {
   return approval.kind === 'guest-message'
-    ? `${approval.requester.name}'s message to ${approval.agentName ?? 'this cone'} waits for approval on the device in control.`
-    : `${approval.agentName ?? 'This cone'} wants to run ${approval.tool} for ${approval.requester.name}, which waits for approval on the device in control.`;
+    ? `${approval.requester.name}'s message to ${approval.agentName ?? 'this cone'} waits for the owner's approval.`
+    : `${approval.agentName ?? 'This cone'} wants to run ${approval.tool} for ${approval.requester.name}, which waits for the owner's approval.`;
 }
 
 const clear: SecretRulesVerdict = { certain: null, maybe: null };
@@ -522,8 +527,8 @@ export class SliccApprovals extends ModelElement {
     const port = this.model?.approvals;
     if (!port?.decide || this.busy || (decision !== 'deny' && !this.#armed)) return;
     const verdict = rulesOf(approval);
-    if (decision === 'always' && (approval.kind !== 'sudo' || verdict.certain || verdict.maybe))
-      return;
+    const always = approval.kind === 'sudo' || approval.always;
+    if (decision === 'always' && (!always || verdict.certain || verdict.maybe)) return;
     this.busy = decision;
     this.failure = null;
     this.#pending.add(approval.id);
@@ -684,8 +689,12 @@ export class SliccApprovals extends ModelElement {
     const failure = this.failure?.id === approval.id ? this.failure.message : '';
     const verdict = rulesOf(approval);
     const rules = verdict.certain ?? verdict.maybe;
-    const always = approval.kind === 'sudo' && approval.always && !rules;
-    const hint = approval.kind === 'sudo' && always ? alwaysHint(approval) : '';
+    const always = approval.always && !rules;
+    const hint = always
+      ? approval.kind === 'sudo'
+        ? alwaysHint(approval)
+        : guestAlwaysHint(approval)
+      : '';
     return this.#dialog(
       approval,
       approval.id,

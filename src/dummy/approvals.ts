@@ -20,6 +20,7 @@ export type ApprovalScenario =
   | 'secrets'
   | 'guest'
   | 'guest-follower'
+  | 'guest-always'
   | 'none';
 
 const minutes = 60_000;
@@ -74,6 +75,24 @@ function guestFixtures(now = Date.now()): Approval[] {
   ];
 }
 
+function guestAlways(now = Date.now()): Approval[] {
+  return [
+    {
+      id: 'guest-read',
+      kind: 'guest-tool',
+      requester: mara,
+      agentId: 'cone-sliccy',
+      agentName: 'sliccy',
+      tool: 'read_file',
+      summary: '/workspace/harbor/schedule.csv',
+      createdAt: now,
+      expiresAt: now + 5 * minutes,
+      always: true,
+      verdict: { decision: 'allow', reason: 'it reads a file inside the shared folder.' },
+    },
+  ];
+}
+
 export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): Approval[] {
   const agent: Approval = {
     id: 'sudo-jq',
@@ -118,6 +137,7 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
       },
     ];
   if (scenario === 'guest' || scenario === 'guest-follower') return guestFixtures(now);
+  if (scenario === 'guest-always') return guestAlways(now);
   if (scenario === 'none') return [];
   if (scenario === 'user') return [user];
   if (scenario === 'many') return [agent, user, cache];

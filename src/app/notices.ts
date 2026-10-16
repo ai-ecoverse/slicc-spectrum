@@ -210,7 +210,7 @@ export class SliccNotices extends ModelElement {
       <div class="text">
         <span class="title">Waiting for sudo approval</span>
         <p>${asking(approval)}: <code>${sudo(approval)}</code></p>
-        <p>Answer it in the tab running SLICC. Denied automatically at ${deadline(approval.expiresAt)}.</p>
+        <p>It waits for the owner's approval. Denied automatically at ${deadline(approval.expiresAt)}.</p>
       </div>
     </div>`;
   }
