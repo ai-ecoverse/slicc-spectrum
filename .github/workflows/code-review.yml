@@ -1,0 +1,182 @@
+name: Code review
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+    paths:
+      - 'src/**'
+      - '.github/workflows/code-review.yml'
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request to review
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: code-review
+    if: >-
+      github.event_name == 'workflow_dispatch' || (
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        !github.event.pull_request.draft
+      )
+    runs-on: ${{ vars.CERT_RUNNER }}
+    timeout-minutes: 90
+    concurrency:
+      group: code-review-${{ github.event.pull_request.number || inputs.pr_number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      head: ${{ steps.pr.outputs.head }}
+    env:
+      LEFTHOOK: '0'
+      NODE_OPTIONS: --max-old-space-size=8192
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: The pull request's head and base
+        id: pr
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: Number(process.env.PR_NUMBER) });
+            if (pr.head.repo?.full_name !== `${owner}/${repo}`) core.setFailed(`#${pr.number} comes from a fork`);
+            core.setOutput('head', pr.head.sha);
+            core.setOutput('base', pr.base.sha);
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ steps.pr.outputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+
+      - name: Install and build
+        run: npm ci --no-audit --no-fund && npm run build
+
+      - name: Review
+        id: review
+        uses: anthropics/claude-code-action@a26b07d8c778b0c43f64618e5fd29fd0f8af72e8
+        env:
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          AWS_REGION: ${{ vars.CERT_AWS_REGION || 'us-west-2' }}
+          GH_TOKEN: ${{ github.token }}
+        with:
+          use_bedrock: 'true'
+          github_token: ${{ github.token }}
+          show_full_output: ${{ github.event_name == 'workflow_dispatch' }}
+          claude_args: |
+            --model ${{ vars.CERT_BEDROCK_MODEL || 'global.anthropic.claude-opus-5-5' }}
+            --allowedTools "Bash,Read,Write,Glob,Grep"
+            --permission-mode bypassPermissions
+            --max-turns 200
+          prompt: |
+            You are the code reviewer for slicc-spectrum: SLICC's terminal and app shell as Lit web components on Spectrum Web Components, against a typed model (`src/model/`) with a dummy (`src/dummy/`) and a kernel model (`src/kernel/`). Review pull request ${{ env.PR_NUMBER }} of ${{ github.repository }}. Run: ${{ env.RUN_URL }}.
+
+            The current directory is the pull request (${{ steps.pr.outputs.head }}), installed and built. `git diff ${{ steps.pr.outputs.base }}...HEAD` is the change. Read `AGENTS.md` and the README sections the change touches first; the README is the contract.
+
+            Look for real defects, in this order:
+            1. Correctness: logic errors, races (Lit update timing, async ports that reject or resolve late, listeners that leak or fire twice), wrong event targets, focus and keyboard handling, state that survives when it shouldn't.
+            2. Contract: the code does what the README says, type changes in `src/model/` are additive only, and `data-id`, `data-action`, `data-surface` and `slot="status"` are not renamed.
+            3. Security: guest and approval paths never grant more than asked, no untrusted text reaches `innerHTML` or `unsafeHTML`, sprinkle frames stay sandboxed.
+            4. Tests: every behaviour change has an integration test in `test/integration/` through the public surface, and a fix's test would fail on the old code.
+            5. Repo rules: no comments, no React, Spectrum components imported one by one, `--swc-*` tokens only, no em dashes or uppercase labels in copy.
+            You may run `npm run lint`, `npm run build` and single integration tests to confirm a finding. Don't report style preferences, and don't report anything you haven't confirmed in the code.
+
+            Write your findings to `${{ runner.temp }}/review/findings.json` as a JSON array of `{ "path": "src/…", "line": <line in the pull request's version of the file, on a line the diff adds or changes>, "severity": "P1" | "P2" | "P3", "body": "<what is wrong, why, and a concrete fix>" }`. Write `[]` when you find nothing. Write a short summary to `${{ runner.temp }}/review/summary.md`: a one-line verdict (looks good / minor issues / needs changes), then what you checked. Don't edit, commit or push anything, approve or request changes, or comment on the pull request yourself.
+
+      - name: Evidence
+        if: always()
+        env:
+          EXECUTION: ${{ steps.review.outputs.execution_file }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/review"
+          cp "${EXECUTION:-$RUNNER_TEMP/claude-execution-output.json}" "$RUNNER_TEMP/review/claude-turns.json" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: code-review-${{ env.PR_NUMBER }}
+          path: ${{ runner.temp }}/review/
+          if-no-files-found: ignore
+
+  post:
+    name: code-review / post
+    needs: review
+    if: always() && needs.review.result == 'success'
+    runs-on: ${{ vars.CERT_LIGHT_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    permissions:
+      pull-requests: write
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+      HEAD_SHA: ${{ needs.review.outputs.head }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: code-review-${{ env.PR_NUMBER }}
+          path: review
+
+      - name: Post the review
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            const fs = require('node:fs');
+            const { owner, repo } = context.repo;
+            const pull_number = Number(process.env.PR_NUMBER);
+            const read = (name, fallback) => (fs.existsSync(`review/${name}`) ? fs.readFileSync(`review/${name}`, 'utf8') : fallback);
+            let findings = [];
+            try {
+              findings = JSON.parse(read('findings.json', '[]'));
+            } catch (error) {
+              core.warning(`findings.json is not JSON: ${error.message}`);
+            }
+            if (!Array.isArray(findings)) findings = [];
+            const summary = read('summary.md', 'The review wrote no summary.').trim();
+            const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number });
+            const changed = new Map();
+            for (const file of files) {
+              const lines = new Set();
+              let line = 0;
+              for (const row of (file.patch ?? '').split('\n')) {
+                const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)/.exec(row);
+                if (hunk) {
+                  line = Number(hunk[1]);
+                  continue;
+                }
+                if (row.startsWith('-')) continue;
+                lines.add(line);
+                line++;
+              }
+              changed.set(file.filename, lines);
+            }
+            const text = (f) => `**${f.severity ?? 'P2'}** ${f.body}`;
+            const inline = findings.filter((f) => changed.get(f.path)?.has(Number(f.line)));
+            const loose = findings.filter((f) => !inline.includes(f));
+            const body = [
+              summary,
+              ...loose.map((f) => `- \`${f.path}:${f.line}\`: ${text(f)}`),
+              `[Run](${process.env.RUN_URL})`,
+            ].join('\n\n');
+            await github.rest.pulls.createReview({
+              owner,
+              repo,
+              pull_number,
+              commit_id: process.env.HEAD_SHA,
+              event: 'COMMENT',
+              body: `## Code review\n\n${body}`,
+              comments: inline.map((f) => ({ path: f.path, line: Number(f.line), side: 'RIGHT', body: text(f) })),
+            });
+            core.summary.addRaw(`${findings.length} findings, ${inline.length} inline\n`).write();
