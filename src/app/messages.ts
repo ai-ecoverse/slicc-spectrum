@@ -840,7 +840,12 @@ function outside(label: string, byline: TemplateResult, content: TemplateResult)
   return html`<swc-conversation-turn type="user" class="event lick-turn" accessible-label=${label}><div class="bubble">${byline}${content}</div></swc-conversation-turn>`;
 }
 
-const ended = new Set(['Nobody approved this in time.', 'It was declined.', 'It was withdrawn.']);
+const ended = new Set([
+  'Nobody approved this in time.',
+  'It was declined.',
+  'It was withdrawn.',
+  'It was approved.',
+]);
 
 export function system(message: SystemMessage, handlers: Handlers): TemplateResult {
   if (message.kind === 'compaction') {
