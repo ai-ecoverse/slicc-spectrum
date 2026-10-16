@@ -340,7 +340,7 @@ test('a reviewed guest message waits above the composer, then ends as a declined
     };
   });
   assert.deepEqual(approved, {
-    text: '“Can you add Porto?” It was approved.',
+    text: 'It was approved.',
     next: 'user',
     own: true,
   });

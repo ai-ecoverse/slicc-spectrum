@@ -865,7 +865,7 @@ export function system(message: SystemMessage, handlers: Handlers): TemplateResu
       'Notice',
       html`<div class="marker notice" role="note" data-id=${message.id} data-ended>
         <span class="line"></span>
-        <span class="marker-text"><span class="said" title=${message.text}>“${message.text}”</span> <span class="outcome">${message.title}</span></span>
+        <span class="marker-text">${message.title === 'It was approved.' ? nothing : html`<span class="said" title=${message.text}>“${message.text}”</span> `}<span class="outcome">${message.title}</span></span>
         <span class="line"></span>
       </div>`
     );
