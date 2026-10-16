@@ -7844,7 +7844,7 @@ test('a guest message is asked as plain text, Deny is focused, and a rejected de
   );
   await click('deny');
   await ask('guest-fetch');
-  assert.equal(
+  assert.deepEqual(
     await page.evaluate(() => [
       window.approvals().querySelector('[data-verdict]').dataset.verdict,
       window
