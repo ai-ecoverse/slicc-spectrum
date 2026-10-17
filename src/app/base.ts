@@ -7,6 +7,17 @@ import type {
   SliccModel,
 } from '../model/types.ts';
 
+let typed = false;
+document.addEventListener('keydown', () => (typed = true), true);
+document.addEventListener('pointerdown', () => (typed = false), true);
+
+function keyboardFocus(): boolean {
+  let active = document.activeElement;
+  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+  if (!active || active === document.body) return typed;
+  return active.matches(':focus-visible');
+}
+
 export class ModelElement extends LitElement {
   static properties = { model: { attribute: false } };
   static shadowRootOptions: ShadowRootInit = {
@@ -30,11 +41,12 @@ export class ModelElement extends LitElement {
   }
 
   protected focusWith(options: FocusOptions, ...selectors: string[]): void {
+    const settled = { focusVisible: keyboardFocus(), ...options };
     const focus = () =>
       selectors
         .map((selector) => this.renderRoot.querySelector<HTMLElement>(selector))
         .find(Boolean)
-        ?.focus(options);
+        ?.focus(settled);
     if (this.hasUpdated) focus();
     else void this.updateComplete.then(focus);
   }
