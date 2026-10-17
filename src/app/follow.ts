@@ -26,8 +26,12 @@ const lights: Record<FollowLink, readonly [FollowVariant, (owner: string) => str
   failed: ['negative', (owner) => `Can’t reach ${owner}`],
 };
 
+export function refusedNow(state: FollowState | undefined): boolean {
+  return !!state?.refused && state.link === 'connected';
+}
+
 export function followLight(state: FollowState): FollowLight {
-  if (state.refused && state.link === 'connected')
+  if (refusedNow(state))
     return { variant: 'neutral', text: `Can’t follow ${state.owner}` };
   const [variant, text] = lights[state.link];
   return { variant, text: text(state.owner) };

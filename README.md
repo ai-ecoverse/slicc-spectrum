@@ -522,7 +522,7 @@ With `guests` and no `network`, it shows only the Guests section (no connection,
 
 #### `<slicc-tray>`
 
-The tray items in the header, each opening a panel when that panel is in `panels`: the connection (`#chip`, a status light with the float's name and followers, `data-surface="network"`, neutral and labelled "…, can’t follow" while the follow is `refused`) opens Network at its **Sync** section, and the budget (`#usage`, `data-surface="monitor"`) opens the Monitor.
+The tray items in the header, each opening a panel when that panel is in `panels`: the connection (`#chip`, a status light with the float's name and followers, `data-surface="network"`, neutral and labelled "…, can’t follow" while the follow is `refused` and `connected`, exactly when the follow light reads "Can’t follow") opens Network at its **Sync** section, and the budget (`#usage`, `data-surface="monitor"`) opens the Monitor.
 Without the panel an item is a plain status with its label.
 
 #### `<slicc-confirm>`

@@ -1,6 +1,7 @@
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { SliccModel, TrayBudget, TrayConnection, TrayStatus } from '../model/types.ts';
 import { ModelElement, meterVariant, shared } from './base.ts';
+import { refusedNow } from './follow.ts';
 
 export const connectionVariant: Record<TrayConnection, string> = {
   live: 'positive',
@@ -125,7 +126,7 @@ export class SliccTray extends ModelElement {
     const model = this.model;
     if (!model) return html``;
     const status = model.tray.status();
-    const refused = !!model.follow?.state().refused;
+    const refused = refusedNow(model.follow?.state());
     const connection = `${connectionLabel[status.connection]}${refused ? ', can’t follow' : ''}`;
     const followers = `${status.followers.length} ${status.followers.length === 1 ? 'follower' : 'followers'}`;
     const light = status.connection === 'live' ? status.name : `${status.name}, ${connection}`;
