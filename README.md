@@ -1,7 +1,7 @@
 # slicc-spectrum
 
 Web components for SLICC: `<slicc-terminal>`, and SLICC's app UI on [Spectrum Web Components](https://opensource.adobe.com/spectrum-web-components/) (see [UI](#ui)).
-`<slicc-terminal>` is a terminal built on [wterm](https://github.com/vercel-labs/wterm) (`@wterm/dom` 0.5.4, Zig/WASM VT core) that talks to [`@ai-ecoverse/slicc-kernel`](https://github.com/ai-ecoverse/slicc-kernel) through a small backend interface.
+`<slicc-terminal>` is a terminal built on [wterm](https://github.com/vercel-labs/wterm) (`@wterm/dom` 0.5.4 on the Ghostty VT core, `@wterm/ghostty` 0.5.4) that talks to [`@ai-ecoverse/slicc-kernel`](https://github.com/ai-ecoverse/slicc-kernel) through a small backend interface.
 It is a standards custom element with no framework and no shadow root, so it can move to a shared web-components repo unchanged.
 
 ```html
@@ -27,6 +27,7 @@ Setting it closes the current session and opens a new one.
 
 Fixed grid size.
 Without either, the grid fits the element and follows its size.
+When the width changes, soft-wrapped lines reflow to it, on the screen and in the scrollback, with their colours and attributes; lines that ended in a newline stay as they are.
 
 ### `ready`
 
@@ -64,7 +65,8 @@ Sends `SIGINT`, `SIGTSTP`, `SIGQUIT` or `SIGHUP` to the backend.
 
 ### `readText()`
 
-Resolves with the text of the scrollback and the screen.
+Resolves with the text of the scrollback and the screen, with soft-wrapped lines joined into one.
+The scrollback keeps 4 MB of cells, about 3,500 lines at 80 columns and 1,200 at 200.
 
 ### `focus()`
 
@@ -143,8 +145,8 @@ The stylesheet (wterm's plus the theme) is constructed once per document and ado
 
 ## Distribution
 
-`npm run build` writes `dist/slicc-terminal.js` (one ESM bundle with no bare imports), its source map and `dist/wterm.wasm`.
-The bundle loads the WASM with `new URL('./wterm.wasm', import.meta.url)`, so `dist/` works from any path, including from OPFS through the slicc-bios service worker. wterm's base64-inlined copy of the WASM is left out of the bundle.
+`npm run build` writes `dist/slicc-terminal.js` (one ESM bundle with no bare imports), its source map and `dist/ghostty-vt.wasm` (Ghostty's VT core, about 580 kB; it replaced the 27 kB `dist/wterm.wasm` of wterm's built-in core).
+The bundle loads the WASM with `new URL('./ghostty-vt.wasm', import.meta.url)`, so `dist/` works from any path, including from OPFS through the slicc-bios service worker. It is fetched once per page and compiled once per URL, streaming when it is served as `application/wasm`, and each terminal gets its own instance. wterm's base64-inlined copy of its built-in WASM is left out of the bundle.
 TypeScript declarations go to `dist/types/`, and the package's `types` export points at them.
 Set `SliccTerminal.wasmUrl` before the first element connects to load it from elsewhere.
 `dist/swc.css` (exported as `@ai-ecoverse/slicc-spectrum/swc.css`) is the pinned `@adobe/spectrum-wc` stylesheet with its tokens inlined, one file with no `@import`.
@@ -154,8 +156,14 @@ A page that puts a UI element straight into the document, such as a guest's page
 
 Things found while building this against wterm 0.5.4, recorded here, not pushed upstream:
 
-- The Zig core maps 24-bit colours (`38;2;r;g;b`) to the nearest of the 256 palette colours, and the DOM renderer draws the 6×6×6 cube in steps of 51 rather than xterm's 0/95/135/175/215/255.
-  `@wterm/ghostty` is the full-VT alternative.
+- The built-in Zig core doesn't reflow: on a resize it cuts or pads each row and keeps no soft-wrap flags (its bridge has no `getRowMetadata`), so a line wrapped at 45 columns stays on two rows at 120, and `readText()` and copy split it.
+  It also maps 24-bit colours (`38;2;r;g;b`) to the nearest of the 256 palette colours.
+  The element runs on `@wterm/ghostty` instead, which reflows on resize, keeps wrap flags in the scrollback and renders 24-bit and 256 colours exactly (xterm's 0/95/135/175/215/255 cube).
+- Ghostty resolves palette colours 0–15 to RGB inside the WASM, so wterm's `--term-color-N` variables (and `--slicc-terminal-color-N`) would stop applying.
+  The element gives the core a palette of 16 marker colours (`#51cc00` … `#51cc0f`) and maps cells in those colours back to palette indexes, so the CSS variables theme them and follow a theme switch, in the scrollback too. Text drawn in exactly one of those 24-bit colours shows in the theme's palette colour instead.
+- Ghostty answers OSC 10 and OSC 11 queries itself, with the colours it was loaded with. The element drops those replies and answers from the theme it shows.
+- Ghostty's `scrollbackLimit` is in bytes and allocated in pages, so the number of lines it keeps depends on the width. Its default of 10,000 bytes keeps about 300 lines at 200 columns; the element asks for 4 MB.
+- `WTerm.destroy()` doesn't dispose a core passed in as `core`. The element disposes it.
 - wterm sends pasted text with its `\n` line breaks unchanged, whereas xterm.js turns them into `\r`. The element does that conversion itself.
 - `@wterm/core` always ships the WASM inlined as base64 behind a dynamic import. A build without it, or an explicit entry point that takes a URL, would save the bundler plugin.
 - wterm focuses its input when it finishes mounting. `<slicc-terminals>` hands focus back to where it was unless the terminal was focused on purpose.

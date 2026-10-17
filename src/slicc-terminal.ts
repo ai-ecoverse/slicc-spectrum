@@ -1,4 +1,5 @@
 import { WTerm } from '@wterm/dom';
+import type { GhosttyCore } from '@wterm/ghostty';
 import {
   controlBytes,
   type TerminalBackend,
@@ -6,6 +7,7 @@ import {
   type TerminalSignal,
 } from './backend.ts';
 import { ColorQueries, colorReply, themeColors } from './color-query.ts';
+import { loadCore } from './ghostty.ts';
 import { adopt } from './styles.ts';
 
 const encoder = new TextEncoder();
@@ -18,10 +20,11 @@ function dimension(value: string | null): number | undefined {
 export class SliccTerminal extends HTMLElement {
   static observedAttributes = ['cols', 'rows'];
 
-  static wasmUrl = new URL('./wterm.wasm', import.meta.url).href;
+  static wasmUrl = new URL('./ghostty-vt.wasm', import.meta.url).href;
 
   #backend: TerminalBackend | null = null;
   #term: WTerm | null = null;
+  #core: GhosttyCore | null = null;
   #session: TerminalSession | null = null;
   #queue: Uint8Array[] | null = null;
   #generation = 0;
@@ -76,6 +79,8 @@ export class SliccTerminal extends HTMLElement {
     this.#close();
     this.#term?.destroy();
     this.#term = null;
+    this.#core?.dispose();
+    this.#core = null;
     this.replaceChildren();
     this.#renew();
   }
@@ -141,24 +146,31 @@ export class SliccTerminal extends HTMLElement {
     const cols = dimension(this.getAttribute('cols'));
     const rows = dimension(this.getAttribute('rows'));
     const mine = () => generation === this.#generation;
+    let core: GhosttyCore;
+    try {
+      core = await loadCore(SliccTerminal.wasmUrl);
+    } catch (error) {
+      if (mine()) throw error;
+      return;
+    }
+    if (!mine()) return core.dispose();
     const term = new WTerm(host, {
       cols,
       rows,
-      wasmUrl: SliccTerminal.wasmUrl,
+      core,
       onData: (data) => mine() && this.send(this.#pasting ? data.replace(/\r?\n/g, '\r') : data),
       onBinary: (data) => mine() && this.send(data),
       onResize: (c, r) => mine() && this.#resized(c, r),
       onTitle: (title) => mine() && this.#emit('title', { title }),
       onBell: (count) => mine() && this.#emit('bell', { count }),
     });
-    try {
-      await term.init();
-    } catch (error) {
-      if (generation === this.#generation) throw error;
-      return;
+    await term.init();
+    if (!mine()) {
+      term.destroy();
+      return core.dispose();
     }
-    if (generation !== this.#generation) return term.destroy();
     this.#term = term;
+    this.#core = core;
     this.attributeChangedCallback();
     await this.#open(generation);
   }
