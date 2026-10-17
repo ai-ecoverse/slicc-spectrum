@@ -374,3 +374,34 @@ test('a search in Files leaves its folders out of what a rebuilt Files opens', a
   assert.equal(await page.evaluate(() => !!window.treeRow('shared/MEMORY.md')), false);
   assert.deepEqual(page.errors, []);
 });
+
+test('a folder closed over open subfolders in Files stays closed after a rebuild', async (t) => {
+  const page = await open(t);
+  await viewport(page, 1280);
+  await show(page, 'files', 'slicc-file-tree');
+  await page.evaluate(() => {
+    window.treeRow = (path) =>
+      window
+        .part('files', 'slicc-file-tree')
+        ?.tree?.getFileTreeContainer()
+        ?.shadowRoot?.querySelector(`[data-item-path="${path}"]`) ?? null;
+    return true;
+  });
+  const src = 'workspace/harbor/src/';
+  const lib = 'workspace/harbor/src/lib/';
+  await page.until((lib) => !!window.treeRow(lib), lib);
+  await page.evaluate((src) => {
+    window.treeRow(src).click();
+    return true;
+  }, src);
+  await page.until((lib) => !window.treeRow(lib), lib);
+  await page.evaluate(() => {
+    window.outgoing = window.view('files');
+    return true;
+  });
+  await viewport(page, 420);
+  await show(page, 'files', 'slicc-file-tree');
+  await page.until((src) => window.view('files') !== window.outgoing && !!window.treeRow(src), src);
+  assert.equal(await page.evaluate((lib) => !!window.treeRow(lib), lib), false);
+  assert.deepEqual(page.errors, []);
+});

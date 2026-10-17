@@ -117,11 +117,17 @@ export class SliccFileTree extends HTMLElement {
 
   #expandedNow(): string[] {
     const tree = this.#tree;
+    const open = (path: string): boolean | null => {
+      const item = tree?.getItem(path);
+      return item && 'isExpanded' in item ? item.isExpanded() : null;
+    };
+    const shown = (path: string): boolean =>
+      path
+        .split('/')
+        .slice(0, -2)
+        .every((_, i, parts) => open(`${parts.slice(0, i + 1).join('/')}/`) !== false);
     return this.#paths
-      .filter((path) => {
-        const item = path.endsWith('/') ? tree?.getItem(path) : null;
-        return !!item && 'isExpanded' in item && item.isExpanded();
-      })
+      .filter((path) => path.endsWith('/') && open(path) === true && shown(path))
       .map((path) => path.slice(0, -1));
   }
 
