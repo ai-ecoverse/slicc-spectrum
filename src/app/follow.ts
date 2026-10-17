@@ -11,7 +11,7 @@ import type { FollowLink, FollowState, SliccModel } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
 import { confirm } from './confirm.ts';
 
-export type FollowVariant = 'info' | 'positive' | 'notice' | 'negative';
+export type FollowVariant = 'info' | 'positive' | 'notice' | 'negative' | 'neutral';
 
 export interface FollowLight {
   variant: FollowVariant;
@@ -27,6 +27,8 @@ const lights: Record<FollowLink, readonly [FollowVariant, (owner: string) => str
 };
 
 export function followLight(state: FollowState): FollowLight {
+  if (state.refused && state.link === 'connected')
+    return { variant: 'neutral', text: `Can’t follow ${state.owner}` };
   const [variant, text] = lights[state.link];
   return { variant, text: text(state.owner) };
 }
@@ -75,6 +77,7 @@ function list(items: readonly string[], last: string): string {
 }
 
 export function followCan(state: FollowState): string {
+  if (state.refused) return state.refused;
   const allowed = ['watch the agent'];
   const missing: string[] = [];
   (state.access.control ? allowed : missing).push('send prompts');
@@ -92,7 +95,9 @@ export function watchOnly(model: SliccModel | null | undefined): string {
   const text = model?.agent?.readOnly?.();
   if (text) return text;
   const state = following(model);
-  if (!state || state.access.control) return '';
+  if (!state) return '';
+  if (state.refused) return state.refused;
+  if (state.access.control) return '';
   return `Watch only. To send prompts from this device, allow Control for it on ${state.owner}.`;
 }
 
@@ -105,7 +110,7 @@ export function onWatch(model: SliccModel, listener: () => void): Array<() => vo
 
 export function terminalsAllowed(model: SliccModel | null | undefined): boolean {
   const state = model?.follow?.state();
-  return !state || !!state.access.terminal;
+  return !state || (!state.refused && !!state.access.terminal);
 }
 
 export class SliccFollow extends ModelElement {

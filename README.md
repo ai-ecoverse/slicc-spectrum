@@ -877,7 +877,9 @@ The guest's model lists only the cone, its `messages()` are the cone's transcrip
 
 Later backed by: BIOS.
 Only on a follower page, a SLICC that shows another SLICC's agent over a link.
-`state()` returns the `FollowState`: `owner` (its display name), `link` (`connecting` for the first connection, `connected`, `reconnecting` after a connection dropped, `unlinked` when the owner unlinked this device, or `failed`), `access` (`{ view, control, terminal }`, what the owner allows this device), an optional `name` (this device's name on the owner, for the waiting page) and an optional `error` (shown when `failed`).
+`state()` returns the `FollowState`: `owner` (its display name), `link` (`connecting` for the first connection, `connected`, `reconnecting` after a connection dropped, `unlinked` when the owner unlinked this device, or `failed`), `access` (`{ view, control, terminal }`, what the owner allows this device), an optional `name` (this device's name on the owner, for the waiting page), an optional `error` (shown when `failed`) and an optional `refused`.
+`refused` is the agent's sentence while the owner's agent won't take this device, such as another agent version; clear it once a follow session connects.
+While it's set and `link` is `connected`, the follow light is neutral and reads "Can’t follow {owner}", its popover shows `refused`, the chat has no watch-only note for it (the embedder shows the warning; an agent port's own `readOnly` sentence still shows), and the page stays read-only with terminals off, even with Control.
 Emit `follow` when it changes.
 Connected without `view` means waiting to be allowed.
 `leave()` forgets the link and the optional `retry()` tries again from `failed`.
@@ -912,7 +914,7 @@ Like bios, `actions()` keeps the latest 500 per tab from the last 24 hours, 5,00
 `createDummyModel({ tabs: 'owner' | 'follower' | 'connecting' | 'stalled' | 'newer' | 'older' | 'alone' | 'off' })` (or `?tabs=` on `/ui/`, off by default) adds a tabs port in that state; `model.tabs.setScenario()` switches it, and Reload connects again and becomes a follower after a short wait.
 `tabsFixtures` and `DummyTabs` are exported from `/dummy`.
 
-`createDummyModel({ follow: 'connecting' | 'waiting' | 'watch' | 'control' | 'full' | 'reconnecting' | 'unlinked' | 'failed' })` (`?follow=` on `/ui/`, which then leaves out the network port and offers only agents, chat, terminal and settings) makes the page a follower of SLICC on quay-studio: connecting, waiting to be allowed, View only, View and Control, everything, reconnecting, unlinked, or failed, where Try again connects with everything allowed.
+`createDummyModel({ follow: 'connecting' | 'waiting' | 'watch' | 'control' | 'full' | 'reconnecting' | 'unlinked' | 'failed' | 'refused' })` (`?follow=` on `/ui/`, which then leaves out the network port and offers only agents, chat, terminal and settings) makes the page a follower of SLICC on quay-studio: connecting, waiting to be allowed, View only, View and Control, everything, reconnecting, unlinked, failed, where Try again connects with everything allowed, or refused, with everything allowed but another agent version.
 Leave counts in `model.follow.left` (the `/ui/` page then drops `?follow=`), and `model.follow.setScenario()` switches it.
 `followFixtures` and `DummyFollow` are exported from `/dummy`.
 `?links=followers` lists quay-studio (a CLI on this computer, Control always allowed), pier-nuc (a remote CLI, prompting), bay-laptop (a follower with everything allowed, watching, a terminal open), reef-phone (View only, watching) and tide-tablet (asking to follow); every links scenario has a follow link.

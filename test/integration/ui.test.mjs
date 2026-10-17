@@ -8647,6 +8647,60 @@ test('Accounts keeps a vault-backed key in the vault and never shows it', async 
   assert.deepEqual(page.errors, []);
 });
 
+test('a follower the owner’s agent refuses reads Can’t follow, has no watch note, and stays read-only even with Control', async (t) => {
+  const page = await open(t, { follow: 'refused' });
+  await page.evaluate(() => {
+    window.chat = () => window.$('slicc-app', 'slicc-dock').content('chat:cone-sliccy')?.shadowRoot;
+    window.agentsRow = () => window.$('slicc-app', 'slicc-dock').content('agents')?.shadowRoot;
+    window.chip = () => window.$('slicc-app', 'slicc-follow')?.shadowRoot;
+    return true;
+  });
+  await page.until(() => window.chat()?.querySelector('.log'));
+  await page.until(() => window.agentsRow()?.querySelectorAll('li').length > 0);
+  const sentence =
+    'That SLICC runs another version of the agent, so this tab can’t follow it. Update both SLICCs, then reload this page.';
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.chip().querySelector('#chip').dataset.follow,
+      window.chip().querySelector('swc-status-light').getAttribute('variant'),
+      window.chip().querySelector('swc-status-light').textContent.trim(),
+      window.chip().querySelector('[data-can]').textContent.trim(),
+      !!window.chat().querySelector('[data-follow=watch]'),
+      !!window.chat().querySelector('slicc-composer'),
+      !!window.agentsRow().querySelector('[data-action=new-cone]'),
+    ]),
+    ['connected', 'neutral', 'Can’t follow SLICC on quay-studio', sentence, false, false, false]
+  );
+  await page.evaluate(() => {
+    window.model.agent.setReadOnly('Watch only. The SLICC you follow runs a newer version.');
+    return true;
+  });
+  await page.until(() => !!window.chat().querySelector('[data-follow=watch]'));
+  assert.equal(
+    await page.evaluate(() =>
+      window.chat().querySelector('[data-follow=watch]').textContent.trim()
+    ),
+    'Watch only. The SLICC you follow runs a newer version.'
+  );
+  await page.evaluate(() => {
+    window.model.agent.setReadOnly(null);
+    return true;
+  });
+  await page.evaluate(() => {
+    window.model.follow.setScenario('full');
+    return true;
+  });
+  await page.until(() => !!window.chat().querySelector('slicc-composer'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.chip().querySelector('swc-status-light').getAttribute('variant'),
+      window.chip().querySelector('swc-status-light').textContent.trim(),
+    ]),
+    ['positive', 'Following SLICC on quay-studio']
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a panel that takes focus without the keyboard shows no focus ring, and shows one when the keyboard brought it there', async (t) => {
   const page = await open(t, { readonly: 'version' });
   await page.evaluate(() => {
