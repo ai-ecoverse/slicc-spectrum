@@ -879,7 +879,7 @@ Later backed by: BIOS.
 Only on a follower page, a SLICC that shows another SLICC's agent over a link.
 `state()` returns the `FollowState`: `owner` (its display name), `link` (`connecting` for the first connection, `connected`, `reconnecting` after a connection dropped, `unlinked` when the owner unlinked this device, or `failed`), `access` (`{ view, control, terminal }`, what the owner allows this device), an optional `name` (this device's name on the owner, for the waiting page), an optional `error` (shown when `failed`) and an optional `refused`.
 `refused` is the agent's sentence while the owner's agent won't take this device, such as another agent version; clear it once a follow session connects.
-While it's set and `link` is `connected`, the follow light is neutral and reads "Can’t follow {owner}", its popover shows `refused`, the chat has no watch-only note (the embedder shows the warning), and the page stays read-only with terminals off, even with Control.
+While it's set and `link` is `connected`, the follow light is neutral and reads "Can’t follow {owner}", its popover shows `refused`, the chat has no watch-only note for it (the embedder shows the warning; an agent port's own `readOnly` sentence still shows), and the page stays read-only with terminals off, even with Control.
 Emit `follow` when it changes.
 Connected without `view` means waiting to be allowed.
 `leave()` forgets the link and the optional `retry()` tries again from `failed`.

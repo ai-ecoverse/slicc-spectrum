@@ -838,7 +838,7 @@ export class SliccChat extends ThemedElement {
       }
       ${
         watch
-          ? following(this.model)?.refused
+          ? watch === following(this.model)?.refused
             ? nothing
             : html`<p class="watch-only" role="note" data-follow="watch">${watch}</p>`
           : this.model && !agent?.frozen

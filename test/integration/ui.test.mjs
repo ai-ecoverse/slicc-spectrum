@@ -8672,6 +8672,21 @@ test('a follower the owner’s agent refuses reads Can’t follow, has no watch 
     ['connected', 'neutral', 'Can’t follow SLICC on quay-studio', sentence, false, false, false]
   );
   await page.evaluate(() => {
+    window.model.agent.setReadOnly('Watch only. The SLICC you follow runs a newer version.');
+    return true;
+  });
+  await page.until(() => !!window.chat().querySelector('[data-follow=watch]'));
+  assert.equal(
+    await page.evaluate(() =>
+      window.chat().querySelector('[data-follow=watch]').textContent.trim()
+    ),
+    'Watch only. The SLICC you follow runs a newer version.'
+  );
+  await page.evaluate(() => {
+    window.model.agent.setReadOnly(null);
+    return true;
+  });
+  await page.evaluate(() => {
     window.model.follow.setScenario('full');
     return true;
   });
