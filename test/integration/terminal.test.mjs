@@ -23,7 +23,7 @@ test('the element mounts and renders the prompt from the backend', async (t) => 
   );
 
   assert.ok(size.cols > 40 && size.rows > 10, JSON.stringify(size));
-  assert.ok(chrome.requests.includes('/dist/wterm.wasm'), chrome.requests.join());
+  assert.ok(chrome.requests.includes('/dist/ghostty-vt.wasm'), chrome.requests.join());
   assert.deepEqual(
     chrome.requests.filter((path) => path.startsWith('/node_modules/')),
     []
@@ -145,8 +145,8 @@ test('backend output with colors and cursor movement renders', async (t) => {
   assert.equal(styles.red.color, 'rgb(244, 71, 71)');
   assert.deepEqual([styles.green.color, styles.green.weight], ['rgb(106, 153, 85)', '700']);
   assert.deepEqual([styles.blue.color, styles.blue.decoration], ['rgb(86, 156, 214)', 'underline']);
-  assert.equal(styles.truecolor.color, 'rgb(255, 153, 0)');
-  assert.equal(styles.bg.background, 'rgb(0, 51, 0)');
+  assert.equal(styles.truecolor.color, 'rgb(255, 128, 0)');
+  assert.equal(styles.bg.background, 'rgb(0, 95, 0)');
 
   const cursor = await page.evaluate(() => {
     const rows = [...document.querySelectorAll('slicc-terminal .term-row')];
@@ -621,7 +621,7 @@ test('a mount that fails after the element was removed does not poison the next 
     terminal.setAttribute('rows', '4');
     const errors = [];
     terminal.addEventListener('error', ({ detail }) => errors.push(String(detail.error)));
-    Terminal.wasmUrl = new URL('/missing/wterm.wasm', location.href).href;
+    Terminal.wasmUrl = new URL('/missing/ghostty-vt.wasm', location.href).href;
     const stage = document.getElementById('stage');
     stage.replaceChildren(terminal);
     terminal.remove();
@@ -773,5 +773,144 @@ test('input buffered for an open that is superseded or fails is dropped', async 
     return { first: first.text(), second: second.text(), third: third.text() };
   });
   assert.deepEqual(result, { first: '', second: '', third: 'live' });
+  assert.deepEqual(page.errors, []);
+});
+
+test('soft-wrapped output reflows when the terminal widens and re-wraps when it narrows', async (t) => {
+  const { page } = await mounted(t, {}, { cols: '45', rows: '8' });
+  const segments = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((c) => `/${c.repeat(10)}`);
+  const line = segments.join('');
+  const colored = `${segments.slice(0, 3).join('')}\x1b[1;31m${segments.slice(3, 5).join('')}\x1b[0m${segments.slice(5).join('')}`;
+  await page.evaluate((text) => {
+    window.backend.emit(`\x1b[2J\x1b[H${text}\r\nnext`);
+  }, colored);
+  const state = () =>
+    page.evaluate(async () => ({
+      text: await window.terminal.readText(),
+      rows: [...document.querySelectorAll('slicc-terminal .term-row')].map((row) =>
+        row.textContent.trimEnd()
+      ),
+      cols: window.terminal.cols,
+    }));
+  const style = () =>
+    page.evaluate(() => {
+      const span = [...document.querySelectorAll('slicc-terminal .term-row span')].find((s) =>
+        s.textContent.startsWith('/dddddddddd')
+      );
+      const computed = getComputedStyle(span);
+      return [span.textContent, computed.color, computed.fontWeight];
+    });
+  await page.until(() =>
+    document.querySelector('slicc-terminal .term-grid').textContent.includes('next')
+  );
+  const narrow = await state();
+  assert.equal(narrow.cols, 45);
+  assert.deepEqual(narrow.rows.slice(0, 3), [line.slice(0, 45), line.slice(45), 'next']);
+  assert.equal(narrow.text.split('\n')[0], line);
+
+  await page.evaluate(() => window.terminal.resize(120, 8));
+  await page.until(
+    (text) => document.querySelector('slicc-terminal .term-row')?.textContent.trimEnd() === text,
+    line
+  );
+  const wide = await state();
+  assert.equal(wide.cols, 120);
+  assert.deepEqual(wide.rows.slice(0, 2), [line, 'next']);
+  assert.deepEqual(wide.text.split('\n').slice(0, 2), [line, 'next']);
+  assert.deepEqual(await style(), ['/dddddddddd/eeeeeeeeee', 'rgb(244, 71, 71)', '700']);
+
+  await page.evaluate(() => window.terminal.resize(45, 8));
+  await page.until(
+    (text) => document.querySelector('slicc-terminal .term-row')?.textContent.trimEnd() === text,
+    line.slice(0, 45)
+  );
+  const again = await state();
+  assert.deepEqual(again.rows.slice(0, 3), [line.slice(0, 45), line.slice(45), 'next']);
+  assert.equal(again.text.split('\n')[0], line);
+
+  await page.evaluate(() => {
+    document.getElementById('stage').style.width = '1400px';
+    window.terminal.fit();
+  });
+  await page.until(
+    (text) => document.querySelector('slicc-terminal .term-row')?.textContent.trimEnd() === text,
+    line
+  );
+  const fitted = await state();
+  assert.ok(fitted.cols > 88, `fit() should widen past 88 columns, got ${fitted.cols}`);
+  assert.deepEqual(fitted.rows.slice(0, 2), [line, 'next']);
+  assert.deepEqual(fitted.text.split('\n').slice(0, 2), [line, 'next']);
+  assert.deepEqual(await style(), ['/dddddddddd/eeeeeeeeee', 'rgb(244, 71, 71)', '700']);
+  assert.deepEqual(page.errors, []);
+});
+
+test('palette colours follow custom properties changed after the output, in history too', async (t) => {
+  const { page } = await mounted(t, {}, { cols: '40', rows: '4' });
+  await page.evaluate(() =>
+    window.backend.emit(
+      '\x1b[2J\x1b[H\x1b[31mold red\x1b[0m\r\n\x1b[38;5;196mcube\x1b[0m\r\n\r\n\r\n\r\n\x1b[41m back \x1b[0m'
+    )
+  );
+  await page.until(() =>
+    document.querySelector('slicc-terminal .term-grid').textContent.includes('back')
+  );
+  const colors = () =>
+    page.evaluate(() => {
+      const spans = [...document.querySelectorAll('slicc-terminal .term-row span')];
+      const pick = (text, prop) => {
+        const span = spans.find((s) => s.textContent === text);
+        return span ? getComputedStyle(span)[prop] : null;
+      };
+      return { cube: pick('cube', 'color'), back: pick(' back ', 'backgroundColor') };
+    });
+  assert.deepEqual(await colors(), { cube: 'rgb(255, 0, 0)', back: 'rgb(244, 71, 71)' });
+  await page.evaluate(() => {
+    window.terminal.style.setProperty('--slicc-terminal-color-1', 'rgb(1, 2, 3)');
+  });
+  assert.deepEqual(await colors(), { cube: 'rgb(255, 0, 0)', back: 'rgb(1, 2, 3)' });
+  await page.evaluate(() => window.backend.emit('\x1b]4;1;?\x07'));
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  assert.equal(await page.evaluate(received), '');
+  const red = await page.evaluate(() => {
+    const span = [...document.querySelectorAll('slicc-terminal .term-row span')].find(
+      (s) => s.textContent === 'old red'
+    );
+    return span && getComputedStyle(span).color;
+  });
+  assert.equal(red, 'rgb(1, 2, 3)');
+  assert.deepEqual(page.errors, []);
+});
+
+test('copying a soft-wrapped line gives one line, and wide terminals keep 1000 lines of history', async (t) => {
+  const { page } = await mounted(t, {}, { cols: '20', rows: '4' });
+  const line = 'abcdefghij'.repeat(3);
+  await page.evaluate((text) => window.backend.emit(`\x1b[2J\x1b[H${text}\r\nend`), line);
+  await page.until(() =>
+    document.querySelector('slicc-terminal .term-grid').textContent.includes('end')
+  );
+  const copied = await page.evaluate(() => {
+    const rows = document.querySelectorAll('slicc-terminal .term-row');
+    const range = document.createRange();
+    range.setStart(rows[0], 0);
+    range.setEnd(rows[1], rows[1].childNodes.length);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    const data = new DataTransfer();
+    document.dispatchEvent(
+      new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true })
+    );
+    return data.getData('text/plain');
+  });
+  assert.equal(copied.trimEnd(), line);
+
+  await page.evaluate(() => window.terminal.resize(200, 24));
+  const history = await page.evaluate(async () => {
+    let text = '';
+    for (let i = 0; i < 3000; i++) text += `line ${i}\r\n`;
+    window.terminal.write(text);
+    await new Promise(requestAnimationFrame);
+    return (await window.terminal.readText()).split('\n');
+  });
+  assert.ok(history.length >= 1000, `kept ${history.length} lines`);
   assert.deepEqual(page.errors, []);
 });

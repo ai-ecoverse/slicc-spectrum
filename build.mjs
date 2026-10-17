@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
 const dist = new URL('./dist/', import.meta.url);
-const wasm = new URL('./node_modules/@wterm/core/wasm/wterm.wasm', import.meta.url);
+const wasm = new URL('./node_modules/@wterm/ghostty/wasm/ghostty-vt.wasm', import.meta.url);
 const dockview = new URL('./node_modules/dockview-core/dist/dockview-core.js', import.meta.url);
 
 const inline = {
@@ -105,7 +105,7 @@ const dockviewCss = {
 
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
-await copyFile(wasm, new URL('wterm.wasm', dist));
+await copyFile(wasm, new URL('ghostty-vt.wasm', dist));
 await mkdir(new URL('fonts/', dist), { recursive: true });
 for (const weight of [400, 600]) {
   const name = `source-code-pro-latin-${weight}-normal.woff2`;
