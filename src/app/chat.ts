@@ -20,7 +20,7 @@ import type {
 import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
 import type { SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
-import { onWatch, watchOnly } from './follow.ts';
+import { following, onWatch, watchOnly } from './follow.ts';
 import {
   assistant,
   day,
@@ -838,7 +838,9 @@ export class SliccChat extends ThemedElement {
       }
       ${
         watch
-          ? html`<p class="watch-only" role="note" data-follow="watch">${watch}</p>`
+          ? following(this.model)?.refused
+            ? nothing
+            : html`<p class="watch-only" role="note" data-follow="watch">${watch}</p>`
           : this.model && !agent?.frozen
             ? html`<slicc-composer .model=${this.model} .agent=${this.agent}></slicc-composer>`
             : nothing

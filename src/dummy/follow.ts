@@ -10,7 +10,8 @@ export type FollowScenario =
   | 'full'
   | 'reconnecting'
   | 'unlinked'
-  | 'failed';
+  | 'failed'
+  | 'refused';
 
 const owner = 'SLICC on quay-studio';
 const name = 'SLICC on reef-phone';
@@ -32,6 +33,14 @@ export function followFixtures(scenario: FollowScenario): FollowState {
       link: 'failed',
       access: none,
       error: `Couldn’t reach ${owner}. It may be closed or offline.`,
+    };
+  if (scenario === 'refused')
+    return {
+      ...base,
+      link: 'connected',
+      access: full,
+      refused:
+        'That SLICC runs another version of the agent, so this tab can’t follow it. Update both SLICCs, then reload this page.',
     };
   return { ...base, link: 'connected', access: full };
 }

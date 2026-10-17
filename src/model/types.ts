@@ -1001,6 +1001,7 @@ export interface FollowState {
   access: DeviceAccess;
   name?: string;
   error?: string;
+  refused?: string;
 }
 
 export interface FollowPort extends Subscribable<{ follow: FollowState }> {
