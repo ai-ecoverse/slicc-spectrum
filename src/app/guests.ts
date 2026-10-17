@@ -40,7 +40,7 @@ export interface GateOption {
 
 export type GateField = 'messages' | 'tools';
 
-const approve = 'A person with Control approves each one.';
+const approve = 'Any of your devices can approve, with or without Control.';
 
 const defaultGates: Record<GateField, readonly GuestGate[]> = {
   messages: ['user', 'agent', 'cone', 'scoop:*', 'off'],

@@ -5489,6 +5489,10 @@ test('guests: a port whose gates() allow tools off offers No review for tool cal
     })),
     { tools: ['user', 'agent', 'scoop:tidal-wren', 'off'], value: 'user' }
   );
+  assert.equal(
+    await page.evaluate(() => window.invite('[data-help=messages]')?.textContent.trim()),
+    'Any of your devices can approve, with or without Control.'
+  );
   await page.evaluate(() => {
     const picker = window.invite('#guest-tools');
     picker.value = 'off';
