@@ -384,3 +384,20 @@ test('another seat with the guest’s name reads as theirs, not the guest’s ow
     'Hi! Could you add the weekend to the forecast table?'
   );
 });
+
+test('the guest page themes from the shipped swc.css, one file with the tokens inlined', async (t) => {
+  const page = await open(t, {});
+  const sheet = await page.evaluate(async () => {
+    const link = document.querySelector('link[rel=stylesheet][href$="swc.css"]');
+    const text = await (await fetch(link.href)).text();
+    const theme = getComputedStyle(document.querySelector('.swc-theme'));
+    return {
+      href: new URL(link.href).pathname,
+      imports: text.includes('@import'),
+      size: theme.getPropertyValue('--swc-font-size-100').trim(),
+      family: theme.getPropertyValue('--swc-body-sans-serif-font-family').trim().length > 0,
+    };
+  });
+  assert.deepEqual(sheet, { href: '/dist/swc.css', imports: false, size: '14px', family: true });
+  assert.deepEqual(page.errors, []);
+});

@@ -134,6 +134,13 @@ const { metafile } = await build({
   logLevel: 'warning',
   metafile: true,
 });
+await build({
+  entryPoints: { swc: 'node_modules/@adobe/spectrum-wc/dist/swc.css' },
+  outdir: 'dist',
+  bundle: true,
+  loader: { '.css': 'css' },
+  logLevel: 'warning',
+});
 const react = Object.keys(metafile.inputs).filter((input) =>
   /node_modules\/react(-dom)?\//.test(input)
 );
