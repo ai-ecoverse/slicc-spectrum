@@ -1,6 +1,7 @@
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { SliccModel, TrayBudget, TrayConnection, TrayStatus } from '../model/types.ts';
 import { ModelElement, meterVariant, shared } from './base.ts';
+import { refusedNow } from './follow.ts';
 
 export const connectionVariant: Record<TrayConnection, string> = {
   live: 'positive',
@@ -93,7 +94,10 @@ export class SliccTray extends ModelElement {
   ];
 
   protected subscribe(model: SliccModel): Array<() => void> {
-    return [model.tray.on('status', () => this.requestUpdate())];
+    return [
+      model.tray.on('status', () => this.requestUpdate()),
+      ...(model.follow ? [model.follow.on('follow', () => this.requestUpdate())] : []),
+    ];
   }
 
   #open(id: string, section?: string): void {
@@ -122,7 +126,8 @@ export class SliccTray extends ModelElement {
     const model = this.model;
     if (!model) return html``;
     const status = model.tray.status();
-    const connection = connectionLabel[status.connection];
+    const refused = refusedNow(model.follow?.state());
+    const connection = `${connectionLabel[status.connection]}${refused ? ', can’t follow' : ''}`;
     const followers = `${status.followers.length} ${status.followers.length === 1 ? 'follower' : 'followers'}`;
     const light = status.connection === 'live' ? status.name : `${status.name}, ${connection}`;
     const budget = shownBudget(status);
@@ -131,7 +136,7 @@ export class SliccTray extends ModelElement {
       'network',
       `Tray ${status.name}: ${connection}, ${followers}`,
       html`<span>
-          <swc-status-light size="s" variant=${connectionVariant[status.connection]}>
+          <swc-status-light size="s" variant=${refused ? 'neutral' : connectionVariant[status.connection]}>
             <span class="detail">${light}</span>
           </swc-status-light>
           <span class="detail muted followers"><swc-icon-user-group size="s"></swc-icon-user-group>${status.followers.length}</span>
