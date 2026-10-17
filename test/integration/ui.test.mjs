@@ -8675,6 +8675,17 @@ test('a follower the owner’s agent refuses reads Can’t follow, has no watch 
     ]),
     ['connected', 'neutral', 'Can’t follow SLICC on quay-studio', sentence, false, false, false]
   );
+  const tray = () => {
+    const root = window.$('slicc-app', 'slicc-tray').shadowRoot;
+    return [
+      root.querySelector('#chip swc-status-light').getAttribute('variant'),
+      root.querySelector('#chip').getAttribute('accessible-label') ??
+        root.querySelector('#chip').getAttribute('aria-label'),
+    ];
+  };
+  const [variant, label] = await page.evaluate(tray);
+  assert.equal(variant, 'neutral');
+  assert.match(label, /: Live, can’t follow, /);
   await page.evaluate(() => {
     window.model.agent.setReadOnly('Watch only. The SLICC you follow runs a newer version.');
     return true;
@@ -8701,6 +8712,13 @@ test('a follower the owner’s agent refuses reads Can’t follow, has no watch 
       window.chip().querySelector('swc-status-light').textContent.trim(),
     ]),
     ['positive', 'Following SLICC on quay-studio']
+  );
+  await page.until(
+    () =>
+      window
+        .$('slicc-app', 'slicc-tray')
+        .shadowRoot.querySelector('#chip swc-status-light')
+        .getAttribute('variant') === 'positive'
   );
   assert.deepEqual(page.errors, []);
 });
