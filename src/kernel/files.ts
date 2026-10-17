@@ -12,7 +12,13 @@ interface Observer {
   disconnect(): void;
 }
 
-type ObserverConstructor = new (callback: () => void) => Observer;
+interface ChangeRecord {
+  type: string;
+  relativePathComponents: readonly string[];
+  relativePathMovedFrom?: readonly string[] | null;
+}
+
+type ObserverConstructor = new (callback: (records: readonly ChangeRecord[]) => void) => Observer;
 
 function split(path: string): string[] {
   return path.split('/').filter(Boolean);
@@ -33,6 +39,8 @@ export class KernelFiles extends Emitter<FileEvents> implements FilePort {
   #again = false;
   #timer: ReturnType<typeof setInterval> | null = null;
   #observer: Observer | null = null;
+  #pending: ReturnType<typeof setTimeout> | null = null;
+  #last = Number.NEGATIVE_INFINITY;
 
   constructor(
     root: FileSystemDirectoryHandle,
@@ -53,7 +61,7 @@ export class KernelFiles extends Emitter<FileEvents> implements FilePort {
       this.#poll();
       return;
     }
-    const observer = new Observer(() => void this.refresh());
+    const observer = new Observer((records) => this.#observed(records));
     this.#observer = observer;
     observer.observe(this.#root, { recursive: true }).catch(() => {
       if (this.#observer !== observer) return;
@@ -66,9 +74,39 @@ export class KernelFiles extends Emitter<FileEvents> implements FilePort {
     this.#timer = setInterval(() => void this.refresh(), this.#interval);
   }
 
+  #observed(records: readonly ChangeRecord[]): void {
+    if (records.length > 0 && records.every((record) => this.#unseen(record))) return;
+    if (this.#pending) return;
+    const wait = Math.max(0, this.#last + this.#interval - performance.now());
+    this.#pending = setTimeout(() => {
+      this.#pending = null;
+      this.#last = performance.now();
+      void this.refresh();
+    }, wait);
+  }
+
+  #unseen({ type, relativePathComponents, relativePathMovedFrom }: ChangeRecord): boolean {
+    if (type === 'unknown' || type === 'errored') return false;
+    return [relativePathComponents, relativePathMovedFrom ?? relativePathComponents].every(
+      (parts) => this.#beneath(parts)
+    );
+  }
+
+  #beneath(parts: readonly string[]): boolean {
+    let path = '';
+    for (const [i, part] of parts.entries()) {
+      path += `/${part}`;
+      if (this.#hide.has(path)) return true;
+      if (this.#skip.has(path) && i < parts.length - 1) return true;
+    }
+    return false;
+  }
+
   stop(): void {
     if (this.#timer) clearInterval(this.#timer);
     this.#timer = null;
+    if (this.#pending) clearTimeout(this.#pending);
+    this.#pending = null;
     this.#observer?.disconnect();
     this.#observer = null;
   }
