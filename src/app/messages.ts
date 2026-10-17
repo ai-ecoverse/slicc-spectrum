@@ -56,6 +56,7 @@ import type {
   UserMessage,
 } from '../model/types.ts';
 import { markdown } from './markdown.ts';
+import type { ViewSet } from './view-state.ts';
 
 export interface Handlers {
   color: 'light' | 'dark';
@@ -71,6 +72,7 @@ export interface Handlers {
   owners?: ReadonlyMap<string, Owner>;
   agentId?: string;
   seat?: string;
+  licks?: ViewSet;
 }
 
 export interface Owner {
@@ -1038,7 +1040,7 @@ export function lick(
       html`<div class="lick-frame"><div class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}><div class="lick-head">${head}</div></div>${reaction}</div>`
     );
   }
-  const details = html`<details class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}>
+  const details = html`<details class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing} ?open=${handlers.licks?.has(message.id) ?? false} @toggle=${handlers.licks?.details(message.id) ?? nothing}>
     <summary class="lick-head">${head}<swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right></summary>
     <pre class="output">${message.body}</pre>
   </details>`;

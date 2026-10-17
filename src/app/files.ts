@@ -9,6 +9,7 @@ import type { GitStatusEntry } from '../components/file-tree.ts';
 import type { Change, FileEntry, FilePort, SliccModel } from '../model/types.ts';
 import { changesOf, ModelElement, shared, ThemedElement } from './base.ts';
 import { search, searchCss } from './search.ts';
+import { ViewState } from './view-state.ts';
 
 export function relative(path: string): string {
   return path.replace(/^\//, '');
@@ -186,6 +187,8 @@ export class SliccFiles extends ModelElement {
   #entries: readonly FileEntry[] = [];
   #pending = false;
   #reveal: string | null = null;
+  #folders = new ViewState<readonly string[] | null>(this, 'files', () => null);
+  #applied: readonly string[] | null = null;
 
   constructor() {
     super();
@@ -358,7 +361,8 @@ export class SliccFiles extends ModelElement {
     const tree = this.#tree();
     const changes = this.model ? changesOf(this.model).changes() : [];
     if (!tree) return;
-    if (tree.paths.length === 0) tree.expanded = ancestors(changes.map((change) => change.path));
+    if (tree.paths.length === 0)
+      tree.expanded = this.#folders.value ?? ancestors(changes.map((change) => change.path));
     tree.paths = treePaths(this.#entries);
     tree.gitStatus = treeStatus(changes);
     this.#show();
@@ -559,7 +563,21 @@ export class SliccFiles extends ModelElement {
         @tree-search=${this.#seed}
         @tree-matches=${this.#matches}
         @tree-search-close=${this.#closed}
+        @tree-expand=${this.#expand}
       ></slicc-file-tree>`;
+  }
+
+  #expand(event: CustomEvent<{ expanded: readonly string[] }>): void {
+    this.#applied = event.detail.expanded;
+    this.#folders.value = event.detail.expanded;
+  }
+
+  protected updated(): void {
+    const folders = this.#folders.value;
+    const tree = this.#tree();
+    if (!folders || folders === this.#applied || !tree?.paths.length) return;
+    this.#applied = folders;
+    tree.expanded = folders;
   }
 }
 

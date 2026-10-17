@@ -48,6 +48,7 @@ import {
   take,
   widening,
 } from './vault.ts';
+import { ViewState } from './view-state.ts';
 
 const kinds = { secret: null, grant: 'Sign-in', model: 'Model key', mcp: 'MCP server' } as const;
 
@@ -271,6 +272,7 @@ export class SliccSecrets extends ThemedElement {
     picked: { state: true },
     again: { state: true },
   };
+  #removed = new ViewState(this, 'settings:removed', () => false);
   declare older: readonly AuditEntry[];
   declare more: boolean | null;
   declare loading: boolean;
@@ -1221,7 +1223,7 @@ export class SliccSecrets extends ThemedElement {
     return html`${live.length ? html`<ul class="secrets" aria-labelledby="secrets">${live.map(row)}</ul>` : nothing}
       ${
         removed.length
-          ? html`<details class="removed" data-removed>
+          ? html`<details class="removed" data-removed ?open=${this.#removed.value} @toggle=${(event: Event) => (this.#removed.value = (event.currentTarget as HTMLDetailsElement).open)}>
               <summary>Removed (${removed.length})</summary>
               <ul class="secrets">${removed.map(row)}</ul>
             </details>`

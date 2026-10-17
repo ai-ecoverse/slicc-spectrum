@@ -13,6 +13,7 @@ import { onWatch, watchOnly } from './follow.ts';
 import { deleteCone } from './freezer.ts';
 import { meterVariant } from './monitor.ts';
 import { agentTitle, coneLabel, untitled, watchTitles } from './names.ts';
+import { ViewSet, ViewState } from './view-state.ts';
 
 export function ordered(agents: readonly Agent[]): Agent[] {
   const cones = agents.filter((agent) => agent.kind === 'cone');
@@ -83,7 +84,8 @@ type Tooltip = HTMLElement & { triggerElement: HTMLElement | null };
 export class SliccAgents extends ModelElement {
   static properties = { ...ModelElement.properties, errors: { state: true } };
   declare errors: Record<string, string>;
-  #expanded = new Set<string>();
+  #expanded = new ViewSet(this, 'agents');
+  #revealed = new ViewState(this, 'agents:revealed', () => '');
   #pointer = false;
   #modality = (event: Event): void => {
     this.#pointer = event.type === 'pointerdown';
@@ -359,7 +361,9 @@ export class SliccAgents extends ModelElement {
   #reveal(model: SliccModel): void {
     const focused = model.agent.list().find((agent) => agent.id === model.agent.active());
     const cone = focused?.kind === 'cone' ? focused.id : focused?.parentId;
-    if (cone) this.#expanded.add(cone);
+    if (!cone || focused?.id === this.#revealed.value) return;
+    this.#revealed.value = focused?.id as string;
+    this.#expanded.toggle(cone, true);
   }
 
   #select(agent: Agent): void {
@@ -368,9 +372,7 @@ export class SliccAgents extends ModelElement {
   }
 
   #toggle(agent: Agent, open = !this.#expanded.has(agent.id)): void {
-    if (open) this.#expanded.add(agent.id);
-    else this.#expanded.delete(agent.id);
-    this.requestUpdate();
+    this.#expanded.toggle(agent.id, open);
   }
 
   focus(): void {

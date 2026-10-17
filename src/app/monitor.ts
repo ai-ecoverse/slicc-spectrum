@@ -19,6 +19,7 @@ import type {
 import { ModelElement, shared } from './base.ts';
 import { panelCss } from './files.ts';
 import { copyText } from './reach.ts';
+import { ViewState } from './view-state.ts';
 
 export function sparkline(points: readonly number[], width = 120, height = 28): string {
   if (points.length < 2) return '';
@@ -89,16 +90,22 @@ export function attention(
 export class SliccMonitor extends ModelElement {
   static properties = {
     ...ModelElement.properties,
-    expanded: { state: true },
     copied: { state: true },
   };
-  declare expanded: Record<string, boolean>;
   declare copied: { id: string; text: string; done: boolean } | null;
+  #sections = new ViewState<Record<string, boolean>>(this, 'monitor', () => ({}));
 
   constructor() {
     super();
-    this.expanded = {};
     this.copied = null;
+  }
+
+  get expanded(): Record<string, boolean> {
+    return this.#sections.value;
+  }
+
+  set expanded(value: Record<string, boolean>) {
+    this.#sections.value = value;
   }
 
   static styles = [

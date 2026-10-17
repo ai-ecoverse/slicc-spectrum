@@ -39,6 +39,7 @@ import { agentName } from './files.ts';
 import { onWatch, watchOnly } from './follow.ts';
 import { time } from './messages.ts';
 import { copyText, reach, reachStyles } from './reach.ts';
+import { ViewSet, ViewState } from './view-state.ts';
 
 export function normalize(input: string): string {
   const text = input.trim();
@@ -163,7 +164,8 @@ export class SliccBrowser extends ModelElement {
   #last: string | null = null;
   #shown = actionPage;
   #anchor: number | null = null;
-  #expanded = new Set<string>();
+  #expanded = new ViewSet(this, 'browser');
+  #recent = new ViewState(this, 'browser:recent', () => false);
 
   constructor() {
     super();
@@ -637,7 +639,6 @@ export class SliccBrowser extends ModelElement {
     this.#shots.clear();
     this.#frames.clear();
     this.#pulse.clear();
-    this.#expanded.clear();
     this.#shown = actionPage;
     const tabs = model.browser.list();
     this.#driven = new Set(tabs.filter((tab) => tab.controlled).map((tab) => tab.id));
@@ -984,8 +985,7 @@ export class SliccBrowser extends ModelElement {
   }
 
   #toggle(id: string): void {
-    if (!this.#expanded.delete(id)) this.#expanded.add(id);
-    this.requestUpdate();
+    this.#expanded.toggle(id);
   }
 
   #what(action: BrowserAction): TemplateResult {
@@ -1031,7 +1031,7 @@ export class SliccBrowser extends ModelElement {
     if (this.#width >= narrowWidth)
       return html`<h3>Recent actions</h3>${more}<ol class="actions" aria-label="Recent actions" tabindex="0">${actions.map((action) => this.#row(action))}</ol>`;
     const last = actions.at(-1) as BrowserAction;
-    return html`<details>
+    return html`<details ?open=${this.#recent.value} @toggle=${(event: Event) => (this.#recent.value = (event.currentTarget as HTMLDetailsElement).open)}>
         <summary><swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right>Recent actions (${all.length})</summary>
         ${more}
         <ol class="actions" aria-label="Earlier actions" tabindex="0">${actions.slice(0, -1).map((action) => this.#row(action))}</ol>

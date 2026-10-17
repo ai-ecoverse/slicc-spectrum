@@ -10,6 +10,7 @@ import { confirm } from './confirm.ts';
 import { panelCss } from './files.ts';
 import { markdown } from './markdown.ts';
 import { search, searchCss } from './search.ts';
+import { ViewState } from './view-state.ts';
 
 export type TagFilter = MemoryTag | 'all' | 'untagged';
 
@@ -74,22 +75,28 @@ export class SliccMemory extends ModelElement {
     query: { state: true },
     tag: { state: true },
     scope: { state: true },
-    open: { state: true },
     editing: { state: true },
   };
   declare query: string;
   declare tag: TagFilter;
   declare scope: string;
-  declare open: string | null;
   declare editing: string | null;
+  #open = new ViewState<string | null>(this, 'memory', () => null);
 
   constructor() {
     super();
     this.query = '';
     this.tag = 'all';
     this.scope = everyone;
-    this.open = null;
     this.editing = null;
+  }
+
+  get open(): string | null {
+    return this.#open.value;
+  }
+
+  set open(value: string | null) {
+    this.#open.value = value;
   }
 
   static styles = [

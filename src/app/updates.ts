@@ -18,6 +18,7 @@ import type {
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
 import { size } from './messages.ts';
+import { ViewSet } from './view-state.ts';
 
 const states = {
   current: ['neutral', 'Up to date'],
@@ -164,6 +165,7 @@ export class SliccUpdates extends ModelElement {
     busy: { state: true },
     problems: { state: true },
   };
+  #logs = new ViewSet(this, 'updates');
   declare pending: ReadonlySet<string>;
   declare failures: Failures;
   declare busy: ReadonlyMap<string, PackageAction>;
@@ -563,7 +565,7 @@ export class SliccUpdates extends ModelElement {
           : nothing
       }
       ${this.#actions(item)}
-      ${item.log ? html`<details><summary>Install log</summary><pre>${item.log}</pre></details>` : nothing}
+      ${item.log ? html`<details ?open=${this.#logs.has(`item:${item.id}`)} @toggle=${this.#logs.details(`item:${item.id}`)}><summary>Install log</summary><pre>${item.log}</pre></details>` : nothing}
     </article>`;
   }
 
@@ -660,7 +662,7 @@ export class SliccUpdates extends ModelElement {
             </div>`
           : nothing
       }
-      ${item.log ? html`<details><summary>Install log</summary><pre><span class="package">${item.package}</span>\n${item.log}</pre></details>` : nothing}
+      ${item.log ? html`<details ?open=${this.#logs.has(`package:${item.id}`)} @toggle=${this.#logs.details(`package:${item.id}`)}><summary>Install log</summary><pre><span class="package">${item.package}</span>\n${item.log}</pre></details>` : nothing}
     </li>`;
   }
 
