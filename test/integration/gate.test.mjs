@@ -38,9 +38,13 @@ test('the CI gate passes only on an explicit verdict, so silence never reads as 
     code: 1,
     verdict: 'integration: FAIL exit 1',
   });
-  assert.deepEqual(gate('lint', "echo 'ok: no comments besides # renovate: annotations'"), {
+  assert.deepEqual(gate('lint', "echo 'slicc-lint: PASS'"), {
     code: 0,
-    verdict: 'lint: PASS comments, biome and the repo rules',
+    verdict: 'lint: PASS every slicc-lint step',
+  });
+  assert.deepEqual(gate('lint', "echo 'slicc-lint-comments: PASS no comments'"), {
+    code: 1,
+    verdict: 'lint: FAIL no verdict in the output',
   });
   assert.deepEqual(gate('lint', 'exit 0'), {
     code: 1,
