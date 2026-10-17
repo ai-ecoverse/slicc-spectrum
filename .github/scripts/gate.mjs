@@ -2,10 +2,7 @@ import { spawn } from 'node:child_process';
 
 const [name, command] = process.argv.slice(2);
 const kinds = {
-  lint: (output) => {
-    const ok = output.includes('ok: no comments besides');
-    return ok ? 'comments, biome and the repo rules' : null;
-  },
+  lint: (output) => (/^slicc-lint: PASS$/m.test(output) ? 'every slicc-lint step' : null),
   integration: (output) => {
     const last = (label) => {
       const found = [...output.matchAll(new RegExp(`^(?:ℹ|#) ${label} (\\d+)$`, 'gm'))].at(-1);
