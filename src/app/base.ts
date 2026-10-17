@@ -7,10 +7,15 @@ import type {
   SliccModel,
 } from '../model/types.ts';
 
+let typed = false;
+document.addEventListener('keydown', () => (typed = true), true);
+document.addEventListener('pointerdown', () => (typed = false), true);
+
 function keyboardFocus(): boolean {
   let active = document.activeElement;
   while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
-  return !!active?.matches(':focus-visible');
+  if (!active || active === document.body) return typed;
+  return active.matches(':focus-visible');
 }
 
 export class ModelElement extends LitElement {

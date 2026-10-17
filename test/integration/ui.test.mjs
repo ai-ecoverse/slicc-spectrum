@@ -8669,5 +8669,14 @@ test('a panel that takes focus without the keyboard shows no focus ring, and sho
   await page.evaluate(() => window.app.show('chat'));
   await page.until(() => window.log()?.matches(':focus'));
   assert.equal(await page.evaluate(() => window.log().matches(':focus-visible')), true);
+
+  await page.evaluate(() => {
+    window.app.show('changes');
+    window.deep()?.blur();
+  });
+  await page.until(() => window.deep() === document.body);
+  await page.press('2', 'alt');
+  await page.until(() => window.log()?.matches(':focus'));
+  assert.equal(await page.evaluate(() => window.log().matches(':focus-visible')), true);
   assert.deepEqual(page.errors, []);
 });
