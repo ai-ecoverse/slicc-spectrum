@@ -65,5 +65,6 @@ jobs:
     with:
       runs-on: ${{ needs.runner.outputs.runner }}
       timeout-minutes: 35
-      test: TEST_CONCURRENCY=4 NODE_OPTIONS=--max-old-space-size=8192 npm test
+      lint: node .github/scripts/gate.mjs lint "npm run lint"
+      test: node .github/scripts/gate.mjs integration "TEST_CONCURRENCY=4 NODE_OPTIONS=--max-old-space-size=8192 npm test"
     needs: runner
