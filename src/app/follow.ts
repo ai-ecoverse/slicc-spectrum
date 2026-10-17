@@ -31,8 +31,7 @@ export function refusedNow(state: FollowState | undefined): boolean {
 }
 
 export function followLight(state: FollowState): FollowLight {
-  if (refusedNow(state))
-    return { variant: 'neutral', text: `Can’t follow ${state.owner}` };
+  if (refusedNow(state)) return { variant: 'neutral', text: `Can’t follow ${state.owner}` };
   const [variant, text] = lights[state.link];
   return { variant, text: text(state.owner) };
 }
