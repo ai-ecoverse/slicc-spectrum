@@ -37,11 +37,11 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run lint
+      - run: node .github/scripts/gate.mjs lint "npm run lint"
 
       - run: npx playwright-core install --with-deps --no-shell chromium
 
-      - run: npm test
+      - run: node .github/scripts/gate.mjs integration "npm test"
 
       - run: npx semantic-release
         env:
