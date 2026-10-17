@@ -967,7 +967,7 @@ app.model = createKernelModel({ kernel, root, storage: localStorage, files: { sk
 
 - **`KernelFiles`** lists the OPFS root as the tree, reads and writes files through the OPFS API, and removes them recursively.
   Directories in `skip` show up but aren't scanned; paths in `hide` (and everything under them) don't show up at all.
-  `start()` rescans on every `FileSystemObserver` record, or every `interval` ms (default 2000) where the browser can't observe OPFS, and emits `files` and a `file` per changed file, so open tabs follow what the terminal writes.
+  `start()` rescans when a `FileSystemObserver` record touches something the tree shows: at once after a quiet `interval` (default 2000 ms), then at most once per `interval`. Records only inside `hide` paths or below `skip` folders start no rescan. Where the browser can't observe OPFS, it rescans every `interval` ms. A rescan that finds changes emits `files` and a `file` per changed file, so open tabs follow what the terminal writes.
   Without an agent there are no pending changes.
 - **`KernelTerminals`** opens `bash -i` (or `argv`) in `cwd` (default `/home`) as `user` (default the kernel's, `root`) through `kernelBackend`, one session per terminal, as many as the user opens.
   `open` (default 1) is how many it starts with.
