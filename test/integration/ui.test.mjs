@@ -8646,3 +8646,28 @@ test('Accounts keeps a vault-backed key in the vault and never shows it', async 
   await clean(page);
   assert.deepEqual(page.errors, []);
 });
+
+test('a panel that takes focus without the keyboard shows no focus ring, and shows one when the keyboard brought it there', async (t) => {
+  const page = await open(t, { readonly: 'version' });
+  await page.evaluate(() => {
+    window.log = () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log');
+    window.deep = () => {
+      let active = document.activeElement;
+      while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+      return active;
+    };
+  });
+  await page.evaluate(() => window.app.show('chat'));
+  await page.until(() => window.log()?.matches(':focus'));
+  assert.equal(await page.evaluate(() => window.log().matches(':focus-visible')), false);
+
+  await page.evaluate(() => window.app.show('changes'));
+  await page.until(() => !window.log()?.matches(':focus'));
+  await page.evaluate(() => window.$('slicc-app', 'sp-action-menu').focus());
+  await page.press('Shift');
+  assert.equal(await page.evaluate(() => window.deep().matches(':focus-visible')), true);
+  await page.evaluate(() => window.app.show('chat'));
+  await page.until(() => window.log()?.matches(':focus'));
+  assert.equal(await page.evaluate(() => window.log().matches(':focus-visible')), true);
+  assert.deepEqual(page.errors, []);
+});
