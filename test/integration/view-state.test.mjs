@@ -253,6 +253,19 @@ const panels = [
       window.part('browser', '[data-action=action-url]')?.getAttribute('aria-expanded') === 'true',
   },
   {
+    name: 'the tab opened in Browser',
+    id: 'browser',
+    params: { browser: 'idle' },
+    ready: 'li[data-id=tab-preview] .window, [data-action=all-tabs]',
+    act: () => {
+      const card = window.part('browser', 'li[data-id=tab-preview] .window');
+      if (!card) return false;
+      card.click();
+      return true;
+    },
+    held: () => !!window.part('browser', '[data-action=all-tabs]'),
+  },
+  {
     name: 'the open recent actions in Browser',
     id: 'browser',
     widths: [420, 1280, 420],

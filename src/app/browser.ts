@@ -25,7 +25,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-undo.js';
 import '@adobe/spectrum-wc-icons/swc-icon-visibility.js';
 import '@adobe/spectrum-wc-icons/swc-icon-web-page.js';
 import link from '@adobe/spectrum-wc/link.css';
-import { css, html, nothing, type TemplateResult, unsafeCSS } from 'lit';
+import { css, html, nothing, type PropertyValues, type TemplateResult, unsafeCSS } from 'lit';
 import { live } from 'lit/directives/live.js';
 import type {
   BrowserAction,
@@ -166,6 +166,7 @@ export class SliccBrowser extends ModelElement {
   #anchor: number | null = null;
   #expanded = new ViewSet(this, 'browser');
   #recent = new ViewState(this, 'browser:recent', () => false);
+  #chosen = new ViewState<string | null | undefined>(this, 'browser:tab', () => undefined);
 
   constructor() {
     super();
@@ -705,7 +706,10 @@ export class SliccBrowser extends ModelElement {
     this.#driven = driven;
     const ids = new Set(tabs.map((tab) => tab.id));
     for (const id of this.#frames.keys()) if (!ids.has(id)) this.#frames.delete(id);
-    if (this.#focus && !ids.has(this.#focus)) this.#show(null);
+    if (this.#focus && !ids.has(this.#focus)) {
+      this.#show(null);
+      this.#chosen.value = undefined;
+    }
     this.#stale();
     this.requestUpdate();
   }
@@ -766,11 +770,24 @@ export class SliccBrowser extends ModelElement {
   }
 
   #show(id: string | null): void {
+    this.#chosen.value = id;
+    this.#visit(id);
+    this.requestUpdate();
+  }
+
+  #visit(id: string | null): void {
     this.#focus = id;
     this.#copied = null;
     this.#shown = actionPage;
     if (id) this.#pulse.delete(id);
-    this.requestUpdate();
+  }
+
+  protected willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed);
+    const chosen = this.#chosen.value;
+    if (chosen === undefined || chosen === this.#focus) return;
+    if (chosen === null || this.model?.browser.list().some((tab) => tab.id === chosen))
+      this.#visit(chosen);
   }
 
   #focused(): BrowserTab | undefined {
