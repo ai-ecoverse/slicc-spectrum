@@ -147,6 +147,8 @@ The stylesheet (wterm's plus the theme) is constructed once per document and ado
 The bundle loads the WASM with `new URL('./wterm.wasm', import.meta.url)`, so `dist/` works from any path, including from OPFS through the slicc-bios service worker. wterm's base64-inlined copy of the WASM is left out of the bundle.
 TypeScript declarations go to `dist/types/`, and the package's `types` export points at them.
 Set `SliccTerminal.wasmUrl` before the first element connects to load it from elsewhere.
+`dist/swc.css` (exported as `@ai-ecoverse/slicc-spectrum/swc.css`) is the pinned `@adobe/spectrum-wc` stylesheet with its tokens inlined, one file with no `@import`.
+A page that puts a UI element straight into the document, such as a guest's page, links it and wraps the element in `<div class="swc-theme swc-theme--sizeM swc-theme--light">` and `<sp-theme system="spectrum-two">`, as `test/integration/page/guest/` does.
 
 ## wterm notes
 

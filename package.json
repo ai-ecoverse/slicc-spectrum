@@ -37,7 +37,8 @@
     "./kernel": {
       "types": "./dist/types/kernel.d.ts",
       "default": "./dist/slicc-kernel-model.js"
-    }
+    },
+    "./swc.css": "./dist/swc.css"
   },
   "files": [
     "dist"
