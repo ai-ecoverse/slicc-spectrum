@@ -1,6 +1,7 @@
 import { html, LitElement, nothing, type TemplateResult } from 'lit';
 import type { AgentPort, SliccModel, ToolCall } from '../model/types.ts';
 import { chip, type Owner, overall, statusLabel, tool, toolSummary } from './messages.ts';
+import { ViewState } from './view-state.ts';
 
 interface Labels {
   done: Map<string, string>;
@@ -8,7 +9,6 @@ interface Labels {
   asked: Set<string>;
 }
 
-const opened = new Map<string, string>();
 const caches = new WeakMap<AgentPort, Labels>();
 
 function cache(port: AgentPort): Labels {
@@ -32,6 +32,7 @@ export class SliccToolRuns extends LitElement {
   declare color: 'light' | 'dark';
   declare model: SliccModel | null;
   declare owners: ReadonlyMap<string, Owner> | null;
+  #opened = new ViewState<ReadonlyMap<string, string>>(this, 'chat:runs', () => new Map());
   #icons: HTMLElement | null = null;
   #count = 0;
   #resize = new ResizeObserver(() => this.#end());
@@ -68,13 +69,14 @@ export class SliccToolRuns extends LitElement {
   }
 
   get #open(): string {
-    return opened.get(this.#anchor) ?? '';
+    return this.#opened.value.get(this.#anchor) ?? '';
   }
 
   #set(value: string): void {
-    if (value) opened.set(this.#anchor, value);
-    else opened.delete(this.#anchor);
-    this.requestUpdate();
+    const next = new Map(this.#opened.value);
+    if (value) next.set(this.#anchor, value);
+    else next.delete(this.#anchor);
+    this.#opened.value = next;
   }
 
   #toggled(call: ToolCall, event: Event): void {

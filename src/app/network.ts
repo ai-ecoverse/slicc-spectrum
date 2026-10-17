@@ -46,6 +46,7 @@ import { guestCones, guestExpiry, invite, pendingLabel } from './guests.ts';
 import { qrCode } from './qr.ts';
 import { command, copyText, reach, reachStyles } from './reach.ts';
 import { connectionLabel, connectionVariant } from './tray.ts';
+import { ViewSet } from './view-state.ts';
 
 export { command } from './reach.ts';
 
@@ -457,6 +458,7 @@ export class SliccNetwork extends ModelElement {
     guestError: { state: true },
     guestsOff: { state: true },
   };
+  #open = new ViewSet(this, 'network');
   declare checking: boolean;
   declare copied: string | null;
   declare uncopied: boolean;
@@ -1345,7 +1347,7 @@ export class SliccNetwork extends ModelElement {
       ${
         links.devices.length
           ? html`<ul aria-labelledby="links">${links.devices.map((device) => this.#device(port, status, device))}</ul>
-            <details><summary>Link another device</summary><div>${this.#join(port, links)}</div></details>`
+            <details ?open=${this.#open.has('link')} @toggle=${this.#open.details('link')}><summary>Link another device</summary><div>${this.#join(port, links)}</div></details>`
           : this.#join(port, links)
       }
       ${
@@ -1631,7 +1633,7 @@ export class SliccNetwork extends ModelElement {
 
   #whole(status: NetworkStatus): TemplateResult {
     if (wholeWeb.has(routeOf(status))) {
-      return html`<details><summary>Other ways to reach the whole web</summary><div>${this.#ways(status)}</div></details>`;
+      return html`<details ?open=${this.#open.has('whole')} @toggle=${this.#open.details('whole')}><summary>Other ways to reach the whole web</summary><div>${this.#ways(status)}</div></details>`;
     }
     return html`<section aria-labelledby="whole">
       <h2 id="whole">Get the whole web</h2>

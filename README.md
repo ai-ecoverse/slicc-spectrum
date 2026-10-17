@@ -219,6 +219,7 @@ The sans stack (`--swc-sans-font-family-stack`, also used by the 1.12 components
 
 The shell: header with the agent picker, status items, the update status, the network indicator, the tray, the View menu and the theme switch, rails, and a `<slicc-dock>`.
 Saves the dock layout per screen class to `storage` (default `localStorage`) under `layoutKey`.
+The dock builds new panel content whenever it lays panels out again (a switch between phone, tablet and desktop, or a layout reset), so what the user opens in a panel (sections, cones, rows, folders, disclosures) lives outside the element, per model and panel (`view-state.ts`, in memory only): a rebuilt panel shows it again, and a click on the outgoing panel while the new one mounts reaches the new one too.
 While connected it sets `overscroll-behavior` to `none !important` on the page's `html` and `body`, so only scroll areas inside panels rubber-band.
 It sets the page's `color-scheme` to its resolved theme, and when the page has a `theme-color` meta per `prefers-color-scheme`, gives every one of them the content of the meta for that theme, so the page and the installed app's title bar follow the app's setting instead of the OS.
 When the last app on the page is removed, the page's own inline values and `theme-color` contents come back.
@@ -240,7 +241,7 @@ A tree (`role="tree"`) of cones, with their scoops listed under them.
 A cone with scoops starts with a quiet disclosure chevron (`data-action="toggle-cone"`, `swc-icon-chevron-right`, turned down when open and mirrored right to left); it's `aria-hidden` and out of the Tab order, since the row's `aria-expanded` carries the state.
 The chevron only expands and collapses; a click on the row, <kbd>Enter</kbd> or <kbd>Space</kbd> selects the agent and makes it the active one, which also expands its cone.
 <kbd>→</kbd> expands a cone and then moves to its first scoop, <kbd>←</kbd> moves from a scoop to its cone and then collapses it, and neither changes the active agent.
-Several cones can be open at once, and the active agent's cone is open again whenever the panel mounts, so on a phone a cone you tapped still shows its scoops when you come back to Agents.
+Several cones can be open at once, and they stay open for every view of the panel on the same model, so a layout switch keeps them; when the active agent has changed since the panel last showed it, its cone opens again as the panel mounts, so on a phone a cone you tapped still shows its scoops when you come back to Agents, and a cone you closed stays closed.
 When the active scoop's cone is collapsed, the cone row takes the Tab stop.
 A row's first line starts with one circle: its unread count when there are unread messages (`99+` from a hundred up, at `--swc-font-size-50`, white on the accent fill, or on the negative fill when the cone is in error), otherwise a dot coloured by status.
 Then comes the name; the context fill, when it's high, sits in the top right corner.
@@ -272,6 +273,7 @@ A command's icon is the favicon of the site it names when an open browser tab al
 A running run pulses (still, with a dashed ring, under `prefers-reduced-motion`), a done or cancelled one is grey and a failed one red, each with a corner glyph.
 The card (`.tool[data-tool][data-status][data-kind]`, a `details.run` under a pill and a `div[role=region]` named by its `title` and status under a strip) has no header of its own, no chevron, title, tool name or status: its input (a shell command after `$`), an edit's `diff` shown as a diff view, its output wrapped rather than cut off, an `image`, such as a screenshot, an optional `meta` such as a timeout, a standalone tool message's time ("Ran at 16:12", `.ran`, by the two-minute rule), and its `notes` (`{ severity, text }`, such as "Exited with code 5" or "Full output in /tmp/…") as lines under the output, `li[data-note][data-severity]`: `error` with an alert icon in the negative colour, `warn` with an alert icon and `info` with an info icon, both subdued; media galleries with images, video and audio; action cards for tools, pull requests and status; plans and checklists; inline diffs; question prompts (as decision cards, below); delegations; link previews; errors with a fix-it action, as a grey card (`.error-card[role=alert]`, `data-id` on system errors) inset by a wide margin on each side, a narrower one under 480 px: a red alert icon, the title in bold, the detail subdued and the action on the right, or under the detail below 360 px, announced as "Error: " and the title; a content-filter stop offers **Drop the last turn**, which rewinds that turn and puts its prompt back into the composer; when the turns right before it failed too, the button reads **Drop N failed turns** and rewinds to before the first of them, putting the latest prompt back), system messages (error cards; compactions and notices, rewinds and model changes included, as full-width dividers with a line on each side, like the day: a compaction shows only its title, its `text` kept for screen readers, one that lost messages (`state: 'fallback'`, by default "Compaction failed, transcript truncated", or `discarded`, "Context discarded") an alert icon in the negative colour, and a notice its title and text on one line, `role="note"`; a divider that wraps keeps a short line on each side) and licks, SLICC's events into a cone, on every channel, on the right (`.lick-turn`): a byline with the title and the time by the two-minute rule, then a dashed box (`.lick[data-id][data-channel]`) with the text and the count (×3); emoji pills on its bottom edge (`.reactions .reaction`, `aria-hidden`, each named by its `title`) give the channel (⏰ Schedule, 🪝 Webhook, ✨ Sprinkle, …) and the outcome (👍 Allowed, 👎 Denied, also said in the box's hidden text).
 A lick with a body is a `details.lick` whose head (`summary.lick-head`, with a quiet chevron that turns when open) toggles it with a click, <kbd>Enter</kbd> or <kbd>Space</kbd>; clicking the body doesn't close it.
+Open licks and open tool runs hold for every view of the chat on the same model, so a layout switch keeps them.
 A lick's `severity` (`warn` or `error`) adds an alert icon to its byline, a coloured edge to its box and a spoken prefix.
 Pending permission requests (`sudo-request` licks with `state: 'pending'`) and open questions are decision cards in the centre column (`.decision-turn[data-pending]`, `data-id` the lick's or the question's), inset like a tool cluster (a wide margin on each side, a narrower one under 480 px), with their buttons on the right: **Deny**, then **Allow** (`data-action` `deny` and `allow`), or the question's options.
 A request with `expiresAt` counts down as m:ss; the count is hidden from screen readers, which hear its end time, then "Less than a minute left" and "Timed out", so the log's live region doesn't speak every second; a timed-out request (`data-expired`) loses its buttons.
@@ -341,6 +343,7 @@ A quiet line under it (`[data-seat-note]`) says who reviews ("The host reviews w
 #### `<slicc-files>`
 
 The file system as a `<slicc-file-tree>`, with pending changes as git status.
+It starts with the folders of the pending changes open; once the user opens or closes a folder, every view of Files on the same model shows the same folders open, a rebuilt one included.
 Opening a file opens it in a tab.
 With `files.mountFolder`, **Mount a folder…** (`data-action="mount-folder"`) mounts a local folder, then selects and expands it in the tree; with `files.mounts`, a **Mounted** strip lists the mount points (with `files.mountInfo`, each mount with a `source` reads `/mnt/proj · ref-node/proj`, `data-source` on its `.path`), each with **Eject** (`data-action="eject"`, `data-path` the mount point) when the port has `eject`.
 With `files.needsFolder`, a **Needs a folder** section lists the mount points waiting for a folder, each with **Insert folder…** (`data-action="insert-folder"`, `data-id` the mount point), which calls `mountFolder(path)`.
@@ -382,6 +385,7 @@ It opens on the most recently driven tab (`.focused`), or on the tab overview: c
 The focused tab has **All tabs** (`data-action="all-tabs"`), a tab picker (a list of tabs at 720 px and wider), the URL with **Copy** (`data-action="copy-url"`) and **Open** (`data-action="open-tab"`, activates the tab), who's using it (`.driving[data-driving=agent|user|none]`; a controlled tab without an agent reads **In use** and has no Stop) with a small **Stop <agent>** (`data-action="stop-agent"`) in the same row, which keeps its height with or without an agent, a view-only preview (`figure[data-view]`: `live` while watching with a frame under 3 s old, `shot` with "Updated N s ago", `none`) and the recent actions (`li[data-action-id][data-kind][data-status]`, failures with their error inline), the tab's own filtered first, then the latest 50, with **Show more** (`data-action="more-actions"`) adding 50 earlier ones each time up to all the port has ("Showing the latest N of M"); the list scrolls and takes focus.
 Actions with a URL (`open`, `goto`, `request`) expand (`data-action="action-url"`, `aria-expanded`) to show the full URL, or the request line, under the shortened one.
 Below 480 px they fold into **Recent actions (n)**, a chevron disclosure counting all of them, with the last one showing.
+The tab the user opened (or **All tabs**), expanded URLs and an open **Recent actions** hold for every view of the panel on the same model, so a layout switch keeps them; a closed tab lets go, and the panel opens on the most recently driven tab again.
 Labels, URLs and errors are text only.
 With no tabs and `browser.via` `null` in the network status, it says browser control isn't connected (`data-browser="none"`) with the extension link and the commands to install and run slicc (`curl -fsSL https://get.sliccy.ai/slicc | sh`, then `slicc`, or `npx sliccy@next` with Node).
 The Browser rail button carries a dot (`data-driven`) while a tab is in use.
@@ -419,6 +423,7 @@ Then **Rules SLICC refused** (`[data-refused]`), where the rules live (`[data-po
 The section's `data-vault` is `locked`, `unlocked` or `loading`.
 A popup the browser blocked shows how to allow it (`[data-popup=blocked]`).
 Widened-rule notices aren't shown.
+An open **Removed** list (`details[data-removed]`) stays open across a layout switch.
 
 #### `<slicc-vault-button>`
 
@@ -433,7 +438,7 @@ It closes, clearing the field, when the request leaves `waiting` or while the va
 
 #### `<slicc-updates>`
 
-Install / Update: component states, version changes, last checks, download and link counts, action buttons, failures with Retry, and collapsible install logs.
+Install / Update: component states, version changes, last checks, download and link counts, action buttons, failures with Retry, and collapsible install logs, which stay open across a layout switch.
 Opens at boot until the agent is ready without failures.
 Background updates stay in the header's update status; new failures reopen the panel, and after a reload into a boot that isn't ready yet such a panel closes once the agent is ready.
 Every automatic close is saved to the layout.
@@ -447,7 +452,7 @@ What agents remember, grouped by section: search, filter by scope and tag, expan
 The scope picker starts on **Everyone** (`*`), which lists every memory with its scope on it (`.scope[data-scope]`); `global` reads **Shared** whatever the port calls it, and the cones and roles follow.
 The count (“N of M memories”) counts the memories in the picked scope.
 With a search or tag filter that hides everything it says “No memories match.”, otherwise “No memories yet.”, “No shared memories yet.” or “No memories for {scope} yet.”
-Each memory is a row (`li.row[data-id]`) that opens in place: open rows (`data-open`) take the accent's subtle background and turn their chevron down, and show the body with **Edit** and **Forget** (`data-action="edit"`, `data-action="forget"`).
+Each memory is a row (`li.row[data-id]`) that opens in place, and stays open across a layout switch: open rows (`data-open`) take the accent's subtle background and turn their chevron down, and show the body with **Edit** and **Forget** (`data-action="edit"`, `data-action="forget"`).
 Under the summary, the tag is a subtle badge (`swc-badge[data-tag]`: User indigo, Feedback purple, Project seafoam), then the scope and, for free text outside an entry, “From MEMORY.md” (`.from`).
 Below 560 px of panel width, the search takes its own line over the two pickers.
 The search field is the shared one from `search.ts` (`sp-search[data-action=search]`), as in Files.
@@ -458,7 +463,7 @@ The live monitor: vitals (`.vital[data-id]`), each a meter when it has a `ratio`
 Each card keeps its place whatever it shows: the value line never wraps (a unit or delta that doesn't fit is left out whole rather than cut, and stays in the line's `title` and its text; a vital's optional `hint` replaces that tooltip, such as the exact reset time behind "resets in 4 days"), a card without a `series` keeps the sparkline's room, a meter keeps its description's line, and a card left alone on the last row spans it, so short and long values, 0% and 100%, and missing data move nothing below them.
 Then alerts (an alert's optional `command` shows after its detail, led by its `commandLabel` or "Run", as unwrapped code with **Copy**, `[data-command]` and `data-action="copy-command"`), and the sections (the agent's Tasks, Processes and Recent problems, then terminals, tabs, pending changes and tray followers; cones and sprinkles have their own panels; any other section an agent sends, such as an older agent's `agents` or `sprinkles`, renders the same way).
 Each section (`li.section[data-id]`) shows its count and an attention badge, and opens its surface with **Open** where one exists; the counts line up in one column whether or not a section has **Open**, and a section without rows keeps its name in line with the others (`agents`, `terminals` and `processes` → terminal, `tabs`, `changes`).
-A section with rows expands into them with its toggle (`.toggle`, `aria-expanded`; `data-open` on the section): collapsed by default, expanded while a row is `warn` or `error`, until the user toggles it.
+A section with rows expands into them with its toggle (`.toggle`, `aria-expanded`; `data-open` on the section): collapsed by default, expanded while a row is `warn` or `error`, until the user toggles it; that choice holds for every view of the monitor on the same model, so a layout switch keeps it.
 Each row (`li.row[data-status]`, `data-id` from the row's `id`) shows a status light (blue active, gray idle, orange warn, red error, with the status spoken), the name, the meta line and its badges, indented by `depth` (`data-depth`, up to 6).
 
 #### `<slicc-freezer>`
@@ -504,6 +509,7 @@ The URL is never stored or shown again: closing the dialog drops it.
 The header's **Network** indicator (`data-network`, `data-health`) opens it: a status light, green for `ok`, yellow for `limited` and red for `failing`, with the state in its text and label and `detail` as its tooltip, which adds "Tailscale is connected." while the tailnet runs; on a phone, a cloud icon for the state.
 While a linked device asks to follow, controls the agent, watches it or has a terminal open, an indicator (`data-remote`, `ask`, `prompt`, `terminal` or `watch`) sits before it, **{name} asks to follow**, **Controlled by**, **Terminal open from** or **Watched by** the device's name (or the number of devices; in that order of precedence), says who does what in its tooltip and opens the panel too.
 Offered when the model has a `network` port, a `guests` port, or both.
+**Link another device** and **Other ways to reach the whole web** stay open across a layout switch once opened.
 With `guests` and no `network`, it shows only the Guests section (no connection, Sync, Leaders, Tailscale, Linked devices, Get the whole web or failures), still titled Network with its rail icon, and the header's Network and remote indicators stay hidden; the tray's connection chip is then a plain status.
 
 #### `<slicc-tray>`
@@ -530,6 +536,7 @@ Not for direct use.
 
 Generic.
 [`@pierre/trees`](https://www.npmjs.com/package/@pierre/trees) through its `web-components` entry: `paths` (folders end in `/`), `gitStatus`, `expanded`, `query` (shows only the paths that match it; empty shows all), `reveal(path, focus)`.
+`expanded` also opens and closes the folders of a mounted tree, a `tree-expand` event (`detail.expanded`) reports the open folders when the user changes them, and the tree keeps them when it's moved, such as into a floating group.
 It has no search field of its own.
 Fires `file-open` on click and on <kbd>Enter</kbd>, and `tree-search` (`detail.key`) when a letter or digit is typed in it, for the panel's search field.
 

@@ -25,7 +25,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-undo.js';
 import '@adobe/spectrum-wc-icons/swc-icon-visibility.js';
 import '@adobe/spectrum-wc-icons/swc-icon-web-page.js';
 import link from '@adobe/spectrum-wc/link.css';
-import { css, html, nothing, type TemplateResult, unsafeCSS } from 'lit';
+import { css, html, nothing, type PropertyValues, type TemplateResult, unsafeCSS } from 'lit';
 import { live } from 'lit/directives/live.js';
 import type {
   BrowserAction,
@@ -39,6 +39,7 @@ import { agentName } from './files.ts';
 import { onWatch, watchOnly } from './follow.ts';
 import { time } from './messages.ts';
 import { copyText, reach, reachStyles } from './reach.ts';
+import { ViewSet, ViewState } from './view-state.ts';
 
 export function normalize(input: string): string {
   const text = input.trim();
@@ -163,7 +164,9 @@ export class SliccBrowser extends ModelElement {
   #last: string | null = null;
   #shown = actionPage;
   #anchor: number | null = null;
-  #expanded = new Set<string>();
+  #expanded = new ViewSet(this, 'browser');
+  #recent = new ViewState(this, 'browser:recent', () => false);
+  #chosen = new ViewState<string | null | undefined>(this, 'browser:tab', () => undefined);
 
   constructor() {
     super();
@@ -637,7 +640,6 @@ export class SliccBrowser extends ModelElement {
     this.#shots.clear();
     this.#frames.clear();
     this.#pulse.clear();
-    this.#expanded.clear();
     this.#shown = actionPage;
     const tabs = model.browser.list();
     this.#driven = new Set(tabs.filter((tab) => tab.controlled).map((tab) => tab.id));
@@ -704,7 +706,10 @@ export class SliccBrowser extends ModelElement {
     this.#driven = driven;
     const ids = new Set(tabs.map((tab) => tab.id));
     for (const id of this.#frames.keys()) if (!ids.has(id)) this.#frames.delete(id);
-    if (this.#focus && !ids.has(this.#focus)) this.#show(null);
+    if (this.#focus && !ids.has(this.#focus)) {
+      this.#show(null);
+      this.#chosen.value = undefined;
+    }
     this.#stale();
     this.requestUpdate();
   }
@@ -765,11 +770,24 @@ export class SliccBrowser extends ModelElement {
   }
 
   #show(id: string | null): void {
+    this.#chosen.value = id;
+    this.#visit(id);
+    this.requestUpdate();
+  }
+
+  #visit(id: string | null): void {
     this.#focus = id;
     this.#copied = null;
     this.#shown = actionPage;
     if (id) this.#pulse.delete(id);
-    this.requestUpdate();
+  }
+
+  protected willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed);
+    const chosen = this.#chosen.value;
+    if (chosen === undefined || chosen === this.#focus) return;
+    if (chosen === null || this.model?.browser.list().some((tab) => tab.id === chosen))
+      this.#visit(chosen);
   }
 
   #focused(): BrowserTab | undefined {
@@ -984,8 +1002,7 @@ export class SliccBrowser extends ModelElement {
   }
 
   #toggle(id: string): void {
-    if (!this.#expanded.delete(id)) this.#expanded.add(id);
-    this.requestUpdate();
+    this.#expanded.toggle(id);
   }
 
   #what(action: BrowserAction): TemplateResult {
@@ -1031,7 +1048,7 @@ export class SliccBrowser extends ModelElement {
     if (this.#width >= narrowWidth)
       return html`<h3>Recent actions</h3>${more}<ol class="actions" aria-label="Recent actions" tabindex="0">${actions.map((action) => this.#row(action))}</ol>`;
     const last = actions.at(-1) as BrowserAction;
-    return html`<details>
+    return html`<details ?open=${this.#recent.value} @toggle=${(event: Event) => (this.#recent.value = (event.currentTarget as HTMLDetailsElement).open)}>
         <summary><swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right>Recent actions (${all.length})</summary>
         ${more}
         <ol class="actions" aria-label="Earlier actions" tabindex="0">${actions.slice(0, -1).map((action) => this.#row(action))}</ol>

@@ -43,6 +43,7 @@ import {
 } from './messages.ts';
 import { settleModels } from './models.ts';
 import { connecting } from './tabs.ts';
+import { ViewSet } from './view-state.ts';
 
 const navigation = new Set([
   'ArrowUp',
@@ -298,7 +299,9 @@ export class SliccChat extends ThemedElement {
     `,
   ];
 
+  #licks = new ViewSet(this, 'chat:licks');
   #handlers: Handlers = {
+    licks: this.#licks,
     color: 'light',
     model: null,
     readOnly: false,
