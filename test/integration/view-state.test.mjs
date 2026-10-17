@@ -341,3 +341,36 @@ for (const spec of panels) {
     assert.deepEqual(page.errors, []);
   });
 }
+
+test('a search in Files leaves its folders out of what a rebuilt Files opens', async (t) => {
+  const page = await open(t);
+  await viewport(page, 1280);
+  await show(page, 'files', 'slicc-file-tree');
+  await page.evaluate(() => {
+    window.treeRow = (path) =>
+      window
+        .part('files', 'slicc-file-tree')
+        ?.tree?.getFileTreeContainer()
+        ?.shadowRoot?.querySelector(`[data-item-path="${path}"]`) ?? null;
+    return true;
+  });
+  await page.until(() => !!window.treeRow('shared/'));
+  assert.equal(await page.evaluate(() => !!window.treeRow('shared/MEMORY.md')), false);
+  await page.evaluate(() => {
+    const field = window.part('files', 'sp-search');
+    field.value = 'MEMORY';
+    field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    return true;
+  });
+  await page.until(() => !!window.treeRow('shared/MEMORY.md'));
+  await page.evaluate(() => {
+    window.outgoing = window.view('files');
+    return true;
+  });
+  await viewport(page, 420);
+  await show(page, 'files', 'slicc-file-tree');
+  await page.until(() => window.view('files') !== window.outgoing && !!window.treeRow('shared/'));
+  assert.equal(await page.evaluate(() => window.part('files', 'sp-search').value), '');
+  assert.equal(await page.evaluate(() => !!window.treeRow('shared/MEMORY.md')), false);
+  assert.deepEqual(page.errors, []);
+});

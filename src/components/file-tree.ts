@@ -55,7 +55,7 @@ export class SliccFileTree extends HTMLElement {
   #expanded: readonly string[] = [];
   #mount: HTMLElement | null = null;
   #query = '';
-  #reported = '';
+  #chosen: readonly string[] = [];
   #applying = false;
 
   get paths(): readonly string[] {
@@ -63,7 +63,7 @@ export class SliccFileTree extends HTMLElement {
   }
 
   set paths(value: readonly string[]) {
-    const expanded = this.#paths.length > 0 ? this.#expandedNow() : this.#expanded;
+    const expanded = this.#paths.length > 0 ? this.#held() : this.#expanded;
     this.#paths = value;
     this.#tree?.resetPaths(value, { initialExpandedPaths: expanded });
     this.#research();
@@ -84,9 +84,15 @@ export class SliccFileTree extends HTMLElement {
   }
 
   set query(value: string) {
+    const was = this.#query;
     this.#query = value;
     this.#tree?.setSearch(value || null);
+    if (was && !value) this.expanded = this.#chosen;
     this.#matched();
+  }
+
+  #held(): readonly string[] {
+    return this.#query ? this.#chosen : this.#expandedNow();
   }
 
   get empty(): boolean {
@@ -140,6 +146,10 @@ export class SliccFileTree extends HTMLElement {
   #apply(): void {
     const tree = this.#tree;
     if (!tree || this.#paths.length === 0) return;
+    if (this.#query) {
+      this.#chosen = this.#expanded;
+      return;
+    }
     const wanted = new Set(this.#expanded);
     this.#applying = true;
     for (const path of this.#paths) {
@@ -151,15 +161,14 @@ export class SliccFileTree extends HTMLElement {
       else item.collapse();
     }
     this.#applying = false;
-    this.#reported = this.#expandedNow().join('\n');
+    this.#chosen = this.#expandedNow();
   }
 
   #changed(): void {
-    if (this.#applying || !this.#tree) return;
+    if (this.#applying || !this.#tree || this.#query) return;
     const expanded = this.#expandedNow();
-    const key = expanded.join('\n');
-    if (key === this.#reported) return;
-    this.#reported = key;
+    if (expanded.join('\n') === this.#chosen.join('\n')) return;
+    this.#chosen = expanded;
     this.dispatchEvent(
       new CustomEvent('tree-expand', { detail: { expanded }, bubbles: true, composed: true })
     );
@@ -191,13 +200,13 @@ export class SliccFileTree extends HTMLElement {
       onSearchChange: (value) => this.#searched(value),
     });
     this.#tree.render({ containerWrapper: this.#mount });
-    this.#reported = this.#expandedNow().join('\n');
+    this.#chosen = this.#query ? this.#expanded : this.#expandedNow();
     this.#tree.subscribe(() => this.#changed());
     this.#matched();
   }
 
   disconnectedCallback(): void {
-    if (this.#paths.length > 0) this.#expanded = this.#expandedNow();
+    if (this.#paths.length > 0) this.#expanded = this.#held();
     this.#tree?.cleanUp();
     this.#tree = null;
     this.#mount?.replaceChildren();
