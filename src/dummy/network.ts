@@ -4,6 +4,7 @@ import type {
   Leader,
   LinkedDevice,
   LinkedFolder,
+  LinkPairing,
   NetworkExit,
   NetworkLinks,
   NetworkPort,
@@ -24,7 +25,10 @@ export type LinksScenario =
   | 'prompt'
   | 'denied'
   | 'remote'
-  | 'followers';
+  | 'followers'
+  | 'pairing'
+  | 'pairing-notray'
+  | 'forgotten';
 
 export type LeadersScenario = 'connected' | 'failed' | 'unlinked' | 'disconnected' | 'two';
 
@@ -273,6 +277,33 @@ const followers: readonly LinkedDevice[] = [
   },
 ];
 
+export const pairingCode = 'ab12…ef';
+
+export const pairingRefused = 'That isn’t a pairing link from slicc pair.';
+
+export const pairingStopped = 'slicc on this computer stopped answering. Run slicc pair again.';
+
+export const pairedDevice: LinkedDevice = {
+  id: 'link-quay',
+  name: 'slicc on quay-studio',
+  host: 'quay-studio.slicc.internal',
+  address: '198.18.57.11',
+  mode: 'local',
+  kind: 'cli',
+  offers: ['net', 'http', 'ssh'],
+  exit: true,
+  state: 'connected',
+  folders: [{ name: 'sketches', source: 'quay-studio/sketches', readonly: false }],
+};
+
+export const forgottenDevice: LinkedDevice = {
+  ...pairedDevice,
+  state: 'offline',
+  note: 'SLICC on quay-studio no longer knows this seven. Pair it again.',
+};
+
+const others = linkedDevices.filter((device) => device.id !== pairedDevice.id);
+
 export function grant(device: LinkedDevice, key: AccessKey, allowed: boolean): LinkedDevice {
   const access = { ...device.access, [key]: allowed };
   if (key === 'view' && !allowed && 'control' in access) access.control = false;
@@ -297,6 +328,16 @@ export function linksFixtures(
   if (scenario === 'preparing') {
     return {
       links: { ...base, joinUrl: null, joinCommand: null, followUrl: null, devices: [] },
+      exit: null,
+    };
+  }
+  if (scenario === 'pairing')
+    return { links: { ...base, devices: others, pairing: { state: 'idle' } }, exit: null };
+  if (scenario === 'pairing-notray')
+    return { links: { devices: others, permission: null, pairing: { state: 'idle' } }, exit: null };
+  if (scenario === 'forgotten') {
+    return {
+      links: { ...base, devices: [forgottenDevice, ...others], pairing: { state: 'idle' } },
       exit: null,
     };
   }
@@ -361,6 +402,10 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
   disconnectLeader?: (id: string) => Promise<void>;
   reconnectLeader?: (id: string) => Promise<void>;
   forgetLeader?: (id: string) => Promise<void>;
+  pairComputer?: (url: string) => Promise<void>;
+  confirmPairing?: () => Promise<void>;
+  cancelPairing?: () => Promise<void>;
+  #pairUrl = '';
   #leaders: Leader[] | undefined;
   #files: DummyFiles | undefined;
 
@@ -386,6 +431,9 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
       this.retryLinks = () => this.#retry();
       this.mountFolder = (source) => this.#mountFolder(source);
       this.ejectFolder = (source) => this.#ejectFolder(source);
+      this.pairComputer = (url) => this.#pair(url);
+      this.confirmPairing = () => this.#confirmPairing();
+      this.cancelPairing = () => this.#cancelPairing();
       this.#files = files;
       files?.on('mounts', (targets) => this.#mounted(targets));
     }
@@ -594,6 +642,42 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
       followUrl: followUrl(this.#rotation),
     };
     this.#emit();
+  }
+
+  #pairing(pairing: LinkPairing, devices?: readonly LinkedDevice[]): void {
+    const links = this.#links as NetworkLinks;
+    this.#links = { ...links, pairing, devices: devices ?? links.devices };
+    this.#emit();
+  }
+
+  async #pair(url: string): Promise<void> {
+    await this.#clock.sleep(4);
+    if (!url.startsWith('http://127.0.0.1:')) throw new Error(pairingRefused);
+    this.#pairUrl = url;
+    this.#pairing({ state: 'confirm', code: pairingCode });
+  }
+
+  async #confirmPairing(): Promise<void> {
+    this.#pairing({ state: 'linking', code: pairingCode });
+    await this.#clock.sleep(8);
+    if (this.#links?.pairing?.state !== 'linking') return;
+    if (this.#pairUrl.includes('fail')) {
+      this.#pairing({ state: 'failed', code: pairingCode, error: pairingStopped });
+      return;
+    }
+    const devices = (this.#links as NetworkLinks).devices.filter(
+      (device) => device.id !== pairedDevice.id
+    );
+    this.#pairing({ state: 'linked', code: pairingCode, name: 'SLICC on quay-studio' }, [
+      pairedDevice,
+      ...devices,
+    ]);
+  }
+
+  async #cancelPairing(): Promise<void> {
+    await this.#clock.sleep(2);
+    this.#pairUrl = '';
+    this.#pairing({ state: 'idle' });
   }
 
   async #retry(): Promise<void> {

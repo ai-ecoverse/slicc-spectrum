@@ -1,6 +1,7 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
+import '@adobe/spectrum-wc/components/progress-circle/swc-progress-circle.js';
 import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
@@ -13,7 +14,10 @@ import '@adobe/spectrum-wc-icons/swc-icon-info-circle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-visibility.js';
 import '@adobe/spectrum-wc-icons/swc-icon-visibility-off.js';
 import link from '@adobe/spectrum-wc/link.css';
-import { css, html, nothing, type TemplateResult, unsafeCSS } from 'lit';
+import '@spectrum-web-components/field-label/sp-field-label.js';
+import '@spectrum-web-components/help-text/sp-help-text.js';
+import '@spectrum-web-components/textfield/sp-textfield.js';
+import { css, html, nothing, type PropertyValues, type TemplateResult, unsafeCSS } from 'lit';
 import { live } from 'lit/directives/live.js';
 import type {
   AccessKey,
@@ -25,6 +29,7 @@ import type {
   LeaderState,
   LinkedDevice,
   LinkedFolder,
+  LinkPairing,
   LinkState,
   NetworkExit,
   NetworkFailure,
@@ -315,6 +320,30 @@ export function remoteLight(status: NetworkStatus | undefined): RemoteLight | nu
   return { mode: 'watch', variant: 'info', text: `Watched by ${by(watching)}`, tooltip };
 }
 
+export function pairingLine(pairing: LinkPairing): string {
+  const code = pairing.code ? ` Code ${pairing.code}.` : '';
+  switch (pairing.state) {
+    case 'confirm':
+      return `Link SLICC on this computer?${code}`;
+    case 'linking':
+      return 'Linking SLICC on this computer…';
+    case 'linked':
+      return `Linked ${deviceName(pairing.name ?? 'SLICC on this computer')}.`;
+    case 'failed':
+      return `Error: ${pairingError(pairing)}`;
+    default:
+      return '';
+  }
+}
+
+export function pairingError(pairing: LinkPairing): string {
+  return pairing.error ?? 'Linking stopped.';
+}
+
+export function hasTray(links: NetworkLinks): boolean {
+  return links.joinUrl !== undefined || links.joinCommand !== undefined;
+}
+
 export type LinksSummary =
   | 'permission'
   | 'none'
@@ -458,6 +487,9 @@ export class SliccNetwork extends ModelElement {
     leaderError: { state: true },
     guestError: { state: true },
     guestsOff: { state: true },
+    pairBusy: { state: true },
+    pairError: { state: true },
+    pairFilled: { state: true },
   };
   #open = new ViewSet(this, 'network');
   declare checking: boolean;
@@ -473,6 +505,12 @@ export class SliccNetwork extends ModelElement {
   declare leaderError: string;
   declare guestError: string;
   declare guestsOff: string | null;
+  declare pairBusy: string;
+  declare pairError: string;
+  declare pairFilled: boolean;
+  #pairState: LinkPairing['state'] | undefined;
+  #confirming = false;
+  #settle: ResizeObserver | null = null;
   #leaderId = '';
   #guestId = '';
 
@@ -491,6 +529,9 @@ export class SliccNetwork extends ModelElement {
     this.leaderError = '';
     this.guestError = '';
     this.guestsOff = null;
+    this.pairBusy = '';
+    this.pairError = '';
+    this.pairFilled = false;
   }
 
   static styles = [
@@ -747,6 +788,49 @@ export class SliccNetwork extends ModelElement {
       .swc-Link {
         font-size: inherit;
       }
+      .pairing {
+        gap: var(--swc-spacing-200);
+        padding: var(--swc-spacing-300);
+        border-radius: var(--swc-corner-radius-medium-default);
+        background: var(--swc-background-layer-1-color);
+      }
+      .pairing h3 {
+        margin: 0;
+      }
+      .pairing code {
+        font-family: var(--swc-code-font-family-stack);
+        font-size: var(--swc-font-size-75);
+        color: var(--swc-code-color);
+        white-space: nowrap;
+      }
+      .pairing .chip {
+        display: inline-block;
+        padding: 0 var(--swc-spacing-75);
+        border-radius: var(--swc-corner-radius-small-default);
+        background: var(--swc-background-layer-2-color);
+      }
+      .pair-field {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: var(--swc-spacing-100);
+      }
+      .pair-field sp-field-label {
+        flex-basis: 100%;
+      }
+      .pair-field sp-textfield {
+        flex: 1 1 200px;
+        min-width: 0;
+      }
+      .linking {
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-200);
+        overflow-wrap: anywhere;
+      }
+      .linking swc-progress-circle {
+        flex: none;
+      }
       .dots {
         display: inline-block;
         white-space: nowrap;
@@ -818,6 +902,9 @@ export class SliccNetwork extends ModelElement {
     this.leaderError = '';
     this.guestError = '';
     this.guestsOff = null;
+    this.pairError = '';
+    this.pairBusy = '';
+    this.#pairState = undefined;
     const update = () => this.requestUpdate();
     return [
       model.tray.on('status', update),
@@ -848,11 +935,49 @@ export class SliccNetwork extends ModelElement {
   }
 
   focus(): void {
+    if (this.#pairing()?.state === 'confirm') {
+      this.#showPairing();
+      return;
+    }
     this.focusWith(
       { focusVisible: false },
       'sp-picker, swc-button, a, summary, swc-action-button',
       '.page'
     );
+  }
+
+  #showPairing(): void {
+    void this.updateComplete.then(() => {
+      this.focusWith({ preventScroll: true }, '#pairing');
+      const scroll = () =>
+        this.renderRoot.querySelector('[data-pairing]')?.scrollIntoView({ block: 'nearest' });
+      scroll();
+      this.#settle?.disconnect();
+      const settle = new ResizeObserver(scroll);
+      settle.observe(this.renderRoot.querySelector('.page') as Element);
+      this.#settle = settle;
+      setTimeout(() => settle.disconnect(), 1000);
+    });
+  }
+
+  protected willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed);
+    const state = this.#pairing()?.state;
+    const was = this.#pairState;
+    this.#pairState = state;
+    if (state === was) return;
+    if (was !== undefined) this.pairError = '';
+    this.#confirming = state === 'confirm';
+  }
+
+  protected updated(): void {
+    if (!this.#confirming) return;
+    this.#confirming = false;
+    this.#showPairing();
+  }
+
+  #pairing(): LinkPairing | undefined {
+    return this.model?.network?.status().links?.pairing;
   }
 
   async check(): Promise<void> {
@@ -890,6 +1015,99 @@ export class SliccNetwork extends ModelElement {
     } finally {
       this.busy = '';
     }
+  }
+
+  async #pairAct(
+    action: string,
+    run: () => Promise<void> | undefined,
+    then?: string
+  ): Promise<boolean> {
+    this.pairBusy = action;
+    this.pairError = '';
+    try {
+      await run();
+      if (then) {
+        await this.updateComplete;
+        this.focusOn(then);
+      }
+      return true;
+    } catch (error) {
+      this.pairError = failure(error);
+      return false;
+    } finally {
+      if (this.pairBusy === action) this.pairBusy = '';
+    }
+  }
+
+  async #submitPair(event: Event, port: NetworkPort): Promise<void> {
+    event.preventDefault();
+    const field = this.renderRoot.querySelector('#pair-url') as HTMLElement & { value: string };
+    const url = field.value.trim();
+    if (!url || this.pairBusy) return;
+    if (await this.#pairAct('pair', () => port.pairComputer?.(url))) {
+      field.value = '';
+      this.pairFilled = false;
+    }
+  }
+
+  #pairInput(event: Event): void {
+    this.pairFilled = !!(event.target as HTMLElement & { value: string }).value.trim();
+  }
+
+  #pairButton(
+    port: NetworkPort,
+    action: string,
+    label: string,
+    then = '#pairing',
+    variant = 'secondary'
+  ): TemplateResult {
+    return html`<swc-button size="m" variant=${variant} fill-style=${variant === 'accent' ? nothing : 'outline'} data-action=${action} ?pending=${this.pairBusy === action} @click=${() => this.#pairAct(action, () => port.cancelPairing?.(), then)}>${label}</swc-button>`;
+  }
+
+  #pairingBody(port: NetworkPort, pairing: LinkPairing): TemplateResult {
+    const code = pairing.code ? html`<code class="chip">${pairing.code}</code>` : nothing;
+    const after = pairing.code ? html` (<code>${pairing.code}</code>)` : nothing;
+    switch (pairing.state) {
+      case 'confirm':
+        return html`<p>Code ${code}</p>
+          <p>Its network, folders and kernel services become available to seven. Check that slicc shows the same code.</p>
+          <div class="actions">
+            <swc-button size="m" variant="accent" data-action="confirm-pairing" ?pending=${this.pairBusy === 'confirm-pairing'} @click=${() => this.#pairAct('confirm-pairing', () => port.confirmPairing?.())}>Link</swc-button>
+            ${this.#pairButton(port, 'cancel-pairing', 'Cancel')}
+          </div>`;
+      case 'linking':
+        return html`<div class="linking"><swc-progress-circle size="s" indeterminate label="Linking"></swc-progress-circle><span>Linking SLICC on this computer${after}…</span></div>
+          <div class="actions">${this.#pairButton(port, 'cancel-pairing', 'Cancel')}</div>`;
+      case 'linked':
+        return html`<swc-status-light size="m" variant="positive" data-paired><span>Linked ${deviceName(pairing.name ?? 'SLICC on this computer')}${after}.</span></swc-status-light>
+          <div class="actions">${this.#pairButton(port, 'done-pairing', 'Done')}</div>`;
+      case 'failed':
+        return html`<div class="error" data-error="pair-failed"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span><span class="sr">Error: </span>${pairingError(pairing)}</span></div>
+          <div class="actions">
+            ${this.#pairButton(port, 'retry-pairing', 'Try again', '#pair-url')}
+            ${this.#pairButton(port, 'dismiss-pairing', 'Dismiss')}
+          </div>`;
+      default:
+        return html`<p>Run <code>slicc pair</code> on this computer and paste the link it prints.</p>
+          <form class="pair-field" data-form="pair" @submit=${(event: Event) => this.#submitPair(event, port)}>
+            <sp-field-label for="pair-url" size="m">Pairing link</sp-field-label>
+            <sp-textfield id="pair-url" size="m" type="url" autocomplete="off" placeholder="http://127.0.0.1:…" ?invalid=${!!this.pairError} @input=${(event: Event) => this.#pairInput(event)} @keydown=${(event: KeyboardEvent) => this.#enterKey(event)}>${this.pairError ? html`<sp-help-text slot="negative-help-text" icon data-error="pairing">${this.pairError}</sp-help-text>` : nothing}</sp-textfield>
+            <swc-button size="m" variant="accent" data-action="pair" ?pending=${this.pairBusy === 'pair'} ?disabled=${!this.pairFilled} @click=${(event: Event) => this.#sendKey(event)}>Link</swc-button>
+          </form>`;
+    }
+  }
+
+  #pairingBlock(port: NetworkPort, pairing: LinkPairing): TemplateResult {
+    const confirming = pairing.state === 'confirm';
+    return html`<section class="pairing" aria-labelledby="pairing" data-pairing=${pairing.state}>
+      <h3 id="pairing" tabindex="-1">${confirming ? 'Link SLICC on this computer?' : 'Link this computer'}</h3>
+      ${this.#pairingBody(port, pairing)}
+      ${
+        this.pairError && pairing.state !== 'idle'
+          ? html`<div class="error" data-error="pairing"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span><span class="sr">Error: </span>${this.pairError}</span></div>`
+          : nothing
+      }
+    </section>`;
   }
 
   #tailnet(action: string, run: () => Promise<void> | undefined): Promise<void> {
@@ -1232,6 +1450,7 @@ export class SliccNetwork extends ModelElement {
           ? html`<span class="muted" data-browsers>${device.browsers.length === 1 ? 'Browser' : 'Browsers'}: ${device.browsers.map((item, index) => html`${index ? ', ' : ''}${item.name} (<code>${item.runtime}</code>)`)}</span>`
           : nothing
       }
+      ${device.note ? html`<div class="warning" data-note><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span><span class="sr">Warning: </span>${device.note}</span></div>` : nothing}
       ${device.folders?.length ? this.#folders(port, device, device.folders) : nothing}
       ${device.asking ? this.#ask(port, device) : this.#access(port, device)}
       ${
@@ -1280,6 +1499,11 @@ export class SliccNetwork extends ModelElement {
   }
 
   #join(port: NetworkPort, links: NetworkLinks): TemplateResult {
+    return html`${hasTray(links) ? this.#joinTray(port, links) : nothing}
+      ${links.pairing ? this.#pairingBlock(port, links.pairing) : nothing}`;
+  }
+
+  #joinTray(port: NetworkPort, links: NetworkLinks): TemplateResult {
     const ready = links.joinCommand || links.joinUrl;
     const follow = links.followUrl;
     return html`<p>Link a slicc CLI on another computer, or on this one, to reach its network, ssh into it, or send internet traffic through it.</p>
@@ -1327,6 +1551,9 @@ export class SliccNetwork extends ModelElement {
     const links = status.links;
     if (!links) return nothing;
     const [variant, label] = linksLight(links);
+    const pairing = links.pairing;
+    const joinable = hasTray(links) || !!pairing;
+    const active = !!pairing && pairing.state !== 'idle';
     return html`<section aria-labelledby="links" data-links=${linksSummary(links)}>
       <div class="head">
         <h2 id="links">Linked devices</h2>
@@ -1336,9 +1563,10 @@ export class SliccNetwork extends ModelElement {
       ${
         links.devices.length
           ? html`<ul aria-labelledby="links">${links.devices.map((device) => this.#device(port, status, device))}</ul>
-            <details ?open=${this.#open.has('link')} @toggle=${this.#open.details('link')}><summary>${chevron}Link another device</summary><div>${this.#join(port, links)}</div></details>`
+            ${joinable ? html`<details ?open=${active || this.#open.has('link')} @toggle=${this.#open.details('link')}><summary>${chevron}Link another device</summary><div>${this.#join(port, links)}</div></details>` : nothing}`
           : this.#join(port, links)
       }
+      ${pairing ? html`<div class="sr" role="status" aria-live="polite" data-pairing-status>${pairingLine(pairing)}</div>` : nothing}
       ${
         this.linksError
           ? html`<div class="error" role="alert" data-error="links"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.linksError}</span></div>`
