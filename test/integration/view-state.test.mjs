@@ -820,3 +820,59 @@ test('Files and Memory keep each model its own selection and scroll when the app
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('Files keeps its end, away from the selected file, through a rebuild to a phone and back', async (t) => {
+  const page = await open(t);
+  await viewport(page, 1280);
+  await show(page, 'files', 'slicc-file-tree');
+  await treeHelpers(page);
+  await page.until(() => !!window.treeRow('home/'));
+  await page.evaluate(async () => {
+    for (let i = 0; i < 30; i++)
+      await window.model.files.write(
+        `/home/user/downloads/shot-${String(i).padStart(2, '0')}.txt`,
+        'x\n'
+      );
+    return true;
+  });
+  for (const path of ['home/', 'home/user/', 'home/user/downloads/']) await expand(page, path);
+  const picked = 'home/user/downloads/shot-03.txt';
+  await page.until((picked) => {
+    const row = window.treeRow(picked);
+    if (!row) return false;
+    row.click();
+    return window.treeRow(picked)?.getAttribute('aria-selected') === 'true';
+  }, picked);
+  await wheel(page, () => {
+    window.wheelBox = window.treeScroller;
+    return true;
+  });
+  const away = (picked) => {
+    const box = window.treeScroller();
+    return (
+      window.view('files') !== window.outgoing &&
+      window.laidOut(box) &&
+      box.scrollTop > 200 &&
+      box.scrollTop >= box.scrollHeight - box.clientHeight - 1 &&
+      !window.inView(window.treeRow(picked), box) &&
+      window.fileTree().tree.getSelectedPaths().includes(picked)
+    );
+  };
+  for (const width of [420, 1280]) {
+    await page.evaluate(() => {
+      window.outgoing = window.view('files');
+      return true;
+    });
+    await viewport(page, width);
+    await page.evaluate(() => {
+      window.app.panels.open('files');
+      return true;
+    });
+    await page.until(away, picked);
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    );
+    assert.equal(await page.evaluate(away, picked), true);
+  }
+  assert.deepEqual(page.errors, []);
+});

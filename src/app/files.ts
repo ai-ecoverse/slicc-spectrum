@@ -160,7 +160,7 @@ export const errorCss = css`
   }
 `;
 
-const blank: TreeView = { scroll: 0, selected: [], focused: null, shown: false };
+const blank: TreeView = { scroll: 0, selected: [], focused: null, shown: false, end: false };
 
 export class SliccFiles extends ModelElement {
   static properties = {

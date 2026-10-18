@@ -9,6 +9,7 @@ export interface TreeView {
   selected: readonly string[];
   focused: string | null;
   shown: boolean;
+  end: boolean;
 }
 
 const css = `
@@ -104,10 +105,12 @@ export class SliccFileTree extends HTMLElement {
   #height = 0;
   #set = -1;
   #user = false;
+  #fought = -1;
   #gesture = (): void => {
     this.#user = true;
   };
   #resize = new ResizeObserver(() => {
+    this.#fought = -1;
     this.#measure();
     this.#scrollBack();
   });
@@ -233,13 +236,16 @@ export class SliccFileTree extends HTMLElement {
     const index = tree?.getFocusedIndex() ?? -1;
     const height = tree?.getItemHeight() ?? 0;
     const top = this.#top;
+    const bottom = top + this.#height;
+    const rows = (tree?.getVisibleCount() ?? 0) * height;
     return {
       scroll: back ? back.scroll : top,
       selected: tree?.getSelectedPaths() ?? [],
       focused: tree?.getFocusedPath() ?? null,
       shown: back
         ? back.shown
-        : index >= 0 && index * height >= top && (index + 1) * height <= top + this.#height,
+        : index >= 0 && index * height >= top && (index + 1) * height <= bottom,
+      end: back ? back.end : top > 0 && bottom >= rows - 1,
     };
   }
 
@@ -274,7 +280,8 @@ export class SliccFileTree extends HTMLElement {
     this.#hold = back;
     const index = tree.getFocusedIndex();
     const height = tree.getItemHeight();
-    let top = Math.min(back.scroll, el.scrollHeight - el.clientHeight);
+    const max = el.scrollHeight - el.clientHeight;
+    let top = back.end ? max : Math.min(back.scroll, max);
     if (back.shown && index >= 0)
       top = Math.min(Math.max(top, (index + 1) * height - el.clientHeight), index * height);
     el.scrollTop = top;
@@ -294,7 +301,12 @@ export class SliccFileTree extends HTMLElement {
     this.#measure();
     const el = this.#scroller;
     if (!el?.clientHeight || this.#want || Math.abs(el.scrollTop - this.#set) < 1) return;
-    if ((this.#back || this.#hold) && !this.#user) return;
+    if ((this.#back || this.#hold) && !this.#user) {
+      if (!this.#hold || el.scrollTop === this.#fought) return;
+      this.#fought = el.scrollTop;
+      this.#scrollBack();
+      return;
+    }
     this.#set = -1;
     this.#back = null;
     this.#hold = null;
