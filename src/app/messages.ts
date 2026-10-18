@@ -362,11 +362,12 @@ function errorCard(
     fix === 'login' && item.account && !handlers.readOnly
       ? handlers.login?.(item.account, id)
       : undefined;
-  const text = login?.state === 'connected' ? signedIn : item.text;
+  const resolved = login?.state === 'connected';
+  const text = resolved ? signedIn : item.text;
   const failure = login?.state === 'idle' ? login.error : undefined;
-  return html`<div class="error-card" role="alert" aria-atomic="false" data-id=${id || nothing} data-login=${login?.state ?? nothing}>
-    <swc-icon-alert-diamond class="icon" size="s" aria-hidden="true"></swc-icon-alert-diamond>
-    <span class="sr">Error: </span><span class="lead">${item.title}</span>
+  return html`<div class="error-card" role=${resolved ? nothing : 'alert'} aria-atomic=${resolved ? nothing : 'false'} data-id=${id || nothing} data-login=${login?.state ?? nothing}>
+    ${resolved ? html`<swc-icon-info-circle class="icon" size="s" aria-hidden="true"></swc-icon-info-circle>` : html`<swc-icon-alert-diamond class="icon" size="s" aria-hidden="true"></swc-icon-alert-diamond>`}
+    ${resolved ? nothing : html`<span class="sr">Error: </span>`}<span class="lead">${item.title}</span>
     ${text ? html`<span class="detail" role=${login ? 'status' : nothing}>${text}</span>` : nothing}
     ${fix ? html`<div class="fix" aria-live="off">${fixButton(fix, item, handlers, login)}</div>` : nothing}
     ${
@@ -1777,6 +1778,9 @@ export const messageCss = css`
   .error-card .icon {
     grid-row: span 2;
     color: var(--swc-negative-visual-color);
+  }
+  .error-card[data-login='connected'] .icon {
+    color: var(--swc-neutral-subdued-content-color-default);
   }
   .error-card .lead {
     grid-column: 2;

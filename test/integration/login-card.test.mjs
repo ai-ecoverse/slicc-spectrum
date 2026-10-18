@@ -104,12 +104,19 @@ test('Log in on the expired-session card signs in within the click, then offers 
     error: null,
   });
   assert.deepEqual(
-    await page.evaluate(() => [
-      window.card('k-s3').getAttribute('role'),
-      window.card('k-s3', '.detail').getAttribute('role'),
-      window.card('k-s3', '.fix').getAttribute('aria-live'),
-    ]),
-    ['alert', 'status', 'off']
+    await page.evaluate(() => {
+      const icon = window.card('k-s3', '.icon');
+      return [
+        window.card('k-s3').getAttribute('role'),
+        !!window.card('k-s3', '.sr'),
+        icon.localName,
+        icon.getAttribute('aria-hidden'),
+        getComputedStyle(icon).color === getComputedStyle(window.card('k-s3', '.detail')).color,
+        window.card('k-s3', '.detail').getAttribute('role'),
+        window.card('k-s3', '.fix').getAttribute('aria-live'),
+      ];
+    }),
+    [null, false, 'swc-icon-info-circle', 'true', true, 'status', 'off']
   );
   const before = await page.evaluate(userTexts);
   await click(page, 'k-s3', 'retry');
