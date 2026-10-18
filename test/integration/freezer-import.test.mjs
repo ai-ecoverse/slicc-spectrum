@@ -83,6 +83,9 @@ test('freezer import: pick, preview, import with progress, then done with badged
         note.dataset.note,
         note.textContent.trim(),
       ]),
+      codes: [...window.inImport('[data-note=flagged]').querySelectorAll('code')].map(
+        (code) => code.textContent
+      ),
       icons: [...window.inImport('.notes').querySelectorAll('.icon')].map((icon) =>
         icon.getAttribute('aria-hidden')
       ),
@@ -106,9 +109,13 @@ test('freezer import: pick, preview, import with progress, then done with badged
       ],
       notes: [
         ['providers', 'Sign in again in Settings: Anthropic, OpenAI.'],
-        ['flagged', 'Warning: 1 file looks like credentials and stays out: /workspace/pantry/.env'],
+        [
+          'flagged',
+          'Warning: 1 file looks like credentials. It is imported; review it afterwards: files/cones/cone/.env',
+        ],
         ['mounts', 'Not imported: 2 mounted folders.'],
       ],
+      codes: ['files/cones/cone/.env'],
       icons: ['true', 'true'],
       buttons: [
         ['import-cancel', 'Cancel', 'secondary'],

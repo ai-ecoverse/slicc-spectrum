@@ -30,7 +30,7 @@ export function importPreview(already: number | null): ProfileImportPreview {
     skills: ['ferry-times', 'pantry-labels'],
     crons: 2,
     webhooks: 1,
-    flagged: ['/workspace/pantry/.env'],
+    flagged: ['files/cones/cone/.env'],
     providers: ['anthropic', 'openai'],
     mounts: ['/mnt/photos', '/mnt/recipes'],
     already,

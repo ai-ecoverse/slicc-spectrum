@@ -35,12 +35,10 @@ export function providerNames(ids: readonly string[], accounts: readonly Account
   return ids.map((id) => accounts.find((account) => account.id === id)?.provider ?? id).join(', ');
 }
 
-export function flaggedLine(paths: readonly string[]): string {
-  const lead =
-    paths.length === 1
-      ? '1 file looks like credentials and stays out'
-      : `${paths.length} files look like credentials and stay out`;
-  return paths.length > flaggedShown ? `${lead}.` : `${lead}: ${paths.join(', ')}`;
+export function flaggedLead(paths: readonly string[]): string {
+  return paths.length === 1
+    ? '1 file looks like credentials. It is imported; review it afterwards'
+    : `${paths.length} files look like credentials. They are imported; review them afterwards`;
 }
 
 export function summary(preview: ProfileImportPreview): Array<readonly [string, string]> {
@@ -163,6 +161,11 @@ export class SliccFreezerImport extends LitElement {
       }
       .note details {
         margin-block-start: var(--swc-spacing-75);
+      }
+      .note code {
+        font-family: var(--swc-code-font-family-stack);
+        font-size: var(--swc-font-size-75);
+        overflow-wrap: anywhere;
       }
       .note details ul {
         margin: var(--swc-spacing-75) 0 0;
@@ -375,10 +378,10 @@ export class SliccFreezerImport extends LitElement {
       );
     if (preview.flagged.length)
       notes.push(
-        html`<li class="note" data-note="flagged"><swc-icon-alert-triangle class="icon" size="s" aria-hidden="true"></swc-icon-alert-triangle><span><span class="word">Warning:</span> ${flaggedLine(preview.flagged)}${
+        html`<li class="note" data-note="flagged"><swc-icon-alert-triangle class="icon" size="s" aria-hidden="true"></swc-icon-alert-triangle><span><span class="word">Warning:</span> ${flaggedLead(preview.flagged)}${
           preview.flagged.length > flaggedShown
-            ? html`<details data-flagged><summary data-action="import-flagged">${chevron}Show the files</summary><ul>${preview.flagged.map((path) => html`<li>${path}</li>`)}</ul></details>`
-            : nothing
+            ? html`.<details data-flagged><summary data-action="import-flagged">${chevron}Show the files</summary><ul>${preview.flagged.map((path) => html`<li><code>${path}</code></li>`)}</ul></details>`
+            : html`: ${preview.flagged.map((path, index) => html`${index ? ', ' : ''}<code>${path}</code>`)}`
         }</span></li>`
       );
     if (preview.mounts.length)
