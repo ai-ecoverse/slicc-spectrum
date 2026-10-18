@@ -240,7 +240,7 @@ export class SliccSettings extends ThemedElement {
       const root = this.renderRoot;
       const row = root.querySelector<HTMLElement>(`.account[data-id="${CSS.escape(section)}"]`);
       const target = row ?? root.querySelector<HTMLElement>('h2[data-section=accounts]');
-      row?.querySelector<HTMLElement>('swc-button')?.focus({ focusVisible: false });
+      row?.querySelector<HTMLElement>('swc-button')?.focus();
       target?.scrollIntoView({ block: 'start' });
     });
   }

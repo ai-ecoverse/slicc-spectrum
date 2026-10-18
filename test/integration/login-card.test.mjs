@@ -18,7 +18,7 @@ async function open(t, params = {}) {
       return {
         state: card?.dataset.login ?? null,
         actions: [...(card?.querySelectorAll('[data-action]') ?? [])].map((b) => b.dataset.action),
-        label: card?.querySelector('.fix swc-button')?.textContent.trim() ?? null,
+        label: card?.querySelector('.fix swc-button:last-child')?.textContent.trim() ?? null,
         pending: !!login?.hasAttribute('pending'),
         detail: card?.querySelector('.detail')?.textContent.trim() ?? null,
         error: card?.querySelector('[data-error=login]')?.textContent.trim() ?? null,
@@ -81,14 +81,22 @@ test('Log in on the expired-session card signs in within the click, then offers 
     detail: 'The Adobe session expired. Log in again to continue.',
     error: null,
   });
+  const edge = () =>
+    window.card('k-s3', '.fix swc-button:last-child').getBoundingClientRect().right;
   await click(page, 'k-s3', 'login');
+  const before = await page.evaluate(edge);
   assert.deepEqual(await page.evaluate(() => window.model.settings.connects), [
     { id: 'ai-adobe', gesture: true },
   ]);
   await page.until(() => window.cardState('k-s3').state === 'signing-in');
+  assert.ok(Math.abs((await page.evaluate(edge)) - before) < 1);
+  assert.equal(
+    await page.evaluate(() => window.card('k-s3', '.fix').firstElementChild.dataset.action),
+    'cancel-login'
+  );
   assert.deepEqual(await page.evaluate(() => window.cardState('k-s3')), {
     state: 'signing-in',
-    actions: ['login', 'cancel-login'],
+    actions: ['cancel-login', 'login'],
     label: 'Signing in…',
     pending: true,
     detail: 'The Adobe session expired. Log in again to continue.',
@@ -118,7 +126,7 @@ test('Log in on the expired-session card signs in within the click, then offers 
     }),
     [null, false, 'swc-icon-info-circle', 'true', true, 'status', 'off']
   );
-  const before = await page.evaluate(userTexts);
+  const sentBefore = await page.evaluate(userTexts);
   await click(page, 'k-s3', 'retry');
   await page.until((count) => {
     const queued = window.model.agent.queue?.('cone-kitchen') ?? [];
@@ -127,7 +135,7 @@ test('Log in on the expired-session card signs in within the click, then offers 
         queued.length >
       count + 2
     );
-  }, before.length);
+  }, sentBefore.length);
   const sent = await page.evaluate(() => {
     const queued = window.model.agent.queue?.('cone-kitchen') ?? [];
     return [
@@ -138,7 +146,7 @@ test('Log in on the expired-session card signs in within the click, then offers 
       ...queued.map((m) => m.text),
     ];
   });
-  assert.ok(sent.includes(before.at(-1)), JSON.stringify(sent));
+  assert.ok(sent.includes(sentBefore.at(-1)), JSON.stringify(sent));
   assert.deepEqual(page.errors, []);
 });
 
@@ -147,7 +155,7 @@ test('Log in keeps keyboard focus on the card’s button from Log in to Retry', 
   await kitchen(page);
   const held = () => {
     const card = window.card('k-s3');
-    const button = card.querySelector('.fix swc-button');
+    const button = card.querySelector('.fix swc-button:last-child');
     return card.getRootNode().activeElement === button ? button.dataset.action : null;
   };
   await page.evaluate(() => {

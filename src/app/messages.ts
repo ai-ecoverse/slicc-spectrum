@@ -334,7 +334,7 @@ function actionLabel(action: ErrorAction, handlers: Handlers, messageId: string)
 const signedIn = 'Signed in. Retry to send it again.';
 
 function stopSigningIn(event: Event, handlers: Handlers, account: string, id: string): void {
-  const main = (event.currentTarget as HTMLElement).previousElementSibling as HTMLElement;
+  const main = (event.currentTarget as HTMLElement).nextElementSibling as HTMLElement;
   main.focus();
   handlers.cancelLogin?.(account, id);
 }
@@ -349,11 +349,11 @@ function fixButton(
   const signing = login?.state === 'signing-in';
   const shown = login?.state === 'connected' ? 'retry' : fix;
   const cancel = signing && login.cancel;
-  return html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${shown} ?pending=${signing} ?disabled=${handlers.readOnly} @click=${() => handlers.action(shown, item.id, item.account)}>${signing ? 'Signing in…' : actionLabel(shown, handlers, id)}</swc-button>${
+  return html`${
     cancel
       ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="cancel-login" @click=${(event: Event) => stopSigningIn(event, handlers, item.account as string, id)}>Cancel</swc-button>`
       : nothing
-  }`;
+  }<swc-button size="s" variant="secondary" fill-style="outline" data-action=${shown} ?pending=${signing} ?disabled=${handlers.readOnly} @click=${() => handlers.action(shown, item.id, item.account)}>${signing ? 'Signing in…' : actionLabel(shown, handlers, id)}</swc-button>`;
 }
 
 function errorCard(
@@ -1816,7 +1816,7 @@ export const messageCss = css`
       margin-inline: var(--swc-spacing-300);
     }
     .error-card .fix {
-      flex-direction: column;
+      flex-direction: column-reverse;
       align-items: flex-end;
     }
   }
