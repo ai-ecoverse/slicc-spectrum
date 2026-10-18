@@ -262,3 +262,35 @@ for (const width of [1000, 420]) {
     assert.deepEqual(page.errors, []);
   });
 }
+
+test('under forced colors a row clicked with the mouse shows no focus ring but keeps a selection mark', async (t) => {
+  const page = await open(t);
+  await page.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'forced-colors', value: 'active' }],
+  });
+  t.after(() => page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {}));
+  await viewport(page, 1280);
+  await click(
+    page,
+    await page.evaluate(() =>
+      window.center(window.$('slicc-app', '.rail.left [data-surface=files]'))
+    )
+  );
+  const readme = 'workspace/harbor/README.md';
+  await page.until((path) => window.laidOut(window.treeRow(path)), readme);
+  await click(page, await page.evaluate((path) => window.center(window.treeRow(path)), readme));
+  await page.until((path) => window.treeRow(path)?.dataset.itemFocused === 'true', readme);
+  const marks = () =>
+    page.evaluate(
+      (path) => ({
+        ringed: window.ringed(),
+        mark: getComputedStyle(window.treeRow(path)).outlineStyle,
+      }),
+      readme
+    );
+  assert.deepEqual(await marks(), { ringed: [], mark: 'solid' });
+  await page.press('ArrowDown');
+  await page.until(() => window.ringed().length === 1);
+  assert.deepEqual(await page.evaluate(() => window.ringed()), ['workspace/harbor/wrangler.toml']);
+  assert.deepEqual(page.errors, []);
+});

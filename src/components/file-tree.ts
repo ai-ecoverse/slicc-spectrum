@@ -55,6 +55,12 @@ const rows = `
 [data-type='item'][data-item-focused='true']:focus:not(:focus-visible)::before {
   display: none;
 }
+@media (forced-colors: active) {
+  [data-type='item'][data-item-selected='true'] {
+    outline: var(--swc-border-width-100) solid Highlight;
+    outline-offset: calc(-1 * var(--swc-border-width-100));
+  }
+}
 ${folderName} {
   display: block;
   white-space: nowrap;
