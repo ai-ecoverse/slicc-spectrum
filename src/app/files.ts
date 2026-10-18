@@ -380,7 +380,7 @@ export class SliccFiles extends ModelElement {
     this.#show();
     if (this.#pending) {
       this.#pending = false;
-      requestAnimationFrame(() => tree.focus());
+      requestAnimationFrame(() => this.focusOn('slicc-file-tree'));
     }
   }
 

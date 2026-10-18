@@ -21,6 +21,10 @@ import type {
 import type { Clock } from './clock.ts';
 import { type Effects, label, type Step, script } from './script.ts';
 
+function firstLine(text: string): string {
+  return text.split('\n')[0] as string;
+}
+
 interface Run {
   stopped: boolean;
   steers: Outgoing[];
@@ -463,7 +467,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
       id,
       kind: 'cone',
       name: agent.name,
-      title: first?.role === 'user' ? first.text.slice(0, 80) : agent.name,
+      title: first?.role === 'user' ? firstLine(first.text) : agent.name,
       model: agent.model,
       messages: messages.length,
       frozenAt: Date.now(),
@@ -605,7 +609,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
           kind: agent.kind,
           live: true,
           name: agent.name,
-          title: first?.role === 'user' ? first.text.slice(0, 80) : agent.name,
+          title: first?.role === 'user' ? firstLine(first.text) : agent.name,
           model: agent.model,
           messages: messages.length,
           frozenAt: messages.at(-1)?.createdAt ?? 0,
@@ -627,7 +631,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
       id: agentId,
       kind: 'cone',
       name: agent.name,
-      title: first?.role === 'user' ? first.text.slice(0, 80) : agent.name,
+      title: first?.role === 'user' ? firstLine(first.text) : agent.name,
       model: agent.model,
       messages: messages.length,
       frozenAt: Date.now(),

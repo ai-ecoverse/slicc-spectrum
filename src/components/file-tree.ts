@@ -49,7 +49,18 @@ const gestures = ['wheel', 'touchmove', 'pointerdown', 'keydown'] as const;
 
 const folderName = "[data-item-type='folder'] > [data-item-section='content']";
 
+const fileName = "[data-item-type='file'] > [data-item-section='content']";
+
 const rows = `
+[data-type='item'][data-item-focused='true']:focus:not(:focus-visible)::before {
+  display: none;
+}
+@media (forced-colors: active) {
+  [data-type='item'][data-item-selected='true'] {
+    outline: var(--swc-border-width-100) solid Highlight;
+    outline-offset: calc(-1 * var(--swc-border-width-100));
+  }
+}
 ${folderName} {
   display: block;
   white-space: nowrap;
@@ -63,6 +74,20 @@ ${folderName} :is([data-truncate-content='overflow'], [data-truncate-marker-cell
 }
 ${folderName} :is([data-item-flattened-subitems], [data-item-flattened-subitem]),
 ${folderName} [data-truncate-content='visible'] {
+  display: inline;
+  direction: inherit;
+}
+${fileName} [data-truncate-container] {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+${fileName} :is([data-truncate-grid], [data-truncate-grid] > div:not([data-truncate-marker-cell], [data-truncate-fill])) {
+  display: contents;
+}
+${fileName} :is([data-truncate-content='overflow'], [data-truncate-marker-cell], [data-truncate-fill]) {
+  display: none;
+}
+${fileName} [data-truncate-content='visible'] {
   display: inline;
   direction: inherit;
 }
@@ -445,10 +470,10 @@ export class SliccFileTree extends HTMLElement {
     this.#open(this.#tree?.getFocusedPath());
   }
 
-  focus(): void {
+  focus(options?: FocusOptions): void {
     const tree = this.#tree;
     const path = tree?.getFocusedPath() ?? tree?.getVisibleRows(0, 1)[0]?.path;
-    if (path) this.reveal(path);
+    if (path) this.reveal(path, true, options);
   }
 
   #row(path: string): HTMLElement | null {
@@ -459,13 +484,13 @@ export class SliccFileTree extends HTMLElement {
     );
   }
 
-  reveal(path: string, focus = true): void {
+  reveal(path: string, focus = true, options?: FocusOptions): void {
     this.#hold = null;
     this.#tree?.scrollToPath(path, { focus });
     if (!focus) return;
     const row = this.#row(path);
-    if (row) row.focus();
-    else requestAnimationFrame(() => this.#row(path)?.focus());
+    if (row) row.focus(options);
+    else requestAnimationFrame(() => this.#row(path)?.focus(options));
   }
 }
 

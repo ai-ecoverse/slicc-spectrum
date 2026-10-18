@@ -482,6 +482,7 @@ A live row offers **Open**, which selects that agent; a stopped one offers **Tha
 A thawed scoop or agent run keeps its row, which says what it was thawed as.
 **Delete cone**, in the agents list (or <kbd>Delete</kbd> on a cone's row) and the header's cone picker, stops a cone after a confirmation; `/freeze` does it at once.
 Either way its conversation stays here, and a row without a `kind` counts as a cone.
+A title longer than two lines ends in an ellipsis and carries its full text as a `title`; the dummy's titles are the whole first line of the first message, so only the card cuts them.
 
 #### `<slicc-sprinkle>`
 
@@ -544,10 +545,13 @@ Not for direct use.
 #### `<slicc-file-tree>`
 
 Generic.
-[`@pierre/trees`](https://www.npmjs.com/package/@pierre/trees) through its `web-components` entry: `paths` (folders end in `/`), `gitStatus`, `expanded`, `query` (shows only the paths that match it; empty shows all), `reveal(path, focus)`.
+[`@pierre/trees`](https://www.npmjs.com/package/@pierre/trees) through its `web-components` entry: `paths` (folders end in `/`), `gitStatus`, `expanded`, `query` (shows only the paths that match it; empty shows all), `reveal(path, focus, options)`.
 `expanded` also opens and closes the folders of a mounted tree, a `tree-expand` event (`detail.expanded`) reports the open folders when the user changes them, and the tree keeps them when it's moved, such as into a floating group.
 It has no search field of its own.
 A folder name or flattened folder chain too long for the row ends in an ellipsis instead of losing its middle, and every row carries its full name as a `title`, with its indent and chevron kept.
+A file name too long for the row ends its name in an ellipsis and keeps its extension, as in "tide-summary… md": the library splits the name after the dot, and the browser's ellipsis drops whole letters, so the dot goes with the name and a sliver of space can stay before the extension.
+`@pierre/trees` middle-truncates names by laying an "…" marker over the text, painted with `--trees-bg`; with the transparent background the tree uses here, the letters showed through it, so the tree hides that marker and lets the browser's own `text-overflow: ellipsis` cut the name before the extension.
+A row's focus ring shows only with keyboard focus: the library draws it on the row that holds focus (`data-item-focused`), mouse click or not, so the tree hides it when the row isn't `:focus-visible`, and `focus(options)` passes `focusVisible` down to the row. Under forced colors, where the selection fill drops out, a selected row keeps a `Highlight` outline.
 Fires `file-open` on click and on <kbd>Enter</kbd>, and `tree-search` (`detail.key`) when a letter or digit is typed in it, for the panel's search field.
 
 #### `<slicc-code-view>`
