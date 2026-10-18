@@ -8,6 +8,7 @@ import { confirm } from './confirm.ts';
 import { panelCss } from './files.ts';
 import { onWatch, watchOnly } from './follow.ts';
 import { coneLabel, twinned, withTitle } from './names.ts';
+import { ViewScroll } from './view-state.ts';
 
 export function ago(at: number, now = Date.now()): string {
   const days = Math.floor((now - at) / 86_400_000);
@@ -45,6 +46,10 @@ export function freezerOrder(rows: readonly FrozenCone[]): FrozenCone[] {
 }
 
 export class SliccFreezer extends ModelElement {
+  #scroll = new ViewScroll(this, 'freezer:scroll', {
+    scroller: () => this.renderRoot.querySelector<HTMLElement>('.list'),
+    rows: '.card[data-id]',
+  });
   static styles = [
     shared,
     panelCss,

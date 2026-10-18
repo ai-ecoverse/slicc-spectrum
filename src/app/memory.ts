@@ -10,7 +10,7 @@ import { confirm } from './confirm.ts';
 import { panelCss } from './files.ts';
 import { markdown } from './markdown.ts';
 import { search, searchCss } from './search.ts';
-import { ViewState } from './view-state.ts';
+import { ViewScroll, ViewState } from './view-state.ts';
 
 export type TagFilter = MemoryTag | 'all' | 'untagged';
 
@@ -82,6 +82,11 @@ export class SliccMemory extends ModelElement {
   declare scope: string;
   declare editing: string | null;
   #open = new ViewState<string | null>(this, 'memory', () => null);
+  #scroll = new ViewScroll(this, 'memory:scroll', {
+    scroller: () => this.renderRoot.querySelector<HTMLElement>('.list'),
+    rows: '.row[data-id]',
+    current: '.row[data-open]',
+  });
 
   constructor() {
     super();

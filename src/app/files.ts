@@ -5,7 +5,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-folder-add.js';
 import type { FileTree } from '@pierre/trees';
 import { css, html, nothing, type TemplateResult } from 'lit';
-import type { GitStatusEntry } from '../components/file-tree.ts';
+import type { GitStatusEntry, TreeView } from '../components/file-tree.ts';
 import type { Change, FileEntry, FilePort, SliccModel } from '../model/types.ts';
 import { changesOf, ModelElement, shared, ThemedElement } from './base.ts';
 import { search, searchCss } from './search.ts';
@@ -189,6 +189,7 @@ export class SliccFiles extends ModelElement {
   #reveal: string | null = null;
   #folders = new ViewState<readonly string[] | null>(this, 'files', () => null);
   #applied: readonly string[] | null = null;
+  #view = new ViewState<{ tree: TreeView | null }>(this, 'files:view', () => ({ tree: null }));
 
   constructor() {
     super();
@@ -335,6 +336,7 @@ export class SliccFiles extends ModelElement {
         gitStatus: readonly GitStatusEntry[];
         expanded: readonly string[];
         query: string;
+        view: TreeView;
         tree: FileTree | null;
         reveal(path: string, focus?: boolean): void;
       })
@@ -361,8 +363,11 @@ export class SliccFiles extends ModelElement {
     const tree = this.#tree();
     const changes = this.model ? changesOf(this.model).changes() : [];
     if (!tree) return;
-    if (tree.paths.length === 0)
+    if (tree.paths.length === 0) {
       tree.expanded = this.#folders.value ?? ancestors(changes.map((change) => change.path));
+      const view = this.#view.value.tree;
+      if (view) tree.view = view;
+    }
     tree.paths = treePaths(this.#entries);
     tree.gitStatus = treeStatus(changes);
     this.#show();
@@ -564,7 +569,13 @@ export class SliccFiles extends ModelElement {
         @tree-matches=${this.#matches}
         @tree-search-close=${this.#closed}
         @tree-expand=${this.#expand}
+        @tree-view=${this.#viewed}
       ></slicc-file-tree>`;
+  }
+
+  #viewed(event: CustomEvent<TreeView>): void {
+    event.stopPropagation();
+    this.#view.value.tree = event.detail;
   }
 
   #expand(event: CustomEvent<{ expanded: readonly string[] }>): void {

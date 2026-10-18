@@ -4,6 +4,13 @@ import { adoptStyles } from './sheets.ts';
 
 export type { GitStatusEntry };
 
+export interface TreeView {
+  scroll: number;
+  selected: readonly string[];
+  focused: string | null;
+  shown: boolean;
+}
+
 const css = `
 :host {
   display: block;
@@ -57,6 +64,15 @@ export class SliccFileTree extends HTMLElement {
   #query = '';
   #chosen: readonly string[] = [];
   #applying = false;
+  #want: TreeView | null = null;
+  #back: TreeView | null = null;
+  #quiet = false;
+  #told = '';
+  #scroller: HTMLElement | null = null;
+  #top = 0;
+  #height = 0;
+  #resize = new ResizeObserver(() => this.#scrollBack());
+  #scrolled = (): void => this.#onScroll();
 
   get paths(): readonly string[] {
     return this.#paths;
@@ -68,6 +84,7 @@ export class SliccFileTree extends HTMLElement {
     this.#tree?.resetPaths(value, { initialExpandedPaths: expanded });
     this.#research();
     this.#matched();
+    this.#restore();
   }
 
   #research(): void {
@@ -170,7 +187,80 @@ export class SliccFileTree extends HTMLElement {
     this.#chosen = this.#expandedNow();
   }
 
+  get view(): TreeView {
+    const tree = this.#tree;
+    const back = this.#back;
+    const index = tree?.getFocusedIndex() ?? -1;
+    const height = tree?.getItemHeight() ?? 0;
+    const top = this.#top;
+    return {
+      scroll: back ? back.scroll : top,
+      selected: tree?.getSelectedPaths() ?? [],
+      focused: tree?.getFocusedPath() ?? null,
+      shown: back
+        ? back.shown
+        : index >= 0 && index * height >= top && (index + 1) * height <= top + this.#height,
+    };
+  }
+
+  set view(value: TreeView) {
+    this.#want = value;
+    this.#back = value;
+    this.#restore();
+  }
+
+  #restore(): void {
+    const tree = this.#tree;
+    const want = this.#want;
+    if (want && tree && this.#paths.length > 0) {
+      this.#want = null;
+      this.#quiet = true;
+      for (const path of want.selected) tree.getItem(path)?.select();
+      if (want.focused) tree.focusPath(want.focused);
+      this.#quiet = false;
+    }
+    this.#scrollBack();
+  }
+
+  #scrollBack(): void {
+    const back = this.#back;
+    const el = this.#scroller;
+    if (!back || !el || this.#want || !el.clientHeight) return;
+    if (el.scrollHeight - el.clientHeight < back.scroll) return;
+    this.#back = null;
+    el.scrollTop = back.scroll;
+    this.#measure();
+    if (back.shown && back.focused)
+      this.#tree?.scrollToPath(back.focused, { focus: false, offset: 'nearest' });
+  }
+
+  #measure(): void {
+    const el = this.#scroller;
+    if (!el?.clientHeight) return;
+    this.#top = el.scrollTop;
+    this.#height = el.clientHeight;
+  }
+
+  #onScroll(): void {
+    if (!this.#scroller?.clientHeight || this.#want) return;
+    this.#back = null;
+    this.#measure();
+    this.#tell(true);
+  }
+
+  #tell(always = false): void {
+    if (this.#want || this.#quiet || this.#paths.length === 0 || !this.isConnected) return;
+    const view = this.view;
+    const told = `${view.selected.join('\n')}\n\n${view.focused}`;
+    if (!always && told === this.#told) return;
+    this.#told = told;
+    this.dispatchEvent(
+      new CustomEvent('tree-view', { detail: view, bubbles: true, composed: true })
+    );
+  }
+
   #changed(): void {
+    this.#tell();
     if (this.#applying || !this.#tree || this.#query) return;
     const expanded = this.#expandedNow();
     if (expanded.join('\n') === this.#chosen.join('\n')) return;
@@ -208,10 +298,31 @@ export class SliccFileTree extends HTMLElement {
     this.#tree.render({ containerWrapper: this.#mount });
     this.#chosen = this.#query ? this.#expanded : this.#expandedNow();
     this.#tree.subscribe(() => this.#changed());
+    this.#watch();
     this.#matched();
+    this.#restore();
+  }
+
+  #watch(): void {
+    const root = this.#tree?.getFileTreeContainer()?.shadowRoot;
+    const el = root?.querySelector<HTMLElement>('[data-file-tree-virtualized-scroll]') ?? null;
+    this.#scroller = el;
+    if (!el) return;
+    el.addEventListener('scroll', this.#scrolled, { passive: true });
+    this.#resize.observe(el);
+    const list = el.querySelector('[data-file-tree-virtualized-list]');
+    if (list) this.#resize.observe(list);
   }
 
   disconnectedCallback(): void {
+    if (this.#paths.length > 0 && !this.#want) {
+      const view = this.view;
+      this.#want = view;
+      this.#back = view;
+    }
+    this.#scroller?.removeEventListener('scroll', this.#scrolled);
+    this.#scroller = null;
+    this.#resize.disconnect();
     if (this.#paths.length > 0) this.#expanded = this.#held();
     this.#tree?.cleanUp();
     this.#tree = null;
@@ -227,7 +338,7 @@ export class SliccFileTree extends HTMLElement {
   }
 
   #selected(paths: readonly string[]): void {
-    if (paths.length === 1) this.#open(paths[0]);
+    if (paths.length === 1 && !this.#quiet) this.#open(paths[0]);
   }
 
   #keydown(event: KeyboardEvent): void {

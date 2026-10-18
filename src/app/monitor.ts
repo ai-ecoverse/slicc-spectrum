@@ -19,7 +19,7 @@ import type {
 import { ModelElement, shared } from './base.ts';
 import { panelCss } from './files.ts';
 import { copyText } from './reach.ts';
-import { ViewState } from './view-state.ts';
+import { ViewScroll, ViewState } from './view-state.ts';
 
 export function sparkline(points: readonly number[], width = 120, height = 28): string {
   if (points.length < 2) return '';
@@ -94,6 +94,10 @@ export class SliccMonitor extends ModelElement {
   };
   declare copied: { id: string; text: string; done: boolean } | null;
   #sections = new ViewState<Record<string, boolean>>(this, 'monitor', () => ({}));
+  #scroll = new ViewScroll(this, 'monitor:scroll', {
+    scroller: () => this.renderRoot.querySelector<HTMLElement>('.body'),
+    rows: '.section[data-id], .row[data-id]',
+  });
 
   constructor() {
     super();
