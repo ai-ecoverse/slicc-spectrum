@@ -9,7 +9,7 @@ const options = {
     ['/', 'test/integration/page/'],
   ],
   isolated: true,
-  coverage: ['/dist/'],
+  coverage: env.SLICC_COVERAGE ? ['/dist/'] : [],
 };
 
 export const launch = (args = []) => start({ ...options, args });
