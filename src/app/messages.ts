@@ -1807,6 +1807,10 @@ export const messageCss = css`
     .error-card {
       margin-inline: var(--swc-spacing-300);
     }
+    .error-card .fix {
+      flex-direction: column;
+      align-items: flex-end;
+    }
   }
   @container (inline-size < 360px) {
     .error-card .fix {
