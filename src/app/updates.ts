@@ -17,6 +17,7 @@ import type {
   UpdatesPort,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
+import { chevron, disclosureStyles } from './disclosure.ts';
 import { size } from './messages.ts';
 import { ViewSet } from './view-state.ts';
 
@@ -186,6 +187,7 @@ export class SliccUpdates extends ModelElement {
   }
 
   static styles = [
+    disclosureStyles,
     css`
       :host {
         display: block;
@@ -260,19 +262,6 @@ export class SliccUpdates extends ModelElement {
       swc-icon-alert-triangle {
         flex: none;
         margin-block-start: var(--swc-spacing-50);
-      }
-      summary {
-        cursor: pointer;
-        width: fit-content;
-        color: var(--swc-neutral-subdued-content-color-default);
-        border-radius: var(--swc-corner-radius-small-default);
-      }
-      summary:hover {
-        color: var(--swc-neutral-subdued-content-color-hover);
-      }
-      summary:focus-visible {
-        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
-        outline-offset: var(--swc-focus-ring-gap);
       }
       pre {
         margin: var(--swc-spacing-200) 0 0;
@@ -565,7 +554,7 @@ export class SliccUpdates extends ModelElement {
           : nothing
       }
       ${this.#actions(item)}
-      ${item.log ? html`<details ?open=${this.#logs.has(`item:${item.id}`)} @toggle=${this.#logs.details(`item:${item.id}`)}><summary>Install log</summary><pre>${item.log}</pre></details>` : nothing}
+      ${item.log ? html`<details ?open=${this.#logs.has(`item:${item.id}`)} @toggle=${this.#logs.details(`item:${item.id}`)}><summary>${chevron}Install log</summary><pre>${item.log}</pre></details>` : nothing}
     </article>`;
   }
 
@@ -662,7 +651,7 @@ export class SliccUpdates extends ModelElement {
             </div>`
           : nothing
       }
-      ${item.log ? html`<details ?open=${this.#logs.has(`package:${item.id}`)} @toggle=${this.#logs.details(`package:${item.id}`)}><summary>Install log</summary><pre><span class="package">${item.package}</span>\n${item.log}</pre></details>` : nothing}
+      ${item.log ? html`<details ?open=${this.#logs.has(`package:${item.id}`)} @toggle=${this.#logs.details(`package:${item.id}`)}><summary>${chevron}Install log</summary><pre><span class="package">${item.package}</span>\n${item.log}</pre></details>` : nothing}
     </li>`;
   }
 

@@ -37,6 +37,34 @@ file-tree-container {
 }
 `;
 
+const folderName = "[data-item-type='folder'] > [data-item-section='content']";
+
+const rows = `
+${folderName} {
+  display: block;
+  white-space: nowrap;
+}
+${folderName} :is([data-truncate-group-container], [data-truncate-segment-priority], [data-truncate-container], [data-truncate-grid]),
+${folderName} [data-truncate-grid] > div:not([data-truncate-marker-cell], [data-truncate-fill]) {
+  display: contents;
+}
+${folderName} :is([data-truncate-content='overflow'], [data-truncate-marker-cell], [data-truncate-fill]) {
+  display: none;
+}
+${folderName} :is([data-item-flattened-subitems], [data-item-flattened-subitem]),
+${folderName} [data-truncate-content='visible'] {
+  display: inline;
+  direction: inherit;
+}
+`;
+
+function titled(root: ParentNode): void {
+  for (const row of root.querySelectorAll<HTMLElement>("[data-type='item'][aria-label]")) {
+    const name = row.getAttribute('aria-label') as string;
+    if (row.title !== name) row.title = name;
+  }
+}
+
 function seed(event: KeyboardEvent): boolean {
   return (
     event.key.length === 1 &&
@@ -57,6 +85,7 @@ export class SliccFileTree extends HTMLElement {
   #query = '';
   #chosen: readonly string[] = [];
   #applying = false;
+  #titles: MutationObserver | null = null;
 
   get paths(): readonly string[] {
     return this.#paths;
@@ -201,11 +230,13 @@ export class SliccFileTree extends HTMLElement {
       search: false,
       initialSearchQuery: this.#query || null,
       density: 'compact',
+      unsafeCSS: rows,
       icons: { set: 'complete', colored: false },
       onSelectionChange: (paths) => this.#selected(paths),
       onSearchChange: (value) => this.#searched(value),
     });
     this.#tree.render({ containerWrapper: this.#mount });
+    this.#title();
     this.#chosen = this.#query ? this.#expanded : this.#expandedNow();
     this.#tree.subscribe(() => this.#changed());
     this.#matched();
@@ -213,9 +244,24 @@ export class SliccFileTree extends HTMLElement {
 
   disconnectedCallback(): void {
     if (this.#paths.length > 0) this.#expanded = this.#held();
+    this.#titles?.disconnect();
+    this.#titles = null;
     this.#tree?.cleanUp();
     this.#tree = null;
     this.#mount?.replaceChildren();
+  }
+
+  #title(): void {
+    const root = this.#tree?.getFileTreeContainer()?.shadowRoot;
+    if (!root) return;
+    titled(root);
+    this.#titles = new MutationObserver(() => titled(root));
+    this.#titles.observe(root, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['aria-label'],
+    });
   }
 
   #open(path: string | null | undefined): void {

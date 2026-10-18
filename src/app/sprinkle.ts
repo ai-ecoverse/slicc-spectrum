@@ -220,7 +220,7 @@ export class SliccSprinkle extends ThemedElement {
       background: none;
     }
     :host([inline]) .handle {
-      margin-inline-start: 20px;
+      margin-inline-start: var(--swc-spacing-350);
     }
     iframe {
       display: block;
