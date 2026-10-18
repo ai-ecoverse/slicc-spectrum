@@ -652,7 +652,13 @@ const lists = [
     rows: '.card[data-id]',
     stop: 500,
   },
-  { name: 'Settings keeps its end', id: 'settings', scroller: null, rows: '[data-id]' },
+  {
+    name: 'Settings keeps its end',
+    id: 'settings',
+    params: { vault: 'secrets' },
+    scroller: null,
+    rows: '[data-id]',
+  },
 ];
 
 for (const spec of lists) {
@@ -690,17 +696,16 @@ for (const spec of lists) {
       spec.stop
     );
     const key = await page.until(
-      ([id, rows]) => {
+      ([id, rows, stop]) => {
         const box = window.box();
         const all = [...(box.shadowRoot ?? box).querySelectorAll(rows)];
         const row =
           window.view(id).shadowRoot.querySelector("[aria-selected='true'][data-id]") ??
           all.find((item) => window.inBox(item));
-        if (!window.inBox(row)) return false;
-        window.picked = row.dataset.id ?? row.dataset.path;
-        return window.picked;
+        if (!window.inBox(row)) return stop ? false : 'end';
+        return row.dataset.id ?? row.dataset.path;
       },
-      [spec.id, spec.rows]
+      [spec.id, spec.rows, spec.stop]
     );
     await page.until(() => window.box().scrollTop > 100);
     await page.evaluate(
