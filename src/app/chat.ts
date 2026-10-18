@@ -614,7 +614,7 @@ export class SliccChat extends ThemedElement {
   #loginState(accountId: string, messageId: string): Login {
     const settings = (this.model as SliccModel).settings;
     const account = settings.accounts().find((candidate) => candidate.id === accountId);
-    const local = this.#logins.get(messageId);
+    const local = this.#logins.get(`${messageId}:${accountId}`);
     const cancel = !!settings.cancel;
     if (account?.status === 'signing-in' || local?.pending) return { state: 'signing-in', cancel };
     if (account?.status === 'connected') return { state: 'connected' };
@@ -622,7 +622,7 @@ export class SliccChat extends ThemedElement {
   }
 
   #cancelLogin(accountId: string, messageId: string): void {
-    const local = this.#logins.get(messageId);
+    const local = this.#logins.get(`${messageId}:${accountId}`);
     if (local) local.cancelled = true;
     this.model?.settings.cancel?.(accountId);
   }
@@ -644,7 +644,7 @@ export class SliccChat extends ThemedElement {
       return;
     }
     const local: { pending: boolean; error?: string; cancelled?: boolean } = { pending: true };
-    this.#logins.set(messageId, local);
+    this.#logins.set(`${messageId}:${account.id}`, local);
     const done = (error?: string) => {
       local.pending = false;
       local.error = local.cancelled ? undefined : error;

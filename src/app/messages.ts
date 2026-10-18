@@ -333,6 +333,12 @@ function actionLabel(action: ErrorAction, handlers: Handlers, messageId: string)
 
 const signedIn = 'Signed in. Retry to send it again.';
 
+function stopSigningIn(event: Event, handlers: Handlers, account: string, id: string): void {
+  const main = (event.currentTarget as HTMLElement).previousElementSibling as HTMLElement;
+  main.focus();
+  handlers.cancelLogin?.(account, id);
+}
+
 function fixButton(
   fix: ErrorAction,
   item: { id?: string; account?: string },
@@ -340,16 +346,14 @@ function fixButton(
   login: Login | undefined
 ): TemplateResult {
   const id = item.id ?? '';
-  if (login?.state === 'signing-in') {
-    const account = item.account as string;
-    return html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="login" pending>Signing in…</swc-button>${
-      login.cancel
-        ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="cancel-login" @click=${() => handlers.cancelLogin?.(account, id)}>Cancel</swc-button>`
-        : nothing
-    }`;
-  }
+  const signing = login?.state === 'signing-in';
   const shown = login?.state === 'connected' ? 'retry' : fix;
-  return html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${shown} ?disabled=${handlers.readOnly} @click=${() => handlers.action(shown, item.id, item.account)}>${actionLabel(shown, handlers, id)}</swc-button>`;
+  const cancel = signing && login.cancel;
+  return html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${shown} ?pending=${signing} ?disabled=${handlers.readOnly} @click=${() => handlers.action(shown, item.id, item.account)}>${signing ? 'Signing in…' : actionLabel(shown, handlers, id)}</swc-button>${
+    cancel
+      ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="cancel-login" @click=${(event: Event) => stopSigningIn(event, handlers, item.account as string, id)}>Cancel</swc-button>`
+      : nothing
+  }`;
 }
 
 function errorCard(

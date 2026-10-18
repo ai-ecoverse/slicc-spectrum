@@ -142,6 +142,40 @@ test('Log in on the expired-session card signs in within the click, then offers 
   assert.deepEqual(page.errors, []);
 });
 
+test('Log in keeps keyboard focus on the card’s button from Log in to Retry', async (t) => {
+  const page = await open(t, { delay: '30' });
+  await kitchen(page);
+  const held = () => {
+    const card = window.card('k-s3');
+    const button = card.querySelector('.fix swc-button');
+    return card.getRootNode().activeElement === button ? button.dataset.action : null;
+  };
+  await page.evaluate(() => {
+    window.card('k-s3', '[data-action=login]').focus();
+    return true;
+  });
+  await page.press('Enter');
+  await page.until(() => window.cardState('k-s3').state === 'signing-in');
+  assert.equal(await page.evaluate(held), 'login');
+  await page.until(() => window.cardState('k-s3').state === 'connected');
+  assert.equal(await page.evaluate(held), 'retry');
+  assert.deepEqual(page.errors, []);
+});
+
+test('Log in on an account that needs a token opens Settings at its row and connects nothing', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.model.agent.select('cone-triage'));
+  await page.until(() => !!window.card('m-t4', '[data-action=login]'));
+  await click(page, 'm-t4', 'login');
+  await page.until(() => {
+    const settings = window.$('slicc-app', 'slicc-dock', 'slicc-settings');
+    const row = window.settingsPart('.account[data-id="mcp:tickets"]');
+    return !!row && settings.shadowRoot.activeElement === row.querySelector('swc-button');
+  });
+  assert.deepEqual(await page.evaluate(() => window.model.settings.connects), []);
+  assert.deepEqual(page.errors, []);
+});
+
 test('Cancel stops the sign-in and puts Log in back without an error', async (t) => {
   const page = await open(t, { delay: '30' });
   await kitchen(page);

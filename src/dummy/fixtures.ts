@@ -797,6 +797,16 @@ export const conversations: Record<string, Message[]> = {
       text: 'The connector returned 401. Reconnect the account in Settings.',
       createdAt: at(-19),
     },
+    {
+      id: 'm-t4',
+      role: 'system',
+      kind: 'error',
+      action: 'login',
+      account: 'mcp:tickets',
+      title: 'Tickets connector',
+      text: 'The tickets server rejected its token.',
+      createdAt: at(-18),
+    },
   ],
 };
 
