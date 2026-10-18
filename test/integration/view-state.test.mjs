@@ -418,3 +418,461 @@ test('a folder closed over open subfolders in Files stays closed after a rebuild
   assert.equal(await page.evaluate((lib) => !!window.treeRow(lib), lib), false);
   assert.deepEqual(page.errors, []);
 });
+
+const deep = 'workspace/skills/release-notes/scripts/collect.jsh';
+
+async function wheel(page, pick, stop = 1e9) {
+  await page.evaluate(pick);
+  const done = (stop) => {
+    const box = window.wheelBox();
+    return box.scrollTop >= Math.min(stop, box.scrollHeight - box.clientHeight - 1);
+  };
+  for (let i = 0; i < 60; i++) {
+    const at = await page.evaluate(() => {
+      const rect = window.wheelBox().getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + Math.min(rect.height / 2, 200) };
+    });
+    if (await page.evaluate(done, stop)) break;
+    await page.send('Input.dispatchMouseEvent', {
+      type: 'mouseWheel',
+      x: at.x,
+      y: at.y,
+      deltaX: 0,
+      deltaY: stop < 1e9 ? 100 : 400,
+    });
+  }
+  await page.until((stop) => {
+    const box = window.wheelBox();
+    const top = box.scrollTop;
+    const end = box.scrollHeight - box.clientHeight - 1;
+    return new Promise((resolve) =>
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() =>
+          resolve(top === box.scrollTop && top >= Math.min(stop, end) && (stop > end || top < end))
+        )
+      )
+    );
+  }, stop);
+}
+
+async function treeHelpers(page) {
+  await page.evaluate(() => {
+    window.fileTree = () => window.part('files', 'slicc-file-tree');
+    window.treeRoot = () => window.fileTree()?.tree?.getFileTreeContainer()?.shadowRoot ?? null;
+    window.treeRow = (path) =>
+      window
+        .treeRoot()
+        ?.querySelector(`[data-item-path="${path}"]:not([data-file-tree-sticky-row])`) ?? null;
+    window.treeScroller = () =>
+      window.treeRoot()?.querySelector('[data-file-tree-virtualized-scroll]') ?? null;
+    window.inView = (node, box) => {
+      if (!node || !box) return false;
+      const a = node.getBoundingClientRect();
+      const b = box.getBoundingClientRect();
+      return a.height > 0 && a.top >= b.top - 1 && a.bottom <= b.bottom + 1;
+    };
+    return true;
+  });
+}
+
+async function expand(page, path) {
+  await page.until((path) => {
+    const row = window.treeRow(path);
+    if (!row) {
+      window.fileTree().tree.scrollToPath(path, { focus: false });
+      return false;
+    }
+    if (row.getAttribute('aria-expanded') !== 'true') row.click();
+    return window.treeRow(path)?.getAttribute('aria-expanded') === 'true';
+  }, path);
+}
+
+for (const short of [false, true]) {
+  test(`Files keeps its scroll and the selected deep file from ${short ? 'a short panel at ' : ''}1280 to a 420 phone`, async (t) => {
+    const page = await open(t);
+    await viewport(page, 1280);
+    await show(page, 'files', 'slicc-file-tree');
+    if (short)
+      await page.until(() => {
+        if (window.app.dock.api.getPanel('files').group.panels.length > 1)
+          window.app.panels.move('files', { direction: 'below', ref: 'agents' });
+        window.app.dock.api.getPanel('files').group.api.setSize({ height: 240 });
+        return window.view('files').getBoundingClientRect().height < 300;
+      });
+    await treeHelpers(page);
+    await page.until(() => !!window.treeRow('home/'));
+    await page.evaluate(async () => {
+      for (let i = 0; i < 30; i++)
+        await window.model.files.write(
+          `/home/user/downloads/shot-${String(i).padStart(2, '0')}.txt`,
+          'x\n'
+        );
+      return true;
+    });
+    for (const path of [
+      'workspace/skills/release-notes/',
+      'workspace/skills/release-notes/scripts/',
+      'home/',
+      'home/user/',
+      'home/user/downloads/',
+    ])
+      await expand(page, path);
+    await page.until(() => {
+      const box = window.treeScroller();
+      return !!box && box.scrollHeight > box.clientHeight + 200;
+    });
+    await wheel(page, () => {
+      window.wheelBox = window.treeScroller;
+      return true;
+    });
+    await page.until((deep) => window.inView(window.treeRow(deep), window.treeScroller()), deep);
+    await page.evaluate((deep) => {
+      window.treeRow(deep).click();
+      return true;
+    }, deep);
+    await page.until(
+      (deep) => window.treeRow(deep)?.getAttribute('aria-selected') === 'true',
+      deep
+    );
+    const before = await page.evaluate(() => window.treeScroller().scrollTop);
+    assert.ok(before > 200);
+    if (short)
+      assert.ok(
+        await page.evaluate((before) => {
+          const box = window.treeScroller();
+          return box.clientHeight < 300 && before > box.scrollHeight - 700;
+        }, before)
+      );
+
+    await page.evaluate(() => {
+      window.outgoing = window.view('files');
+      return true;
+    });
+    await viewport(page, 420);
+    await page.evaluate(() => {
+      window.app.panels.open('files');
+      return true;
+    });
+    await page.until(
+      () => window.view('files') !== window.outgoing && window.laidOut(window.treeScroller())
+    );
+    await page.until(
+      (deep) =>
+        window.treeRow(deep)?.getAttribute('aria-selected') === 'true' &&
+        window.inView(window.treeRow(deep), window.treeScroller()),
+      deep
+    );
+    const after = await page.evaluate((deep) => {
+      const box = window.treeScroller();
+      return {
+        scrolled: box.scrollTop > 200 && box.scrollTop <= box.scrollHeight - box.clientHeight,
+        focused: window.fileTree().tree.getFocusedPath() === deep,
+        stolen: window.view('files').matches(':focus-within'),
+      };
+    }, deep);
+    assert.deepEqual(after, { scrolled: true, focused: true, stolen: false });
+    await page.evaluate(() => {
+      window.app.show('files');
+      return true;
+    });
+    await page.until(
+      (deep) => window.treeRoot()?.activeElement?.getAttribute('data-item-path') === deep,
+      deep
+    );
+    assert.deepEqual(page.errors, []);
+  });
+}
+
+const lists = [
+  {
+    name: 'Agents keeps its end and the selected scoop',
+    id: 'agents',
+    scroller: '.list',
+    rows: 'li[data-id]',
+    before: () => {
+      for (let i = 0; i < 24; i++)
+        window.model.agent.createScoop('cone-harbor', `tide-${String(i).padStart(2, '0')}`);
+      return true;
+    },
+    act: () => {
+      const cone = window.part('agents', 'li[data-id=cone-harbor]');
+      if (cone.getAttribute('aria-expanded') !== 'true')
+        cone.querySelector('[data-action=toggle-cone]').click();
+      const rows = window.view('agents').shadowRoot.querySelectorAll('li.scoop[data-id]');
+      if (rows.length < 20) return false;
+      rows[rows.length - 1].click();
+      return true;
+    },
+    selected: true,
+  },
+  { name: 'Memory keeps its end', id: 'memory', scroller: '.list', rows: '.row[data-id]' },
+  {
+    name: 'Memory keeps the row it was on',
+    id: 'memory',
+    scroller: '.list',
+    rows: '.row[data-id]',
+    stop: 200,
+  },
+  {
+    name: 'Changes keeps its end',
+    id: 'changes',
+    scroller: '.bar ~ ul',
+    rows: 'li[data-path]',
+    before: async () => {
+      for (let i = 0; i < 40; i++)
+        await window.model.files.write(
+          `/workspace/harbor/notes/tide-${String(i).padStart(2, '0')}.md`,
+          'x\n'
+        );
+      return true;
+    },
+  },
+  {
+    name: 'Monitor keeps its end',
+    id: 'monitor',
+    params: { monitor: 'agent' },
+    scroller: '.body',
+    rows: '.section[data-id], .row[data-id]',
+  },
+  {
+    name: 'Browser keeps the end of its tabs',
+    id: 'browser',
+    scroller: '.scroll',
+    rows: '.cards > li[data-id]',
+    before: () => {
+      for (let i = 0; i < 12; i++) window.model.browser.open(`https://tides.example.com/${i}`);
+      return true;
+    },
+  },
+  { name: 'Freezer keeps its end', id: 'freezer', scroller: '.list', rows: '.card[data-id]' },
+  {
+    name: 'Freezer keeps the card it was on',
+    id: 'freezer',
+    scroller: '.list',
+    rows: '.card[data-id]',
+    stop: 500,
+  },
+  {
+    name: 'Settings keeps its end',
+    id: 'settings',
+    params: { vault: 'secrets' },
+    scroller: null,
+    rows: '[data-id]',
+  },
+];
+
+for (const spec of lists) {
+  test(`${spec.name} from 1280 to a 420 phone`, async (t) => {
+    const page = await open(t, spec.params);
+    await viewport(page, 1280);
+    await page.evaluate(
+      ([id, scroller]) => {
+        window.box = () => (scroller ? window.part(id, scroller) : window.view(id));
+        window.inBox = (node) => {
+          const box = window.box();
+          if (!node || !box) return false;
+          const a = node.getBoundingClientRect();
+          const b = box.getBoundingClientRect();
+          return a.height > 0 && a.top >= b.top - 1 && a.bottom <= b.bottom + 1;
+        };
+        return true;
+      },
+      [spec.id, spec.scroller]
+    );
+    if (spec.before) await page.evaluate(spec.before);
+    await show(page, spec.id, spec.rows);
+    if (spec.act) await page.until(spec.act);
+    await page.until((rows) => {
+      const box = window.box();
+      const all = [...(box.shadowRoot ?? box).querySelectorAll(rows)];
+      return box.scrollHeight >= box.clientHeight + 300 && all.length >= 2;
+    }, spec.rows);
+    await wheel(
+      page,
+      () => {
+        window.wheelBox = window.box;
+        return true;
+      },
+      spec.stop
+    );
+    const key = await page.until(
+      ([id, rows, stop]) => {
+        const box = window.box();
+        const all = [...(box.shadowRoot ?? box).querySelectorAll(rows)];
+        const row =
+          window.view(id).shadowRoot.querySelector("[aria-selected='true'][data-id]") ??
+          all.find((item) => window.inBox(item));
+        if (!window.inBox(row)) return stop ? false : 'end';
+        return row.dataset.id ?? row.dataset.path;
+      },
+      [spec.id, spec.rows, spec.stop]
+    );
+    await page.until(() => window.box().scrollTop > 100);
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    );
+    await page.evaluate((id) => {
+      window.outgoing = window.view(id);
+      return true;
+    }, spec.id);
+    await viewport(page, 420);
+    await page.evaluate((id) => {
+      window.app.panels.open(id);
+      return true;
+    }, spec.id);
+    await page.until(
+      ([id, rows, key, stop]) => {
+        if (window.view(id) === window.outgoing || !window.laidOut(window.box())) return false;
+        const box = window.box();
+        const row = [...(box.shadowRoot ?? box).querySelectorAll(rows)].find(
+          (item) => (item.dataset.id ?? item.dataset.path) === key
+        );
+        const end = box.scrollTop >= box.scrollHeight - box.clientHeight - 1;
+        return box.scrollTop > 100 && (end ? !stop : window.inBox(row) && !!stop);
+      },
+      [spec.id, spec.rows, key, spec.stop]
+    );
+    if (spec.selected)
+      assert.equal(
+        await page.evaluate(
+          ([id, key]) => window.part(id, `li[data-id="${key}"]`).getAttribute('aria-selected'),
+          [spec.id, key]
+        ),
+        'true'
+      );
+    assert.deepEqual(page.errors, []);
+  });
+}
+
+test('Files and Memory keep each model its own selection and scroll when the app switches models', async (t) => {
+  const page = await open(t);
+  await viewport(page, 1280);
+  await show(page, 'files', 'slicc-file-tree');
+  await treeHelpers(page);
+  await page.until(() => !!window.treeRow('home/'));
+  await page.evaluate(async () => {
+    for (let i = 0; i < 30; i++)
+      await window.model.files.write(
+        `/home/user/downloads/shot-${String(i).padStart(2, '0')}.txt`,
+        'x\n'
+      );
+    return true;
+  });
+  for (const path of [
+    'workspace/skills/release-notes/',
+    'workspace/skills/release-notes/scripts/',
+    'home/',
+    'home/user/',
+    'home/user/downloads/',
+  ])
+    await expand(page, path);
+  await wheel(page, () => {
+    window.wheelBox = window.treeScroller;
+    return true;
+  });
+  await page.evaluate((deep) => {
+    window.treeRow(deep).click();
+    return true;
+  }, deep);
+  await page.until((deep) => window.treeRow(deep)?.getAttribute('aria-selected') === 'true', deep);
+  await show(page, 'memory', '.row[data-id]');
+  await wheel(page, () => {
+    window.wheelBox = () => window.part('memory', '.list');
+    return true;
+  });
+  const memoryTop = await page.evaluate(() => window.part('memory', '.list').scrollTop);
+  assert.ok(memoryTop > 100);
+  await page.evaluate(async () => {
+    const { createDummyModel } = await import('/dist/slicc-dummy.js');
+    window.first = window.model;
+    window.second = createDummyModel({ delay: 5 });
+    window.app.model = window.second;
+    return true;
+  });
+  await page.until(() => window.part('memory', '.list')?.scrollTop === 0);
+  await page.evaluate(() => {
+    window.app.show('files');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.fileTree()?.tree?.getSelectedPaths().length === 0 &&
+      window.treeScroller()?.scrollTop === 0 &&
+      !!window.treeRow('home/')
+  );
+  await page.evaluate(() => {
+    window.app.model = window.first;
+    return true;
+  });
+  await page.until(
+    (deep) =>
+      window.treeRow(deep)?.getAttribute('aria-selected') === 'true' &&
+      window.inView(window.treeRow(deep), window.treeScroller()),
+    deep
+  );
+  await page.evaluate(() => {
+    window.app.panels.open('memory');
+    return true;
+  });
+  await page.until(
+    (top) => Math.abs((window.part('memory', '.list')?.scrollTop ?? -1) - top) < 2,
+    memoryTop
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('Files keeps its end, away from the selected file, through a rebuild to a phone and back', async (t) => {
+  const page = await open(t);
+  await viewport(page, 1280);
+  await show(page, 'files', 'slicc-file-tree');
+  await treeHelpers(page);
+  await page.until(() => !!window.treeRow('home/'));
+  await page.evaluate(async () => {
+    for (let i = 0; i < 30; i++)
+      await window.model.files.write(
+        `/home/user/downloads/shot-${String(i).padStart(2, '0')}.txt`,
+        'x\n'
+      );
+    return true;
+  });
+  for (const path of ['home/', 'home/user/', 'home/user/downloads/']) await expand(page, path);
+  const picked = 'home/user/downloads/shot-03.txt';
+  await page.until((picked) => {
+    const row = window.treeRow(picked);
+    if (!row) return false;
+    row.click();
+    return window.treeRow(picked)?.getAttribute('aria-selected') === 'true';
+  }, picked);
+  await wheel(page, () => {
+    window.wheelBox = window.treeScroller;
+    return true;
+  });
+  const away = (picked) => {
+    const box = window.treeScroller();
+    return (
+      window.view('files') !== window.outgoing &&
+      window.laidOut(box) &&
+      box.scrollTop > 200 &&
+      box.scrollTop >= box.scrollHeight - box.clientHeight - 1 &&
+      !window.inView(window.treeRow(picked), box) &&
+      window.fileTree().tree.getSelectedPaths().includes(picked)
+    );
+  };
+  for (const width of [420, 1280]) {
+    await page.evaluate(() => {
+      window.outgoing = window.view('files');
+      return true;
+    });
+    await viewport(page, width);
+    await page.evaluate(() => {
+      window.app.panels.open('files');
+      return true;
+    });
+    await page.until(away, picked);
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    );
+    assert.equal(await page.evaluate(away, picked), true);
+  }
+  assert.deepEqual(page.errors, []);
+});

@@ -18,6 +18,7 @@ import {
 } from './files.ts';
 import { onWatch, watchOnly } from './follow.ts';
 import { breakable } from './reach.ts';
+import { ViewScroll } from './view-state.ts';
 
 const watchNote = html`<span data-watch-note>Watch only</span>`;
 
@@ -97,6 +98,10 @@ export class SliccChanges extends ModelElement {
   declare error: string;
   declare copied: string;
   declare uncopied: boolean;
+  #scroll = new ViewScroll(this, 'changes:scroll', {
+    scroller: () => this.renderRoot.querySelector<HTMLElement>('.bar ~ ul'),
+    rows: 'li[data-path]',
+  });
 
   constructor() {
     super();

@@ -39,7 +39,7 @@ import { agentName } from './files.ts';
 import { onWatch, watchOnly } from './follow.ts';
 import { time } from './messages.ts';
 import { copyText, reach, reachStyles } from './reach.ts';
-import { ViewSet, ViewState } from './view-state.ts';
+import { ViewScroll, ViewSet, ViewState } from './view-state.ts';
 
 export function normalize(input: string): string {
   const text = input.trim();
@@ -167,6 +167,11 @@ export class SliccBrowser extends ModelElement {
   #expanded = new ViewSet(this, 'browser');
   #recent = new ViewState(this, 'browser:recent', () => false);
   #chosen = new ViewState<string | null | undefined>(this, 'browser:tab', () => undefined);
+  #scroll = new ViewScroll(this, 'browser:scroll', {
+    scroller: () => this.renderRoot.querySelector<HTMLElement>('.cards')?.parentElement ?? null,
+    rows: '.cards > li[data-id]',
+    current: ".cards .window[aria-current='true']",
+  });
 
   constructor() {
     super();

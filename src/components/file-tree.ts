@@ -4,6 +4,14 @@ import { adoptStyles } from './sheets.ts';
 
 export type { GitStatusEntry };
 
+export interface TreeView {
+  scroll: number;
+  selected: readonly string[];
+  focused: string | null;
+  shown: boolean;
+  end: boolean;
+}
+
 const css = `
 :host {
   display: block;
@@ -36,6 +44,8 @@ file-tree-container {
   color-scheme: inherit;
 }
 `;
+
+const gestures = ['wheel', 'touchmove', 'pointerdown', 'keydown'] as const;
 
 const folderName = "[data-item-type='folder'] > [data-item-section='content']";
 
@@ -85,6 +95,26 @@ export class SliccFileTree extends HTMLElement {
   #query = '';
   #chosen: readonly string[] = [];
   #applying = false;
+  #want: TreeView | null = null;
+  #back: TreeView | null = null;
+  #hold: TreeView | null = null;
+  #quiet = false;
+  #told = '';
+  #scroller: HTMLElement | null = null;
+  #top = 0;
+  #height = 0;
+  #set = -1;
+  #user = false;
+  #fought = -1;
+  #gesture = (): void => {
+    this.#user = true;
+  };
+  #resize = new ResizeObserver(() => {
+    this.#fought = -1;
+    this.#measure();
+    this.#scrollBack();
+  });
+  #scrolled = (): void => this.#onScroll();
   #titles: MutationObserver | null = null;
 
   get paths(): readonly string[] {
@@ -97,6 +127,7 @@ export class SliccFileTree extends HTMLElement {
     this.#tree?.resetPaths(value, { initialExpandedPaths: expanded });
     this.#research();
     this.#matched();
+    this.#restore();
   }
 
   #research(): void {
@@ -199,7 +230,102 @@ export class SliccFileTree extends HTMLElement {
     this.#chosen = this.#expandedNow();
   }
 
+  get view(): TreeView {
+    const tree = this.#tree;
+    const back = this.#back;
+    const index = tree?.getFocusedIndex() ?? -1;
+    const height = tree?.getItemHeight() ?? 0;
+    const top = this.#top;
+    const bottom = top + this.#height;
+    const rows = (tree?.getVisibleCount() ?? 0) * height;
+    return {
+      scroll: back ? back.scroll : top,
+      selected: tree?.getSelectedPaths() ?? [],
+      focused: tree?.getFocusedPath() ?? null,
+      shown: back
+        ? back.shown
+        : index >= 0 && index * height >= top && (index + 1) * height <= bottom,
+      end: back ? back.end : top > 0 && bottom >= rows - 1,
+    };
+  }
+
+  set view(value: TreeView) {
+    this.#want = value;
+    this.#back = value;
+    this.#restore();
+  }
+
+  #restore(): void {
+    const tree = this.#tree;
+    const want = this.#want;
+    if (want && tree && this.#paths.length > 0) {
+      this.#want = null;
+      this.#quiet = true;
+      for (const path of tree.getSelectedPaths())
+        if (!want.selected.includes(path)) tree.getItem(path)?.deselect();
+      for (const path of want.selected) tree.getItem(path)?.select();
+      if (want.focused) tree.focusPath(want.focused);
+      this.#quiet = false;
+    }
+    this.#scrollBack();
+  }
+
+  #scrollBack(): void {
+    const back = this.#back ?? this.#hold;
+    const el = this.#scroller;
+    const tree = this.#tree;
+    if (!back || !el || !tree || this.#want || !el.clientHeight) return;
+    if (el.scrollHeight + 1 < tree.getVisibleCount() * tree.getItemHeight()) return;
+    this.#back = null;
+    this.#hold = back;
+    const index = tree.getFocusedIndex();
+    const height = tree.getItemHeight();
+    const max = el.scrollHeight - el.clientHeight;
+    let top = back.end ? max : Math.min(back.scroll, max);
+    if (back.shown && index >= 0)
+      top = Math.min(Math.max(top, (index + 1) * height - el.clientHeight), index * height);
+    el.scrollTop = top;
+    this.#set = el.scrollTop;
+    this.#user = false;
+    this.#measure();
+  }
+
+  #measure(): void {
+    const el = this.#scroller;
+    if (!el?.clientHeight) return;
+    this.#top = el.scrollTop;
+    this.#height = el.clientHeight;
+  }
+
+  #onScroll(): void {
+    this.#measure();
+    const el = this.#scroller;
+    if (!el?.clientHeight || this.#want || Math.abs(el.scrollTop - this.#set) < 1) return;
+    if ((this.#back || this.#hold) && !this.#user) {
+      if (!this.#hold || el.scrollTop === this.#fought) return;
+      this.#fought = el.scrollTop;
+      this.#scrollBack();
+      return;
+    }
+    this.#set = -1;
+    this.#back = null;
+    this.#hold = null;
+    this.#tell(true);
+  }
+
+  #tell(always = false): void {
+    if (this.#want || this.#quiet || this.#paths.length === 0 || !this.isConnected) return;
+    const view = this.view;
+    const told = `${view.selected.join('\n')}\n\n${view.focused}`;
+    if (!always && told === this.#told) return;
+    this.#told = told;
+    this.dispatchEvent(
+      new CustomEvent('tree-view', { detail: view, bubbles: true, composed: true })
+    );
+  }
+
   #changed(): void {
+    this.#tell();
     if (this.#applying || !this.#tree || this.#query) return;
     const expanded = this.#expandedNow();
     if (expanded.join('\n') === this.#chosen.join('\n')) return;
@@ -239,10 +365,36 @@ export class SliccFileTree extends HTMLElement {
     this.#title();
     this.#chosen = this.#query ? this.#expanded : this.#expandedNow();
     this.#tree.subscribe(() => this.#changed());
+    this.#watch();
     this.#matched();
+    this.#restore();
+  }
+
+  #watch(): void {
+    const root = this.#tree?.getFileTreeContainer()?.shadowRoot;
+    const el = root?.querySelector<HTMLElement>('[data-file-tree-virtualized-scroll]') ?? null;
+    this.#scroller = el;
+    if (!el) return;
+    el.addEventListener('scroll', this.#scrolled, { passive: true });
+    for (const type of gestures) el.addEventListener(type, this.#gesture, { passive: true });
+    this.#set = -1;
+    this.#user = false;
+    this.#resize.observe(el);
+    const list = el.querySelector('[data-file-tree-virtualized-list]');
+    if (list) this.#resize.observe(list);
   }
 
   disconnectedCallback(): void {
+    if (this.#paths.length > 0 && !this.#want) {
+      const view = this.view;
+      this.#want = view;
+      this.#back = view;
+    }
+    this.#scroller?.removeEventListener('scroll', this.#scrolled);
+    for (const type of gestures) this.#scroller?.removeEventListener(type, this.#gesture);
+    this.#scroller = null;
+    this.#hold = null;
+    this.#resize.disconnect();
     if (this.#paths.length > 0) this.#expanded = this.#held();
     this.#titles?.disconnect();
     this.#titles = null;
@@ -273,7 +425,7 @@ export class SliccFileTree extends HTMLElement {
   }
 
   #selected(paths: readonly string[]): void {
-    if (paths.length === 1) this.#open(paths[0]);
+    if (paths.length === 1 && !this.#quiet) this.#open(paths[0]);
   }
 
   #keydown(event: KeyboardEvent): void {
@@ -308,6 +460,7 @@ export class SliccFileTree extends HTMLElement {
   }
 
   reveal(path: string, focus = true): void {
+    this.#hold = null;
     this.#tree?.scrollToPath(path, { focus });
     if (!focus) return;
     const row = this.#row(path);

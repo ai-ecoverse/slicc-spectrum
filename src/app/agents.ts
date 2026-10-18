@@ -13,7 +13,7 @@ import { onWatch, watchOnly } from './follow.ts';
 import { deleteCone } from './freezer.ts';
 import { meterVariant } from './monitor.ts';
 import { agentTitle, coneLabel, untitled, watchTitles } from './names.ts';
-import { ViewSet, ViewState } from './view-state.ts';
+import { ViewScroll, ViewSet, ViewState } from './view-state.ts';
 
 export function ordered(agents: readonly Agent[]): Agent[] {
   const cones = agents.filter((agent) => agent.kind === 'cone');
@@ -86,6 +86,11 @@ export class SliccAgents extends ModelElement {
   declare errors: Record<string, string>;
   #expanded = new ViewSet(this, 'agents');
   #revealed = new ViewState(this, 'agents:revealed', () => '');
+  #scroll = new ViewScroll(this, 'agents:scroll', {
+    scroller: () => this.renderRoot.querySelector<HTMLElement>('.list'),
+    rows: 'li[data-id]',
+    current: "li[aria-selected='true']",
+  });
   #pointer = false;
   #modality = (event: Event): void => {
     this.#pointer = event.type === 'pointerdown';

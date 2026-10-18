@@ -9,6 +9,7 @@ import { confirm } from './confirm.ts';
 import { forgetSwitch, modelSwitch, settleModels } from './models.ts';
 import { recordKind, recordName, serverOf, upper as upperName } from './records.ts';
 import { clearValues, failureText, fieldStyles, type PopupDetail, take } from './vault.ts';
+import { ViewScroll } from './view-state.ts';
 
 const accountStatus = {
   connected: ['positive', 'Connected'],
@@ -51,6 +52,7 @@ export class SliccSettings extends ThemedElement {
   declare failure: { id: string; message: string } | null;
   declare problem: { id: string; field: string; message: string } | null;
   declare blocked: boolean;
+  #scroll = new ViewScroll(this, 'settings:scroll', { scroller: () => this, rows: '[data-id]' });
 
   constructor() {
     super();
