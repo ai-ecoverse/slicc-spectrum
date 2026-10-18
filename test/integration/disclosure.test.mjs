@@ -130,6 +130,55 @@ for (const surface of surfaces) {
   });
 }
 
+test('the quiet chevron mirrors right to left and stays still under reduced motion', async (t) => {
+  const page = await open(t, { network: 'ok' });
+  t.after(() => page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {}));
+  await viewport(page, 1280);
+  await page.evaluate(() => {
+    window.app.show('network');
+    return true;
+  });
+  const text = 'Link another device';
+  await page.until((text) => window.laidOut(window.summaryOf(text)), text);
+  const chevron = (text) => {
+    const summary = window.summaryOf(text);
+    const style = getComputedStyle(summary.querySelector('.chevron'));
+    return [summary.parentElement.open, style.transform, style.transitionDuration];
+  };
+  const still = (text) =>
+    window.summaryOf(text).querySelector('.chevron').getAnimations().length === 0;
+  assert.deepEqual(await page.evaluate(chevron, text), [false, 'none', '0.13s']);
+  await page.evaluate(() => {
+    document.documentElement.dir = 'rtl';
+    return true;
+  });
+  await page.until(still, text);
+  assert.deepEqual(await page.evaluate(chevron, text), [
+    false,
+    'matrix(-1, 0, 0, 1, 0, 0)',
+    '0.13s',
+  ]);
+  await page.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+  });
+  await page.evaluate((text) => {
+    window.summaryOf(text).parentElement.open = true;
+    return true;
+  }, text);
+  await page.until((text) => window.summaryOf(text).parentElement.open, text);
+  const [shown, turned, duration] = await page.evaluate(chevron, text);
+  assert.deepEqual(
+    [shown, turned.startsWith('matrix(') && turned !== 'matrix(-1, 0, 0, 1, 0, 0)', duration],
+    [true, true, '0s']
+  );
+  assert.equal(await page.evaluate(still, text), true);
+  await page.evaluate(() => {
+    document.documentElement.dir = '';
+    return true;
+  });
+  assert.deepEqual(page.errors, []);
+});
+
 test('a long folder name in the narrow tablet Files panel ellipsizes and keeps its full name as a title', async (t) => {
   const page = await open(t);
   const folder = 'workspace/quarterly-forecast-archive-northern-region/';
