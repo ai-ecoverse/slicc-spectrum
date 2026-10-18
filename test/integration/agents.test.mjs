@@ -182,10 +182,8 @@ test('Drop asks first; cancel keeps the scoop, confirm removes it, closes its ch
     return true;
   });
   await page.until(() => window.$('slicc-app', 'slicc-dock').has('chat:scoop-otter'));
-  await page.evaluate(() => {
-    window.agents().focus();
-    return true;
-  });
+  await page.press('1', 'alt');
+  await page.until(() => /slicc-agents > li#scoop-otter$/.test(window.focused()));
   assert.equal(
     await page.evaluate(
       () => getComputedStyle(window.dropButton('scoop-otter').parentElement).opacity
