@@ -263,19 +263,6 @@ export class SliccUpdates extends ModelElement {
         flex: none;
         margin-block-start: var(--swc-spacing-50);
       }
-      summary {
-        cursor: pointer;
-        width: fit-content;
-        color: var(--swc-neutral-subdued-content-color-default);
-        border-radius: var(--swc-corner-radius-small-default);
-      }
-      summary:hover {
-        color: var(--swc-neutral-subdued-content-color-hover);
-      }
-      summary:focus-visible {
-        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
-        outline-offset: var(--swc-focus-ring-gap);
-      }
       pre {
         margin: var(--swc-spacing-200) 0 0;
         padding: var(--swc-spacing-200);

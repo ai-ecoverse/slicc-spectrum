@@ -99,6 +99,9 @@ for (const surface of surfaces) {
             open: summary.parentElement.open,
             chevron: !!chevron && chevron.getAttribute('aria-hidden') === 'true',
             turned: !!chevron && getComputedStyle(chevron).transform !== 'none',
+            inherits:
+              !!chevron && getComputedStyle(chevron).color === getComputedStyle(summary).color,
+            ring: summary.matches(':focus-visible') ? getComputedStyle(summary).outlineStyle : null,
           };
         }, text);
       const still = (text) =>
@@ -109,7 +112,11 @@ for (const surface of surfaces) {
         return true;
       }, text);
       await page.until(still, text);
-      assert.deepEqual(await state(), { open: false, chevron: true, turned: false }, text);
+      assert.deepEqual(
+        await state(),
+        { open: false, chevron: true, turned: false, inherits: true, ring: null },
+        text
+      );
       assert.equal(await expanded(page, text), false, text);
       await page.evaluate((text) => {
         window.summaryOf(text).focus();
@@ -118,12 +125,20 @@ for (const surface of surfaces) {
       await page.press('Enter');
       await page.until((text) => window.summaryOf(text).parentElement.open, text);
       await page.until(still, text);
-      assert.deepEqual(await state(), { open: true, chevron: true, turned: true }, text);
+      assert.deepEqual(
+        await state(),
+        { open: true, chevron: true, turned: true, inherits: true, ring: 'solid' },
+        text
+      );
       assert.equal(await expanded(page, text), true, text);
       await page.press(' ');
       await page.until((text) => !window.summaryOf(text).parentElement.open, text);
       await page.until(still, text);
-      assert.deepEqual(await state(), { open: false, chevron: true, turned: false }, text);
+      assert.deepEqual(
+        await state(),
+        { open: false, chevron: true, turned: false, inherits: true, ring: 'solid' },
+        text
+      );
       assert.equal(await expanded(page, text), false, text);
     }
     assert.deepEqual(page.errors, []);
@@ -179,64 +194,74 @@ test('the quiet chevron mirrors right to left and stays still under reduced moti
   assert.deepEqual(page.errors, []);
 });
 
-test('a long folder name in the narrow tablet Files panel ellipsizes and keeps its full name as a title', async (t) => {
-  const page = await open(t);
-  const folder = 'workspace/quarterly-forecast-archive-northern-region/';
-  await page.evaluate(
-    (folder) =>
-      window.model.files
-        .write(`/${folder}tide-summary-for-the-northern-harbor.md`, 'x')
-        .then(() => true),
-    folder
-  );
-  await viewport(page, 1000);
-  await page.evaluate(() => {
-    window.app.show('files');
-    window.treeRow = (path) =>
-      window.app.dock
-        .content('files')
-        ?.shadowRoot?.querySelector('slicc-file-tree')
-        ?.tree?.getFileTreeContainer()
-        ?.shadowRoot?.querySelector(`[data-item-path="${path}"]`) ?? null;
-    return true;
+const folders = [
+  {
+    name: 'a long folder name',
+    write:
+      '/workspace/quarterly-forecast-archive-northern-region/tide-summary-for-the-northern-harbor.md',
+    row: 'workspace/quarterly-forecast-archive-northern-region/',
+    label: 'quarterly-forecast-archive-northern-region',
+  },
+  {
+    name: 'a long flattened folder chain',
+    write: '/workspace/northern-harbor-archives/tidal-observations-collection/buoy-readings.md',
+    row: 'workspace/northern-harbor-archives/tidal-observations-collection/',
+    label: 'northern-harbor-archives / tidal-observations-collection',
+  },
+];
+
+for (const folder of folders) {
+  test(`${folder.name} in the narrow tablet Files panel ellipsizes and keeps its full name as a title`, async (t) => {
+    const page = await open(t);
+    await page.evaluate(
+      (path) => window.model.files.write(path, 'x').then(() => true),
+      folder.write
+    );
+    await viewport(page, 1000);
+    await page.evaluate(() => {
+      window.app.show('files');
+      window.treeRow = (path) =>
+        window.app.dock
+          .content('files')
+          ?.shadowRoot?.querySelector('slicc-file-tree')
+          ?.tree?.getFileTreeContainer()
+          ?.shadowRoot?.querySelector(`[data-item-path="${path}"]`) ?? null;
+      return true;
+    });
+    await page.until((path) => window.laidOut(window.treeRow(path)), folder.row);
+    const seen = await page.evaluate((path) => {
+      const row = window.treeRow(path);
+      const content = row.querySelector('[data-item-section=content]');
+      const style = getComputedStyle(content);
+      const parent = window.treeRow('workspace/');
+      const indent = (node) =>
+        node.querySelector('[data-item-section=icon]').getBoundingClientRect().left;
+      return {
+        narrow: window.app.dock.content('files').getBoundingClientRect().width < 400,
+        overflows: content.scrollWidth > content.clientWidth,
+        ellipsis: style.textOverflow,
+        nowrap: style.whiteSpace,
+        text: content.innerText.replace(/\s+/g, ' ').trim(),
+        title: row.title,
+        chevron: !!row.querySelector(
+          '[data-item-section=icon] [data-icon-name=file-tree-icon-chevron]'
+        ),
+        indented: indent(row) > indent(parent),
+      };
+    }, folder.row);
+    assert.deepEqual(seen, {
+      narrow: true,
+      overflows: true,
+      ellipsis: 'ellipsis',
+      nowrap: 'nowrap',
+      text: folder.label,
+      title: folder.label,
+      chevron: true,
+      indented: true,
+    });
+    assert.deepEqual(page.errors, []);
   });
-  await page.until((folder) => window.laidOut(window.treeRow(folder)), folder);
-  const seen = await page.evaluate((folder) => {
-    const row = window.treeRow(folder);
-    const content = row.querySelector('[data-item-section=content]');
-    const style = getComputedStyle(content);
-    const text = [...content.querySelectorAll('[data-truncate-content=visible]')]
-      .filter((node) => node.getClientRects().length > 0)
-      .map((node) => node.textContent)
-      .join('');
-    const parent = window.treeRow('workspace/');
-    const indent = (node) =>
-      node.querySelector('[data-item-section=icon]').getBoundingClientRect().left;
-    return {
-      narrow: window.app.dock.content('files').getBoundingClientRect().width < 400,
-      overflows: content.scrollWidth > content.clientWidth,
-      ellipsis: style.textOverflow,
-      nowrap: style.whiteSpace,
-      text,
-      title: row.title,
-      chevron: !!row.querySelector(
-        '[data-item-section=icon] [data-icon-name=file-tree-icon-chevron]'
-      ),
-      indented: indent(row) > indent(parent),
-    };
-  }, folder);
-  assert.deepEqual(seen, {
-    narrow: true,
-    overflows: true,
-    ellipsis: 'ellipsis',
-    nowrap: 'nowrap',
-    text: 'quarterly-forecast-archive-northern-region',
-    title: 'quarterly-forecast-archive-northern-region',
-    chevron: true,
-    indented: true,
-  });
-  assert.deepEqual(page.errors, []);
-});
+}
 
 test('the inline sprinkle handle keeps its 20px inline start margin', async (t) => {
   const page = await open(t);

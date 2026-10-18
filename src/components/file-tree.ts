@@ -37,8 +37,7 @@ file-tree-container {
 }
 `;
 
-const folderName =
-  "[data-item-type='folder'] > [data-item-section='content']:not(:has([data-item-flattened-subitems]))";
+const folderName = "[data-item-type='folder'] > [data-item-section='content']";
 
 const rows = `
 ${folderName} {
@@ -52,6 +51,7 @@ ${folderName} [data-truncate-grid] > div:not([data-truncate-marker-cell], [data-
 ${folderName} :is([data-truncate-content='overflow'], [data-truncate-marker-cell], [data-truncate-fill]) {
   display: none;
 }
+${folderName} :is([data-item-flattened-subitems], [data-item-flattened-subitem]),
 ${folderName} [data-truncate-content='visible'] {
   display: inline;
   direction: inherit;

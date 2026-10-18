@@ -747,22 +747,9 @@ export class SliccNetwork extends ModelElement {
       .swc-Link {
         font-size: inherit;
       }
-      summary {
-        cursor: pointer;
-        width: fit-content;
-        color: var(--swc-neutral-subdued-content-color-default);
-        border-radius: var(--swc-corner-radius-small-default);
-      }
-      summary:hover {
-        color: var(--swc-neutral-subdued-content-color-hover);
-      }
       .dots {
         display: inline-block;
         white-space: nowrap;
-      }
-      summary:focus-visible {
-        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
-        outline-offset: var(--swc-focus-ring-gap);
       }
       details[open] > summary {
         margin-block-end: var(--swc-spacing-200);
