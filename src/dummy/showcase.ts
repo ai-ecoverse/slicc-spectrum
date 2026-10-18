@@ -721,6 +721,7 @@ function events(): Message[] {
       title: 'docs-pass failed',
       text: 'The Adobe session expired. Log in again to continue.',
       action: 'login',
+      account: 'ai-adobe',
       createdAt: at(1476),
     },
     {

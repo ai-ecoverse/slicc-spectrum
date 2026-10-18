@@ -235,6 +235,16 @@ export class SliccSettings extends ThemedElement {
     this.focusOn('sp-picker');
   }
 
+  reveal(section: string): void {
+    void this.updateComplete.then(() => {
+      const root = this.renderRoot;
+      const row = root.querySelector<HTMLElement>(`.account[data-id="${CSS.escape(section)}"]`);
+      const target = row ?? root.querySelector<HTMLElement>('h2[data-section=accounts]');
+      row?.querySelector<HTMLElement>('swc-button')?.focus();
+      target?.scrollIntoView({ block: 'start' });
+    });
+  }
+
   #update(patch: Partial<Settings>): void {
     this.model?.settings.update(patch);
   }
@@ -691,7 +701,7 @@ export class SliccSettings extends ThemedElement {
         </sp-picker>
       </div>
       </div>
-      <h2>Accounts</h2>
+      <h2 data-section="accounts">Accounts</h2>
       <div class="accounts">${providers.map((account) => this.#account(account))}</div>
       ${
         servers.length

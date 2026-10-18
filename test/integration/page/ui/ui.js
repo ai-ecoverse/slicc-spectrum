@@ -73,6 +73,7 @@ const model = createDummyModel({
   sprinkles: params.get('sprinkles') ?? 'builtin',
   monitor: params.get('monitor') ?? 'dummy',
   import: params.get('import') ?? 'off',
+  login: params.get('login') ?? 'ok',
 });
 if (params.has('color')) model.settings.update({ color: params.get('color') });
 const app = document.querySelector('slicc-app');

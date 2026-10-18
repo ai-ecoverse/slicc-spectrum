@@ -124,7 +124,7 @@ export type MessagePart =
   | { type: 'delegation'; kind: DelegationKind; scoop: string; text: string }
   | { type: 'link'; url: string; title: string; description: string }
   | { type: 'sprinkle'; sprinkle: string }
-  | { type: 'error'; message: string; detail?: string; action?: ErrorAction };
+  | { type: 'error'; message: string; detail?: string; action?: ErrorAction; account?: string };
 
 export type SendMode = 'send' | 'steer' | 'queue';
 export type DeliveredAs = 'run' | 'steer' | 'follow-up';
@@ -177,6 +177,7 @@ export interface SystemMessage {
   trigger?: 'threshold' | 'overflow' | 'idle' | 'manual';
   state?: CompactionState;
   action?: ErrorAction;
+  account?: string;
 }
 
 export interface ToolMessage {

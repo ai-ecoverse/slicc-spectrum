@@ -29,6 +29,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-search.js';
 import '@adobe/spectrum-wc-icons/swc-icon-tools.js';
 import '@adobe/spectrum-wc-icons/swc-icon-user-group.js';
 import '@adobe/spectrum-wc-icons/swc-icon-web-page.js';
+import '@spectrum-web-components/help-text/sp-help-text.js';
 import { createFileTreeIconResolver, getBuiltInSpriteSheet } from '@pierre/trees';
 import { css, html, nothing, svg, type TemplateResult } from 'lit';
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js';
@@ -64,7 +65,9 @@ export interface Handlers {
   readOnly: boolean;
   answer(questionId: string, answer: string): void;
   resolve(messageId: string, state: Exclude<LickState, 'pending'>): void;
-  action(action: ErrorAction, messageId?: string): void;
+  action(action: ErrorAction, messageId?: string, account?: string): void;
+  login?(account: string, messageId: string): Login | undefined;
+  cancelLogin?(account: string, messageId: string): void;
   dropping(messageId: string): number;
   open(path: string): void;
   show(surfaceId: string): void;
@@ -73,6 +76,12 @@ export interface Handlers {
   agentId?: string;
   seat?: string;
   licks?: ViewSet;
+}
+
+export interface Login {
+  state: 'idle' | 'signing-in' | 'connected';
+  error?: string;
+  cancel?: boolean;
 }
 
 export interface Owner {
@@ -322,20 +331,54 @@ function actionLabel(action: ErrorAction, handlers: Handlers, messageId: string)
   return count > 1 ? `Drop ${count} failed turns` : actionLabels[action];
 }
 
+const signedIn = 'Signed in. Retry to send it again.';
+
+function stopSigningIn(event: Event, handlers: Handlers, account: string, id: string): void {
+  const main = (event.currentTarget as HTMLElement).nextElementSibling as HTMLElement;
+  main.focus();
+  handlers.cancelLogin?.(account, id);
+}
+
+function fixButton(
+  fix: ErrorAction,
+  item: { id?: string; account?: string },
+  handlers: Handlers,
+  login: Login | undefined
+): TemplateResult {
+  const id = item.id ?? '';
+  const signing = login?.state === 'signing-in';
+  const shown = login?.state === 'connected' ? 'retry' : fix;
+  const cancel = signing && login.cancel;
+  return html`${
+    cancel
+      ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="cancel-login" @click=${(event: Event) => stopSigningIn(event, handlers, item.account as string, id)}>Cancel</swc-button>`
+      : nothing
+  }<swc-button size="s" variant="secondary" fill-style="outline" data-action=${shown} ?pending=${signing} ?disabled=${handlers.readOnly} @click=${() => handlers.action(shown, item.id, item.account)}>${signing ? 'Signing in…' : actionLabel(shown, handlers, id)}</swc-button>`;
+}
+
 function errorCard(
-  item: { id?: string; title: string; text?: string; action?: ErrorAction },
+  item: { id?: string; title: string; text?: string; action?: ErrorAction; account?: string },
   handlers: Handlers
 ): TemplateResult {
   const id = item.id ?? '';
   const fix = handlers.seat === undefined ? item.action : undefined;
-  const action = fix
-    ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action=${fix} ?disabled=${handlers.readOnly} @click=${() => handlers.action(fix, item.id)}>${actionLabel(fix, handlers, id)}</swc-button>`
-    : nothing;
-  return html`<div class="error-card" role="alert" data-id=${id || nothing}>
-    <swc-icon-alert-diamond class="icon" size="s" aria-hidden="true"></swc-icon-alert-diamond>
-    <span class="sr">Error: </span><span class="lead">${item.title}</span>
-    ${item.text ? html`<span class="detail">${item.text}</span>` : nothing}
-    ${action}
+  const login =
+    fix === 'login' && item.account && !handlers.readOnly
+      ? handlers.login?.(item.account, id)
+      : undefined;
+  const resolved = login?.state === 'connected';
+  const text = resolved ? signedIn : item.text;
+  const failure = login?.state === 'idle' ? login.error : undefined;
+  return html`<div class="error-card" role=${resolved ? nothing : 'alert'} aria-atomic=${resolved ? nothing : 'false'} data-id=${id || nothing} data-login=${login?.state ?? nothing}>
+    ${resolved ? html`<swc-icon-info-circle class="icon" size="s" aria-hidden="true"></swc-icon-info-circle>` : html`<swc-icon-alert-diamond class="icon" size="s" aria-hidden="true"></swc-icon-alert-diamond>`}
+    ${resolved ? nothing : html`<span class="sr">Error: </span>`}<span class="lead">${item.title}</span>
+    ${text ? html`<span class="detail" role=${login ? 'status' : nothing}>${text}</span>` : nothing}
+    ${fix ? html`<div class="fix" aria-live="off">${fixButton(fix, item, handlers, login)}</div>` : nothing}
+    ${
+      failure
+        ? html`<div class="help" data-error="login"><sp-help-text size="s" variant="negative" icon>${failure}</sp-help-text><swc-action-button size="s" quiet data-action="settings" @click=${() => handlers.action('settings', item.id, item.account)}>Open settings</swc-action-button></div>`
+        : nothing
+    }
   </div>`;
 }
 
@@ -599,7 +642,7 @@ function part(entry: Exclude<MessagePart, { type: 'tool' }>, handlers: Handlers)
       return html`<div class="link-text">${entry.title}</div>`;
     default:
       return errorCard(
-        { title: entry.message, text: entry.detail, action: entry.action },
+        { title: entry.message, text: entry.detail, action: entry.action, account: entry.account },
         handlers
       );
   }
@@ -799,7 +842,9 @@ export function assistant(
           message.parts,
           {
             ...handlers,
-            action: (action) => handlers.action(action, message.id),
+            action: (action, _id, account) => handlers.action(action, message.id, account),
+            login: (account) => handlers.login?.(account, message.id),
+            cancelLogin: (account) => handlers.cancelLogin?.(account, message.id),
             dropping: () => handlers.dropping(message.id),
           },
           showThinking,
@@ -890,6 +935,7 @@ export function system(message: SystemMessage, handlers: Handlers): TemplateResu
         title: message.title ?? 'Error',
         text: message.text,
         action: message.action,
+        account: message.account,
       },
       handlers
     )
@@ -1737,6 +1783,9 @@ export const messageCss = css`
     grid-row: span 2;
     color: var(--swc-negative-visual-color);
   }
+  .error-card[data-login='connected'] .icon {
+    color: var(--swc-neutral-subdued-content-color-default);
+  }
   .error-card .lead {
     grid-column: 2;
     font-weight: var(--swc-bold-font-weight);
@@ -1746,18 +1795,33 @@ export const messageCss = css`
     grid-column: 2;
     overflow-wrap: anywhere;
   }
-  .error-card swc-button {
+  .error-card .fix {
     grid-column: 3;
-    grid-row: span 2;
+    grid-row: 1 / span 2;
+    display: flex;
+    gap: var(--swc-spacing-100);
+  }
+  .error-card swc-button {
     white-space: nowrap;
+  }
+  .error-card .help {
+    grid-column: 2 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--swc-spacing-50) var(--swc-spacing-100);
   }
   @container (inline-size < 480px) {
     .error-card {
       margin-inline: var(--swc-spacing-300);
     }
+    .error-card .fix {
+      flex-direction: column-reverse;
+      align-items: flex-end;
+    }
   }
   @container (inline-size < 360px) {
-    .error-card swc-button {
+    .error-card .fix {
       grid-column: 2;
       grid-row: auto;
       justify-self: start;

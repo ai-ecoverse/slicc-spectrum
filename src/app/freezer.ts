@@ -145,6 +145,7 @@ export class SliccFreezer extends ModelElement {
         -webkit-box-orient: vertical;
         -webkit-line-clamp: 2;
         overflow: hidden;
+        text-overflow: ellipsis;
         overflow-wrap: anywhere;
         line-height: var(--swc-line-height-100);
       }
