@@ -30,6 +30,7 @@ import type {
 import { isVaultFailure, nameProblem, valueProblem } from '../model/values.ts';
 import { ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
+import { chevron, disclosureStyles } from './disclosure.ts';
 import { since } from './network.ts';
 import {
   away,
@@ -314,6 +315,7 @@ export class SliccSecrets extends ThemedElement {
 
   static styles = [
     fieldStyles,
+    disclosureStyles,
     css`
       :host {
         display: block;
@@ -1224,7 +1226,7 @@ export class SliccSecrets extends ThemedElement {
       ${
         removed.length
           ? html`<details class="removed" data-removed ?open=${this.#removed.value} @toggle=${(event: Event) => (this.#removed.value = (event.currentTarget as HTMLDetailsElement).open)}>
-              <summary>Removed (${removed.length})</summary>
+              <summary>${chevron}Removed (${removed.length})</summary>
               <ul class="secrets">${removed.map(row)}</ul>
             </details>`
           : nothing

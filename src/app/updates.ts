@@ -17,6 +17,7 @@ import type {
   UpdatesPort,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
+import { chevron, disclosureStyles } from './disclosure.ts';
 import { size } from './messages.ts';
 import { ViewSet } from './view-state.ts';
 
@@ -186,6 +187,7 @@ export class SliccUpdates extends ModelElement {
   }
 
   static styles = [
+    disclosureStyles,
     css`
       :host {
         display: block;
@@ -565,7 +567,7 @@ export class SliccUpdates extends ModelElement {
           : nothing
       }
       ${this.#actions(item)}
-      ${item.log ? html`<details ?open=${this.#logs.has(`item:${item.id}`)} @toggle=${this.#logs.details(`item:${item.id}`)}><summary>Install log</summary><pre>${item.log}</pre></details>` : nothing}
+      ${item.log ? html`<details ?open=${this.#logs.has(`item:${item.id}`)} @toggle=${this.#logs.details(`item:${item.id}`)}><summary>${chevron}Install log</summary><pre>${item.log}</pre></details>` : nothing}
     </article>`;
   }
 
@@ -662,7 +664,7 @@ export class SliccUpdates extends ModelElement {
             </div>`
           : nothing
       }
-      ${item.log ? html`<details ?open=${this.#logs.has(`package:${item.id}`)} @toggle=${this.#logs.details(`package:${item.id}`)}><summary>Install log</summary><pre><span class="package">${item.package}</span>\n${item.log}</pre></details>` : nothing}
+      ${item.log ? html`<details ?open=${this.#logs.has(`package:${item.id}`)} @toggle=${this.#logs.details(`package:${item.id}`)}><summary>${chevron}Install log</summary><pre><span class="package">${item.package}</span>\n${item.log}</pre></details>` : nothing}
     </li>`;
   }
 

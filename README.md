@@ -446,7 +446,7 @@ It closes, clearing the field, when the request leaves `waiting` or while the va
 
 #### `<slicc-updates>`
 
-Install / Update: component states, version changes, last checks, download and link counts, action buttons, failures with Retry, and collapsible install logs, which stay open across a layout switch.
+Install / Update: component states, version changes, last checks, download and link counts, action buttons, failures with Retry, and collapsible install logs behind a quiet chevron, which stay open across a layout switch.
 Opens at boot until the agent is ready without failures.
 Background updates stay in the header's update status; new failures reopen the panel, and after a reload into a boot that isn't ready yet such a panel closes once the agent is ready.
 Every automatic close is saved to the layout.
@@ -517,7 +517,7 @@ The URL is never stored or shown again: closing the dialog drops it.
 The header's **Network** indicator (`data-network`, `data-health`) opens it: a status light, green for `ok`, yellow for `limited` and red for `failing`, with the state in its text and label and `detail` as its tooltip, which adds "Tailscale is connected." while the tailnet runs; on a phone, a cloud icon for the state.
 While a linked device asks to follow, controls the agent, watches it or has a terminal open, an indicator (`data-remote`, `ask`, `prompt`, `terminal` or `watch`) sits before it, **{name} asks to follow**, **Controlled by**, **Terminal open from** or **Watched by** the device's name (or the number of devices; in that order of precedence), says who does what in its tooltip and opens the panel too.
 Offered when the model has a `network` port, a `guests` port, or both.
-**Link another device** and **Other ways to reach the whole web** stay open across a layout switch once opened.
+**Link another device** and **Other ways to reach the whole web** are quiet chevron disclosures (`swc-icon-chevron-right`, turned down when open, mirrored right to left, still under reduced motion), as are the install logs in Install / Update and **Removed** in Settings › Secrets; none shows the browser's marker. They stay open across a layout switch once opened.
 With `guests` and no `network`, it shows only the Guests section (no connection, Sync, Leaders, Tailscale, Linked devices, Get the whole web or failures), still titled Network with its rail icon, and the header's Network and remote indicators stay hidden; the tray's connection chip is then a plain status.
 
 #### `<slicc-tray>`
@@ -546,6 +546,7 @@ Generic.
 [`@pierre/trees`](https://www.npmjs.com/package/@pierre/trees) through its `web-components` entry: `paths` (folders end in `/`), `gitStatus`, `expanded`, `query` (shows only the paths that match it; empty shows all), `reveal(path, focus)`.
 `expanded` also opens and closes the folders of a mounted tree, a `tree-expand` event (`detail.expanded`) reports the open folders when the user changes them, and the tree keeps them when it's moved, such as into a floating group.
 It has no search field of its own.
+A folder name too long for the row ends in an ellipsis instead of losing its middle, and every row carries its full name as a `title`, with its indent and chevron kept.
 Fires `file-open` on click and on <kbd>Enter</kbd>, and `tree-search` (`detail.key`) when a letter or digit is typed in it, for the panel's search field.
 
 #### `<slicc-code-view>`
