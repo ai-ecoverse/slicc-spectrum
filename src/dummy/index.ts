@@ -57,6 +57,7 @@ export interface DummyOptions {
   browser?: BrowserScenario;
   sprinkles?: 'builtin' | 'cones';
   monitor?: 'dummy' | 'agent';
+  login?: 'ok' | 'fail';
 }
 
 export interface DummyModel extends SliccModel {
@@ -108,6 +109,7 @@ export function createDummyModel({
   browser: scenario = 'idle',
   sprinkles = 'builtin',
   monitor = 'dummy',
+  login,
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
   const mount =
@@ -158,7 +160,8 @@ export function createDummyModel({
       storage,
       time,
       undefined,
-      providers === 'none'
+      providers === 'none',
+      login
     ),
     memory: new DummyMemory(extras.memories, () => [
       { id: 'global', label: 'Everyone' },

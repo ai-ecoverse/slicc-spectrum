@@ -26,6 +26,7 @@ import {
   day,
   flatPile,
   type Handlers,
+  type Login,
   lick,
   messageCss,
   mine,
@@ -307,7 +308,9 @@ export class SliccChat extends ThemedElement {
     readOnly: false,
     answer: (questionId, answer) => this.model?.agent.answer(this.#id(), questionId, answer),
     resolve: (messageId, state) => this.model?.agent.resolveLick(this.#id(), messageId, state),
-    action: (action, messageId) => this.#action(action, messageId),
+    action: (action, messageId, account) => this.#action(action, messageId, account),
+    login: (account, messageId) => this.#loginState(account, messageId),
+    cancelLogin: (account, messageId) => this.#cancelLogin(account, messageId),
     dropping: (messageId) =>
       failedTurns((this.model as SliccModel).agent.messages(this.#id()), messageId).length,
     open: (path) =>
@@ -606,9 +609,61 @@ export class SliccChat extends ThemedElement {
       ?.restore(latest ? { text: latest.text, attachments: latest.attachments } : restored);
   }
 
-  #action(action: ErrorAction, messageId = ''): void {
+  #logins = new Map<string, { pending: boolean; error?: string; cancelled?: boolean }>();
+
+  #loginState(accountId: string, messageId: string): Login {
+    const settings = (this.model as SliccModel).settings;
+    const account = settings.accounts().find((candidate) => candidate.id === accountId);
+    const local = this.#logins.get(messageId);
+    const cancel = !!settings.cancel;
+    if (account?.status === 'signing-in' || local?.pending) return { state: 'signing-in', cancel };
+    if (account?.status === 'connected') return { state: 'connected' };
+    return { state: 'idle', error: local?.error };
+  }
+
+  #cancelLogin(accountId: string, messageId: string): void {
+    const local = this.#logins.get(messageId);
+    if (local) local.cancelled = true;
+    this.model?.settings.cancel?.(accountId);
+  }
+
+  #settings(section?: string): void {
+    this.dispatchEvent(
+      new CustomEvent('show-surface', {
+        detail: section ? { id: 'settings', section } : { id: 'settings' },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  #login(model: SliccModel, messageId: string, accountId?: string): void {
+    const account = model.settings.accounts().find((candidate) => candidate.id === accountId);
+    if (!account || account.auth === 'api-key' || account.secret || account.fields?.length) {
+      this.#settings(accountId ?? 'accounts');
+      return;
+    }
+    const local: { pending: boolean; error?: string; cancelled?: boolean } = { pending: true };
+    this.#logins.set(messageId, local);
+    const done = (error?: string) => {
+      local.pending = false;
+      local.error = local.cancelled ? undefined : error;
+      this.requestUpdate();
+    };
+    model.settings.connect(account.id).then(
+      () => done(),
+      (error: unknown) => done((error as Error).message)
+    );
+    this.requestUpdate();
+  }
+
+  #action(action: ErrorAction, messageId = '', account?: string): void {
     const model = this.model;
     if (!model) return;
+    if (action === 'login') {
+      this.#login(model, messageId, account);
+      return;
+    }
     const id = this.#id();
     if (action === 'drop-turn') {
       void this.#rewind(id, messageId);
@@ -622,9 +677,7 @@ export class SliccChat extends ThemedElement {
       if (last) void model.agent.send(id, { text: last.text, attachments: last.attachments });
       return;
     }
-    this.dispatchEvent(
-      new CustomEvent('show-surface', { detail: { id: 'settings' }, bubbles: true, composed: true })
-    );
+    this.#settings(account);
   }
 
   #message(
