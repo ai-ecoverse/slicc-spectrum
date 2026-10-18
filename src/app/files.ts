@@ -160,6 +160,8 @@ export const errorCss = css`
   }
 `;
 
+const blank: TreeView = { scroll: 0, selected: [], focused: null, shown: false };
+
 export class SliccFiles extends ModelElement {
   static properties = {
     ...ModelElement.properties,
@@ -190,6 +192,7 @@ export class SliccFiles extends ModelElement {
   #folders = new ViewState<readonly string[] | null>(this, 'files', () => null);
   #applied: readonly string[] | null = null;
   #view = new ViewState<{ tree: TreeView | null }>(this, 'files:view', () => ({ tree: null }));
+  #holder: { tree: TreeView | null } | null = null;
 
   constructor() {
     super();
@@ -316,6 +319,7 @@ export class SliccFiles extends ModelElement {
   ];
 
   protected subscribe(model: SliccModel): Array<() => void> {
+    if (this.#holder && this.#view.value !== this.#holder) this.#entries = [];
     void model.files.list().then((entries) => this.#load(entries));
     this.#mounts(model.files);
     return [
@@ -363,10 +367,13 @@ export class SliccFiles extends ModelElement {
     const tree = this.#tree();
     const changes = this.model ? changesOf(this.model).changes() : [];
     if (!tree) return;
-    if (tree.paths.length === 0) {
+    const holder = this.#view.value;
+    const moved = !!this.#holder && holder !== this.#holder;
+    if (tree.paths.length === 0 || moved) {
       tree.expanded = this.#folders.value ?? ancestors(changes.map((change) => change.path));
-      const view = this.#view.value.tree;
+      const view = holder.tree ?? (moved ? blank : null);
       if (view) tree.view = view;
+      this.#holder = holder;
     }
     tree.paths = treePaths(this.#entries);
     tree.gitStatus = treeStatus(changes);
@@ -575,7 +582,8 @@ export class SliccFiles extends ModelElement {
 
   #viewed(event: CustomEvent<TreeView>): void {
     event.stopPropagation();
-    this.#view.value.tree = event.detail;
+    const holder = this.#view.value;
+    if (holder === this.#holder) holder.tree = event.detail;
   }
 
   #expand(event: CustomEvent<{ expanded: readonly string[] }>): void {

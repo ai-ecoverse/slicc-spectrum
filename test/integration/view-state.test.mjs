@@ -421,6 +421,40 @@ test('a folder closed over open subfolders in Files stays closed after a rebuild
 
 const deep = 'workspace/skills/release-notes/scripts/collect.jsh';
 
+async function wheel(page, pick) {
+  await page.evaluate(pick);
+  for (let i = 0; i < 60; i++) {
+    const at = await page.evaluate(() => {
+      const box = window.wheelBox();
+      const rect = box.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + Math.min(rect.height / 2, 200),
+        end: box.scrollTop >= box.scrollHeight - box.clientHeight - 1,
+      };
+    });
+    if (at.end) break;
+    await page.send('Input.dispatchMouseEvent', {
+      type: 'mouseWheel',
+      x: at.x,
+      y: at.y,
+      deltaX: 0,
+      deltaY: 400,
+    });
+  }
+  await page.until(() => {
+    const box = window.wheelBox();
+    const top = box.scrollTop;
+    return new Promise((resolve) =>
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() =>
+          resolve(top === box.scrollTop && top >= box.scrollHeight - box.clientHeight - 1)
+        )
+      )
+    );
+  });
+}
+
 async function treeHelpers(page) {
   await page.evaluate(() => {
     window.fileTree = () => window.part('files', 'slicc-file-tree');
@@ -444,85 +478,110 @@ async function treeHelpers(page) {
 async function expand(page, path) {
   await page.until((path) => {
     const row = window.treeRow(path);
-    if (!row) return false;
+    if (!row) {
+      window.fileTree().tree.scrollToPath(path, { focus: false });
+      return false;
+    }
     if (row.getAttribute('aria-expanded') !== 'true') row.click();
     return window.treeRow(path)?.getAttribute('aria-expanded') === 'true';
   }, path);
 }
 
-test('Files keeps its scroll and the selected deep file from 1280 to a 420 phone', async (t) => {
-  const page = await open(t);
-  await viewport(page, 1280);
-  await show(page, 'files', 'slicc-file-tree');
-  await treeHelpers(page);
-  await page.until(() => !!window.treeRow('home/'));
-  await page.evaluate(async () => {
-    for (let i = 0; i < 30; i++)
-      await window.model.files.write(
-        `/home/user/downloads/shot-${String(i).padStart(2, '0')}.txt`,
-        'x\n'
+for (const short of [false, true]) {
+  test(`Files keeps its scroll and the selected deep file from ${short ? 'a short panel at ' : ''}1280 to a 420 phone`, async (t) => {
+    const page = await open(t);
+    await viewport(page, 1280);
+    await show(page, 'files', 'slicc-file-tree');
+    if (short)
+      await page.until(() => {
+        if (window.app.dock.api.getPanel('files').group.panels.length > 1)
+          window.app.panels.move('files', { direction: 'below', ref: 'agents' });
+        window.app.dock.api.getPanel('files').group.api.setSize({ height: 240 });
+        return window.view('files').getBoundingClientRect().height < 300;
+      });
+    await treeHelpers(page);
+    await page.until(() => !!window.treeRow('home/'));
+    await page.evaluate(async () => {
+      for (let i = 0; i < 30; i++)
+        await window.model.files.write(
+          `/home/user/downloads/shot-${String(i).padStart(2, '0')}.txt`,
+          'x\n'
+        );
+      return true;
+    });
+    for (const path of [
+      'workspace/skills/release-notes/',
+      'workspace/skills/release-notes/scripts/',
+      'home/',
+      'home/user/',
+      'home/user/downloads/',
+    ])
+      await expand(page, path);
+    await page.until(() => {
+      const box = window.treeScroller();
+      return !!box && box.scrollHeight > box.clientHeight + 200;
+    });
+    await wheel(page, () => {
+      window.wheelBox = window.treeScroller;
+      return true;
+    });
+    await page.until((deep) => window.inView(window.treeRow(deep), window.treeScroller()), deep);
+    await page.evaluate((deep) => {
+      window.treeRow(deep).click();
+      return true;
+    }, deep);
+    await page.until(
+      (deep) => window.treeRow(deep)?.getAttribute('aria-selected') === 'true',
+      deep
+    );
+    const before = await page.evaluate(() => window.treeScroller().scrollTop);
+    assert.ok(before > 200);
+    if (short)
+      assert.ok(
+        await page.evaluate((before) => {
+          const box = window.treeScroller();
+          return box.clientHeight < 300 && before > box.scrollHeight - 700;
+        }, before)
       );
-    return true;
-  });
-  for (const path of [
-    'workspace/skills/release-notes/',
-    'workspace/skills/release-notes/scripts/',
-    'home/',
-    'home/user/',
-    'home/user/downloads/',
-  ])
-    await expand(page, path);
-  await page.until((deep) => {
-    const box = window.treeScroller();
-    if (!box || box.scrollHeight <= box.clientHeight + 200) return false;
-    box.scrollTop = box.scrollHeight;
-    return window.inView(window.treeRow(deep), box);
-  }, deep);
-  await page.evaluate((deep) => {
-    window.treeRow(deep).click();
-    return true;
-  }, deep);
-  await page.until((deep) => window.treeRow(deep)?.getAttribute('aria-selected') === 'true', deep);
-  const before = await page.evaluate(() => window.treeScroller().scrollTop);
-  assert.ok(before > 200);
 
-  await page.evaluate(() => {
-    window.outgoing = window.view('files');
-    return true;
+    await page.evaluate(() => {
+      window.outgoing = window.view('files');
+      return true;
+    });
+    await viewport(page, 420);
+    await page.evaluate(() => {
+      window.app.panels.open('files');
+      return true;
+    });
+    await page.until(
+      () => window.view('files') !== window.outgoing && window.laidOut(window.treeScroller())
+    );
+    await page.until(
+      (deep) =>
+        window.treeRow(deep)?.getAttribute('aria-selected') === 'true' &&
+        window.inView(window.treeRow(deep), window.treeScroller()),
+      deep
+    );
+    const after = await page.evaluate((deep) => {
+      const box = window.treeScroller();
+      return {
+        scrolled: box.scrollTop > 200 && box.scrollTop <= box.scrollHeight - box.clientHeight,
+        focused: window.fileTree().tree.getFocusedPath() === deep,
+        stolen: window.view('files').matches(':focus-within'),
+      };
+    }, deep);
+    assert.deepEqual(after, { scrolled: true, focused: true, stolen: false });
+    await page.evaluate(() => {
+      window.app.show('files');
+      return true;
+    });
+    await page.until(
+      (deep) => window.treeRoot()?.activeElement?.getAttribute('data-item-path') === deep,
+      deep
+    );
+    assert.deepEqual(page.errors, []);
   });
-  await viewport(page, 420);
-  await page.evaluate(() => {
-    window.app.panels.open('files');
-    return true;
-  });
-  await page.until(
-    () => window.view('files') !== window.outgoing && window.laidOut(window.treeScroller())
-  );
-  await page.until(
-    (deep) =>
-      window.treeRow(deep)?.getAttribute('aria-selected') === 'true' &&
-      window.inView(window.treeRow(deep), window.treeScroller()),
-    deep
-  );
-  const after = await page.evaluate((deep) => {
-    const box = window.treeScroller();
-    return {
-      scrolled: box.scrollTop > 200,
-      focused: window.fileTree().tree.getFocusedPath() === deep,
-      stolen: window.view('files').matches(':focus-within'),
-    };
-  }, deep);
-  assert.deepEqual(after, { scrolled: true, focused: true, stolen: false });
-  await page.evaluate(() => {
-    window.app.show('files');
-    return true;
-  });
-  await page.until(
-    (deep) => window.treeRoot()?.activeElement?.getAttribute('data-item-path') === deep,
-    deep
-  );
-  assert.deepEqual(page.errors, []);
-});
+}
 
 const lists = [
   {
@@ -603,12 +662,19 @@ for (const spec of lists) {
     if (spec.before) await page.evaluate(spec.before);
     await show(page, spec.id, spec.rows);
     if (spec.act) await page.until(spec.act);
+    await page.until((rows) => {
+      const box = window.box();
+      const all = [...(box.shadowRoot ?? box).querySelectorAll(rows)];
+      return box.scrollHeight >= box.clientHeight + 300 && all.length >= 2;
+    }, spec.rows);
+    await wheel(page, () => {
+      window.wheelBox = window.box;
+      return true;
+    });
     const key = await page.until(
       ([id, rows]) => {
         const box = window.box();
         const all = [...(box.shadowRoot ?? box).querySelectorAll(rows)];
-        if (box.scrollHeight < box.clientHeight + 300 || all.length < 2) return false;
-        box.scrollTop = box.scrollHeight;
         const row =
           window.view(id).shadowRoot.querySelector("[aria-selected='true'][data-id]") ??
           all.find((item) => window.inBox(item));
@@ -618,7 +684,7 @@ for (const spec of lists) {
       },
       [spec.id, spec.rows]
     );
-    await page.until(() => window.box().scrollTop > 200);
+    await page.until(() => window.box().scrollTop > 100);
     await page.evaluate(
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     );
@@ -638,7 +704,7 @@ for (const spec of lists) {
         const row = [...(box.shadowRoot ?? box).querySelectorAll(rows)].find(
           (item) => (item.dataset.id ?? item.dataset.path) === key
         );
-        return window.inBox(row) && box.scrollTop > 200;
+        return window.inBox(row) && box.scrollTop > 100;
       },
       [spec.id, spec.rows, key]
     );
@@ -653,3 +719,80 @@ for (const spec of lists) {
     assert.deepEqual(page.errors, []);
   });
 }
+
+test('Files and Memory keep each model its own selection and scroll when the app switches models', async (t) => {
+  const page = await open(t);
+  await viewport(page, 1280);
+  await show(page, 'files', 'slicc-file-tree');
+  await treeHelpers(page);
+  await page.until(() => !!window.treeRow('home/'));
+  await page.evaluate(async () => {
+    for (let i = 0; i < 30; i++)
+      await window.model.files.write(
+        `/home/user/downloads/shot-${String(i).padStart(2, '0')}.txt`,
+        'x\n'
+      );
+    return true;
+  });
+  for (const path of [
+    'workspace/skills/release-notes/',
+    'workspace/skills/release-notes/scripts/',
+    'home/',
+    'home/user/',
+    'home/user/downloads/',
+  ])
+    await expand(page, path);
+  await wheel(page, () => {
+    window.wheelBox = window.treeScroller;
+    return true;
+  });
+  await page.evaluate((deep) => {
+    window.treeRow(deep).click();
+    return true;
+  }, deep);
+  await page.until((deep) => window.treeRow(deep)?.getAttribute('aria-selected') === 'true', deep);
+  await show(page, 'memory', '.row[data-id]');
+  await wheel(page, () => {
+    window.wheelBox = () => window.part('memory', '.list');
+    return true;
+  });
+  const memoryTop = await page.evaluate(() => window.part('memory', '.list').scrollTop);
+  assert.ok(memoryTop > 100);
+  await page.evaluate(async () => {
+    const { createDummyModel } = await import('/dist/slicc-dummy.js');
+    window.first = window.model;
+    window.second = createDummyModel({ delay: 5 });
+    window.app.model = window.second;
+    return true;
+  });
+  await page.until(() => window.part('memory', '.list')?.scrollTop === 0);
+  await page.evaluate(() => {
+    window.app.show('files');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.fileTree()?.tree?.getSelectedPaths().length === 0 &&
+      window.treeScroller()?.scrollTop === 0 &&
+      !!window.treeRow('home/')
+  );
+  await page.evaluate(() => {
+    window.app.model = window.first;
+    return true;
+  });
+  await page.until(
+    (deep) =>
+      window.treeRow(deep)?.getAttribute('aria-selected') === 'true' &&
+      window.inView(window.treeRow(deep), window.treeScroller()),
+    deep
+  );
+  await page.evaluate(() => {
+    window.app.panels.open('memory');
+    return true;
+  });
+  await page.until(
+    (top) => Math.abs((window.part('memory', '.list')?.scrollTop ?? -1) - top) < 2,
+    memoryTop
+  );
+  assert.deepEqual(page.errors, []);
+});

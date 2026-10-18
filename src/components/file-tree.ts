@@ -44,6 +44,8 @@ file-tree-container {
 }
 `;
 
+const gestures = ['wheel', 'touchmove', 'pointerdown', 'keydown'] as const;
+
 function seed(event: KeyboardEvent): boolean {
   return (
     event.key.length === 1 &&
@@ -66,12 +68,21 @@ export class SliccFileTree extends HTMLElement {
   #applying = false;
   #want: TreeView | null = null;
   #back: TreeView | null = null;
+  #hold: TreeView | null = null;
   #quiet = false;
   #told = '';
   #scroller: HTMLElement | null = null;
   #top = 0;
   #height = 0;
-  #resize = new ResizeObserver(() => this.#scrollBack());
+  #set = -1;
+  #user = false;
+  #gesture = (): void => {
+    this.#user = true;
+  };
+  #resize = new ResizeObserver(() => {
+    this.#measure();
+    this.#scrollBack();
+  });
   #scrolled = (): void => this.#onScroll();
 
   get paths(): readonly string[] {
@@ -215,6 +226,8 @@ export class SliccFileTree extends HTMLElement {
     if (want && tree && this.#paths.length > 0) {
       this.#want = null;
       this.#quiet = true;
+      for (const path of tree.getSelectedPaths())
+        if (!want.selected.includes(path)) tree.getItem(path)?.deselect();
       for (const path of want.selected) tree.getItem(path)?.select();
       if (want.focused) tree.focusPath(want.focused);
       this.#quiet = false;
@@ -223,15 +236,22 @@ export class SliccFileTree extends HTMLElement {
   }
 
   #scrollBack(): void {
-    const back = this.#back;
+    const back = this.#back ?? this.#hold;
     const el = this.#scroller;
-    if (!back || !el || this.#want || !el.clientHeight) return;
-    if (el.scrollHeight - el.clientHeight < back.scroll) return;
+    const tree = this.#tree;
+    if (!back || !el || !tree || this.#want || !el.clientHeight) return;
+    if (el.scrollHeight + 1 < tree.getVisibleCount() * tree.getItemHeight()) return;
     this.#back = null;
-    el.scrollTop = back.scroll;
+    this.#hold = back;
+    const index = tree.getFocusedIndex();
+    const height = tree.getItemHeight();
+    let top = Math.min(back.scroll, el.scrollHeight - el.clientHeight);
+    if (back.shown && index >= 0)
+      top = Math.min(Math.max(top, (index + 1) * height - el.clientHeight), index * height);
+    el.scrollTop = top;
+    this.#set = el.scrollTop;
+    this.#user = false;
     this.#measure();
-    if (back.shown && back.focused)
-      this.#tree?.scrollToPath(back.focused, { focus: false, offset: 'nearest' });
   }
 
   #measure(): void {
@@ -242,9 +262,13 @@ export class SliccFileTree extends HTMLElement {
   }
 
   #onScroll(): void {
-    if (!this.#scroller?.clientHeight || this.#want) return;
-    this.#back = null;
     this.#measure();
+    const el = this.#scroller;
+    if (!el?.clientHeight || this.#want || Math.abs(el.scrollTop - this.#set) < 1) return;
+    if ((this.#back || this.#hold) && !this.#user) return;
+    this.#set = -1;
+    this.#back = null;
+    this.#hold = null;
     this.#tell(true);
   }
 
@@ -309,6 +333,9 @@ export class SliccFileTree extends HTMLElement {
     this.#scroller = el;
     if (!el) return;
     el.addEventListener('scroll', this.#scrolled, { passive: true });
+    for (const type of gestures) el.addEventListener(type, this.#gesture, { passive: true });
+    this.#set = -1;
+    this.#user = false;
     this.#resize.observe(el);
     const list = el.querySelector('[data-file-tree-virtualized-list]');
     if (list) this.#resize.observe(list);
@@ -321,7 +348,9 @@ export class SliccFileTree extends HTMLElement {
       this.#back = view;
     }
     this.#scroller?.removeEventListener('scroll', this.#scrolled);
+    for (const type of gestures) this.#scroller?.removeEventListener(type, this.#gesture);
     this.#scroller = null;
+    this.#hold = null;
     this.#resize.disconnect();
     if (this.#paths.length > 0) this.#expanded = this.#held();
     this.#tree?.cleanUp();
@@ -373,6 +402,7 @@ export class SliccFileTree extends HTMLElement {
   }
 
   reveal(path: string, focus = true): void {
+    this.#hold = null;
     this.#tree?.scrollToPath(path, { focus });
     if (!focus) return;
     const row = this.#row(path);

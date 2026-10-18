@@ -119,8 +119,6 @@ export interface ScrollOptions {
   current?: string;
 }
 
-const gestures = ['wheel', 'touchmove', 'pointerdown', 'keydown'] as const;
-
 function keyOf(row: Element): string | null {
   return row.getAttribute('data-id') ?? row.getAttribute('data-path');
 }
@@ -135,15 +133,13 @@ export class ViewScroll implements ReactiveController {
   #options: ScrollOptions;
   #el: HTMLElement | null = null;
   #pending = false;
-  #user = false;
+  #set = -1;
+  #holder: { spot: Spot | null } | null = null;
   #resize = new ResizeObserver(() => {
     this.#pending = true;
     this.#restore();
   });
   #scrolled = (): void => this.#save();
-  #gesture = (): void => {
-    this.#user = true;
-  };
 
   constructor(host: ViewHost, key: string, options: ScrollOptions) {
     this.#state = new ViewState(host, key, () => ({ spot: null }));
@@ -159,24 +155,22 @@ export class ViewScroll implements ReactiveController {
 
   #bind(el: HTMLElement | null): void {
     if (el === this.#el) return;
-    const old = this.#el;
-    for (const type of gestures) old?.removeEventListener(type, this.#gesture);
-    old?.removeEventListener('scroll', this.#scrolled);
+    this.#el?.removeEventListener('scroll', this.#scrolled);
     this.#resize.disconnect();
     this.#el = el;
     this.#pending = true;
-    this.#user = false;
+    this.#set = -1;
     if (!el) return;
-    for (const type of gestures) el.addEventListener(type, this.#gesture, { passive: true });
+    el.style.overflowAnchor = 'none';
     el.addEventListener('scroll', this.#scrolled, { passive: true });
     this.#resize.observe(el);
   }
 
   #save(): void {
     const el = this.#el;
-    if (!el?.clientHeight || (this.#pending && !this.#user)) return;
+    if (!el?.clientHeight || Math.abs(el.scrollTop - this.#set) < 1) return;
+    this.#set = -1;
     this.#pending = false;
-    this.#user = false;
     const box = el.getBoundingClientRect();
     const current = this.#options.current;
     const chosen = current
@@ -203,7 +197,8 @@ export class ViewScroll implements ReactiveController {
       return;
     }
     const max = el.scrollHeight - el.clientHeight;
-    const row = spot.key ? this.#rows(el).find((item) => keyOf(item) === spot.key) : undefined;
+    const rows = this.#rows(el);
+    const row = spot.key ? rows.find((item) => keyOf(item) === spot.key) : undefined;
     let target = spot.top;
     if (row) {
       const rect = row.getBoundingClientRect();
@@ -211,13 +206,21 @@ export class ViewScroll implements ReactiveController {
       target = el.scrollTop + rect.top - el.getBoundingClientRect().top - offset;
     }
     el.scrollTop = Math.min(target, max);
-    if (target <= max + 1 && (row || !spot.key)) this.#pending = false;
+    this.#set = el.scrollTop;
+    const gone = !!spot.key && !row;
+    if (gone ? rows.length > 0 : target <= max + 1) this.#pending = false;
   }
 
   hostUpdated(): void {
     const el = this.#options.scroller();
     this.#bind(el);
     if (!el) return;
+    const holder = this.#state.value;
+    if (holder !== this.#holder) {
+      if (this.#holder && !holder.spot) el.scrollTop = 0;
+      this.#holder = holder;
+      this.#pending = true;
+    }
     for (const child of (el.shadowRoot ?? el).children) this.#resize.observe(child);
     this.#restore();
   }
