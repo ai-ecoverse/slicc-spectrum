@@ -10,6 +10,7 @@ import type {
 import type { Clock } from './clock.ts';
 
 export const dummySettingsKey = 'slicc-ui.settings';
+export const signInClosed = 'The sign-in window was closed before it finished.';
 
 export class DummySettings extends Emitter<SettingsEvents> implements SettingsPort {
   #settings: Settings;
@@ -20,6 +21,8 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   #keys: readonly string[];
   #signIns = new Map<string, { before: AccountStatus; stop: () => void }>();
   #gated: boolean;
+  #fails: boolean;
+  readonly connects: Array<{ id: string; gesture: boolean | null }> = [];
 
   constructor(
     defaults: Settings,
@@ -28,9 +31,11 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
     storage: Storage | null,
     clock: Clock,
     keys: readonly string[] = [dummySettingsKey],
-    gated = false
+    gated = false,
+    login?: 'ok' | 'fail'
   ) {
     super();
+    this.#fails = login === 'fail';
     this.#gated = gated;
     this.#keys = keys;
     this.#storage = storage;
@@ -83,8 +88,14 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   }
 
   async connect(id: string, secret?: string): Promise<void> {
+    const activation = (globalThis.navigator as Navigator | undefined)?.userActivation;
+    this.connects.push({ id, gesture: activation ? activation.isActive : null });
     const account = this.#accounts.find((candidate) => candidate.id === id);
     if (account && account.auth !== 'api-key' && !(await this.#signIn(account))) return;
+    if (account && account.auth !== 'api-key' && this.#fails) {
+      this.#set(id, { status: account.status });
+      throw new Error(signInClosed);
+    }
     if (account?.auth === 'api-key' || !account) await this.#clock.sleep(10);
     if (account?.auth === 'api-key' && account.store !== 'vault' && !secret)
       throw new Error(

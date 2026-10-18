@@ -366,6 +366,13 @@ export const accounts: Account[] = [
   { id: 'anthropic', provider: 'Anthropic', identity: 'API key ending 3f2a', status: 'connected' },
   { id: 'github', provider: 'GitHub', identity: '@example-dev', status: 'connected' },
   { id: 'adobe', provider: 'Adobe', identity: 'dev@example.com', status: 'expired' },
+  {
+    id: 'ai-adobe',
+    provider: 'Adobe AI',
+    identity: 'harbor-ops@example.com',
+    status: 'expired',
+    auth: 'oauth',
+  },
   { id: 'openai', provider: 'OpenAI', identity: '', status: 'disconnected', auth: 'api-key' },
   {
     id: 'mcp:docs',
@@ -789,6 +796,16 @@ export const conversations: Record<string, Message[]> = {
       title: 'Mail connector',
       text: 'The connector returned 401. Reconnect the account in Settings.',
       createdAt: at(-19),
+    },
+    {
+      id: 'm-t4',
+      role: 'system',
+      kind: 'error',
+      action: 'login',
+      account: 'mcp:tickets',
+      title: 'Tickets connector',
+      text: 'The tickets server rejected its token.',
+      createdAt: at(-18),
     },
   ],
 };
