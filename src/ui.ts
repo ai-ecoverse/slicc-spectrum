@@ -10,6 +10,7 @@ import { SliccConfirm, SliccPrompt } from './app/confirm.ts';
 import { SliccFiles, SliccFileView } from './app/files.ts';
 import { SliccFollow } from './app/follow.ts';
 import { SliccFreezer } from './app/freezer.ts';
+import { SliccFreezerImport } from './app/freezer-import.ts';
 import { SliccGuestInvite } from './app/guests.ts';
 import { SliccLucide } from './app/lucide.ts';
 import { SliccMemory } from './app/memory.ts';
@@ -36,6 +37,7 @@ export type { Color } from './app/base.ts';
 export { resolveColor } from './app/base.ts';
 export type { ConfirmOptions, ConfirmVariant, PromptOptions } from './app/confirm.ts';
 export { confirm, prompt } from './app/confirm.ts';
+export type { ImportOutcome, ImportStage } from './app/freezer-import.ts';
 export type { GrammarKind } from './app/grammars.ts';
 export { grammarBase, setGrammarBase } from './app/grammars.ts';
 export type {
@@ -75,6 +77,7 @@ export {
   SliccFileTree,
   SliccFileView,
   SliccFollow,
+  SliccFreezerImport,
   SliccGuestInvite,
   SliccNetwork,
   SliccNotices,
@@ -100,6 +103,7 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-memory': SliccMemory,
   'slicc-monitor': SliccMonitor,
   'slicc-freezer': SliccFreezer,
+  'slicc-freezer-import': SliccFreezerImport,
   'slicc-sprinkle': SliccSprinkle,
   'slicc-lucide': SliccLucide,
   'slicc-tray': SliccTray,

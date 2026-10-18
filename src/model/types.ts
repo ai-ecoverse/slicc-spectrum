@@ -242,6 +242,45 @@ export interface AgentEvents {
   frozen: readonly FrozenCone[];
   hold: AgentHold | null;
   readOnly: string | null;
+  importing: ProfileImportProgress;
+}
+
+export interface ProfileImportPreview {
+  origin: string;
+  createdAt: number;
+  cones: number;
+  scoops: number;
+  frozen: number;
+  bytes: number;
+  skills: string[];
+  crons: number;
+  webhooks: number;
+  flagged: string[];
+  providers: string[];
+  mounts: string[];
+  already: number | null;
+  text: string;
+}
+
+export interface ProfileImportResult {
+  preview: ProfileImportPreview | null;
+  cones: string[];
+  report: string | null;
+  text: string;
+}
+
+export type ProfileImportPhase = 'idle' | 'checking' | 'writing' | 'done' | 'failed';
+
+export interface ProfileImportProgress {
+  phase: ProfileImportPhase;
+  done: number;
+  total: number;
+  text: string;
+}
+
+export interface ProfileImportOptions {
+  preview: boolean;
+  again?: boolean;
 }
 
 export interface AgentPort extends Subscribable<AgentEvents> {
@@ -270,6 +309,9 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   freeze?(agentId: string): void;
   thaw(id: string): Agent | null;
   discard(id: string): void;
+  importProfile?(file: Blob, options: ProfileImportOptions): Promise<ProfileImportResult>;
+  importCancel?(): void;
+  importing?(): ProfileImportProgress;
   rewind?(agentId: string, messageId: string): Promise<Outgoing | null>;
   drop?(agentId: string): Promise<void>;
   createCone?(name: string): Promise<Agent>;
@@ -295,6 +337,7 @@ export interface FrozenCone {
   kind?: FrozenKind;
   live?: boolean;
   thawedAs?: string;
+  v6?: boolean;
 }
 
 export type FileKind = 'file' | 'directory';
