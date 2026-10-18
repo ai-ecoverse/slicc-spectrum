@@ -421,38 +421,38 @@ test('a folder closed over open subfolders in Files stays closed after a rebuild
 
 const deep = 'workspace/skills/release-notes/scripts/collect.jsh';
 
-async function wheel(page, pick) {
+async function wheel(page, pick, stop = 1e9) {
   await page.evaluate(pick);
+  const done = (stop) => {
+    const box = window.wheelBox();
+    return box.scrollTop >= Math.min(stop, box.scrollHeight - box.clientHeight - 1);
+  };
   for (let i = 0; i < 60; i++) {
     const at = await page.evaluate(() => {
-      const box = window.wheelBox();
-      const rect = box.getBoundingClientRect();
-      return {
-        x: rect.left + rect.width / 2,
-        y: rect.top + Math.min(rect.height / 2, 200),
-        end: box.scrollTop >= box.scrollHeight - box.clientHeight - 1,
-      };
+      const rect = window.wheelBox().getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + Math.min(rect.height / 2, 200) };
     });
-    if (at.end) break;
+    if (await page.evaluate(done, stop)) break;
     await page.send('Input.dispatchMouseEvent', {
       type: 'mouseWheel',
       x: at.x,
       y: at.y,
       deltaX: 0,
-      deltaY: 400,
+      deltaY: stop < 1e9 ? 100 : 400,
     });
   }
-  await page.until(() => {
+  await page.until((stop) => {
     const box = window.wheelBox();
     const top = box.scrollTop;
+    const end = box.scrollHeight - box.clientHeight - 1;
     return new Promise((resolve) =>
       requestAnimationFrame(() =>
         requestAnimationFrame(() =>
-          resolve(top === box.scrollTop && top >= box.scrollHeight - box.clientHeight - 1)
+          resolve(top === box.scrollTop && top >= Math.min(stop, end) && (stop > end || top < end))
         )
       )
     );
-  });
+  }, stop);
 }
 
 async function treeHelpers(page) {
@@ -585,7 +585,7 @@ for (const short of [false, true]) {
 
 const lists = [
   {
-    name: 'Agents keeps its scroll and the selected scoop',
+    name: 'Agents keeps its end and the selected scoop',
     id: 'agents',
     scroller: '.list',
     rows: 'li[data-id]',
@@ -605,9 +605,16 @@ const lists = [
     },
     selected: true,
   },
-  { name: 'Memory keeps its scroll', id: 'memory', scroller: '.list', rows: '.row[data-id]' },
+  { name: 'Memory keeps its end', id: 'memory', scroller: '.list', rows: '.row[data-id]' },
   {
-    name: 'Changes keeps its scroll',
+    name: 'Memory keeps the row it was on',
+    id: 'memory',
+    scroller: '.list',
+    rows: '.row[data-id]',
+    stop: 200,
+  },
+  {
+    name: 'Changes keeps its end',
     id: 'changes',
     scroller: '.bar ~ ul',
     rows: 'li[data-path]',
@@ -621,14 +628,14 @@ const lists = [
     },
   },
   {
-    name: 'Monitor keeps its scroll',
+    name: 'Monitor keeps its end',
     id: 'monitor',
     params: { monitor: 'agent' },
     scroller: '.body',
     rows: '.section[data-id], .row[data-id]',
   },
   {
-    name: 'Browser keeps the scroll of its tabs',
+    name: 'Browser keeps the end of its tabs',
     id: 'browser',
     scroller: '.scroll',
     rows: '.cards > li[data-id]',
@@ -637,8 +644,15 @@ const lists = [
       return true;
     },
   },
-  { name: 'Freezer keeps its scroll', id: 'freezer', scroller: '.list', rows: '.card[data-id]' },
-  { name: 'Settings keeps its scroll', id: 'settings', scroller: null, rows: '[data-id]' },
+  { name: 'Freezer keeps its end', id: 'freezer', scroller: '.list', rows: '.card[data-id]' },
+  {
+    name: 'Freezer keeps the card it was on',
+    id: 'freezer',
+    scroller: '.list',
+    rows: '.card[data-id]',
+    stop: 500,
+  },
+  { name: 'Settings keeps its end', id: 'settings', scroller: null, rows: '[data-id]' },
 ];
 
 for (const spec of lists) {
@@ -667,10 +681,14 @@ for (const spec of lists) {
       const all = [...(box.shadowRoot ?? box).querySelectorAll(rows)];
       return box.scrollHeight >= box.clientHeight + 300 && all.length >= 2;
     }, spec.rows);
-    await wheel(page, () => {
-      window.wheelBox = window.box;
-      return true;
-    });
+    await wheel(
+      page,
+      () => {
+        window.wheelBox = window.box;
+        return true;
+      },
+      spec.stop
+    );
     const key = await page.until(
       ([id, rows]) => {
         const box = window.box();
@@ -698,15 +716,16 @@ for (const spec of lists) {
       return true;
     }, spec.id);
     await page.until(
-      ([id, rows, key]) => {
+      ([id, rows, key, stop]) => {
         if (window.view(id) === window.outgoing || !window.laidOut(window.box())) return false;
         const box = window.box();
         const row = [...(box.shadowRoot ?? box).querySelectorAll(rows)].find(
           (item) => (item.dataset.id ?? item.dataset.path) === key
         );
-        return window.inBox(row) && box.scrollTop > 100;
+        const end = box.scrollTop >= box.scrollHeight - box.clientHeight - 1;
+        return box.scrollTop > 100 && (end ? !stop : window.inBox(row) && !!stop);
       },
-      [spec.id, spec.rows, key]
+      [spec.id, spec.rows, key, spec.stop]
     );
     if (spec.selected)
       assert.equal(

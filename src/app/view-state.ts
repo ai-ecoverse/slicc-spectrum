@@ -111,6 +111,7 @@ interface Spot {
   top: number;
   key: string | null;
   offset: number;
+  end: boolean;
 }
 
 export interface ScrollOptions {
@@ -185,6 +186,7 @@ export class ViewScroll implements ReactiveController {
       top: el.scrollTop,
       key: row ? keyOf(row) : null,
       offset: row ? row.getBoundingClientRect().top - box.top : 0,
+      end: el.scrollTop > 0 && el.scrollTop >= el.scrollHeight - el.clientHeight - 1,
     };
   }
 
@@ -199,15 +201,15 @@ export class ViewScroll implements ReactiveController {
     const max = el.scrollHeight - el.clientHeight;
     const rows = this.#rows(el);
     const row = spot.key ? rows.find((item) => keyOf(item) === spot.key) : undefined;
-    let target = spot.top;
-    if (row) {
+    let target = spot.end ? max : spot.top;
+    if (row && !spot.end) {
       const rect = row.getBoundingClientRect();
       const offset = Math.min(spot.offset, Math.max(0, el.clientHeight - rect.height));
       target = el.scrollTop + rect.top - el.getBoundingClientRect().top - offset;
     }
     el.scrollTop = Math.min(target, max);
     this.#set = el.scrollTop;
-    const gone = !!spot.key && !row;
+    const gone = !spot.end && !!spot.key && !row;
     if (gone ? rows.length > 0 : target <= max + 1) this.#pending = false;
   }
 
