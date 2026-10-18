@@ -40,6 +40,7 @@ import type {
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
 import { type ConfirmOptions, confirm } from './confirm.ts';
+import { chevron, disclosureStyles } from './disclosure.ts';
 import { failure } from './files.ts';
 import { ago } from './freezer.ts';
 import { guestCones, guestExpiry, invite, pendingLabel } from './guests.ts';
@@ -495,6 +496,7 @@ export class SliccNetwork extends ModelElement {
   static styles = [
     unsafeCSS(link),
     reachStyles,
+    disclosureStyles,
     css`
       :host {
         display: block;
@@ -745,22 +747,9 @@ export class SliccNetwork extends ModelElement {
       .swc-Link {
         font-size: inherit;
       }
-      summary {
-        cursor: pointer;
-        width: fit-content;
-        color: var(--swc-neutral-subdued-content-color-default);
-        border-radius: var(--swc-corner-radius-small-default);
-      }
-      summary:hover {
-        color: var(--swc-neutral-subdued-content-color-hover);
-      }
       .dots {
         display: inline-block;
         white-space: nowrap;
-      }
-      summary:focus-visible {
-        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
-        outline-offset: var(--swc-focus-ring-gap);
       }
       details[open] > summary {
         margin-block-end: var(--swc-spacing-200);
@@ -1347,7 +1336,7 @@ export class SliccNetwork extends ModelElement {
       ${
         links.devices.length
           ? html`<ul aria-labelledby="links">${links.devices.map((device) => this.#device(port, status, device))}</ul>
-            <details ?open=${this.#open.has('link')} @toggle=${this.#open.details('link')}><summary>Link another device</summary><div>${this.#join(port, links)}</div></details>`
+            <details ?open=${this.#open.has('link')} @toggle=${this.#open.details('link')}><summary>${chevron}Link another device</summary><div>${this.#join(port, links)}</div></details>`
           : this.#join(port, links)
       }
       ${
@@ -1633,7 +1622,7 @@ export class SliccNetwork extends ModelElement {
 
   #whole(status: NetworkStatus): TemplateResult {
     if (wholeWeb.has(routeOf(status))) {
-      return html`<details ?open=${this.#open.has('whole')} @toggle=${this.#open.details('whole')}><summary>Other ways to reach the whole web</summary><div>${this.#ways(status)}</div></details>`;
+      return html`<details ?open=${this.#open.has('whole')} @toggle=${this.#open.details('whole')}><summary>${chevron}Other ways to reach the whole web</summary><div>${this.#ways(status)}</div></details>`;
     }
     return html`<section aria-labelledby="whole">
       <h2 id="whole">Get the whole web</h2>

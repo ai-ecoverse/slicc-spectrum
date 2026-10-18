@@ -30,6 +30,7 @@ import type {
 import { isVaultFailure, nameProblem, valueProblem } from '../model/values.ts';
 import { ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
+import { disclosureStyles, smallChevron } from './disclosure.ts';
 import { since } from './network.ts';
 import {
   away,
@@ -314,6 +315,7 @@ export class SliccSecrets extends ThemedElement {
 
   static styles = [
     fieldStyles,
+    disclosureStyles,
     css`
       :host {
         display: block;
@@ -495,9 +497,7 @@ export class SliccSecrets extends ThemedElement {
         padding-top: var(--swc-spacing-200);
       }
       .removed summary {
-        cursor: pointer;
         font-size: var(--swc-font-size-75);
-        color: var(--swc-neutral-subdued-content-color-default);
       }
       .removed .secret dl,
       .removed .secret .name code {
@@ -1224,7 +1224,7 @@ export class SliccSecrets extends ThemedElement {
       ${
         removed.length
           ? html`<details class="removed" data-removed ?open=${this.#removed.value} @toggle=${(event: Event) => (this.#removed.value = (event.currentTarget as HTMLDetailsElement).open)}>
-              <summary>Removed (${removed.length})</summary>
+              <summary>${smallChevron}Removed (${removed.length})</summary>
               <ul class="secrets">${removed.map(row)}</ul>
             </details>`
           : nothing
