@@ -231,6 +231,7 @@ export class SliccFreezer extends ModelElement {
       accounts: model.settings.accounts(),
       file,
       trigger,
+      allowed: () => this.importable,
     });
     if (outcome === 'retry') return this.#pick();
     const first = outcome?.cones[0];

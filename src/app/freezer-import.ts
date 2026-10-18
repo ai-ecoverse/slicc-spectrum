@@ -76,9 +76,11 @@ export class SliccFreezerImport extends LitElement {
   accounts: readonly Account[] = [];
   file: Blob | null = null;
   trigger: HTMLElement | null = null;
+  allowed: () => boolean = () => true;
   readonly #result = Promise.withResolvers<ImportOutcome>();
   #run = 0;
   #settled: ImportOutcome = null;
+  #halted = false;
   #off: (() => void) | null = null;
 
   constructor() {
@@ -312,6 +314,7 @@ export class SliccFreezerImport extends LitElement {
 
   async confirm(): Promise<void> {
     if (this.stage !== 'preview') return;
+    if (!this.allowed()) return this.#close(null);
     this.stage = 'importing';
     this.progress = this.agent?.importing?.() ?? null;
     this.announce = 'Importing the profile.';
@@ -340,10 +343,10 @@ export class SliccFreezerImport extends LitElement {
   }
 
   #stop(): void {
-    if (this.#busy) {
-      this.#run++;
-      this.agent?.importCancel?.();
-    }
+    if (!this.#busy || this.#halted) return;
+    this.#halted = true;
+    this.#run++;
+    this.agent?.importCancel?.();
   }
 
   #closed(): void {
@@ -354,7 +357,10 @@ export class SliccFreezerImport extends LitElement {
   }
 
   #cancelButton(): TemplateResult {
-    return html`<swc-button slot="button" variant="secondary" fill-style="outline" data-cancel data-action="import-cancel" @click=${() => this.#close(null)}>Cancel</swc-button>`;
+    return html`<swc-button slot="button" variant="secondary" fill-style="outline" data-cancel data-action="import-cancel" @click=${() => {
+      this.#stop();
+      this.#close(null);
+    }}>Cancel</swc-button>`;
   }
 
   #notes(preview: ProfileImportPreview): TemplateResult {
@@ -446,7 +452,7 @@ export class SliccFreezerImport extends LitElement {
   }
 
   render(): TemplateResult {
-    return html`<dialog aria-labelledby="title" data-import=${this.stage} @close=${this.#closed}>
+    return html`<dialog aria-labelledby="title" data-import=${this.stage} @cancel=${() => this.#stop()} @close=${this.#closed}>
       <sp-alert-dialog variant="confirmation">${this.#body()}<div class="sr" role="status" aria-live="polite" data-announce>${this.announce}</div></sp-alert-dialog>
     </dialog>`;
   }
@@ -457,6 +463,7 @@ export interface ImportDialogOptions {
   accounts: readonly Account[];
   file: Blob;
   trigger?: HTMLElement | null;
+  allowed?: () => boolean;
 }
 
 export function importProfile(options: ImportDialogOptions): Promise<ImportOutcome> {
@@ -466,6 +473,7 @@ export function importProfile(options: ImportDialogOptions): Promise<ImportOutco
   element.accounts = options.accounts;
   element.file = options.file;
   element.trigger = trigger;
+  if (options.allowed) element.allowed = options.allowed;
   themeOf(trigger).append(element);
   return element.result;
 }

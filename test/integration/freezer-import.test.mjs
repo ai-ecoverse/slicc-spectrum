@@ -349,6 +349,34 @@ test('freezer import: no button or drop on a guest seat', async (t) => {
   assert.deepEqual(guest, { button: false, input: false, prevented: false, cards: true });
 });
 
+test('freezer import: a page that turns watch-only while the preview is open imports nothing', async (t) => {
+  const page = await open(t, { import: 'v6' });
+  await page.evaluate(() => {
+    window.calls = [];
+    const port = window.model.agent.importProfile;
+    window.model.agent.importProfile = (file, options) => {
+      window.calls.push(options);
+      return port(file, options);
+    };
+    return window.pick();
+  });
+  await page.until(() => window.stage() === 'preview');
+  await page.evaluate(() => {
+    window.model.agent.setReadOnly('Watch only.');
+    return window.press('import-confirm');
+  });
+  await page.until(() => !window.importer());
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.calls,
+      window.model.agent.frozen().filter((row) => row.v6).length,
+      !!window.inFreezer('[data-action=import-v6]'),
+    ]),
+    [[{ preview: true }], 0, false]
+  );
+});
+
 test('freezer import: no button on a watch-only follower', async (t) => {
   const watch = await open(t, { import: 'v6', follow: 'watch', surfaces: 'all' });
   await watch.until(() => !!window.inFreezer('.bar'));
