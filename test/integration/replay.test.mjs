@@ -293,3 +293,49 @@ test('the status header keeps its label line still while the label rolls', async
   const { seen } = await replay(page);
   assert.equal(Object.keys(seen.lines).length, 1, JSON.stringify(seen.lines));
 });
+
+test('a streaming call never shows a secret-looking part of its arguments, and its header changes at most four times a second', async (t) => {
+  const page = await open(t);
+  await page.evaluate(record);
+  await page.evaluate(() => {
+    window.leakSeen = new Set();
+    const frame = () => {
+      const log = window.chatPart('.log');
+      for (const node of log?.querySelectorAll(
+        'swc-response-status-step [slot=label], slicc-status-label'
+      ) ?? [])
+        window.leakSeen.add(node.textContent);
+      for (const status of log?.querySelectorAll('swc-response-status') ?? [])
+        for (const label of status.shadowRoot?.querySelectorAll('.swc-ResponseStatus-label') ?? [])
+          window.leakSeen.add(label.textContent);
+      window.leakFrame = requestAnimationFrame(frame);
+    };
+    frame();
+    void window.model.agent.send('cone-sliccy', 'Run a leaky command');
+    return true;
+  });
+  await page.within(60000, () => {
+    const last = window.model.agent.messages('cone-sliccy').at(-1);
+    return last?.role === 'assistant' && last.status === 'done';
+  });
+  const texts = await page.evaluate(() => {
+    cancelAnimationFrame(window.leakFrame);
+    return [...window.leakSeen];
+  });
+  const seen = await page.evaluate(results);
+  assert.ok(
+    texts.some((text) => text.includes('porto.json')),
+    JSON.stringify(texts)
+  );
+  assert.deepEqual(
+    texts.filter((text) => /gh(?:p|\s*$)|harborexample|sk-harbor|eyJ|Bearer\s+\S/.test(text)),
+    []
+  );
+  const active = seen.labels.filter((entry) => entry.state === 'active');
+  const quick = active
+    .slice(1)
+    .filter(
+      (entry, index) => entry.turn === active[index].turn && entry.at - active[index].at < 250
+    );
+  assert.deepEqual(quick, []);
+});

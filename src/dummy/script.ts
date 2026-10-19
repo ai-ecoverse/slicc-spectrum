@@ -277,6 +277,24 @@ function check(dir: string, city: string): string {
   return `cd ${dir} && jq -n --slurpfile all forecast-all.json '$all[0].days[] | select(.city == "${city}") | {city, unit, cached, high: (.highs | max)}' && grep -c "cacheKey('${city}'" ${repro}/cache-keys.ts`;
 }
 
+export const leakyCommand = `curl -s https://api.example.com/v2/forecast?city=Porto -o ${repro}/porto.json && echo ${'#'.repeat(22)} gh${'p_harborexample0000'} && export HARBOR_API_KEY=sk-harbor-example-0000 && curl -s -H 'Authorization: Bearer eyJharbor.example' https://api.example.com/v2/me`;
+
+function leaky(): Step[] {
+  return [
+    {
+      type: 'tool',
+      name: 'bash',
+      title: leakyCommand,
+      input: leakyCommand,
+      output: '{ "user": "harbor" }',
+      paths: [],
+      ticks: 20,
+      streamed: true,
+    },
+    { type: 'text', text: 'Fetched Porto with the example credentials.' },
+  ];
+}
+
 export const replayLabel = 'Rebuild the cache-key fixtures for every city';
 
 function replay(): Step[] {
@@ -487,6 +505,7 @@ export function script(
   if (attachments.length > 0) return { steps: look(attachments), suggestion };
   if (/\bforbidden\b/.test(text)) return { steps: filtered(), suggestion };
   if (/\breplay\b/.test(text)) return { steps: replay(), suggestion };
+  if (/\bleaky\b/.test(text)) return { steps: leaky(), suggestion };
   if (/\b(ask|choose|decide)\b/.test(text)) return { steps: ask(), suggestion };
   if (/\b(debug|investigate)\b/.test(text)) return { steps: investigate(), suggestion };
   if (/\b(search|grep)\b/.test(text)) return { steps: search(), suggestion };

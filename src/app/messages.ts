@@ -43,6 +43,7 @@ import type {
   UserMessage,
 } from '../model/types.ts';
 import { ansi } from './ansi.ts';
+import { guard } from './guard.ts';
 import { markdown } from './markdown.ts';
 import { signInText } from './sign-in.ts';
 import type { ViewSet } from './view-state.ts';
@@ -409,7 +410,7 @@ export function step(call: ToolCall, context: RunContext, id?: string): Template
 }
 
 function headline(call: ToolCall): string {
-  return `${call.name} ${call.title}`.trim();
+  return guard(`${call.name} ${call.title}`.trim(), call.status === 'running');
 }
 
 type Phase = 'active' | 'complete' | 'stopped';
@@ -1228,6 +1229,10 @@ export const messageCss = css`
   }
   swc-response-status-step > [slot='description'] {
     color: var(--swc-neutral-content-color-default);
+  }
+  swc-response-status-step .call > pre {
+    white-space: pre;
+    overflow-wrap: normal;
   }
   .lick {
     border: var(--swc-border-width-100) solid var(--swc-gray-200);
