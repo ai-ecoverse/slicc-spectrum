@@ -218,3 +218,107 @@ test('Edit and Forget sit at the trailing end, and Forget asks first', async (t)
   assert.ok(await page.evaluate(() => !!window.part('.row[data-id=mem-6]')));
   assert.deepEqual(page.errors, []);
 });
+
+test('an open memory names its tag and scope in words next to their icons, a closed one shows only the icons', async (t) => {
+  const page = await open(t);
+  const labels = (id) =>
+    window.parts(`.row[data-id=${id}] [data-label]`).map((label) => {
+      const icon = label.querySelector('[aria-hidden=true]').getBoundingClientRect();
+      const text = document.createRange();
+      text.selectNodeContents(label);
+      const words = [...text.getClientRects()].at(-1);
+      return [
+        label.dataset.label,
+        label.innerText.trim(),
+        icon.width > 0 && words.left >= icon.right && words.left - icon.right < 16,
+      ];
+    });
+  assert.deepEqual(await page.evaluate(labels, 'mem-6'), []);
+  for (const [id, expected] of [
+    [
+      'mem-6',
+      [
+        ['tag', 'Project', true],
+        ['scope', 'harbor only', true],
+      ],
+    ],
+    [
+      'mem-1',
+      [
+        ['tag', 'Feedback', true],
+        ['scope', 'Shared', true],
+      ],
+    ],
+  ]) {
+    await page.evaluate((id) => {
+      window.part(`.row[data-id=${id}] .head`).click();
+      return true;
+    }, id);
+    await page.until((id) => !!window.part(`.row[data-id=${id}][data-open]`), id);
+    await page.until(settled, id);
+    assert.deepEqual(await page.evaluate(labels, id), expected);
+    assert.equal(await page.evaluate(() => window.parts('[data-label]').length), expected.length);
+  }
+  assert.deepEqual(page.errors, []);
+});
+
+async function rules(page) {
+  return page.evaluate(() =>
+    window.parts('li.row + li.row').map((row) => {
+      const line = getComputedStyle(row, '::before');
+      const own = getComputedStyle(row);
+      const drawn = line.content === 'none' ? own : line;
+      const box = row.getBoundingClientRect();
+      return {
+        id: row.dataset.id,
+        radius: [drawn.borderTopLeftRadius, drawn.borderTopRightRadius],
+        thickness: line.content === 'none' ? own.borderTopWidth : line.height,
+        spans: line.content === 'none' || Math.abs(parseFloat(line.width) - box.width) < 0.5,
+        top: line.content === 'none' || line.top === '0px',
+      };
+    })
+  );
+}
+
+for (const width of [1280, 420]) {
+  test(`memory rows are divided by one straight hairline each, open or closed, at ${width}`, async (t) => {
+    const page = await open(t);
+    if (width === 420) {
+      t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+      await page.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 860,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await page.until(() => window.app.screen === 'phone');
+      await page.evaluate(() => {
+        window.app.show('memory');
+        return true;
+      });
+      await page.until(() => {
+        const row = window.part('.row[data-id=mem-2]');
+        return !!row && row.getBoundingClientRect().right <= innerWidth;
+      });
+    }
+    await page.evaluate(() => {
+      window.part('.row[data-id=mem-1] .head').click();
+      return true;
+    });
+    await page.until(() => !!window.part('.row[data-id=mem-1][data-open]'));
+    await page.until(settled, 'mem-1');
+    const seen = await rules(page);
+    assert.ok(seen.length >= 4, JSON.stringify(seen));
+    assert.ok(
+      seen.some((rule) => rule.id === 'mem-2'),
+      JSON.stringify(seen)
+    );
+    for (const rule of seen)
+      assert.deepEqual(
+        rule,
+        { id: rule.id, radius: ['0px', '0px'], thickness: '1px', spans: true, top: true },
+        rule.id
+      );
+    assert.deepEqual(page.errors, []);
+  });
+}

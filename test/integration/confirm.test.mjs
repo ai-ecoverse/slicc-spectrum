@@ -338,3 +338,86 @@ for (const [name, color, browser] of [
     assert.deepEqual(page.errors, []);
   });
 }
+
+const uncovered = () => {
+  const deepest = (x, y) => {
+    let root = document;
+    let hit = null;
+    for (let at = root.elementFromPoint(x, y); at && at !== hit; at = root.elementFromPoint(x, y)) {
+      hit = at;
+      if (!at.shadowRoot) break;
+      root = at.shadowRoot;
+    }
+    return hit;
+  };
+  const modal = (node) => {
+    for (let at = node; at; at = at.parentElement ?? at.getRootNode().host ?? null)
+      if (at.localName === 'dialog' && at.matches(':modal')) return true;
+    return false;
+  };
+  const composer = window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer');
+  const box = composer?.getBoundingClientRect();
+  const points = [];
+  for (let y = 1; y < innerHeight; y += 24)
+    for (let x = 1; x < innerWidth; x += 24) points.push([x, y]);
+  if (box?.width)
+    for (const dy of [-60, -24, -4, 8, box.height / 2])
+      for (const x of [box.left + 4, box.left + box.width / 2, box.right - 4])
+        points.push([x, box.top + dy]);
+  return {
+    composer: !!box?.width,
+    backdrop: (() => {
+      const confirm = window.$('slicc-app', 'slicc-confirm');
+      const style = getComputedStyle(confirm.shadowRoot.querySelector('dialog'), '::backdrop');
+      return [style.position, style.inset, style.backgroundColor !== 'rgba(0, 0, 0, 0)'];
+    })(),
+    missed: points.filter(([x, y]) => !modal(deepest(x, y))).slice(0, 5),
+  };
+};
+
+for (const [width, height] of [
+  [1280, 800],
+  [420, 860],
+]) {
+  test(`a modal confirm dims the whole viewport, the chat above the composer and the composer included, at ${width}`, async (t) => {
+    const page = await open(t);
+    t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+    await page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await page.until(
+      (phone) => (window.app.screen === 'phone') === phone && innerWidth === (phone ? 420 : 1280),
+      width === 420
+    );
+    await page.evaluate(() => window.app.show('memory'));
+    await page.until(() => {
+      const head = window.part('memory', '.row .head');
+      return !!head && head.getBoundingClientRect().right <= innerWidth;
+    });
+    await page.evaluate(() => window.part('memory', '.row .head').click());
+    await page.until(() => !!window.part('memory', '.row[data-open] [data-action=forget]'));
+    await page.evaluate(() =>
+      window.part('memory', '.row[data-open] [data-action=forget]').click()
+    );
+    await page.until(dialog);
+    await page.until(() =>
+      window
+        .$('slicc-app', 'slicc-confirm')
+        .shadowRoot.querySelector('dialog')
+        .getAnimations({ subtree: true })
+        .every((animation) => animation.playState !== 'running')
+    );
+    const seen = await page.evaluate(uncovered);
+    assert.deepEqual(seen, {
+      composer: width === 1280,
+      backdrop: ['fixed', '0px', true],
+      missed: [],
+    });
+    await page.evaluate(answer, false);
+    await page.until(closed);
+    assert.deepEqual(page.errors, []);
+  });
+}
