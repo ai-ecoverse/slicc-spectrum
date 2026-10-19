@@ -3737,6 +3737,31 @@ test('a folder dragged onto the chat is refused with a chip that says so, next t
     { name: 'charts', detail: 'Folders can’t be attached', error: true, kind: 'file' },
     { name: 'tides.txt', detail: '12 B', error: false, kind: 'text' },
   ]);
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').focus();
+    return true;
+  });
+  await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
+  await page.insert('Charts and tides');
+  await page.press('Enter');
+  await page.until(() =>
+    window.model.agent
+      .messages('cone-sliccy')
+      .some((message) => message.role === 'user' && message.text === 'Charts and tides')
+  );
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      sent: window.model.agent
+        .messages('cone-sliccy')
+        .find((message) => message.role === 'user' && message.text === 'Charts and tides')
+        .attachments.map((attachment) => [attachment.name, attachment.kind, !!attachment.error]),
+      left: window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').attachments.length,
+      chips: window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer')
+        .shadowRoot.querySelectorAll('swc-upload-attachment').length,
+    })),
+    { sent: [['tides.txt', 'text', false]], left: 0, chips: 0 }
+  );
   assert.deepEqual(page.errors, []);
 });
 
