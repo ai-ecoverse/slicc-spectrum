@@ -523,14 +523,24 @@ export interface AccountField {
   value?: string;
 }
 
-export interface VaultEndpoint {
+export interface ModelEndpoint {
   provider: string;
   url: string;
 }
 
+export interface McpEndpoint {
+  server: string;
+  url: string;
+}
+
+export interface EndpointSet {
+  model?: ModelEndpoint[];
+  mcp?: McpEndpoint[];
+}
+
 export interface VaultEndpointChange {
-  add?: VaultEndpoint[];
-  remove?: VaultEndpoint[];
+  add?: EndpointSet;
+  remove?: EndpointSet;
 }
 
 export type ProviderAuth = 'api-key' | 'oauth' | 'fields' | 'local';

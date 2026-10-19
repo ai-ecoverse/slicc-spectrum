@@ -14,6 +14,7 @@ import type {
   Account,
   AccountField,
   AccountStatus,
+  McpEndpoint,
   ProviderAuth,
   ProviderOption,
   RecordKind,
@@ -552,7 +553,9 @@ export class SliccSettings extends ThemedElement {
         : { kind: 'model' as const, provider: account.id };
     this.#busy(id, true);
     this.failure = null;
+    const endpoint = vault.endpoints ? this.#mcpEndpoint(account) : null;
     try {
+      if (endpoint) await vault.endpoints?.({ add: { mcp: [endpoint] } });
       await vault.put?.(recordName(account), value, undefined, options);
     } catch (error) {
       this.#busy(id, false);
@@ -596,7 +599,8 @@ export class SliccSettings extends ThemedElement {
     kind: 'add' | 'remove',
     urls: Array<string | undefined>
   ): Promise<void> {
-    for (const url of urls) if (url) await vault.endpoints?.({ [kind]: [{ provider: id, url }] });
+    for (const url of urls)
+      if (url) await vault.endpoints?.({ [kind]: { model: [{ provider: id, url }] } });
   }
 
   async #connectBases(
@@ -924,7 +928,20 @@ export class SliccSettings extends ThemedElement {
     clearValues(this.renderRoot);
     if (this.model !== model) return;
     if (stored && !(await this.#forget(account, stored))) return;
-    if (this.model === model) model?.settings.disconnect(account.id);
+    if (this.model !== model) return;
+    model?.settings.disconnect(account.id);
+    const endpoint = stored?.endpoints ? this.#mcpEndpoint(account) : null;
+    if (!endpoint) return;
+    await stored?.endpoints?.({ remove: { mcp: [endpoint] } }).catch((error) => {
+      if (this.model === model) this.failure = { id: account.id, message: failureText(error) };
+    });
+  }
+
+  #mcpEndpoint(account: Account): McpEndpoint | null {
+    if (account.group !== 'mcp') return null;
+    const host = account.identity.trim();
+    const url = this.#baseOf(host) ?? (host && !host.includes('://') ? `https://${host}` : null);
+    return url ? { server: serverOf(account), url } : null;
   }
 
   async #forget(account: Account, vault: VaultPort): Promise<boolean> {
