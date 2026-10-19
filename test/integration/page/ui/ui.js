@@ -69,6 +69,7 @@ const model = createDummyModel({
   providers: params.get('providers') ?? 'connected',
   hold: params.get('hold') ?? 'off',
   readonly: params.get('readonly') ?? 'off',
+  agent: params.get('agent') ?? 'ready',
   browser: params.get('browser') ?? 'idle',
   sprinkles: params.get('sprinkles') ?? 'builtin',
   monitor: params.get('monitor') ?? 'dummy',

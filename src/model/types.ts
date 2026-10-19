@@ -243,6 +243,7 @@ export interface AgentEvents {
   frozen: readonly FrozenCone[];
   hold: AgentHold | null;
   readOnly: string | null;
+  starting: string | null;
   importing: ProfileImportProgress;
 }
 
@@ -318,6 +319,7 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   createCone?(name: string): Promise<Agent>;
   hold?(): AgentHold | null;
   readOnly?(): string | null;
+  starting?(): string | null;
 }
 
 export interface SlashCommand {

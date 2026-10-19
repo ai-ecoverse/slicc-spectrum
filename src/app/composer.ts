@@ -26,8 +26,11 @@ import { chatModels, shared, speech, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import { deadline, mine, size } from './messages.ts';
 import { away, clearValues, failureText, fieldOf, type PopupDetail, take } from './vault.ts';
+import { ViewState } from './view-state.ts';
 
 export const limit = 25 * 1024 * 1024;
+
+type Waiting = { id: string; text: string; attachments: Attachment[] };
 
 export interface Choice {
   value: string;
@@ -232,6 +235,7 @@ export class SliccComposer extends ThemedElement {
   declare failure: string | null;
   declare agent: string;
   #drafts = new Map<string, { value: string; attachments: Attachment[] }>();
+  #waiting = new ViewState<readonly Waiting[]>(this, 'chat:starting', () => []);
   #history = -1;
   #paths: string[] = [];
   #agent = '';
@@ -592,6 +596,7 @@ export class SliccComposer extends ThemedElement {
         this.#paths = entries.filter((entry) => entry.kind === 'file').map((entry) => entry.path);
       });
     const update = () => this.requestUpdate();
+    queueMicrotask(() => this.#arrived());
     return [
       ...super.subscribe(model),
       model.agent.on('active', (id) => {
@@ -601,7 +606,18 @@ export class SliccComposer extends ThemedElement {
         if (hold?.reason !== 'locked') this.blocked = false;
         update();
       }),
-      model.agent.on('agents', update),
+      model.agent.on('agents', () => {
+        this.#arrived();
+        update();
+      }),
+      ...(model.agent.starting
+        ? [
+            model.agent.on('starting', () => {
+              this.#arrived();
+              update();
+            }),
+          ]
+        : []),
       model.agent.on('messages', update),
       model.agent.on('message', update),
       model.settings.on('settings', update),
@@ -610,6 +626,28 @@ export class SliccComposer extends ThemedElement {
         ? [model.vault.on('availability', update), model.vault.on('status', update)]
         : []),
     ];
+  }
+
+  #starting(): string | null {
+    return this.model?.agent.starting?.() ?? null;
+  }
+
+  #arrived(): void {
+    const model = this.model;
+    const waiting = this.#waiting.value;
+    const agents = model?.agent.list() ?? [];
+    if (!(model && waiting.length && agents.length) || this.#starting()) return;
+    const active = model.agent.active();
+    const id = agents.some((agent) => agent.id === active) ? active : agents[0].id;
+    this.#waiting.value = [];
+    for (const { text, attachments } of waiting)
+      this.#deliver(model, id, { text, attachments }, 'queue');
+  }
+
+  #unwait(id: string): void {
+    const waiting = this.#waiting.value;
+    release(waiting.find((message) => message.id === id)?.attachments ?? []);
+    this.#waiting.value = waiting.filter((message) => message.id !== id);
   }
 
   #held(): string | null {
@@ -668,17 +706,25 @@ export class SliccComposer extends ThemedElement {
     this.attachments = [];
     this.popup = null;
     this.#history = -1;
+    if (this.#starting()) {
+      this.#waiting.value = [...this.#waiting.value, { id: this.#id(), text, attachments }];
+      return;
+    }
     if (known) {
       release(attachments);
       known.run(model, this.#agent, (command[2] ?? '').trim());
       return;
     }
-    const busy = this.#busy();
+    this.#deliver(model, this.#agent, { text, attachments }, mode);
+  }
+
+  #deliver(model: SliccModel, id: string, message: Outgoing, mode: SendMode): void {
+    const busy = model.agent.busy(id);
     const resolved: SendMode =
       mode === 'queue' ? (busy ? 'queue' : 'send') : busy || mode === 'steer' ? 'steer' : 'send';
-    const id = this.#agent;
+    const attachments = message.attachments ?? [];
     const done = () => retire(model.agent, id, attachments);
-    model.agent.send(id, { text, attachments, mode: resolved }).then(done, done);
+    model.agent.send(id, { text: message.text, attachments, mode: resolved }).then(done, done);
   }
 
   #propose(model: SliccModel, text: string): void {
@@ -885,6 +931,10 @@ export class SliccComposer extends ThemedElement {
   #refresh(): void {
     const area = this.#textarea;
     if (!area || this.model?.seat) return;
+    if (this.#starting()) {
+      this.popup = null;
+      return;
+    }
     if (this.popup?.kind === 'file' || this.popup?.kind === 'secret') return;
     const found = trigger(this.value, area.selectionStart ?? this.value.length);
     const name = this.value.match(/^\/(\w+)/)?.[1];
@@ -1295,7 +1345,22 @@ export class SliccComposer extends ThemedElement {
     </ul>`;
   }
 
-  #waiting(): TemplateResult | typeof nothing {
+  #starters(): TemplateResult | typeof nothing {
+    const waiting = this.#waiting.value;
+    if (waiting.length === 0) return nothing;
+    return html`<ul class="queue" aria-label="Waiting for the agent">
+      ${waiting.map(
+        (message) => html`<li class="queued" data-id=${message.id} data-mode="starting">
+          <swc-icon-clock size="s" aria-hidden="true"></swc-icon-clock>
+          <span class="text"><span class="sr">Queued: </span>${message.text || message.attachments.map((attachment) => attachment.name).join(', ')}</span>
+          <span class="next">Sent when the agent starts</span>
+          <swc-close-button size="s" data-action="unqueue" accessible-label="Remove from queue" @click=${() => this.#unwait(message.id)}></swc-close-button>
+        </li>`
+      )}
+    </ul>`;
+  }
+
+  #review(): TemplateResult | typeof nothing {
     const queued = this.model?.agent.queue(this.#agent) ?? [];
     if (queued.length === 0) return nothing;
     return html`<ul class="queue" aria-label="Waiting for review">
@@ -1314,7 +1379,7 @@ export class SliccComposer extends ThemedElement {
     const cone = agent?.name ?? 'the agent';
     return html`<div class="column">
         <span id="keys" class="sr" aria-hidden="true">${this.#instructions(false)}</span>
-        ${this.#waiting()}
+        ${this.#review()}
         ${
           this.failure
             ? html`<p class="send-error" role="alert" data-send-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.failure}</span></p>`
@@ -1346,9 +1411,11 @@ export class SliccComposer extends ThemedElement {
     const pushToTalk = this.model?.settings.get().pushToTalk ?? false;
     const talk = !!speech();
     const held = this.#held();
+    const starting = this.#starting();
     return html`<div class="column">
         <span id="keys" class="sr" aria-hidden="true">${this.#instructions(busy)}</span>
         ${this.#hold()}
+        ${this.#starters()}
         ${this.#queue()}
         ${this.#popup()}
         <swc-prompt-field
@@ -1360,7 +1427,7 @@ export class SliccComposer extends ThemedElement {
           max-rows="10"
           ?generating=${busy && !canSend}
           ?disabled=${!!held}
-          placeholder=${held ? `Reconnecting to ${held}…` : suggestion ? `${suggestion}  (Tab)` : `Message ${agent?.name ?? ''}`}
+          placeholder=${held ? `Reconnecting to ${held}…` : starting ? starting : suggestion ? `${suggestion}  (Tab)` : `Message ${agent?.name ?? ''}`}
           .value=${live(this.value)}
           @keydown=${this.#keys}
           @swc-prompt-field-input=${this.#input}
