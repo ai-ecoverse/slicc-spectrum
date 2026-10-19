@@ -165,11 +165,14 @@ export function changes(entry: PolicyEntry, devices: readonly LinkedDevice[]): s
 const listed = <T>(items: readonly T[], one: (item: T) => TemplateResult): TemplateResult[] =>
   items.map((item, index) => html`${index ? ', ' : ''}${one(item)}`);
 
-export function endpointsLine(entry: EndpointsEntry): TemplateResult {
+export function endpointsLine(
+  entry: EndpointsEntry,
+  named: (provider: string) => string = (provider) => provider
+): TemplateResult {
   const parts: TemplateResult[] = [];
   if (entry.purged?.length)
     parts.push(
-      html`<span class="part" data-part="purged">Removed custom model URLs an agent set, automatically: ${listed(entry.purged, (item) => html`${item.provider} at <code>${item.host ?? item.url}</code>`)}</span>`
+      html`<span class="part" data-part="purged">Removed custom model URLs an agent set, automatically: ${listed(entry.purged, (item) => html`${named(item.provider)} at <code>${item.host ?? item.url}</code>`)}. Only you can set a model URL now, in Settings › Accounts</span>`
     );
   if (entry.adopted?.length)
     parts.push(
@@ -186,7 +189,11 @@ export function endpointsLine(entry: EndpointsEntry): TemplateResult {
   return html`${parts.map((part, index) => html`${index ? '. ' : ''}${part}`)}`;
 }
 
-export function auditLine(entry: AuditEntry, devices: readonly LinkedDevice[]): TemplateResult {
+export function auditLine(
+  entry: AuditEntry,
+  devices: readonly LinkedDevice[],
+  named?: (provider: string) => string
+): TemplateResult {
   switch (entry.type) {
     case 'inject':
     case 'forward':
@@ -202,7 +209,7 @@ export function auditLine(entry: AuditEntry, devices: readonly LinkedDevice[]): 
     case 'restore':
       return html`Restored`;
     case 'endpoints':
-      return endpointsLine(entry);
+      return endpointsLine(entry, named);
     case 'refresh':
       return entry.grant
         ? html`Refreshed automatically with the sign-in <code>${entry.grant}</code>`
@@ -1282,6 +1289,10 @@ export class SliccSecrets extends ThemedElement {
       </ul>`;
   }
 
+  #provider(id: string): string {
+    return this.model?.settings.accounts().find((account) => account.id === id)?.provider ?? id;
+  }
+
   #unpin(vault: VaultPort, entry: EndpointsEntry): TemplateResult | typeof nothing {
     const name = entry.pinned?.name;
     if (!name || !vault.unpin) return nothing;
@@ -1314,7 +1325,7 @@ export class SliccSecrets extends ThemedElement {
     const name = entry.type === 'policy' || entry.type === 'endpoints' ? null : entry.name;
     return html`<li data-seq=${entry.seq} data-type=${entry.type}>
       <time datetime=${date.toISOString()} title=${date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}>${since(entry.at)}</time>
-      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices)}${entry.type === 'policy' || entry.type === 'refresh' || entry.type === 'endpoints' ? nothing : html` <span class="by">by ${who(entry)}</span>`}${entry.type === 'endpoints' && vault ? this.#unpin(vault, entry) : nothing}</span>
+      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices, (provider) => this.#provider(provider))}${entry.type === 'policy' || entry.type === 'refresh' || entry.type === 'endpoints' ? nothing : html` <span class="by">by ${who(entry)}</span>`}${entry.type === 'endpoints' && vault ? this.#unpin(vault, entry) : nothing}</span>
     </li>`;
   }
 

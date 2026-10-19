@@ -8808,6 +8808,15 @@ test('vault endpoints entries read as automatic, and Unpin unpins a pinned MCP t
       by: !!li.querySelector('.by'),
       unpin: !!li.querySelector('[data-action=unpin]'),
     }));
+  const order = await page.evaluate(() =>
+    [...window.settingsPart('slicc-secrets').shadowRoot.querySelectorAll('ol.audit li')]
+      .slice(0, 3)
+      .map((li) => Date.parse(li.querySelector('time').getAttribute('datetime')))
+  );
+  assert.deepEqual(
+    [...order].sort((a, b) => b - a),
+    order
+  );
   assert.deepEqual(await page.evaluate(rows), [
     {
       text: 'DOCS_MCP_TOKEN pinned to docs.example automatically, on first use',
@@ -8815,7 +8824,7 @@ test('vault endpoints entries read as automatic, and Unpin unpins a pinned MCP t
       unpin: true,
     },
     {
-      text: 'Removed custom model URLs an agent set, automatically: openai at models.harbor.example, anthropic at relay.harbor.example. Kept the MCP servers your tokens use, automatically: docs at docs.example',
+      text: 'Removed custom model URLs an agent set, automatically: OpenAI at models.harbor.example, Anthropic at relay.harbor.example. Only you can set a model URL now, in Settings › Accounts. Kept the MCP servers your tokens use, automatically: docs at docs.example',
       by: false,
       unpin: false,
     },

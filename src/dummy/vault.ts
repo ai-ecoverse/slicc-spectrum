@@ -337,7 +337,7 @@ export function vaultPurged(now = Date.now()): AuditEntry {
     type: 'endpoints',
     seq: 13,
     id: 'audit-13',
-    at: now - 30 * minute,
+    at: now - 2 * minute,
     uid: null,
     tag: null,
     purged: [
@@ -353,7 +353,7 @@ export function vaultPinned(now = Date.now()): AuditEntry {
     type: 'endpoints',
     seq: 14,
     id: 'audit-14',
-    at: now - 10 * minute,
+    at: now - minute,
     uid: null,
     tag: null,
     pinned: { name: 'DOCS_MCP_TOKEN', server: 'docs', host: 'docs.example' },
