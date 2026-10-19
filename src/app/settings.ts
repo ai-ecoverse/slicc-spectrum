@@ -1,10 +1,12 @@
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
+import '@spectrum-web-components/field-label/sp-field-label.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type {
   Account,
   AccountField,
+  AccountFieldOption,
   RecordKind,
   Settings,
   SliccModel,
@@ -29,6 +31,9 @@ const accountStatus = {
 } as const;
 
 const popup = (account: Account) => account.group === 'mcp' && account.auth === 'oauth';
+
+const start = (options: readonly AccountFieldOption[], value?: string) =>
+  options.some((option) => option.value === value) ? value : (options[0]?.value ?? '');
 
 const nothingToChoose = 'Nothing to choose from yet. You can connect without it.';
 
@@ -163,6 +168,10 @@ export class SliccSettings extends ThemedElement {
       .key.stacked sp-textfield,
       .field sp-picker {
         width: 100%;
+      }
+      .field sp-field-label {
+        margin: 0;
+        padding-block: 0;
       }
       .sr {
         position: absolute;
@@ -374,7 +383,11 @@ export class SliccSettings extends ThemedElement {
       const value = input.value.trim();
       if (value) values[field.name] = value;
       else if (field.required && field.options?.length !== 0) {
-        this.#refuse(account.id, field.name, `${field.label} can’t be empty`);
+        this.#refuse(
+          account.id,
+          field.name,
+          field.options ? `Select a ${field.label.toLowerCase()}.` : `${field.label} can’t be empty`
+        );
         return null;
       }
     }
@@ -433,11 +446,11 @@ export class SliccSettings extends ThemedElement {
     this.problem = null;
   }
 
-  #problem(account: Account, field: string): TemplateResult | typeof nothing {
+  #problem(account: Account, field: string, icon = true): TemplateResult | typeof nothing {
     const problem = this.problem;
     if (problem?.id !== account.id || problem.field !== field) return nothing;
     return html`<div class="problem" id="key-problem" role="alert">
-      <swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>
+      ${icon ? html`<swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>` : nothing}
       <span>${problem.message}</span>
     </div>`;
   }
@@ -453,12 +466,17 @@ export class SliccSettings extends ThemedElement {
   }
 
   #extra(account: Account): TemplateResult[] {
-    return (account.fields ?? []).map(
-      (field) => html`<label class="field">
-          <span id=${`field-${field.name}`}>${field.label}</span>${this.#control(account, field)}
-        </label>
-        ${field.options?.length === 0 ? html`<p class="hint" data-empty=${field.name}>${nothingToChoose}</p>` : nothing}
-        ${this.#problem(account, field.name)}`
+    return (account.fields ?? []).map((field) =>
+      field.options
+        ? html`<div class="field">
+              <sp-field-label for=${`field-${field.name}`} size="m">${field.label}</sp-field-label>${this.#control(account, field)}
+              ${field.options.length ? nothing : html`<p class="hint" data-empty=${field.name}>${nothingToChoose}</p>`}
+              ${this.#problem(account, field.name, false)}
+            </div>`
+        : html`<label class="field">
+              <span>${field.label}</span>${this.#control(account, field)}
+            </label>
+            ${this.#problem(account, field.name)}`
     );
   }
 
@@ -470,8 +488,8 @@ export class SliccSettings extends ThemedElement {
           size="m"
           data-account-field=${field.name}
           label=${empty ? 'None available' : field.label}
-          aria-labelledby=${`field-${field.name}`}
-          value=${field.value ?? field.options[0]?.value ?? ''}
+          id=${`field-${field.name}`}
+          value=${start(field.options, field.value)}
           ?disabled=${empty}
           ?invalid=${described}
           aria-required=${field.required ? 'true' : nothing}
@@ -541,7 +559,7 @@ export class SliccSettings extends ThemedElement {
     const busy = this.pending.has(account.id);
     const extra = account.fields?.length;
     return html`<form class=${extra ? 'key stacked' : 'key'} data-id=${account.id} @submit=${(event: Event) => this.#submit(event, account)} @keydown=${(event: KeyboardEvent) => this.#submitOnEnter(event)}>
-        ${extra ? html`<label class="field"><span>${this.#secretLabel(account)}</span>${this.#secret(account)}</label>${this.#extra(account)}` : this.#secret(account)}
+        ${extra ? html`<div class="field"><sp-field-label for="key-secret" size="m">${this.#secretLabel(account)}</sp-field-label>${this.#secret(account)}</div>${this.#extra(account)}` : this.#secret(account)}
         ${extra ? html`<div class="buttons">${this.#buttons(busy)}</div>` : this.#buttons(busy)}
       </form>`;
   }
@@ -555,6 +573,7 @@ export class SliccSettings extends ThemedElement {
           size="m"
           type="password"
           autocomplete="off"
+          id="key-secret"
           label=${this.#secretLabel(account)}
           placeholder=${`Paste the ${secretNames[account.secret ?? 'api-key']}`}
           @keydown=${(event: KeyboardEvent) => this.#enter(event)}

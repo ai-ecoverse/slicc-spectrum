@@ -68,11 +68,13 @@ test('a field with options is a Spectrum picker preselected by its value, and th
       const key = window.bedrock('sp-textfield');
       return {
         native: !!window.bedrock('input[data-account-field], select'),
-        labels: [...window.bedrock('').querySelectorAll('.field > span')].map((span) =>
-          span.textContent.trim()
+        labels: [...window.bedrock('').querySelectorAll('.field > sp-field-label')].map((label) =>
+          label.textContent.trim()
         ),
-        labelledBy: picker.getRootNode().getElementById(picker.getAttribute('aria-labelledby'))
-          .textContent,
+        labelledBy: picker
+          .getRootNode()
+          .querySelector(`sp-field-label[for="${picker.id}"]`)
+          .textContent.trim(),
         required: picker.getAttribute('aria-required'),
         value: picker.value,
         shown: picker.selectedItem?.textContent.trim(),
@@ -99,6 +101,11 @@ test('a field with options is a Spectrum picker preselected by its value, and th
       aligned: true,
     }
   );
+  await click(page, 'sp-field-label[for=field-region]');
+  await page.until(() => {
+    const picker = window.bedrock('sp-picker[data-account-field=region]');
+    return picker.getRootNode().activeElement === picker;
+  });
   await click(page, 'sp-picker[data-account-field=region]');
   await page.until(() => window.bedrock('sp-picker[data-account-field=region]').open === true);
   await page.until(
