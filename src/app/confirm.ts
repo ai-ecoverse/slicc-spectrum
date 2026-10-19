@@ -80,6 +80,14 @@ export const dialogStyles = css`
       --mod-alert-dialog-min-width: calc(100vw - 2 * var(--swc-spacing-300));
     }
   }
+  @media (forced-colors: active) {
+    dialog {
+      outline: solid;
+    }
+    sp-alert-dialog {
+      border: none;
+    }
+  }
   p {
     margin: 0;
   }

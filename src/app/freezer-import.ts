@@ -6,6 +6,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-checkmark-circle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-copy.js';
+import '@adobe/spectrum-wc-icons/swc-icon-folder.js';
 import '@adobe/spectrum-wc-icons/swc-icon-info-circle.js';
 import '@spectrum-web-components/alert-dialog/sp-alert-dialog.js';
 import { css, html, LitElement, nothing, type TemplateResult } from 'lit';
@@ -112,14 +113,15 @@ export class SliccFreezerImport extends LitElement {
         gap: var(--swc-spacing-200);
       }
       dl {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--swc-spacing-200) var(--swc-spacing-400);
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: var(--swc-spacing-200) var(--swc-spacing-300);
         margin: 0;
       }
       dl div {
         display: grid;
         gap: var(--swc-spacing-50);
+        min-width: 0;
       }
       dt {
         color: var(--swc-neutral-subdued-content-color-default);
@@ -157,6 +159,7 @@ export class SliccFreezerImport extends LitElement {
       }
       .note[data-note='mounts'] {
         color: var(--swc-neutral-subdued-content-color-default);
+        --swc-icon-color: var(--swc-neutral-subdued-content-color-default);
       }
       .note .word {
         font-weight: var(--swc-bold-font-weight);
@@ -235,14 +238,6 @@ export class SliccFreezerImport extends LitElement {
       }
       swc-progress-bar {
         inline-size: 100%;
-      }
-      @media (forced-colors: active) {
-        dialog {
-          outline: solid;
-        }
-        sp-alert-dialog {
-          border: none;
-        }
       }
       .sr {
         position: absolute;
@@ -397,7 +392,7 @@ export class SliccFreezerImport extends LitElement {
       );
     if (preview.mounts.length)
       notes.push(
-        html`<li class="note" data-note="mounts">Not imported: ${count(preview.mounts.length, 'mounted folder', 'mounted folders')}.</li>`
+        html`<li class="note" data-note="mounts"><swc-icon-folder class="icon" size="s" aria-hidden="true"></swc-icon-folder><span>Not imported: ${count(preview.mounts.length, 'mounted folder', 'mounted folders')}.</span></li>`
       );
     return notes.length ? html`<ul class="notes">${notes}</ul>` : html``;
   }

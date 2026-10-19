@@ -5511,6 +5511,38 @@ test('guests: a port whose gates() allow tools off offers No review for tool cal
   assert.deepEqual(page.errors, []);
 });
 
+test('guests: in forced colours the invite dialog doesn’t scroll sideways', async (t) => {
+  const page = await open(t, { guests: 'policy' });
+  await page.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'forced-colors', value: 'active' }],
+  });
+  t.after(() => page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {}));
+  await page.evaluate(() => {
+    window.app.show('network');
+    window.netPanel = () => window.$('slicc-app', 'slicc-dock').content('network')?.shadowRoot;
+    window.invite = (selector) => window.$('slicc-app', 'slicc-guest-invite', selector);
+    return true;
+  });
+  await page.until(() => !!window.netPanel()?.querySelector('[data-action=invite-guest]'));
+  await page.evaluate(() => window.netPanel().querySelector('[data-action=invite-guest]').click());
+  await page.until(() => !!window.invite('dialog[open]'));
+  await page.until(() => window.invite('dialog').getAnimations().length === 0);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const dialog = window.invite('dialog');
+      const alert = window.invite('sp-alert-dialog');
+      const nodes = [dialog, alert, ...alert.shadowRoot.querySelectorAll('*')];
+      return {
+        forced: matchMedia('(forced-colors: active)').matches,
+        wide: nodes
+          .filter((node) => node.scrollWidth > node.clientWidth && node.clientWidth > 0)
+          .map((node) => node.localName + (node.className ? `.${node.className}` : '')),
+      };
+    }),
+    { forced: true, wide: [] }
+  );
+});
+
 test('following without Control, approvals and Guests still show and work', async (t) => {
   const page = await open(t, {
     follow: 'watch',
