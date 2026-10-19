@@ -157,12 +157,14 @@ test("the user's own send while scrolled up scrolls down and resumes following",
     window.model.agent.lick('cone-kitchen', 'webhook', 'Pantry sensor', 'The flour bin is low.')
   );
   await page.until(() => !!window.jump());
-  await page.evaluate(() => {
-    const composer = window.chatPart('slicc-composer');
-    composer.value = 'What can I bake with less flour?';
-    return true;
-  });
-  await page.evaluate(() => window.chatPart('slicc-composer', 'swc-prompt-field').focus());
+  await page.press('2', 'alt');
+  await page.until(() => window.chatPart().matches(':focus-within'));
+  await page.type('What can I bake with less flour?');
+  await page.until(
+    () =>
+      window.chatPart('slicc-composer', 'swc-prompt-field', 'textarea').value ===
+      'What can I bake with less flour?'
+  );
   await page.press('Enter');
   await page.until(() =>
     window.model.agent

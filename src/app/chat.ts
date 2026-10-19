@@ -397,6 +397,7 @@ export class SliccChat extends ThemedElement {
 
   #stuck = true;
   #last = 0;
+  #height = 0;
   #input = Number.NEGATIVE_INFINITY;
   #settle: ReturnType<typeof setTimeout> | undefined;
   #tick: ReturnType<typeof setInterval> | undefined;
@@ -457,6 +458,7 @@ export class SliccChat extends ThemedElement {
     const log = this.#log();
     log.scrollTop = log.scrollHeight;
     this.#last = log.scrollTop;
+    this.#height = log.scrollHeight;
   }
 
   #follow(): void {
@@ -471,15 +473,22 @@ export class SliccChat extends ThemedElement {
   };
 
   #scroll = (): void => {
-    const top = this.#log().scrollTop;
+    const log = this.#log();
+    const top = log.scrollTop;
+    const before = this.#height - top - log.clientHeight;
     if (this.#bottom()) {
-      if (!this.#stuck && this.#settle === undefined) this.#follow();
+      if (!this.#stuck && (this.#settle === undefined || top > this.#last)) {
+        clearTimeout(this.#settle);
+        this.#settle = undefined;
+        this.#follow();
+      }
     } else if (
       top < this.#last &&
-      (performance.now() - this.#input < 1000 || this.#gap() > 2 * this.#slack())
+      (performance.now() - this.#input < 1000 || before > 2 * this.#slack())
     )
       this.#stuck = false;
-    this.#last = this.#log().scrollTop;
+    this.#last = log.scrollTop;
+    this.#height = log.scrollHeight;
     this.#pile();
   };
 
