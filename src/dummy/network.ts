@@ -652,7 +652,7 @@ export class DummyNetwork extends Emitter<{ network: NetworkStatus }> implements
 
   async #pair(url: string): Promise<void> {
     await this.#clock.sleep(4);
-    if (!url.startsWith('http://127.0.0.1:')) throw new Error(pairingRefused);
+    if (!/#slicc-pair=./.test(url)) throw new Error(pairingRefused);
     this.#pairUrl = url;
     this.#pairing({ state: 'confirm', code: pairingCode });
   }
