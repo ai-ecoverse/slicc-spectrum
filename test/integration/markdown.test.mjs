@@ -58,6 +58,9 @@ test('chat markdown nests code and links inside emphasis', async (t) => {
         em: text.querySelector('em > code')?.textContent,
         struck: text.querySelector('s > strong')?.textContent,
         ticks: text.textContent.includes('`'),
+        smaller:
+          Number.parseFloat(getComputedStyle(text.querySelector('strong > code')).fontSize) <
+          Number.parseFloat(getComputedStyle(text.querySelector('p')).fontSize),
       };
     }),
     {
@@ -66,6 +69,7 @@ test('chat markdown nests code and links inside emphasis', async (t) => {
       em: 'x',
       struck: 'old',
       ticks: false,
+      smaller: true,
     }
   );
   assert.deepEqual(page.errors, []);
@@ -95,6 +99,12 @@ test('chat markdown spaces loose lists, aligns table columns and keeps quote par
           (item) => item.querySelectorAll(':scope > p').length
         ),
         task: text.querySelector('li > p:first-child > .task')?.dataset.done,
+        aligned: (() => {
+          const [first, task] = [...text.querySelectorAll('ul > li')];
+          return (
+            Math.abs(first.getBoundingClientRect().left - task.getBoundingClientRect().left) < 1
+          );
+        })(),
         nested:
           Number.parseFloat(getComputedStyle(text.querySelector('ol ul')).marginBlockStart) > 0,
         bullet: getComputedStyle(text.querySelectorAll('li')[1]).listStyleType,
@@ -110,6 +120,7 @@ test('chat markdown spaces loose lists, aligns table columns and keeps quote par
       ],
       items: [2, 1, 0, 0],
       task: 'true',
+      aligned: true,
       nested: true,
       bullet: 'none',
       align: [null, 'center', 'right'],
@@ -254,6 +265,9 @@ test('memory entries render the same markdown as the chat', async (t) => {
         align: [...body.querySelectorAll('td')].map((cell) => cell.dataset.align ?? null),
         textAlign: cells.map((cell) => cell.textAlign),
         whole: getComputedStyle(body.querySelector('td code')).overflowWrap,
+        smaller:
+          Number.parseFloat(getComputedStyle(body.querySelector('p code')).fontSize) <
+          Number.parseFloat(getComputedStyle(body.querySelector('p')).fontSize),
       };
     }),
     {
@@ -266,6 +280,7 @@ test('memory entries render the same markdown as the chat', async (t) => {
       align: [null, 'right'],
       textAlign: ['start', 'right'],
       whole: 'normal',
+      smaller: true,
     }
   );
   assert.deepEqual(page.errors, []);

@@ -276,7 +276,6 @@ export const markdownCss = css`
   }
   .markdown li:has(> .task, > p:first-child > .task:first-child) {
     list-style: none;
-    margin-inline-start: calc(-1 * var(--swc-spacing-400));
   }
   .markdown .task {
     color: var(--swc-neutral-subdued-content-color-default);
@@ -289,6 +288,7 @@ export const markdownCss = css`
     font-size: var(--swc-font-size-100);
   }
   .markdown :not(pre) > code {
+    font-size: 0.9em;
     background: var(--swc-gray-100);
     border-radius: var(--swc-corner-radius-75);
     padding: 0 var(--swc-spacing-50);
