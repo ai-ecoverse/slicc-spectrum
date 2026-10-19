@@ -449,6 +449,7 @@ It closes, clearing the field, when the request leaves `waiting` or while the va
 #### `<slicc-updates>`
 
 Install / Update: component states, version changes, last checks, download and link counts, action buttons, failures with Retry, and collapsible install logs behind a quiet chevron, which stay open across a layout switch.
+An install shows one bar for update rows and package rows alike: it fills 0–50% while downloading and 50–100% while linking (`value` against `max-value="100"`). While the row runs it never goes back, not when pnpm's total grows and not when progress drops out between passes. Its value label stays the phase's "n of m" count, and it starts at 0 again once the row settles.
 Opens at boot until the agent is ready without failures.
 Background updates stay in the header's update status; new failures reopen the panel, and after a reload into a boot that isn't ready yet such a panel closes once the agent is ready.
 Every automatic close is saved to the layout.

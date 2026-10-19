@@ -94,6 +94,17 @@ export function requiresText(item: PackageItem, all: readonly PackageItem[]): st
   return parts.length ? parts.join('; ') : null;
 }
 
+type Progress = NonNullable<UpdateItem['progress']>;
+
+const phased = ({ phase, done, total }: Progress): number =>
+  Math.round(((phase === 'link' ? 1 : 0) + (total ? Math.min(done / total, 1) : 0)) * 50);
+
+const itemBusy = (item: UpdateItem): boolean =>
+  running.has(item.state) || item.state === 'starting' || item.progress !== null;
+
+const packageBusy = (item: PackageItem): boolean =>
+  packageRunning.has(item.state) || item.progress !== null;
+
 type Failures = ReadonlyMap<string, string>;
 type Snapshot = ReadonlyMap<string, { state: string; error: string | null }>;
 
@@ -167,6 +178,7 @@ export class SliccUpdates extends ModelElement {
     problems: { state: true },
   };
   #logs = new ViewSet(this, 'updates');
+  #reached = new Map<string, { value: number; label: string }>();
   declare pending: ReadonlySet<string>;
   declare failures: Failures;
   declare busy: ReadonlyMap<string, PackageAction>;
@@ -411,6 +423,7 @@ export class SliccUpdates extends ModelElement {
     this.failures = new Map();
     this.busy = new Map();
     this.problems = new Map();
+    this.#reached.clear();
     const port = model.updates;
     if (!port) return [];
     let previous = snapshot(port.list());
@@ -419,6 +432,7 @@ export class SliccUpdates extends ModelElement {
         const next = snapshot(items);
         this.failures = settled(this.failures, previous, next);
         previous = next;
+        this.#prune('item', items, itemBusy);
         this.requestUpdate();
       }),
     ];
@@ -430,6 +444,7 @@ export class SliccUpdates extends ModelElement {
         const next = snapshot(items);
         this.problems = settled(this.problems, packages, next);
         packages = next;
+        this.#prune('package', items, packageBusy);
         this.requestUpdate();
       }),
     ];
@@ -487,24 +502,56 @@ export class SliccUpdates extends ModelElement {
     }
   }
 
-  #progress(item: UpdateItem): TemplateResult | typeof nothing {
-    const progress = item.progress;
-    if (progress) {
-      return html`<swc-progress-bar
-        size="s"
-        min-value="0"
-        max-value=${progress.total}
-        value=${progress.done}
-        value-label=${`${progress.done} of ${progress.total}`}
-        accessible-label=${`${item.label}: ${progress.phase === 'download' ? 'downloading' : 'linking'}`}
-      ></swc-progress-bar>`;
+  #prune<T extends { id: string }>(
+    kind: string,
+    items: readonly T[],
+    busy: (item: T) => boolean
+  ): void {
+    const live = new Set(items.filter(busy).map((item) => `${kind}:${item.id}`));
+    for (const key of this.#reached.keys()) {
+      if (key.startsWith(`${kind}:`) && !live.has(key)) this.#reached.delete(key);
     }
-    if (!running.has(item.state) && item.state !== 'starting') return nothing;
+  }
+
+  #bar(
+    key: string,
+    busy: boolean,
+    progress: Progress | null,
+    count: string,
+    accessible: string
+  ): TemplateResult | typeof nothing {
+    if (!busy) {
+      this.#reached.delete(key);
+      return nothing;
+    }
+    const before = this.#reached.get(key);
+    const shown = progress
+      ? { value: Math.max(before?.value ?? 0, phased(progress)), label: count }
+      : before;
+    if (!shown) {
+      return html`<swc-progress-bar size="s" indeterminate accessible-label=${accessible}></swc-progress-bar>`;
+    }
+    this.#reached.set(key, shown);
     return html`<swc-progress-bar
       size="s"
-      indeterminate
-      accessible-label=${`${item.label}: ${states[item.state][1].toLowerCase()}`}
+      min-value="0"
+      max-value="100"
+      value=${shown.value}
+      value-label=${shown.label}
+      accessible-label=${accessible}
     ></swc-progress-bar>`;
+  }
+
+  #progress(item: UpdateItem): TemplateResult | typeof nothing {
+    const progress = item.progress;
+    const phase = progress ? (progress.phase === 'download' ? 'downloading' : 'linking') : null;
+    return this.#bar(
+      `item:${item.id}`,
+      itemBusy(item),
+      progress,
+      progress ? `${progress.done} of ${progress.total}` : '',
+      `${item.label}: ${phase ?? states[item.state][1].toLowerCase()}`
+    );
   }
 
   #actions(item: UpdateItem): TemplateResult | typeof nothing {
@@ -585,22 +632,14 @@ export class SliccUpdates extends ModelElement {
 
   #packageProgress(item: PackageItem): TemplateResult | typeof nothing {
     const progress = item.progress;
-    if (progress) {
-      return html`<swc-progress-bar
-        size="s"
-        min-value="0"
-        max-value=${progress.total}
-        value=${progress.done}
-        value-label=${`${progress.done} of ${progress.total} packages`}
-        accessible-label=${`${item.label}: ${progress.phase === 'download' ? 'downloading' : 'linking'}`}
-      ></swc-progress-bar>`;
-    }
-    if (!packageRunning.has(item.state)) return nothing;
-    return html`<swc-progress-bar
-      size="s"
-      indeterminate
-      accessible-label=${`${item.label}: ${packageLight(item)?.[1].toLowerCase()}`}
-    ></swc-progress-bar>`;
+    const phase = progress ? (progress.phase === 'download' ? 'downloading' : 'linking') : null;
+    return this.#bar(
+      `package:${item.id}`,
+      packageBusy(item),
+      progress,
+      progress ? `${progress.done} of ${progress.total} packages` : '',
+      `${item.label}: ${phase ?? packageLight(item)?.[1].toLowerCase()}`
+    );
   }
 
   #package(item: PackageItem, all: readonly PackageItem[], act: boolean): TemplateResult {
