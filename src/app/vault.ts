@@ -146,7 +146,8 @@ export const fieldStyles = css`
     font-size: var(--swc-font-size-75);
     color: var(--swc-neutral-subdued-content-color-default);
   }
-  .field input:not([type='checkbox']) {
+  .field input:not([type='checkbox']),
+  .field select {
     box-sizing: border-box;
     inline-size: 100%;
     font: inherit;
