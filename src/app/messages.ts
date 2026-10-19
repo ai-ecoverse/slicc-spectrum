@@ -1074,13 +1074,15 @@ const scoopWords: Record<string, string> = {
 
 const scoopBracket = /^\[(?:scoop |@)[^\]\n]* (completed|failed|stopped)\][^\S\n]*(?:\n|$)/;
 
-function scoopLine(message: LickMessage): [string, boolean, string] {
+function scoopLine(message: LickMessage): [string, boolean, string, string] {
   const icon = lickIcons[message.channel];
+  const [label] = lickLabels[message.channel];
   const bracket = message.channel === 'scoop-notify' && scoopBracket.exec(message.text);
-  if (!bracket) return [message.text, false, icon];
+  if (!bracket) return [message.text, false, icon, label];
   const name = message.title.replace(/\s*\([^)]*\)$/, '');
-  const failed = bracket[1] !== 'completed';
-  return [`Scoop ${name} ${scoopWords[bracket[1]]}`, failed, failed ? '❌' : icon];
+  const word = scoopWords[bracket[1]];
+  if (bracket[1] === 'completed') return [`Scoop ${name} ${word}`, false, icon, label];
+  return [`Scoop ${name} ${word}`, true, '❌', `Scoop ${word}`];
 }
 
 function lickBody(message: LickMessage): string | undefined {
@@ -1112,9 +1114,8 @@ export function lick(
   pile: Pile = flatPile
 ): TemplateResult {
   if (pendingApproval(message)) return decision(message, handlers, pile);
-  const [line, failed, icon] = scoopLine(message);
+  const [line, failed, icon, label] = scoopLine(message);
   const severity = message.severity ?? (failed ? 'error' : undefined);
-  const [label] = lickLabels[message.channel];
   const outcome =
     message.state === 'confirmed' ? 'Allowed' : message.state === 'dismissed' ? 'Denied' : '';
   const head = html`${severity ? html`<span class="sr">${severities[severity].prefix}</span>` : nothing}

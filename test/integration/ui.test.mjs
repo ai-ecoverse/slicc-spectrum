@@ -2782,6 +2782,8 @@ test('scoop-notify licks read in plain language, expand to the report and open i
           .map((node) => node.textContent)
           .join(''),
         pill: turn(id).querySelector('.reaction').textContent,
+        named: turn(id).querySelector('.reaction').title,
+        label: turn(id).getAttribute('accessible-label'),
         wraps: getComputedStyle(lick.querySelector('.lick-head .text')).whiteSpace !== 'nowrap',
       };
     });
@@ -2795,6 +2797,8 @@ test('scoop-notify licks read in plain language, expand to the report and open i
       icon: false,
       spoken: '',
       pill: '✅',
+      named: 'Scoop done',
+      label: 'Scoop done event',
       wraps: true,
     },
     {
@@ -2805,6 +2809,8 @@ test('scoop-notify licks read in plain language, expand to the report and open i
       icon: true,
       spoken: 'Error: ',
       pill: '❌',
+      named: 'Scoop failed',
+      label: 'Error: Scoop failed event',
       wraps: false,
     },
     {
@@ -2815,6 +2821,8 @@ test('scoop-notify licks read in plain language, expand to the report and open i
       icon: false,
       spoken: '',
       pill: '✅',
+      named: 'Scoop done',
+      label: 'Scoop done event',
       wraps: false,
     },
   ]);
