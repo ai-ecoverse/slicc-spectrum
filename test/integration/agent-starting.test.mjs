@@ -296,6 +296,7 @@ test('after a reload a row whose file was lost is held, Put back fills the field
     const composer = window.chat().querySelector('slicc-composer');
     composer.attachments = [
       { id: 'n1', name: 'tides.csv', kind: 'text', mimeType: 'text/csv', size: 3, text: 'a,b' },
+      { id: 'n2', name: 'notes.txt', kind: 'text', mimeType: 'text/plain', size: 3, text: 'abc' },
     ];
     composer.value = 'Compare with the attached tides';
     composer.send();
@@ -318,7 +319,7 @@ test('after a reload a row whose file was lost is held, Put back fills the field
       ['Queued: Check the harbor tides', null, false],
       [
         'Held: Compare with the attached tides',
-        ', Not sent: tides.csv wasn’t kept after reload.',
+        ', Not sent: 2 files weren’t kept after reload. (tides.csv, notes.txt)',
         true,
       ],
       ['Queued: Then list the moorings', null, false],
@@ -352,6 +353,31 @@ test('after a reload a row whose file was lost is held, Put back fills the field
     'Then list the moorings',
   ]);
   assert.equal(await page.evaluate(() => sessionStorage.getItem('slicc-spectrum.starting')), null);
+  const hint = () => window.composer().querySelector('[data-reattach]')?.textContent.trim() ?? null;
+  assert.equal(await page.evaluate(hint), 'Attach tides.csv and notes.txt again.');
+  const attach = (names) =>
+    page.evaluate((names) => {
+      window.chat().querySelector('slicc-composer').attachments = names.map((name, index) => ({
+        id: `r${index}`,
+        name,
+        kind: 'text',
+        mimeType: 'text/plain',
+        size: 3,
+        text: 'abc',
+      }));
+      return true;
+    }, names);
+  await attach(['tides.csv']);
+  await page.until(
+    () =>
+      window.composer().querySelector('[data-reattach]')?.textContent.trim() ===
+      'Attach notes.txt again.'
+  );
+  await attach(['tides.csv', 'other.csv']);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(await page.evaluate(hint), 'Attach notes.txt again.');
+  await attach(['tides.csv', 'notes.txt']);
+  await page.until(() => !window.composer().querySelector('[data-reattach]'));
   assert.deepEqual(page.errors, []);
 });
 
@@ -454,5 +480,52 @@ test('a dropped row does not come back after a reload', async (t) => {
     ),
     ['Queued: Then list the moorings']
   );
+  assert.deepEqual(page.errors, []);
+});
+
+test('after Put back the reattach line names four files, opens the file picker, and goes when the field is cleared', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const composer = window.chat().querySelector('slicc-composer');
+    composer.attachments = ['a.csv', 'b.csv', 'c.csv', 'd.csv'].map((name, index) => ({
+      id: `f${index}`,
+      name,
+      kind: 'text',
+      mimeType: 'text/csv',
+      size: 3,
+      text: 'a,b',
+    }));
+    composer.value = 'Merge the four exports';
+    composer.send();
+    return true;
+  });
+  await page.until(() => window.rows().length === 1);
+  await reopen(page);
+  await page.until(() => !!window.composer()?.querySelector('[data-action=restore-starting]'));
+  await page.evaluate(() => {
+    window.composer().querySelector('[data-action=restore-starting]').click();
+    return true;
+  });
+  await page.until(() => !!window.composer().querySelector('[data-reattach]'));
+  assert.equal(
+    await page.evaluate(() =>
+      window.composer().querySelector('[data-reattach]').textContent.trim()
+    ),
+    'Attach these 4 files again: a.csv, b.csv, c.csv, d.csv.'
+  );
+  await page.evaluate(() => {
+    window.picked = 0;
+    window.composer().querySelector('input[type=file]').click = () => {
+      window.picked += 1;
+    };
+    window.composer().querySelector('[data-action=reattach]').click();
+    return true;
+  });
+  assert.equal(await page.evaluate(() => window.picked), 1);
+  await page.evaluate(() => {
+    window.chat().querySelector('slicc-composer').value = '';
+    return true;
+  });
+  await page.until(() => !window.composer().querySelector('[data-reattach]'));
   assert.deepEqual(page.errors, []);
 });

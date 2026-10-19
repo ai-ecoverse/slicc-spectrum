@@ -63,12 +63,18 @@ export type { DummySettings, DummyTransport } from './dummy/settings.ts';
 export type { TabsScenario } from './dummy/tabs.ts';
 export { DummyTabs, tabsFixtures } from './dummy/tabs.ts';
 export type {
+  BetaScenario,
   DummyUpdatesOptions,
   PackageConfirm,
   PackageScenario,
   UpdateScenario,
 } from './dummy/updates.ts';
-export { DummyUpdates, packageFixtures, updateFixtures } from './dummy/updates.ts';
+export {
+  betaFixtures,
+  DummyUpdates,
+  packageFixtures,
+  updateFixtures,
+} from './dummy/updates.ts';
 export type { VaultScenario } from './dummy/vault.ts';
 export {
   DummyVault,

@@ -5,6 +5,7 @@ import type {
   UpdateAction,
   UpdateItem,
   UpdateKind,
+  UpdateNpm,
   UpdateRelease,
   UpdatesEvents,
   UpdatesPort,
@@ -13,6 +14,7 @@ import type { Clock } from './clock.ts';
 
 export type UpdateScenario = 'current' | 'boot' | 'starting' | 'available' | 'restart' | 'failure';
 export type PackageScenario = 'mixed' | 'empty' | 'fail' | 'user' | 'elsewhere';
+export type BetaScenario = 'offered' | 'installed' | 'blocked' | 'failed';
 export type PackageConfirm = (options: {
   title: string;
   body: string;
@@ -140,6 +142,103 @@ export function updateFixtures(scenario: UpdateScenario): readonly UpdateItem[] 
     });
   }
   return items;
+}
+
+const pin = '6.6.0';
+const latest = '6.13.5';
+const betaReleases: readonly UpdateRelease[] = [
+  tag(
+    'harbor-agent',
+    '6.13.5',
+    notes(
+      'harbor-agent',
+      '6.13.5',
+      '### Bug Fixes\n\n* **tools:** a tide table with a blank row no longer stops the import'
+    )
+  ),
+  tag(
+    'harbor-agent',
+    '6.10.0',
+    notes(
+      'harbor-agent',
+      '6.10.0',
+      '### Features\n\n* **chat:** answers can quote a buoy reading with its time and place'
+    )
+  ),
+  tag(
+    'harbor-agent',
+    '6.6.0',
+    notes('harbor-agent', '6.6.0', '### Bug Fixes\n\n* **chat:** a pasted chart keeps its axes') +
+      certified('harbor-agent', '6.6.0')
+  ),
+];
+const offered: UpdateNpm = { state: 'offered', latest, changes: { count: 12, gated: [] } };
+const blocked: UpdateNpm = {
+  state: 'not-offered',
+  latest,
+  reason: 'it needs kernel 1.14.0 or later',
+};
+const betaFailed =
+  'Couldn’t install the beta: pnpm stopped with an error, shown in the install log. Retry.';
+
+function betaActions(item: UpdateItem): UpdateAction[] {
+  return [
+    ...(item.beta ? (['back-to-certified'] as const) : []),
+    ...(item.npm?.state === 'offered' ? (['install-beta'] as const) : []),
+  ];
+}
+
+function withNpm(items: readonly UpdateItem[], npm: UpdateNpm | null): readonly UpdateItem[] {
+  return items.map((item) => {
+    if (item.kind !== 'agent') return item;
+    const next = { ...item, npm };
+    const kept = item.actions.filter(
+      (action) => action !== 'install-beta' && action !== 'back-to-certified'
+    );
+    return { ...next, actions: [...kept, ...betaActions(next)] };
+  });
+}
+
+export function betaFixtures(
+  items: readonly UpdateItem[],
+  scenario: BetaScenario
+): readonly UpdateItem[] {
+  return items.map((item) => {
+    if (item.kind !== 'agent') return item;
+    const base = {
+      ...item,
+      from: pin,
+      to: pin,
+      beta: null,
+      npm: offered,
+      releases: betaReleases,
+    };
+    const next: UpdateItem =
+      scenario === 'installed'
+        ? {
+            ...base,
+            from: latest,
+            to: latest,
+            beta: { version: latest, certified: pin },
+            npm: { state: 'current', latest },
+          }
+        : scenario === 'blocked'
+          ? { ...base, npm: blocked }
+          : scenario === 'failed'
+            ? {
+                ...base,
+                state: 'failed',
+                to: latest,
+                error: betaFailed,
+                log: `pnpm add @slicc/demo-agent@${latest}\nERR_PNPM_FETCH_TIMEOUT Request timed out after 30000ms`,
+              }
+            : base;
+    const extra = betaActions(next);
+    return {
+      ...next,
+      actions: [...(scenario === 'failed' ? (['retry'] as const) : item.actions), ...extra],
+    };
+  });
 }
 
 const offer = (
@@ -336,6 +435,7 @@ export function packageFixtures(scenario: PackageScenario): readonly PackageItem
 export interface DummyUpdatesOptions {
   packages?: PackageScenario;
   confirm?: PackageConfirm;
+  beta?: BetaScenario;
 }
 
 export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort {
@@ -347,10 +447,19 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
   #confirm: PackageConfirm | undefined;
   declare packages?: () => readonly PackageItem[];
   declare actPackage?: (id: string, action: PackageAction) => Promise<void>;
+  declare developer?: () => boolean;
+  declare setDeveloper?: (on: boolean) => Promise<void>;
+  #beta: BetaScenario | undefined;
+  #developer = true;
 
   constructor(scenario: UpdateScenario, clock: Clock, options: DummyUpdatesOptions = {}) {
     super();
-    this.#items = updateFixtures(scenario);
+    this.#beta = options.beta;
+    this.#items = this.#fixtures(scenario);
+    if (options.beta) {
+      this.developer = () => this.#developer;
+      this.setDeveloper = (on) => this.#setDeveloper(on);
+    }
     this.#ready = scenario !== 'boot' && scenario !== 'starting';
     this.#clock = clock;
     this.#confirm = options.confirm;
@@ -487,8 +596,36 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
     return this.#ready;
   }
 
+  #fixtures(scenario: UpdateScenario): readonly UpdateItem[] {
+    const items = updateFixtures(scenario);
+    if (!this.#beta) return items;
+    const fixed = betaFixtures(items, this.#beta);
+    return this.#developer ? fixed : withNpm(fixed, null);
+  }
+
+  async #setDeveloper(on: boolean): Promise<void> {
+    await this.#clock.sleep(4);
+    this.#developer = on;
+    this.#npm(on ? { state: 'checking' } : null);
+    if (!on) return;
+    await this.#clock.sleep(4);
+    const agent = this.#items.find((item) => item.kind === 'agent') as UpdateItem;
+    this.#npm(this.#check(agent.from));
+  }
+
+  #check(version: string | null): UpdateNpm | null {
+    if (!this.#developer) return null;
+    if (version === latest) return { state: 'current', latest };
+    return this.#beta === 'blocked' ? blocked : offered;
+  }
+
+  #npm(npm: UpdateNpm | null): void {
+    this.#items = withNpm(this.#items, npm);
+    this.emit('items', this.#items);
+  }
+
   setScenario(scenario: UpdateScenario): void {
-    this.#items = updateFixtures(scenario);
+    this.#items = this.#fixtures(scenario);
     this.#ready = scenario !== 'boot' && scenario !== 'starting';
     this.emit('items', this.#items);
   }
@@ -501,7 +638,9 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
   async act(id: string, action: UpdateAction): Promise<void> {
     const item = this.#items.find((candidate) => candidate.id === id);
     if (!item?.actions.includes(action)) throw new Error(`Update action unavailable: ${id}`);
-    if (action === 'update-now' || action === 'retry') {
+    const back = action === 'back-to-certified';
+    const beta = back || action === 'install-beta' || (action === 'retry' && item.to === latest);
+    if (action === 'update-now' || action === 'retry' || beta) {
       this.#patch(id, {
         state: 'downloading',
         progress: { phase: 'download', done: 0, total: 95 },
@@ -517,6 +656,22 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
       });
       await this.#clock.sleep(2);
     }
+    if (beta) {
+      const version = back ? pin : latest;
+      const next: UpdateItem = {
+        ...(this.#items.find((candidate) => candidate.id === id) as UpdateItem),
+        state: 'ready',
+        from: version,
+        to: version,
+        progress: null,
+        error: null,
+        checkedAt,
+        beta: back ? null : { version, certified: pin },
+        npm: this.#check(version),
+      };
+      this.#patch(id, { ...next, actions: ['restart-agent', ...betaActions(next)] });
+      return;
+    }
     const apply = action === 'update-now' && ['agent', 'bios', 'kernel', 'ui'].includes(item.kind);
     this.#patch(id, {
       state: apply ? 'ready' : 'installed',
@@ -524,6 +679,7 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
       progress: null,
       checkedAt,
       actions: apply ? [item.kind === 'agent' ? 'restart-agent' : 'reload'] : [],
+      ...(apply ? {} : { actions: betaActions(item) }),
     });
   }
 }

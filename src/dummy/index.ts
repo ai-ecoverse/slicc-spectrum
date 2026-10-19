@@ -27,6 +27,7 @@ import { DummyTabs, type TabsScenario } from './tabs.ts';
 import { DummyTerminals } from './terminals.ts';
 import { DummyTray } from './tray.ts';
 import {
+  type BetaScenario,
   DummyUpdates,
   type PackageConfirm,
   type PackageScenario,
@@ -40,6 +41,7 @@ export interface DummyOptions {
   updates?: UpdateScenario;
   packages?: PackageScenario | 'off';
   confirm?: PackageConfirm;
+  beta?: BetaScenario | 'off';
   mounts?: MountScenario | 'off';
   network?: NetworkScenario | 'off';
   tailnet?: TailnetScenario;
@@ -154,6 +156,7 @@ export function createDummyModel({
   updates = 'current',
   packages = 'off',
   confirm,
+  beta = 'off',
   mounts = 'off',
   network = 'limited',
   tailnet,
@@ -240,6 +243,7 @@ export function createDummyModel({
     tray: new DummyTray(extras.tray, time),
     updates: new DummyUpdates(updates, time, {
       ...(packages === 'off' ? {} : { packages }),
+      ...(beta === 'off' ? {} : { beta }),
       confirm,
     }),
     ...(network === 'off'
