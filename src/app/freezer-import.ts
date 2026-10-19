@@ -27,6 +27,8 @@ export type ImportOutcome = ProfileImportResult | 'retry' | null;
 
 export const flaggedShown = 3;
 
+export const unreadable = 'Couldn’t read this export. Try another zip.';
+
 function count(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
@@ -310,6 +312,7 @@ export class SliccFreezerImport extends LitElement {
     const result = await this.#call(true);
     if (!result) return;
     if (result instanceof Error) return this.#fail(result);
+    if (!result.preview) return this.#fail(new Error(unreadable));
     this.preview = result.preview;
     this.stage = 'preview';
     this.#focus('[data-action=import-cancel]');
@@ -404,7 +407,10 @@ export class SliccFreezerImport extends LitElement {
 
   #importing(): TemplateResult {
     const progress = this.progress;
-    const known = !!progress && progress.phase === 'writing' && progress.total > 0;
+    const known =
+      !!progress &&
+      (progress.phase === 'writing' || progress.phase === 'done') &&
+      progress.total > 0;
     return html`<h2 id="title" slot="heading">Import from SLICC 6</h2>
       <div class="content">
         ${

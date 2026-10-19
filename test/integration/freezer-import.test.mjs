@@ -258,6 +258,125 @@ test('freezer import: Cancel while importing calls importCancel and adds nothing
   );
 });
 
+test('freezer import: Escape while checking calls importCancel once and puts focus back', async (t) => {
+  const page = await open(t, { import: 'cancel-check', delay: '40' });
+  await page.evaluate(() => {
+    window.cancels = 0;
+    const cancel = window.model.agent.importCancel;
+    window.model.agent.importCancel = () => {
+      window.cancels++;
+      cancel();
+    };
+    window.inFreezer('[data-action=import-v6]').focus();
+    return window.pick();
+  });
+  await page.until(() => window.stage() === 'checking');
+  await page.until(
+    () => window.importer().shadowRoot.activeElement?.dataset.action === 'import-cancel'
+  );
+  await page.press('Escape');
+  await page.until(() => !window.importer());
+  await page.until(() => window.freezer().shadowRoot.activeElement?.dataset.action === 'import-v6');
+  assert.equal(await page.evaluate(() => window.cancels), 1);
+});
+
+test('freezer import: Escape while importing calls importCancel once and adds nothing', async (t) => {
+  const page = await open(t, { import: 'v6', delay: '40' });
+  await page.evaluate(() => {
+    window.cancels = 0;
+    const cancel = window.model.agent.importCancel;
+    window.model.agent.importCancel = () => {
+      window.cancels++;
+      cancel();
+    };
+    window.inFreezer('[data-action=import-v6]').focus();
+    return window.pick();
+  });
+  await page.until(() => window.stage() === 'preview');
+  await page.evaluate(() => window.press('import-confirm'));
+  await page.until(() => window.model.agent.importing().phase === 'writing');
+  await page.until(
+    () => window.importer().shadowRoot.activeElement?.dataset.action === 'import-cancel'
+  );
+  await page.press('Escape');
+  await page.until(() => !window.importer());
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.cancels,
+      window.model.agent.frozen().filter((row) => row.v6).length,
+      window.freezer().shadowRoot.activeElement?.dataset.action,
+    ]),
+    [1, 0, 'import-v6']
+  );
+});
+
+test('freezer import: many flagged files fold under a chevron, shown as code', async (t) => {
+  const page = await open(t, { import: 'v6' });
+  const flagged = [
+    'files/cones/cone/.env',
+    'files/cones/cone/.npmrc',
+    'files/cones/pantry/.env',
+    'files/scoops/ferry/.netrc',
+  ];
+  await page.evaluate((flagged) => {
+    const port = window.model.agent.importProfile;
+    window.model.agent.importProfile = async (file, options) => {
+      const result = await port(file, options);
+      return { ...result, preview: { ...result.preview, flagged } };
+    };
+    return window.pick();
+  }, flagged);
+  await page.until(() => window.stage() === 'preview');
+  const folded = await page.evaluate(() => {
+    const note = window.inImport('[data-note=flagged]');
+    const details = note.querySelector('details[data-flagged]');
+    const lead = note.textContent.split('Show the files')[0].trim();
+    const before = details.open;
+    note.querySelector('[data-action=import-flagged]').click();
+    return {
+      lead,
+      before,
+      after: details.open,
+      codes: [...details.querySelectorAll('li code')].map((code) => code.textContent),
+    };
+  });
+  assert.deepEqual(folded, {
+    lead: 'Warning: 4 files look like credentials. They are imported; review them afterwards.',
+    before: false,
+    after: true,
+    codes: flagged,
+  });
+});
+
+test('freezer import: a check that returns no preview shows the error card', async (t) => {
+  const page = await open(t, { import: 'v6' });
+  await page.evaluate(() => {
+    window.model.agent.importProfile = async () => ({
+      preview: null,
+      cones: [],
+      report: null,
+      text: '',
+    });
+    return window.pick();
+  });
+  await page.until(() => window.stage() === 'failed');
+  assert.equal(
+    await page.evaluate(() => window.inImport('[data-error=import]').textContent),
+    'Error: Couldn’t read this export. Try another zip.'
+  );
+});
+
+test('freezer import: no button when the port can’t cancel', async (t) => {
+  const page = await open(t, { import: 'v6' });
+  await page.evaluate(() => {
+    window.model.agent.importCancel = undefined;
+    window.freezer().requestUpdate();
+    return window.freezer().updateComplete;
+  });
+  assert.equal(await page.evaluate(() => !!window.inFreezer('[data-action=import-v6]')), false);
+});
+
 test('freezer import: a rejection shows the error card, and Try again picks again', async (t) => {
   const page = await open(t, { import: 'fail' });
   await page.evaluate(() => window.pick());

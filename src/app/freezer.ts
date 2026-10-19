@@ -179,7 +179,9 @@ export class SliccFreezer extends ModelElement {
 
   get importable(): boolean {
     const model = this.model;
-    return !!model?.agent.importProfile && !watchOnly(model) && !model.seat;
+    return (
+      !!model?.agent.importProfile && !!model.agent.importCancel && !watchOnly(model) && !model.seat
+    );
   }
 
   #over = (event: DragEvent): void => {
