@@ -206,7 +206,7 @@ test('every destructive action asks first and acts only on confirm', async (t) =
   await page.until(() => !!window.part('memory', '.row .head'));
   const memories = await page.evaluate(() => window.model.memory.list().length);
   await page.evaluate(() => window.part('memory', '.row .head').click());
-  await page.until(() => !!window.part('memory', '.row .body'));
+  await page.until(() => !!window.part('memory', '.row[data-open] .actions'));
   const forget = () =>
     [...window.part('memory', '.row .actions').querySelectorAll('swc-action-button')]
       .find((button) => button.textContent.trim() === 'Forget')

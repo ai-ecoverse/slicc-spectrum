@@ -71,6 +71,7 @@ const model = createDummyModel({
   transport: params.get('transport') ?? undefined,
   hold: params.get('hold') ?? 'off',
   readonly: params.get('readonly') ?? 'off',
+  agent: params.get('agent') ?? 'ready',
   browser: params.get('browser') ?? 'idle',
   sprinkles: params.get('sprinkles') ?? 'builtin',
   monitor: params.get('monitor') ?? 'dummy',

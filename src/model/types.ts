@@ -245,6 +245,7 @@ export interface AgentEvents {
   frozen: readonly FrozenCone[];
   hold: AgentHold | null;
   readOnly: string | null;
+  starting: string | null;
   importing: ProfileImportProgress;
 }
 
@@ -320,6 +321,7 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   createCone?(name: string): Promise<Agent>;
   hold?(): AgentHold | null;
   readOnly?(): string | null;
+  starting?(): string | null;
 }
 
 export interface SlashCommand {
@@ -524,6 +526,7 @@ export interface AccountField {
   placeholder?: string;
   help?: string;
   customBase?: true;
+  vaultSetting?: string;
   options?: readonly AccountFieldOption[];
   value?: string;
 }
@@ -807,6 +810,13 @@ export interface PackagePin {
   project: string;
 }
 
+export interface PackageInstall {
+  version: string;
+  where: string;
+  user?: string;
+  manager?: 'pnpm' | 'panel';
+}
+
 export interface PackageItem {
   id: string;
   package: string;
@@ -826,6 +836,7 @@ export interface PackageItem {
   log?: string;
   origin?: 'catalog' | 'user';
   pin?: PackagePin;
+  installs?: readonly PackageInstall[];
 }
 
 export interface UpdatesEvents {
@@ -1507,6 +1518,7 @@ export interface VaultPort extends Subscribable<VaultEvents> {
   lock?(): Promise<void>;
   dismissBackupReminder?(): Promise<void>;
   endpoints?(change: VaultEndpointChange): Promise<void>;
+  settings?(name: string, kind: RecordKind, settings: Record<string, string>): Promise<void>;
   button(): VaultButton;
 }
 

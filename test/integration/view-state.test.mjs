@@ -583,6 +583,18 @@ for (const short of [false, true]) {
   });
 }
 
+const moreMemories = () => {
+  for (let i = 0; i < 12; i++)
+    window.model.memory.save({
+      scope: 'global',
+      section: 'Tides',
+      title: `Tide table ${String(i).padStart(2, '0')}`,
+      body: 'High and low water for the harbor, in UTC, from the weekly tide feed.',
+      tag: null,
+    });
+  return true;
+};
+
 const lists = [
   {
     name: 'Agents keeps its end and the selected scoop',
@@ -605,13 +617,20 @@ const lists = [
     },
     selected: true,
   },
-  { name: 'Memory keeps its end', id: 'memory', scroller: '.list', rows: '.row[data-id]' },
+  {
+    name: 'Memory keeps its end',
+    id: 'memory',
+    scroller: '.list',
+    rows: '.row[data-id]',
+    before: moreMemories,
+  },
   {
     name: 'Memory keeps the row it was on',
     id: 'memory',
     scroller: '.list',
     rows: '.row[data-id]',
     stop: 200,
+    before: moreMemories,
   },
   {
     name: 'Changes keeps its end',

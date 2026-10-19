@@ -142,6 +142,12 @@ export function vaultSecrets(now = Date.now()): SecretView[] {
   ];
 }
 
+function refused(settings: Record<string, string>): void {
+  const bad = Object.entries(settings).find(([, value]) => value.startsWith('bad'));
+  if (bad)
+    throw vaultFailure('EINVAL', `The vault refused ${bad[0]}. Check that value and try again.`);
+}
+
 export function accountRecords(now = Date.now(), pin?: string): SecretView[] {
   return [
     {
@@ -576,6 +582,7 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
   buttons: DummyVaultButton[] = [];
   puts: { name: string; request?: string; options?: PutOptions }[] = [];
   endpointChanges: VaultEndpointChange[] = [];
+  settingsCalls: Array<{ name: string; kind: RecordKind; settings: Record<string, string> }> = [];
   #refuses: boolean;
   cancelled: string[] = [];
   imports: DummyImport[] = [];
@@ -709,7 +716,7 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
     name: string,
     source: SecretView['source'],
     kind: RecordKind = 'secret',
-    binding: { provider?: string; server?: string } = {}
+    binding: { provider?: string; server?: string; settings?: Record<string, string> } = {}
   ): SealResult {
     const old = this.#list.secrets.find((item) => item.name === name && item.kind === kind);
     if (old) {
@@ -747,16 +754,33 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
     const problem = nameProblem(name) ?? valueProblem(value);
     if (problem) throw vaultFailure('EINVAL', problem);
     if (request !== undefined) this.#take(request, name);
+    if (options?.settings) refused(options.settings);
     this.puts.push({
       name,
       ...(request === undefined ? {} : { request }),
       ...(options ? { options: { ...options } } : {}),
     });
-    const { kind = 'secret', provider, server } = options ?? {};
+    const { kind = 'secret', provider, server, settings } = options ?? {};
     return this.#seal(name, 'settings', kind, {
       ...(provider === undefined ? {} : { provider }),
       ...(server === undefined ? {} : { server }),
+      ...(settings === undefined ? {} : { settings: { ...settings } }),
     });
+  }
+
+  async settings(name: string, kind: RecordKind, settings: Record<string, string>): Promise<void> {
+    await this.#time.sleep(5);
+    this.#unlocked();
+    const secret = this.#find(name, kind);
+    refused(settings);
+    this.settingsCalls.push({ name, kind, settings: { ...settings } });
+    this.#list = {
+      ...this.#list,
+      secrets: this.#list.secrets.map((item) =>
+        item === secret ? { ...item, settings: { ...settings } } : item
+      ),
+    };
+    this.emit('list', this.#list);
   }
 
   #take(request: string, name?: string): void {
