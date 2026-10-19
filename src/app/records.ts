@@ -36,6 +36,7 @@ export function recordKind(account: Account): RecordKind {
 }
 
 export function recordName(account: Account): string {
+  if (account.vaultName) return account.vaultName;
   if (account.group === 'mcp') return `MCP_${upper(serverOf(account))}_TOKEN`;
   return envNames[account.id] ?? `${upper(account.id)}_API_KEY`;
 }

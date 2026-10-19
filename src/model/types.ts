@@ -508,12 +508,30 @@ export interface Account {
   secret?: 'api-key' | 'token';
   store?: 'vault';
   fields?: AccountField[];
+  keyUrl?: string;
+  description?: string;
+  vaultName?: string;
 }
 
 export interface AccountField {
   name: string;
   label: string;
   required?: boolean;
+  placeholder?: string;
+  help?: string;
+}
+
+export type ProviderAuth = 'api-key' | 'oauth' | 'fields' | 'local';
+
+export interface ProviderOption {
+  id: string;
+  name: string;
+  description?: string;
+  auth: ProviderAuth;
+  fields?: AccountField[];
+  keyUrl?: string;
+  needs?: 'cors-free-transport';
+  vaultName?: string;
 }
 
 export interface ModelOption {
@@ -530,6 +548,7 @@ export interface ModelOption {
 export interface SettingsEvents {
   settings: Settings;
   accounts: readonly Account[];
+  providers?: readonly ProviderOption[];
 }
 
 export interface SettingsPort extends Subscribable<SettingsEvents> {
@@ -540,6 +559,8 @@ export interface SettingsPort extends Subscribable<SettingsEvents> {
   connect(id: string, secret?: string, fields?: Record<string, string>): Promise<void>;
   disconnect(id: string): void;
   cancel?(id: string): void;
+  providers?(): readonly ProviderOption[];
+  remove?(id: string): Promise<void>;
 }
 
 export type MemoryTag = 'user' | 'feedback' | 'project';

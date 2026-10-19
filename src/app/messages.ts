@@ -57,6 +57,7 @@ import type {
   UserMessage,
 } from '../model/types.ts';
 import { markdown } from './markdown.ts';
+import { signInText } from './sign-in.ts';
 import type { ViewSet } from './view-state.ts';
 
 export interface Handlers {
@@ -335,8 +336,6 @@ function actionLabel(action: ErrorAction, handlers: Handlers, messageId: string)
 }
 
 const signedIn = 'Signed in. Retry to send it again.';
-const continuing = 'Continue in the sign-in window that opened.';
-const closed = 'Closed the sign-in window? Cancel, then Log in again.';
 
 function stopSigningIn(event: Event, handlers: Handlers, account: string, id: string): void {
   const main = (event.currentTarget as HTMLElement).nextElementSibling as HTMLElement;
@@ -373,7 +372,7 @@ function errorCard(
       : undefined;
   const resolved = login?.state === 'connected';
   const signing = login?.state === 'signing-in' && login.window;
-  const text = resolved ? signedIn : signing ? (login.waited ? closed : continuing) : item.text;
+  const text = resolved ? signedIn : signing ? signInText(login.waited) : item.text;
   const title = resolved && login.provider ? `Signed in to ${login.provider} again.` : item.title;
   const failure = login?.state === 'idle' ? login.error : undefined;
   return html`<div class="error-card" role=${resolved ? nothing : 'alert'} aria-atomic=${resolved ? nothing : 'false'} data-id=${id || nothing} data-login=${login?.state ?? nothing}>

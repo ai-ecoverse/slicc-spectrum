@@ -1,13 +1,32 @@
+import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
+import '@adobe/spectrum-wc/components/close-button/swc-close-button.js';
 import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
+import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
+import '@adobe/spectrum-wc-icons/swc-icon-add.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
-import { css, html, nothing, type TemplateResult } from 'lit';
-import type { Account, RecordKind, Settings, SliccModel, VaultPort } from '../model/types.ts';
+import '@adobe/spectrum-wc-icons/swc-icon-checkmark.js';
+import '@adobe/spectrum-wc-icons/swc-icon-delete.js';
+import link from '@adobe/spectrum-wc/link.css';
+import { css, html, type LitElement, nothing, type TemplateResult, unsafeCSS } from 'lit';
+import { repeat } from 'lit/directives/repeat.js';
+import type {
+  Account,
+  AccountStatus,
+  ProviderAuth,
+  ProviderOption,
+  RecordKind,
+  Settings,
+  SliccModel,
+  VaultPort,
+} from '../model/types.ts';
 import { isVaultFailure, valueProblem } from '../model/values.ts';
 import { chatModels, speech, ThemedElement } from './base.ts';
-import { confirm } from './confirm.ts';
+import { confirm, dialogFrame } from './confirm.ts';
 import { forgetSwitch, modelSwitch, settleModels } from './models.ts';
 import { recordKind, recordName, serverOf, upper as upperName } from './records.ts';
+import { search, searchCss } from './search.ts';
+import { SignInWaits, signInText } from './sign-in.ts';
 import { clearValues, failureText, fieldStyles, type PopupDetail, take } from './vault.ts';
 import { ViewScroll } from './view-state.ts';
 
@@ -20,6 +39,57 @@ const accountStatus = {
   'needs-sign-in': ['neutral', 'Needs sign-in'],
   'sign-in-expired': ['notice', 'Sign-in expired'],
 } as const;
+
+const authHints: Record<ProviderAuth, string> = {
+  'api-key': 'API key',
+  oauth: 'Sign in',
+  fields: 'Endpoint and key',
+  local: 'On this device',
+};
+
+const listOrder: Record<AccountStatus, number> = {
+  connected: 0,
+  expired: 1,
+  'signing-in': 2,
+  disconnected: 3,
+};
+
+const corsNotice = {
+  short: 'Needs the SLICC extension or CLI',
+  long: 'Needs the SLICC extension or CLI, because the browser blocks direct requests to it.',
+};
+
+const removeBodies: Partial<Record<string, string>> = {
+  oauth: 'Its sign-in is deleted from the vault. Models from it stop working.',
+  local: 'Models from it stop working.',
+};
+
+function draft(option: ProviderOption): Account {
+  return {
+    id: option.id,
+    provider: option.name,
+    identity: '',
+    status: 'disconnected',
+    group: 'providers',
+    store: 'vault',
+    auth: option.auth === 'fields' ? 'api-key' : option.auth,
+    fields: option.fields,
+    keyUrl: option.keyUrl,
+    needs: option.needs,
+    vaultName: option.vaultName,
+  };
+}
+
+export function matchProviders(
+  options: readonly ProviderOption[],
+  query: string
+): ProviderOption[] {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return options.filter((option) => {
+    const text = `${option.name} ${option.id} ${option.description ?? ''}`.toLowerCase();
+    return words.every((word) => text.includes(word));
+  });
+}
 
 const popup = (account: Account) => account.group === 'mcp' && account.auth === 'oauth';
 
@@ -46,12 +116,22 @@ export class SliccSettings extends ThemedElement {
     failure: { state: true },
     problem: { state: true },
     blocked: { state: true },
+    picking: { state: true },
+    adding: { state: true },
+    query: { state: true },
+    filled: { state: true },
   };
   declare pending: ReadonlySet<string>;
   declare entering: string | null;
   declare failure: { id: string; message: string } | null;
   declare problem: { id: string; field: string; message: string } | null;
   declare blocked: boolean;
+  declare picking: boolean;
+  declare adding: ProviderOption | null;
+  declare query: string;
+  declare filled: ReadonlySet<string>;
+  #waits = new SignInWaits(() => this.requestUpdate());
+  #landing: string | null = null;
   #scroll = new ViewScroll(this, 'settings:scroll', { scroller: () => this, rows: '[data-id]' });
 
   constructor() {
@@ -61,10 +141,17 @@ export class SliccSettings extends ThemedElement {
     this.failure = null;
     this.problem = null;
     this.blocked = false;
+    this.picking = false;
+    this.adding = null;
+    this.query = '';
+    this.filled = new Set();
   }
 
   static styles = [
     fieldStyles,
+    dialogFrame,
+    searchCss,
+    unsafeCSS(link),
     css`
       :host {
         display: block;
@@ -176,6 +263,144 @@ export class SliccSettings extends ThemedElement {
         line-height: var(--swc-line-height-200);
         --swc-icon-color: var(--swc-negative-content-color-default);
       }
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-75);
+      }
+      .notes {
+        grid-column: 1 / -1;
+        display: grid;
+        gap: var(--swc-spacing-75);
+        margin-block-start: calc(-1 * var(--swc-spacing-200));
+      }
+      .notice {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--swc-spacing-75);
+        margin: 0;
+        color: var(--swc-neutral-subdued-content-color-default);
+        font-size: var(--swc-font-size-75);
+        line-height: var(--swc-line-height-200);
+        --swc-icon-color: var(--swc-notice-visual-color);
+      }
+      .notice swc-icon-alert-triangle {
+        flex: none;
+        margin-block-start: var(--swc-spacing-50);
+      }
+      .add {
+        margin-block-start: var(--swc-spacing-200);
+        margin-inline-start: calc(-1 * var(--swc-spacing-100));
+      }
+      dialog.picker {
+        inline-size: min(520px, calc(100vw - 2 * var(--swc-spacing-300)));
+      }
+      .picker .head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--swc-spacing-200);
+        padding: var(--swc-spacing-400) var(--swc-spacing-300) var(--swc-spacing-200) var(--swc-spacing-500);
+      }
+      .picker h2 {
+        margin: 0;
+        font-size: var(--swc-heading-size-s);
+        overflow-wrap: anywhere;
+      }
+      .picker .find {
+        display: flex;
+        padding: var(--swc-spacing-100) var(--swc-spacing-500) var(--swc-spacing-200);
+      }
+      .picker .results {
+        block-size: min(400px, calc(100dvh - 280px));
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: var(--swc-spacing-75) var(--swc-spacing-400);
+        border-block: var(--swc-border-width-100) solid var(--swc-gray-200);
+      }
+      .options {
+        display: grid;
+        gap: var(--swc-spacing-50);
+      }
+      .option {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) max-content;
+        align-items: baseline;
+        gap: var(--swc-spacing-50) var(--swc-spacing-300);
+        padding: var(--swc-spacing-100) var(--swc-spacing-100);
+        border-radius: var(--swc-corner-radius-medium-default);
+        cursor: pointer;
+      }
+      .option:hover,
+      .option:focus {
+        background: var(--swc-gray-200);
+      }
+      .option:focus {
+        outline: none;
+      }
+      .option:focus-visible {
+        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+        outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
+      }
+      .option[aria-disabled='true'] {
+        cursor: default;
+      }
+      .option[aria-disabled='true']:hover {
+        background: none;
+      }
+      .option .name {
+        font-weight: var(--swc-bold-font-weight);
+        overflow-wrap: anywhere;
+      }
+      .option[aria-disabled='true'] .name {
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .option .tag {
+        justify-self: end;
+        color: var(--swc-neutral-subdued-content-color-default);
+        font-size: var(--swc-font-size-75);
+      }
+      .added {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--swc-spacing-50);
+      }
+      .option .description,
+      .option .notice {
+        grid-column: 1 / -1;
+      }
+      .option .description,
+      .lead,
+      .empty {
+        margin: 0;
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .empty {
+        padding: var(--swc-spacing-200) var(--swc-spacing-100);
+        overflow-wrap: anywhere;
+      }
+      .picker .end {
+        justify-content: flex-end;
+        padding: var(--swc-spacing-300) var(--swc-spacing-500) var(--swc-spacing-400);
+      }
+      .step {
+        display: grid;
+        gap: var(--swc-spacing-200);
+        padding: var(--swc-spacing-100) var(--swc-spacing-500) var(--swc-spacing-500);
+      }
+      .step .key.stacked {
+        max-width: none;
+      }
+      .step sp-textfield {
+        inline-size: 100%;
+      }
+      .step .buttons {
+        margin-block-start: var(--swc-spacing-200);
+      }
+      .get-key {
+        justify-self: start;
+        font-size: var(--swc-font-size-75);
+      }
       @container (max-width: 480px) {
         .page {
           padding-inline: var(--swc-spacing-300);
@@ -206,7 +431,8 @@ export class SliccSettings extends ThemedElement {
         .state {
           grid-area: state;
         }
-        .account swc-button {
+        .account swc-button,
+        .account .actions {
           grid-area: action;
         }
         .key sp-textfield {
@@ -227,6 +453,7 @@ export class SliccSettings extends ThemedElement {
       ...super.subscribe(model),
       model.settings.on('settings', settle),
       model.settings.on('accounts', settle),
+      model.settings.on('providers', update),
       ...(model.vault ? [model.vault.on('status', update)] : []),
     ];
   }
@@ -287,6 +514,7 @@ export class SliccSettings extends ThemedElement {
           ? settings?.connect(id)
           : settings?.connect(id, secret));
       if (this.entering === id) this.entering = null;
+      if (this.adding?.id === id && this.#added(id)?.status === 'connected') this.#finish(id);
     } catch (error) {
       if (!this.#cancelled.has(id)) this.failure = { id, message: (error as Error).message };
     } finally {
@@ -360,14 +588,27 @@ export class SliccSettings extends ThemedElement {
     return values;
   }
 
+  #added(id: string): Account | undefined {
+    return this.model?.settings.accounts().find((account) => account.id === id);
+  }
+
+  #offered(): readonly ProviderOption[] | null {
+    return this.model?.settings.providers?.() ?? null;
+  }
+
   #start(account: Account): void {
     if (account.auth !== 'api-key') {
       void this.connect(account.id);
       return;
     }
+    this.#enter(account.id);
+  }
+
+  #enter(id: string): void {
     this.failure = null;
     this.problem = null;
-    this.entering = account.id;
+    this.filled = new Set();
+    this.entering = id;
     void this.updateComplete.then(() => this.focusOn('.key sp-textfield', '.key input'));
   }
 
@@ -375,6 +616,7 @@ export class SliccSettings extends ThemedElement {
     event.preventDefault();
     const form = event.currentTarget as HTMLElement;
     this.problem = null;
+    this.filled = new Set([...this.filled].filter((name) => name !== 'value'));
     if (this.#vault(account)) {
       const value = take(form.querySelector('input[data-field=value]') as HTMLInputElement);
       const fields = this.#fields(form, account);
@@ -401,7 +643,7 @@ export class SliccSettings extends ThemedElement {
     (event.currentTarget as HTMLElement).closest('form')?.requestSubmit();
   }
 
-  #enter(event: KeyboardEvent): void {
+  #enterKey(event: KeyboardEvent): void {
     if (event.key === 'Enter') this.#send(event);
   }
 
@@ -432,18 +674,50 @@ export class SliccSettings extends ThemedElement {
   }
 
   #extra(account: Account): TemplateResult[] {
-    return (account.fields ?? []).map(
-      (field) => html`<label class="field"><span>${field.label}</span><input
+    return (account.fields ?? []).map((field) => {
+      const help = field.help ? `help-${field.name}` : '';
+      const problem = this.#described(account, field.name);
+      const described = [problem === nothing ? '' : problem, help].filter(Boolean).join(' ');
+      return html`<label class="field"><span>${field.label}</span><input
           type="text"
           autocomplete="off"
           spellcheck="false"
           data-account-field=${field.name}
+          placeholder=${field.placeholder ?? nothing}
           aria-required=${field.required ? 'true' : nothing}
           aria-invalid=${this.#invalid(account, field.name)}
-          aria-describedby=${this.#described(account, field.name)}
+          aria-describedby=${described || nothing}
         /></label>
-        ${this.#problem(account, field.name)}`
-    );
+        ${field.help ? html`<p class="hint" id=${help}>${field.help}</p>` : nothing}
+        ${this.#problem(account, field.name)}`;
+    });
+  }
+
+  #getKey(account: Account): TemplateResult | typeof nothing {
+    if (!account.keyUrl) return nothing;
+    return html`<a class="swc-Link get-key" href=${account.keyUrl} target="_blank" rel="noopener noreferrer" data-action="get-key">Get a key</a>`;
+  }
+
+  #leave(account: Account): TemplateResult {
+    const adding = this.adding?.id === account.id;
+    return html`<swc-button size="m" variant="secondary" data-action=${adding ? 'back' : 'cancel'} @click=${() => (adding ? this.#back() : this.#cancel())}>${adding ? 'Back' : 'Cancel'}</swc-button>`;
+  }
+
+  #saveLabel(account: Account): string {
+    return this.adding?.id === account.id ? 'Connect' : 'Save';
+  }
+
+  #ready(account: Account): boolean {
+    if (!this.#offered()) return true;
+    const required = (account.fields ?? []).filter((field) => field.required);
+    return ['value', ...required.map((field) => field.name)].every((name) => this.filled.has(name));
+  }
+
+  #fill(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const name = input.dataset.accountField ?? 'value';
+    const rest = [...this.filled].filter((candidate) => candidate !== name);
+    this.filled = new Set(input.value.trim() ? [...rest, name] : rest);
   }
 
   #unlock(vault: VaultPort): TemplateResult {
@@ -465,7 +739,7 @@ export class SliccSettings extends ThemedElement {
     const busy = this.pending.has(account.id);
     const locked = !!vault.status()?.locked;
     const name = secretNames[account.secret ?? 'api-key'];
-    return html`<form class="key stacked" data-id=${account.id} data-store="vault" @submit=${(event: Event) => this.#submit(event, account)} @keydown=${(event: KeyboardEvent) => this.#submitOnEnter(event)}>
+    return html`<form class="key stacked" data-id=${account.id} data-store="vault" @submit=${(event: Event) => this.#submit(event, account)} @keydown=${(event: KeyboardEvent) => this.#submitOnEnter(event)} @input=${(event: Event) => this.#fill(event)}>
         <label class="field"><span>${account.provider} ${name}</span><input
           type="password"
           autocomplete="off"
@@ -476,11 +750,12 @@ export class SliccSettings extends ThemedElement {
           aria-describedby=${this.#described(account, 'value')}
         /></label>
         ${this.#problem(account, 'value')}
+        ${this.#getKey(account)}
         ${this.#extra(account)}
         ${locked ? this.#unlock(vault) : html`<p class="hint">Saved in the vault</p>`}
         <div class="buttons">
-          <swc-button size="m" variant="accent" data-action="save" ?pending=${busy} ?disabled=${locked} @click=${(event: Event) => this.#send(event)}>Save</swc-button>
-          <swc-button size="m" variant="secondary" data-action="cancel" @click=${() => this.#cancel()}>Cancel</swc-button>
+          <swc-button size="m" variant="accent" data-action="save" ?pending=${busy} ?disabled=${locked || (!busy && !this.#ready(account))} @click=${(event: Event) => this.#send(event)}>${this.#saveLabel(account)}</swc-button>
+          ${this.#leave(account)}
         </div>
       </form>`;
   }
@@ -490,24 +765,25 @@ export class SliccSettings extends ThemedElement {
     const vault = this.#vault(account);
     if (vault) return this.#kept(account, vault);
     const busy = this.pending.has(account.id);
-    const extra = account.fields?.length;
-    return html`<form class=${extra ? 'key stacked' : 'key'} data-id=${account.id} @submit=${(event: Event) => this.#submit(event, account)} @keydown=${(event: KeyboardEvent) => this.#submitOnEnter(event)}>
+    const extra = account.fields?.length || account.keyUrl;
+    return html`<form class=${extra ? 'key stacked' : 'key'} data-id=${account.id} @submit=${(event: Event) => this.#submit(event, account)} @keydown=${(event: KeyboardEvent) => this.#submitOnEnter(event)} @input=${(event: Event) => this.#fill(event)}>
         <sp-textfield
           size="m"
           type="password"
           autocomplete="off"
           label=${`${account.provider} ${secretNames[account.secret ?? 'api-key']}`}
           placeholder=${`Paste the ${secretNames[account.secret ?? 'api-key']}`}
-          @keydown=${(event: KeyboardEvent) => this.#enter(event)}
+          @keydown=${(event: KeyboardEvent) => this.#enterKey(event)}
         ></sp-textfield>
+        ${this.#getKey(account)}
         ${extra ? this.#extra(account) : nothing}
-        ${extra ? html`<div class="buttons">${this.#buttons(busy)}</div>` : this.#buttons(busy)}
+        ${extra ? html`<div class="buttons">${this.#buttons(account, busy)}</div>` : this.#buttons(account, busy)}
       </form>`;
   }
 
-  #buttons(busy: boolean): TemplateResult {
-    return html`<swc-button size="m" variant="accent" data-action="save" ?pending=${busy} @click=${(event: Event) => this.#send(event)}>Save</swc-button>
-        <swc-button size="m" variant="secondary" data-action="cancel" @click=${() => this.#cancel()}>Cancel</swc-button>`;
+  #buttons(account: Account, busy: boolean): TemplateResult {
+    return html`<swc-button size="m" variant="accent" data-action="save" ?pending=${busy} ?disabled=${!busy && !this.#ready(account)} @click=${(event: Event) => this.#send(event)}>${this.#saveLabel(account)}</swc-button>
+        ${this.#leave(account)}`;
   }
 
   #inVault(account: Account): boolean {
@@ -567,7 +843,8 @@ export class SliccSettings extends ThemedElement {
   get busyReason(): string | null {
     const accounts = this.model?.settings.accounts() ?? [];
     if (accounts.some((account) => this.#signingIn(account))) return 'signing in';
-    return this.entering === null ? null : 'a key is being entered';
+    if (this.entering !== null) return 'a key is being entered';
+    return this.picking ? 'a provider is being added' : null;
   }
 
   #signingIn(account: Account): boolean {
@@ -642,10 +919,321 @@ export class SliccSettings extends ThemedElement {
           : nothing
       }</span>
       <swc-status-light class="state" variant=${variant}>${label}</swc-status-light>
-      ${this.#action(account)}
+      ${this.#removable(account) ? html`<div class="actions">${this.#action(account)}${this.#removeButton(account)}</div>` : this.#action(account)}
     </div>
+    ${this.#offered() ? this.#rowNotes(account) : nothing}
     ${this.#key(account)}
     ${failure}`;
+  }
+
+  #removable(account: Account): boolean {
+    return !!this.#offered() && !!this.model?.settings.remove && account.group !== 'mcp';
+  }
+
+  #removeButton(account: Account): TemplateResult {
+    const id = `remove-${account.id}`;
+    const label = `Remove ${account.provider}`;
+    return html`<swc-action-button
+        id=${id}
+        size="m"
+        quiet
+        data-action="remove-account"
+        accessible-label=${label}
+        ?disabled=${this.pending.has(account.id)}
+        @click=${() => this.#remove(account)}
+        ><swc-icon-delete slot="icon"></swc-icon-delete></swc-action-button
+      ><swc-tooltip for=${id} placement="top">${label}</swc-tooltip>`;
+  }
+
+  async #remove(account: Account): Promise<void> {
+    const model = this.model as SliccModel;
+    const body =
+      removeBodies[account.auth ?? ''] ??
+      'Its key is deleted from the vault. Models from it stop working.';
+    const title = `Remove ${account.provider}?`;
+    if (!(await confirm({ title, body, action: 'Remove' }))) return;
+    if (this.model !== model) return;
+    clearValues(this.renderRoot);
+    if (this.entering === account.id) this.entering = null;
+    const vault = model.vault;
+    const keyed = account.store === 'vault' && account.auth === 'api-key' && !!vault?.remove;
+    if (keyed && !(await this.#forget(account, vault as VaultPort))) return;
+    if (this.model !== model) return;
+    this.#busy(account.id, true);
+    this.failure = null;
+    try {
+      await model.settings.remove?.(account.id);
+    } catch (error) {
+      if (this.model === model) this.failure = { id: account.id, message: failureText(error) };
+      return;
+    } finally {
+      this.#busy(account.id, false);
+    }
+    this.focusOn('[data-action=add-provider]');
+  }
+
+  #notice(
+    needs: Account['needs'],
+    size: 'short' | 'long' = 'long'
+  ): TemplateResult | typeof nothing {
+    if (needs !== 'cors-free-transport') return nothing;
+    return html`<p class="notice" data-notice=${needs}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${corsNotice[size]}</span></p>`;
+  }
+
+  #signingNote(account: Account): TemplateResult | typeof nothing {
+    const key = `settings:${account.id}`;
+    if (account.auth !== 'oauth' || !this.#signingIn(account)) {
+      this.#waits.done(key);
+      return nothing;
+    }
+    return html`<p class="hint" role="status" data-signing>${signInText(this.#waits.waited(key))}</p>`;
+  }
+
+  #rowNotes(account: Account): TemplateResult | typeof nothing {
+    const notice = this.#notice(account.needs);
+    const signing = this.adding?.id === account.id ? nothing : this.#signingNote(account);
+    if (notice === nothing && signing === nothing) return nothing;
+    return html`<div class="notes">${notice}${signing}</div>`;
+  }
+
+  #openPicker(): void {
+    this.query = '';
+    this.adding = null;
+    this.picking = true;
+  }
+
+  protected updated(changed: Map<PropertyKey, unknown>): void {
+    super.updated(changed);
+    const dialog = this.#dialog;
+    if (!changed.has('picking') || !dialog || dialog.open) return;
+    dialog.showModal();
+    const field = this.renderRoot.querySelector('sp-search') as LitElement;
+    void field.updateComplete.then(() => field.focus());
+  }
+
+  get #dialog(): HTMLDialogElement | null {
+    return this.renderRoot.querySelector<HTMLDialogElement>('dialog.picker');
+  }
+
+  #closePicker(): void {
+    this.#dialog?.close();
+  }
+
+  #closed(): void {
+    const id = this.adding?.id;
+    if (id !== undefined && this.entering === id) {
+      clearValues(this.renderRoot);
+      this.entering = null;
+      this.problem = null;
+    }
+    if (id !== undefined && this.failure?.id === id) this.failure = null;
+    this.picking = false;
+    this.adding = null;
+    this.query = '';
+    const landing = this.#landing;
+    this.#landing = null;
+    void this.updateComplete.then(() => {
+      const root = this.renderRoot;
+      const row = landing
+        ? root.querySelector<HTMLElement>(`.account[data-id="${CSS.escape(landing)}"] swc-button`)
+        : null;
+      (row ?? root.querySelector<HTMLElement>('[data-action=add-provider]'))?.focus();
+    });
+  }
+
+  #finish(id: string): void {
+    this.#landing = id;
+    this.#closePicker();
+  }
+
+  #choose(option: ProviderOption): void {
+    if (this.#added(option.id)) return;
+    this.adding = option;
+    this.failure = null;
+    if (option.auth === 'api-key' || option.auth === 'fields') {
+      this.#enter(option.id);
+      return;
+    }
+    void this.updateComplete.then(() =>
+      this.focusOn('[data-step] [data-action=sign-in]', '[data-step] [data-action=connect]')
+    );
+  }
+
+  #back(): void {
+    const id = (this.adding as ProviderOption).id;
+    clearValues(this.renderRoot);
+    if (this.entering === id) this.entering = null;
+    if (this.failure?.id === id) this.failure = null;
+    this.problem = null;
+    this.adding = null;
+    void this.updateComplete.then(() =>
+      this.renderRoot
+        .querySelector<HTMLElement>(`.option[data-provider="${CSS.escape(id)}"]`)
+        ?.focus()
+    );
+  }
+
+  #options(): HTMLElement[] {
+    return [...this.renderRoot.querySelectorAll<HTMLElement>('.option')];
+  }
+
+  #pickerKey(event: KeyboardEvent): void {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    this.#closePicker();
+  }
+
+  #searchKey(event: KeyboardEvent): void {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      this.#options()[0]?.focus();
+      return;
+    }
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    const first = matchProviders(this.#offered() ?? [], this.query).find(
+      (option) => !this.#added(option.id)
+    );
+    if (first) this.#choose(first);
+  }
+
+  #optionKey(event: KeyboardEvent, option: ProviderOption): void {
+    const options = this.#options();
+    const at = options.indexOf(event.currentTarget as HTMLElement);
+    const moves: Record<string, number> = {
+      ArrowDown: Math.min(at + 1, options.length - 1),
+      ArrowUp: at - 1,
+      Home: 0,
+      End: options.length - 1,
+    };
+    const typed = event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+    if (event.key in moves) {
+      const to = moves[event.key];
+      if (to < 0) this.focusOn('sp-search');
+      else options[to].focus();
+    } else if (event.key === 'Enter' || event.key === ' ') this.#choose(option);
+    else if (typed || event.key === 'Backspace') {
+      this.query = typed ? this.query + event.key : this.query.slice(0, -1);
+      this.focusOn('sp-search');
+    } else return;
+    event.preventDefault();
+  }
+
+  #option(option: ProviderOption): TemplateResult {
+    const added = !!this.#added(option.id);
+    return html`<div
+      class="option"
+      role="option"
+      tabindex="-1"
+      data-provider=${option.id}
+      data-auth=${option.auth}
+      aria-disabled=${added ? 'true' : 'false'}
+      @click=${() => this.#choose(option)}
+      @keydown=${(event: KeyboardEvent) => this.#optionKey(event, option)}
+    >
+      <span class="name">${option.name}</span>
+      <span class="tag">${
+        added
+          ? html`<span class="added" data-added><swc-icon-checkmark size="s" aria-hidden="true"></swc-icon-checkmark>Added</span>`
+          : authHints[option.auth]
+      }</span>
+      ${option.description ? html`<span class="description">${option.description}</span>` : nothing}
+      ${this.#notice(option.needs, 'short')}
+    </div>`;
+  }
+
+  #pickStep(offered: readonly ProviderOption[]): TemplateResult {
+    const matches = matchProviders(offered, this.query);
+    return html`<div class="find">${search({
+      label: 'Search providers',
+      value: this.query,
+      input: (value) => {
+        this.query = value;
+      },
+      keydown: (event) => this.#searchKey(event),
+    })}</div>
+      <div class="results">${
+        matches.length
+          ? html`<div class="options" role="listbox" aria-label="Providers">${matches.map((option) => this.#option(option))}</div>`
+          : html`<p class="empty" role="status">No provider matches “${this.query.trim()}”.</p>`
+      }</div>
+      <div class="buttons end">
+        <swc-button size="m" variant="secondary" data-action="close" @click=${() => this.#closePicker()}>Cancel</swc-button>
+      </div>`;
+  }
+
+  #signInStep(account: Account): TemplateResult {
+    const signing = this.#signingIn(account);
+    const cancel = signing && !!this.model?.settings.cancel;
+    return html`<p class="hint">Sign in to ${account.provider} in a new window.</p>
+      ${signing ? this.#signingNote(account) : nothing}
+      <div class="buttons">
+        ${
+          cancel
+            ? html`<swc-button size="m" variant="secondary" data-action="cancel-sign-in" @click=${() => this.#stopSigningIn(account)}>Cancel</swc-button>`
+            : nothing
+        }
+        <swc-button size="m" variant="accent" data-action="sign-in" ?pending=${signing} @click=${() => this.connect(account.id)}>${signing ? 'Signing in…' : 'Sign in'}</swc-button>
+        ${signing ? nothing : this.#leave(account)}
+      </div>`;
+  }
+
+  #localStep(account: Account): TemplateResult {
+    return html`<p class="hint">SLICC connects to ${account.provider} on this device.</p>
+      <div class="buttons">
+        <swc-button size="m" variant="accent" data-action="connect" ?pending=${this.pending.has(account.id)} @click=${() => this.connect(account.id)}>Connect</swc-button>
+        ${this.#leave(account)}
+      </div>`;
+  }
+
+  #connectStep(option: ProviderOption): TemplateResult {
+    const account = this.#added(option.id) ?? draft(option);
+    const step =
+      option.auth === 'oauth'
+        ? this.#signInStep(account)
+        : option.auth === 'local'
+          ? this.#localStep(account)
+          : this.#key(account);
+    return html`<div class="step" data-step=${option.auth} data-provider=${option.id}>
+      ${option.description ? html`<p class="lead">${option.description}</p>` : nothing}
+      ${this.#notice(option.needs)}
+      ${step}
+      ${
+        this.failure?.id === option.id
+          ? html`<div class="failure" role="alert"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.failure.message}</span></div>`
+          : nothing
+      }
+    </div>`;
+  }
+
+  #picker(offered: readonly ProviderOption[]): TemplateResult | typeof nothing {
+    if (!this.picking) return nothing;
+    const adding = this.adding;
+    return html`<dialog class="picker" aria-labelledby="picker-title" data-picker=${adding ? 'connect' : 'pick'} @keydown=${(event: KeyboardEvent) => this.#pickerKey(event)} @close=${() => this.#closed()}>
+      <div class="head">
+        <h2 id="picker-title">${adding ? `Add ${adding.name}` : 'Add a provider'}</h2>
+        <swc-close-button size="m" data-action="close" accessible-label="Close" @click=${() => this.#closePicker()}></swc-close-button>
+      </div>
+      ${adding ? this.#connectStep(adding) : this.#pickStep(offered)}
+    </dialog>`;
+  }
+
+  #providerList(accounts: readonly Account[]): TemplateResult {
+    const offered = this.#offered();
+    if (!offered)
+      return html`<div class="accounts">${accounts.map((account) => this.#account(account))}</div>`;
+    const sorted = [...accounts].sort((a, b) => listOrder[a.status] - listOrder[b.status]);
+    return html`<div class="accounts" data-group="providers">${repeat(
+      sorted,
+      (account) => account.id,
+      (account) => this.#account(account)
+    )}</div>
+      <div class="add">
+        <swc-action-button size="m" quiet data-action="add-provider" @click=${() => this.#openPicker()}>
+          <swc-icon-add slot="icon"></swc-icon-add>Add a provider
+        </swc-action-button>
+      </div>
+      ${this.#picker(offered)}`;
   }
 
   render(): TemplateResult {
@@ -702,7 +1290,7 @@ export class SliccSettings extends ThemedElement {
       </div>
       </div>
       <h2 data-section="accounts">Accounts</h2>
-      <div class="accounts">${providers.map((account) => this.#account(account))}</div>
+      ${this.#providerList(providers)}
       ${
         servers.length
           ? html`<h2>MCP servers</h2>

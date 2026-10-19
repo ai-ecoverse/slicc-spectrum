@@ -3,11 +3,13 @@ import type {
   Account,
   AccountStatus,
   ModelOption,
+  ProviderOption,
   Settings,
   SettingsEvents,
   SettingsPort,
 } from '../model/types.ts';
 import type { Clock } from './clock.ts';
+import { providerAccount } from './providers.ts';
 
 export const dummySettingsKey = 'slicc-ui.settings';
 export const signInClosed = 'The sign-in window was closed before it finished.';
@@ -23,6 +25,8 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   #gated: boolean;
   #fails: boolean;
   readonly connects: Array<{ id: string; gesture: boolean | null }> = [];
+  providers?: () => readonly ProviderOption[];
+  remove?: (id: string) => Promise<void>;
 
   constructor(
     defaults: Settings,
@@ -32,9 +36,14 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
     clock: Clock,
     keys: readonly string[] = [dummySettingsKey],
     gated = false,
-    login?: 'ok' | 'fail'
+    login?: 'ok' | 'fail',
+    providers?: readonly ProviderOption[]
   ) {
     super();
+    if (providers) {
+      this.providers = () => providers;
+      this.remove = async (id) => this.#drop(id);
+    }
     this.#fails = login === 'fail';
     this.#gated = gated;
     this.#keys = keys;
@@ -87,27 +96,60 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
     this.emit('accounts', this.accounts());
   }
 
-  async connect(id: string, secret?: string): Promise<void> {
+  #drop(id: string): void {
+    this.#signIns.get(id)?.stop();
+    this.#accounts = this.#accounts.filter((account) => account.id !== id);
+    this.emit('accounts', this.accounts());
+  }
+
+  #add(id: string): boolean {
+    const option = this.providers?.().find((candidate) => candidate.id === id);
+    if (!option || this.#accounts.some((account) => account.id === id)) return false;
+    this.#accounts = [...this.#accounts, providerAccount(option)];
+    this.emit('accounts', this.accounts());
+    return true;
+  }
+
+  async connect(id: string, secret?: string, fields?: Record<string, string>): Promise<void> {
     const activation = (globalThis.navigator as Navigator | undefined)?.userActivation;
     this.connects.push({ id, gesture: activation ? activation.isActive : null });
+    const fresh = this.#add(id);
+    try {
+      if (!(await this.#connect(id, secret, fields)) && fresh) this.#drop(id);
+    } catch (error) {
+      if (fresh) this.#drop(id);
+      throw error;
+    }
+  }
+
+  async #connect(id: string, secret?: string, fields?: Record<string, string>): Promise<boolean> {
     const account = this.#accounts.find((candidate) => candidate.id === id);
-    if (account && account.auth !== 'api-key' && !(await this.#signIn(account))) return;
-    if (account && account.auth !== 'api-key' && this.#fails) {
+    const local = account?.auth === 'local';
+    const window = !!account && account.auth !== 'api-key' && !local;
+    if (window && !(await this.#signIn(account))) return false;
+    if (window && this.#fails) {
       this.#set(id, { status: account.status });
       throw new Error(signInClosed);
     }
-    if (account?.auth === 'api-key' || !account) await this.#clock.sleep(10);
+    if (!window) await this.#clock.sleep(10);
     if (account?.auth === 'api-key' && account.store !== 'vault' && !secret)
       throw new Error(
         `${account.provider} needs ${account.secret === 'token' ? 'a token' : 'an API key'}`
       );
+    if ([secret, ...Object.values(fields ?? {})].some((value) => value?.startsWith('bad')))
+      throw new Error(`${account?.provider} didn’t accept that key.`);
+    if (fields?.endpoint && !fields.endpoint.startsWith('https://'))
+      throw new Error('The endpoint must start with https://.');
     const identity =
       account?.group === 'mcp'
         ? account.identity
-        : account?.auth === 'api-key'
-          ? 'API key'
-          : account?.identity || `${id}-user@example.com`;
+        : local
+          ? 'On this device'
+          : account?.auth === 'api-key'
+            ? 'API key'
+            : account?.identity || `${id}-user@example.com`;
     this.#set(id, { status: 'connected', identity });
+    return true;
   }
 
   #signIn(account: Account): Promise<boolean> {
