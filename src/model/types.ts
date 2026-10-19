@@ -514,6 +514,13 @@ export interface AccountField {
   name: string;
   label: string;
   required?: boolean;
+  options?: readonly AccountFieldOption[];
+  value?: string;
+}
+
+export interface AccountFieldOption {
+  value: string;
+  label: string;
 }
 
 export interface ModelOption {
