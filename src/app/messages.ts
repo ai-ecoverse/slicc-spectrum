@@ -1187,6 +1187,9 @@ export const messageCss = css`
   swc-response-status-step {
     line-height: var(--swc-line-height-200);
   }
+  swc-response-status-step > [slot='description'] {
+    color: var(--swc-neutral-content-color-default);
+  }
   .lick {
     border: var(--swc-border-width-100) solid var(--swc-gray-200);
     border-radius: var(--swc-corner-radius-700);
