@@ -449,7 +449,7 @@ It closes, clearing the field, when the request leaves `waiting` or while the va
 #### `<slicc-updates>`
 
 Install / Update: component states, version changes, last checks, download and link counts, action buttons, failures with Retry, and collapsible install logs behind a quiet chevron, which stay open across a layout switch.
-An install shows one bar for update rows and package rows alike: it fills 0–50% while downloading and 50–100% while linking (`value` against `max-value="100"`). While the row runs it never goes back, not when pnpm's total grows and not when progress drops out between passes. Its value label stays the phase's "n of m" count, and it starts at 0 again once the row settles.
+An install shows one bar for update rows and package rows alike: it fills 0–50% while downloading and 50–100% while linking (`value` against `max-value="100"`). While the row runs it never goes back, not when pnpm's total grows and not when progress drops out between passes. While a download reports `bytes` with a total above 0, the first half fills by bytes and the value label reads "10.0 MB of 40.0 MB". Otherwise, and always while linking, the label falls back to the phase's "n of m" count. The bar starts at 0 again once the row settles.
 Opens at boot until the agent is ready without failures.
 Background updates stay in the header's update status; new failures reopen the panel, and after a reload into a boot that isn't ready yet such a panel closes once the agent is ready.
 Every automatic close is saved to the layout.
@@ -773,6 +773,7 @@ Connection, role, float kind, followers, spend and budget; `reconnect` and `disc
 
 Later backed by: BIOS installers.
 `list()` returns `UpdateItem` rows for BIOS, kernel, agent, grammars, global pnpm packages, skills and UI.
+A row's and a package's `progress` (`InstallProgress`) is the `phase` (`download` or `link`) with `done` of `total` packages, and an optional `bytes` (`{ done, total }`), which counts only while `phase` is `download` (it's ignored while linking and when its total is 0), summed from pnpm's `Downloading <package>: <done>/<total>` lines; send it even when pnpm counts a single package, since a few large tarballs are most of an install's time.
 `ready()` explicitly reports agent readiness, independently of agent activity.
 Emit `items` whenever rows or readiness change.
 Use `queued` for a row that waits for another component before it starts; it reads "Waiting" and doesn't count as updating.
@@ -781,7 +782,7 @@ A `failed` row with an installed `from` version reads "Update failed".
 `act(id, action)` resolves when dispatched or rejects with a displayed error; actions are `retry`, `update-now`, `restart-agent` and `reload`.
 Missing ports preserve existing adapters and report disconnected information in the panel.
 Optional `packages()` returns `PackageItem` rows for optional tools, each with a short catalog `id`, its npm `package` (shown in the name's tooltip and at the top of its Install log), `label`, a one-sentence `description`, the `commands` it provides, `requires` (other package ids, read as "Uses Python" while it's installed, or "Installs Python too" on a row that isn't installed yet; an installed row leaves out a requirement that isn't installed, since its warning says so), optional `notes` (short plain-text lines shown muted under the row, such as "1 untested dependency: …"; leave it out when there's nothing to say), optional `warnings` (lines with an alert icon, `data-warnings`, such as "Needs Python, which isn't installed.
-Install Python again to use it."; the dummy adds that one when a required package is removed), `state` (`available`, `queued`, `installing`, `installed`, `outdated`, `updating`, `removing` or `failed`), the installed `version`, the `offered` version and its `size` in bytes, `progress` counted in packages (or `null` for an indeterminate bar), `error`, `actions` (`install`, `update`, `remove`, `retry`, `unpin`) and an optional `log`.
+Install Python again to use it."; the dummy adds that one when a required package is removed), `state` (`available`, `queued`, `installing`, `installed`, `outdated`, `updating`, `removing` or `failed`), the installed `version`, the `offered` version and its `size` in bytes, `progress` (`InstallProgress`, or `null` for an indeterminate bar), `error`, `actions` (`install`, `update`, `remove`, `retry`, `unpin`) and an optional `log`.
 A row with `origin: 'user'` (ids such as `user:user:<name>`) goes into Your packages, `section[data-section="user-packages"]`, which only shows when there is one; its `pin` holds `base` (the version seven ships, or `null` for a package seven doesn't ship), the user's `range` and the `project` folder, such as `/opt/user`.
 An installed pin reads "Pinned" with `0.24.0 · seven ships 0.25.0 · in /opt/agent` ("the version seven ships" when they match), and an addition reads "Added" with `^1.2.0 → 1.2.4 · in /opt/user`; `.meta[data-pin]` is `pinned` or `added`.
 A pin that is `removing` reads "Unpinning"; other states keep their usual lights.
@@ -927,7 +928,7 @@ Pass only the surfaces a follower has to `<slicc-app>` (agents, chat, terminal a
 
 The dummy supports `createDummyModel({ updates: 'boot' | 'starting' | 'current' | 'available' | 'restart' | 'failure' })`, also selectable with `?updates=` on `/ui/`.
 Fixtures stay stable for inspection; `model.updates.setScenario('current')` completes boot.
-Dummy Update now and Retry simulate download and link progress; Restart agent and Reload only change fixture state, never restart a real process or reload the browser.
+Dummy Update now and Retry simulate download and link progress, and a dummy package install reports half its `size` in bytes on the way; Restart agent and Reload only change fixture state, never restart a real process or reload the browser.
 `createDummyModel({ packages: 'mixed' | 'empty' | 'fail' | 'user' | 'off' })` (or `?packages=` on `/ui/`, off by default) adds invented optional packages in every state: Install and Retry finish after a short wait and install missing requirements too, `fail` makes them fail, `user` adds a pinned agent-kit and two additions (one with a warning) that Unpin and Remove take out of the list, and removing Python while uv is installed asks through the `confirm` option (the `/ui/` page passes spectrum's `confirm`).
 `updateFixtures`, `packageFixtures` and `DummyUpdates` are exported from `/dummy`.
 `createDummyModel({ mounts: 'mount' | 'cancel' | 'fail' | 'needs' })` (or `?mounts=` on `/ui/`) turns on the optional mount members, which are off by default: `mountFolder` mounts invented files at `/mnt/photos`, resolves with `null`, or rejects, as `model.files.mount.scenario` says; `needs` also lists `/mnt/photos` in `needsFolder()` until a folder is inserted there.

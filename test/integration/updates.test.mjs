@@ -488,6 +488,89 @@ test('a row that settles while Install / Update is a background tab starts its n
   assert.deepEqual(page.errors, []);
 });
 
+test('a download that reports bytes fills by bytes and shows megabytes', async (t) => {
+  const page = await installing(t);
+  const mb = 1024 * 1024;
+  const steps = [
+    { phase: 'download', done: 0, total: 1, bytes: { done: 0, total: 40 * mb } },
+    { phase: 'download', done: 0, total: 1, bytes: { done: 10 * mb, total: 40 * mb } },
+    { phase: 'download', done: 1, total: 1, bytes: { done: 40 * mb, total: 40 * mb } },
+    { phase: 'link', done: 7, total: 14 },
+  ];
+  const seen = await page.evaluate(async (steps) => {
+    const port = window.model.updates;
+    const element = window.$('slicc-app', 'slicc-dock', 'slicc-updates');
+    const drive = async (list, event, id, selector, state) => {
+      const shown = [];
+      for (const progress of steps) {
+        const items = port[list]().map((item) =>
+          item.id === id ? { ...item, state, progress } : item
+        );
+        port[list] = () => items;
+        port.emit(event, items);
+        await element.updateComplete;
+        const bar = element.shadowRoot.querySelector(`${selector} swc-progress-bar`);
+        shown.push([Number(bar.getAttribute('value')), bar.getAttribute('value-label')]);
+      }
+      return shown;
+    };
+    return {
+      agent: await drive('list', 'items', 'agent', 'article[data-id=agent]', 'downloading'),
+      git: await drive('packages', 'packages', 'git', 'li[data-id=git]', 'installing'),
+    };
+  }, steps);
+  const bars = (unit) => [
+    [0, '0 B of 40.0 MB'],
+    [13, '10.0 MB of 40.0 MB'],
+    [50, '40.0 MB of 40.0 MB'],
+    [75, `7 of 14${unit}`],
+  ];
+  assert.deepEqual(seen, { agent: bars(''), git: bars(' packages') });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a package install that fails shows no bar next to its Retry', async (t) => {
+  const page = await chrome.page(t);
+  await page.goto('/ui/?updates=current&packages=fail&color=light&delay=20');
+  await page.until(() => window.ready && window.app.dock.api.panels.length > 0);
+  await page.evaluate(() => window.app.show('updates'));
+  await page.until(() =>
+    Boolean(
+      window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-updates',
+        'li[data-id=git] swc-button[data-action=install]'
+      )
+    )
+  );
+  await page.evaluate(() =>
+    window
+      .$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-updates',
+        'li[data-id=git] swc-button[data-action=install]'
+      )
+      .click()
+  );
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-updates', 'li[data-id=git]')?.dataset.state ===
+      'failed'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const git = window.$('slicc-app', 'slicc-dock', 'slicc-updates', 'li[data-id=git]');
+      return [
+        Boolean(git.querySelector('swc-progress-bar')),
+        [...git.querySelectorAll('swc-button')].map((button) => button.dataset.action),
+      ];
+    }),
+    [false, ['retry']]
+  );
+});
+
 async function installing(context) {
   const page = await chrome.page(context);
   await page.goto('/ui/?updates=current&packages=mixed&color=light&delay=20');
