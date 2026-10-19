@@ -3061,7 +3061,9 @@ async function asks(page) {
           bottom: Math.min(box.bottom, view.bottom),
         }))
         .filter((box) => box.bottom - box.top > 1);
-      const cards = [...root.querySelectorAll('.decision-turn[data-pending]')];
+      const cards = [...root.querySelectorAll('.decision-turn[data-pending]')].filter((card) =>
+        card.checkVisibility()
+      );
       const boxes = cards.map((card) => {
         const box = rect(card);
         const dock = card.closest('.asks');
@@ -3083,7 +3085,7 @@ async function asks(page) {
         ...root.querySelectorAll(
           '.decision-turn[data-pending] :is([data-action=allow], [data-action=deny], [data-action=answer], .timer)'
         ),
-      ];
+      ].filter((control) => control.checkVisibility());
       return {
         cards: cards.map((card) => card.dataset.id),
         covered: cards.flatMap((card, index) =>
@@ -3194,9 +3196,11 @@ test('decision cards dock above the log, reveal their place from the keyboard an
   await page.evaluate(() => window.model.agent.select('cone-kitchen'));
   await page.until(() => !!window.chatPart('.decision-turn[data-id=k-l17]'));
   const docked = () =>
-    [...window.chatPart().shadowRoot.querySelectorAll('.asks .decision-turn[data-pending]')].map(
-      (turn) => turn.dataset.id
-    );
+    [
+      ...window
+        .chatPart()
+        .shadowRoot.querySelectorAll('.asks .ask:not([hidden]) .decision-turn[data-pending]'),
+    ].map((turn) => turn.dataset.id);
   const expanded = () =>
     window
       .chatPart('[data-action=show-waiting]')

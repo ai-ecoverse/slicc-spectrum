@@ -673,7 +673,7 @@ export class SliccChat extends ThemedElement {
       this.#tick = undefined;
     }
     this.#refocus();
-    const asks = [...this.renderRoot.querySelectorAll<HTMLElement>('.ask-list > .decision-turn')];
+    const asks = [...this.renderRoot.querySelectorAll<HTMLElement>('.ask-list .decision-turn')];
     for (const turn of asks) turn.tabIndex = turn === asks.at(-1) ? 0 : -1;
   }
 
@@ -946,9 +946,10 @@ export class SliccChat extends ThemedElement {
           : nothing
       }
       <div class="ask-list" aria-live="polite">${repeat(
-        open ? asks : asks.slice(-1),
+        asks,
         ({ key }) => key,
-        ({ card }) => card
+        ({ card }, index) =>
+          html`<div class="ask" ?hidden=${!open && index < older.length}>${card}</div>`
       )}</div>
     </div></section>`;
   }
