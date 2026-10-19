@@ -406,6 +406,10 @@ export class SliccUpdates extends ModelElement {
         line-height: var(--swc-line-height-200);
         overflow-wrap: anywhere;
       }
+      [data-managed] code {
+        display: inline-block;
+        max-width: 100%;
+      }
       .warnings {
         display: flex;
         flex-direction: column;
