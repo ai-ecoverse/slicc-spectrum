@@ -280,3 +280,35 @@ test('a sign-in that opens no window keeps the card’s own detail while it sign
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('a sign-in that takes long asks whether the window was closed, and keeps Cancel', async (t) => {
+  const page = await open(t, { delay: '300' });
+  await page.evaluate(() => {
+    customElements.get('slicc-chat').closedAfter = 400;
+    return true;
+  });
+  await kitchen(page);
+  await click(page, 'k-s3', 'login');
+  await page.until(() => window.cardState('k-s3').state === 'signing-in');
+  assert.equal(
+    (await page.evaluate(() => window.cardState('k-s3'))).detail,
+    'Continue in the sign-in window that opened.'
+  );
+  await page.until(
+    () =>
+      window.cardState('k-s3').detail === 'Closed the sign-in window? Cancel, then Log in again.'
+  );
+  assert.deepEqual((await page.evaluate(() => window.cardState('k-s3'))).actions, [
+    'cancel-login',
+    'login',
+  ]);
+  await click(page, 'k-s3', 'cancel-login');
+  await page.until(() => window.cardState('k-s3').label === 'Log in');
+  await click(page, 'k-s3', 'login');
+  await page.until(() => window.cardState('k-s3').state === 'signing-in');
+  assert.equal(
+    (await page.evaluate(() => window.cardState('k-s3'))).detail,
+    'Continue in the sign-in window that opened.'
+  );
+  assert.deepEqual(page.errors, []);
+});

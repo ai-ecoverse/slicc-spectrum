@@ -83,6 +83,7 @@ export interface Login {
   error?: string;
   cancel?: boolean;
   window?: boolean;
+  waited?: boolean;
   provider?: string;
 }
 
@@ -335,6 +336,7 @@ function actionLabel(action: ErrorAction, handlers: Handlers, messageId: string)
 
 const signedIn = 'Signed in. Retry to send it again.';
 const continuing = 'Continue in the sign-in window that opened.';
+const closed = 'Closed the sign-in window? Cancel, then Log in again.';
 
 function stopSigningIn(event: Event, handlers: Handlers, account: string, id: string): void {
   const main = (event.currentTarget as HTMLElement).nextElementSibling as HTMLElement;
@@ -370,11 +372,8 @@ function errorCard(
       ? handlers.login?.(item.account, id)
       : undefined;
   const resolved = login?.state === 'connected';
-  const text = resolved
-    ? signedIn
-    : login?.state === 'signing-in' && login.window
-      ? continuing
-      : item.text;
+  const signing = login?.state === 'signing-in' && login.window;
+  const text = resolved ? signedIn : signing ? (login.waited ? closed : continuing) : item.text;
   const title = resolved && login.provider ? `Signed in to ${login.provider} again.` : item.title;
   const failure = login?.state === 'idle' ? login.error : undefined;
   return html`<div class="error-card" role=${resolved ? nothing : 'alert'} aria-atomic=${resolved ? nothing : 'false'} data-id=${id || nothing} data-login=${login?.state ?? nothing}>
