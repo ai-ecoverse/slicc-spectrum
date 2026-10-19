@@ -2764,6 +2764,97 @@ test('licks sit on the right with a byline, a quiet chevron on their toggle and 
   assert.deepEqual(page.errors, []);
 });
 
+test('scoop-notify licks read in plain language, expand to the report and open its file', async (t) => {
+  const page = await open(t, { delay: '0' });
+  await page.evaluate(() => window.model.agent.select('cone-harbor'));
+  await page.until(() => !!window.chatPart('.lick[data-id=m-h7]'));
+  const seen = await page.evaluate(() => {
+    const turn = (id) => window.chatPart(`.lick[data-id=${id}]`).closest('.lick-turn');
+    return ['m-h5', 'm-h6', 'm-h7'].map((id) => {
+      const lick = window.chatPart(`.lick[data-id=${id}]`);
+      return {
+        who: turn(id).querySelector('.meta .who').textContent,
+        line: lick.querySelector('.lick-head .text').textContent,
+        bracket: /\[scoop|\[@/.test(turn(id).textContent),
+        severity: lick.dataset.severity ?? null,
+        icon: !!turn(id).querySelector('.severity-icon'),
+        spoken: [...lick.querySelectorAll('.lick-head .sr')]
+          .map((node) => node.textContent)
+          .join(''),
+      };
+    });
+  });
+  assert.deepEqual(seen, [
+    {
+      who: 'amber-heron (scout)',
+      line: 'The upstream allows 60 requests a minute, so a one-minute cache keeps harbor under it.',
+      bracket: false,
+      severity: null,
+      icon: false,
+      spoken: '',
+    },
+    {
+      who: 'grey-tern (worker)',
+      line: 'Scoop grey-tern failed',
+      bracket: false,
+      severity: 'error',
+      icon: true,
+      spoken: 'Error: ',
+    },
+    {
+      who: 'salt-gull (scout)',
+      line: 'Scoop salt-gull finished',
+      bracket: false,
+      severity: null,
+      icon: false,
+      spoken: '',
+    },
+  ]);
+  await page.evaluate(() => {
+    window.chatPart('details.lick[data-id=m-h5] > summary').click();
+    window.chatPart('details.lick[data-id=m-h6] > summary').click();
+    return true;
+  });
+  await page.until(() => window.chatPart('details.lick[data-id=m-h5]').open);
+  const expanded = await page.evaluate(() => {
+    const report = (id) => window.chatPart(`details.lick[data-id=${id}] .report`);
+    return {
+      heading: report('m-h5').querySelector('.text .heading')?.textContent,
+      strong: report('m-h5').querySelector('.text strong')?.textContent,
+      bracket: /\[scoop/.test(report('m-h5').textContent + report('m-h6').textContent),
+      failed: report('m-h6').querySelector('.text strong')?.textContent,
+      buttons: ['m-h5', 'm-h6'].map(
+        (id) => report(id).querySelector('[data-action=open-report]')?.textContent ?? null
+      ),
+    };
+  });
+  assert.deepEqual(expanded, {
+    heading: 'Upstream limits',
+    strong: '60 requests a minute',
+    bracket: false,
+    failed: '120 s',
+    buttons: ['Open the report', null],
+  });
+  await page.evaluate(() => {
+    window.opened = [];
+    window
+      .chatPart()
+      .addEventListener('open-file', (event) => window.opened.push(event.detail.path));
+    window.chatPart('details.lick[data-id=m-h5] [data-action=open-report]').click();
+    return true;
+  });
+  assert.deepEqual(await page.evaluate(() => window.opened), [
+    '/shared/scoop-notifications/amber-heron.md',
+  ]);
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .api.getPanel('file:/shared/scoop-notifications/amber-heron.md')
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('decision cards pile at the top, reveal from the keyboard and leave the pile with focus kept', async (t) => {
   const page = await open(t, { delay: '0' });
   await page.send('Emulation.setEmulatedMedia', {

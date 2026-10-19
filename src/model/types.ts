@@ -220,6 +220,8 @@ export interface LickMessage {
   state?: LickState;
   severity?: 'warn' | 'error';
   expiresAt?: number;
+  summary?: string;
+  report?: string;
 }
 
 export type Message = UserMessage | AssistantMessage | SystemMessage | ToolMessage | LickMessage;

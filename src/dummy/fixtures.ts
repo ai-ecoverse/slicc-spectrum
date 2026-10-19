@@ -258,6 +258,9 @@ const suggestions = `${JSON.stringify(
 )}
 `;
 
+const upstreamReport =
+  '# Upstream limits\n\n## Summary\n\nThe forecast upstream allows **60 requests a minute** per key and answers `429` with a `Retry-After` header past that. A one-minute cache keeps harbor well under it.\n\n## Findings\n\n- Bursts after midnight UTC reach about 40 requests a minute.\n- `Retry-After` is in seconds, never a date.\n- Timeouts come from the upstream, not the network: 3 in the last 1,000 calls.\n';
+
 export const files: Record<string, string> = {
   '/workspace/harbor/README.md': readme,
   '/workspace/harbor/package.json': pkg,
@@ -275,6 +278,7 @@ export const files: Record<string, string> = {
   '/workspace/skills/release-notes/scripts/collect.jsh': collect,
   '/shared/MEMORY.md': memory,
   '/shared/notes/2026-10-04-standup.md': standup,
+  '/shared/scoop-notifications/amber-heron.md': upstreamReport,
   '/home/user/.bashrc': bashrc,
   '/home/.gelatiere/suggestions.json': suggestions,
   '/tmp/forecast-sample.json': sample,
@@ -656,6 +660,35 @@ export const conversations: Record<string, Message[]> = {
       title: 'quiet-otter',
       text: 'Started: add retries with backoff around the upstream fetch',
       createdAt: at(9),
+    },
+    {
+      id: 'm-h5',
+      role: 'lick',
+      channel: 'scoop-notify',
+      title: 'amber-heron (scout)',
+      text: '[scoop amber-heron (scout) completed]',
+      summary:
+        'The upstream allows 60 requests a minute, so a one-minute cache keeps harbor under it.',
+      report: '/shared/scoop-notifications/amber-heron.md',
+      body: `[scoop amber-heron (scout) completed]\n${upstreamReport}`,
+      createdAt: at(11),
+    },
+    {
+      id: 'm-h6',
+      role: 'lick',
+      channel: 'scoop-notify',
+      title: 'grey-tern (worker)',
+      text: '[scoop grey-tern (worker) failed]',
+      body: '[scoop grey-tern (worker) failed]\nThe deploy preview timed out after **120 s**. Nothing was pushed.',
+      createdAt: at(12),
+    },
+    {
+      id: 'm-h7',
+      role: 'lick',
+      channel: 'scoop-notify',
+      title: 'salt-gull (scout)',
+      text: '[scoop salt-gull (scout) completed]',
+      createdAt: at(13),
     },
   ],
   'scoop-otter': [
