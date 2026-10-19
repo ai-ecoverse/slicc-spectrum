@@ -1,3 +1,4 @@
+import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/close-button/swc-close-button.js';
 import '@adobe/spectrum-wc/components/progress-circle/swc-progress-circle.js';
@@ -652,8 +653,8 @@ export class SliccComposer extends ThemedElement {
         align-items: center;
         gap: var(--swc-spacing-75);
       }
-      .reattach swc-icon-attach {
-        flex: none;
+      .reattach swc-action-button {
+        color: var(--swc-neutral-subdued-content-color-default);
       }
       .popup {
         position: absolute;
@@ -757,8 +758,15 @@ export class SliccComposer extends ThemedElement {
     if (changed.has('agent') && this.agent && this.model && this.agent !== this.#agent) {
       this.#switch(this.agent);
     }
-    const attached = changed.has('attachments') && this.attachments.length > 0;
-    if (this.reattach && (attached || !this.value.trim())) this.reattach = null;
+    if (this.reattach && changed.has('attachments')) {
+      const back = new Set(
+        this.attachments
+          .filter((attachment) => !attachment.error)
+          .map((attachment) => attachment.name)
+      );
+      this.reattach = this.reattach.filter((file) => !back.has(file.name));
+    }
+    if (this.reattach && !(this.reattach.length && this.value.trim())) this.reattach = null;
     const edited = changed.has('value') || changed.has('attachments');
     if (edited && this.hasUpdated && !this.#agent && this.#starting())
       this.#waiting.draft = { value: this.value, attachments: this.attachments };
@@ -1706,7 +1714,7 @@ export class SliccComposer extends ThemedElement {
         >
           ${this.attachments.map((attachment) => this.#attachment(attachment))}
         </swc-prompt-field>
-        ${this.reattach?.length ? html`<p class="reattach" data-reattach><swc-icon-attach size="xs" aria-hidden="true"></swc-icon-attach> ${reattach(this.reattach)}</p>` : nothing}
+        ${this.reattach?.length ? html`<p class="reattach" data-reattach><swc-action-button size="s" quiet data-action="reattach" @click=${() => this.renderRoot.querySelector<HTMLInputElement>('input[type=file]')?.click()}><swc-icon-attach slot="icon"></swc-icon-attach>${reattach(this.reattach)}</swc-action-button></p>` : nothing}
         <swc-popover placement="top-start" accessible-label="Add to the message" @keydown=${this.#menuKey} @swc-after-open=${() => this.renderRoot.querySelector<HTMLElement>('sp-menu')?.focus()}>
           <sp-menu label="Add to the message" @change=${this.#add}>
             <sp-menu-item value="upload">Upload from this computer</sp-menu-item>

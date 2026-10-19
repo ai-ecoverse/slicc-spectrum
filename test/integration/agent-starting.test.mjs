@@ -296,6 +296,7 @@ test('after a reload a row whose file was lost is held, Put back fills the field
     const composer = window.chat().querySelector('slicc-composer');
     composer.attachments = [
       { id: 'n1', name: 'tides.csv', kind: 'text', mimeType: 'text/csv', size: 3, text: 'a,b' },
+      { id: 'n2', name: 'notes.txt', kind: 'text', mimeType: 'text/plain', size: 3, text: 'abc' },
     ];
     composer.value = 'Compare with the attached tides';
     composer.send();
@@ -318,7 +319,7 @@ test('after a reload a row whose file was lost is held, Put back fills the field
       ['Queued: Check the harbor tides', null, false],
       [
         'Held: Compare with the attached tides',
-        ', Not sent: tides.csv wasn’t kept after reload.',
+        ', Not sent: 2 files weren’t kept after reload. (tides.csv, notes.txt)',
         true,
       ],
       ['Queued: Then list the moorings', null, false],
@@ -352,18 +353,30 @@ test('after a reload a row whose file was lost is held, Put back fills the field
     'Then list the moorings',
   ]);
   assert.equal(await page.evaluate(() => sessionStorage.getItem('slicc-spectrum.starting')), null);
-  assert.equal(
-    await page.evaluate(() =>
-      window.composer().querySelector('[data-reattach]')?.textContent.trim()
-    ),
-    'Attach tides.csv again.'
+  const hint = () => window.composer().querySelector('[data-reattach]')?.textContent.trim() ?? null;
+  assert.equal(await page.evaluate(hint), 'Attach tides.csv and notes.txt again.');
+  const attach = (names) =>
+    page.evaluate((names) => {
+      window.chat().querySelector('slicc-composer').attachments = names.map((name, index) => ({
+        id: `r${index}`,
+        name,
+        kind: 'text',
+        mimeType: 'text/plain',
+        size: 3,
+        text: 'abc',
+      }));
+      return true;
+    }, names);
+  await attach(['tides.csv']);
+  await page.until(
+    () =>
+      window.composer().querySelector('[data-reattach]')?.textContent.trim() ===
+      'Attach notes.txt again.'
   );
-  await page.evaluate(() => {
-    window.chat().querySelector('slicc-composer').attachments = [
-      { id: 'n9', name: 'tides.csv', kind: 'text', mimeType: 'text/csv', size: 3, text: 'a,b' },
-    ];
-    return true;
-  });
+  await attach(['tides.csv', 'other.csv']);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(await page.evaluate(hint), 'Attach notes.txt again.');
+  await attach(['tides.csv', 'notes.txt']);
   await page.until(() => !window.composer().querySelector('[data-reattach]'));
   assert.deepEqual(page.errors, []);
 });
