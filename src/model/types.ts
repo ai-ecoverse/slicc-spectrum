@@ -522,6 +522,7 @@ export interface AccountField {
   placeholder?: string;
   help?: string;
   customBase?: true;
+  vaultSetting?: string;
   options?: readonly AccountFieldOption[];
   value?: string;
 }
@@ -1505,6 +1506,7 @@ export interface VaultPort extends Subscribable<VaultEvents> {
   lock?(): Promise<void>;
   dismissBackupReminder?(): Promise<void>;
   endpoints?(change: VaultEndpointChange): Promise<void>;
+  settings?(name: string, kind: RecordKind, settings: Record<string, string>): Promise<void>;
   button(): VaultButton;
 }
 

@@ -122,6 +122,10 @@ function register(server: string, url: string | undefined): void {
   } catch {}
 }
 
+function words(message: string, word: string): boolean {
+  return new RegExp(`\\b${word.replace(/[^a-z0-9 ]/gi, '\\$&')}\\b`, 'i').test(message);
+}
+
 const popup = (account: Account) => account.group === 'mcp' && account.auth === 'oauth';
 
 const start = (options: readonly AccountFieldOption[], value?: string) =>
@@ -590,21 +594,24 @@ export class SliccSettings extends ThemedElement {
     const model = this.model;
     const vault = this.#vault(account) as VaultPort;
     const { id } = account;
-    const problem = valueProblem(value);
+    const keyed = value !== '' || !this.#keyOptional(account);
+    const problem = keyed ? valueProblem(value) : null;
     if (problem) {
       this.#refuse(id, 'value', problem);
       return;
     }
     if (vault.status()?.locked) return;
+    const settings = this.#settingsOf(account, fields);
     const options =
       account.group === 'mcp'
         ? { kind: 'mcp' as const, server: serverOf(account) }
-        : { kind: 'model' as const, provider: account.id };
+        : { kind: 'model' as const, provider: account.id, ...(settings ? { settings } : {}) };
     this.#busy(id, true);
     this.failure = null;
     const url = this.#mcpUrl(account);
     try {
-      await vault.put?.(recordName(account), value, undefined, options);
+      if (keyed) await vault.put?.(recordName(account), value, undefined, options);
+      else if (settings) await vault.settings?.(recordName(account), 'model', settings);
       if (url) {
         const server = serverOf(account);
         const old = registrations()[server];
@@ -616,7 +623,7 @@ export class SliccSettings extends ThemedElement {
       }
     } catch (error) {
       this.#busy(id, false);
-      if (this.model === model) this.#refuse(id, 'value', failureText(error));
+      if (this.model === model) this.#refused(account, failureText(error), keyed);
       return;
     }
     if (this.model !== model || this.entering !== id) {
@@ -624,6 +631,42 @@ export class SliccSettings extends ThemedElement {
       return;
     }
     await this.#connectBases(account, undefined, fields, vault);
+  }
+
+  #settingsOf(
+    account: Account,
+    fields: Record<string, string> | undefined
+  ): Record<string, string> | undefined {
+    const settable = (account.fields ?? []).filter((field) => field.vaultSetting);
+    if (account.group === 'mcp' || !settable.length) return undefined;
+    return Object.fromEntries(
+      settable.flatMap((field) => {
+        const value = fields?.[field.name];
+        if (!value || (field.customBase && this.#baseOf(value))) return [];
+        return [[field.vaultSetting as string, value]];
+      })
+    );
+  }
+
+  #keyOptional(account: Account): boolean {
+    if (!account.fields?.some((field) => field.vaultSetting || field.customBase)) return false;
+    const name = recordName(account);
+    return !!this.model?.vault
+      ?.list()
+      ?.secrets.some(
+        (secret) => secret.name === name && secret.kind === 'model' && secret.state !== 'removed'
+      );
+  }
+
+  #refused(account: Account, message: string, keyed: boolean): void {
+    const field = (account.fields ?? []).find((candidate) =>
+      [candidate.vaultSetting, candidate.name, candidate.label].some(
+        (word) => word && words(message, word)
+      )
+    );
+    if (field) this.#refuse(account.id, field.name, message);
+    else if (keyed) this.#refuse(account.id, 'value', message);
+    else this.failure = { id: account.id, message };
   }
 
   #baseOf(value: string | undefined): string | undefined {
@@ -715,7 +758,7 @@ export class SliccSettings extends ThemedElement {
         candidate.customBase &&
         !!fields?.[candidate.name] &&
         [candidate.name, candidate.label, 'https', 'url', 'port', 'userinfo'].some((word) =>
-          new RegExp(`\\b${word.replace(/[^a-z0-9 ]/gi, '\\$&')}\\b`, 'i').test(message)
+          words(message, word)
         )
     );
     if (!field) return;
@@ -1002,7 +1045,8 @@ export class SliccSettings extends ThemedElement {
     if (account.blocked) return false;
     if (!this.#offered()) return true;
     const required = (account.fields ?? []).filter((field) => field.required && !field.options);
-    return ['value', ...required.map((field) => field.name)].every((name) => this.filled.has(name));
+    const key = this.#keyOptional(account) ? [] : ['value'];
+    return [...key, ...required.map((field) => field.name)].every((name) => this.filled.has(name));
   }
 
   #fill(event: Event): void {
