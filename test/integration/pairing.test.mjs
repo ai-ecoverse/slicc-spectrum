@@ -171,6 +171,48 @@ test('a pairing that reaches confirm unfolds itself, scrolls into view, and canc
   assert.deepEqual(page.errors, []);
 });
 
+test('a confirm that rejects after Cancel leaves no stale error under the field', async (t) => {
+  const page = await open(t, 'pairing');
+  await network(page);
+  await page.evaluate(() => {
+    const port = window.model.network;
+    const confirm = port.confirmPairing;
+    port.confirmPairing = async () => {
+      confirm();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await new Promise((resolve) => {
+        window.rejectConfirm = resolve;
+      });
+      throw new Error('Pairing was cancelled.');
+    };
+    return port.pairComputer('http://127.0.0.1:7801/p/9k');
+  });
+  await page.until(() => window.pairState() === 'confirm');
+  await page.evaluate(() => {
+    window.net().querySelector('[data-action=confirm-pairing]').click();
+    return true;
+  });
+  await page.until(() => window.pairState() === 'linking' && !!window.rejectConfirm);
+  await page.evaluate(() => {
+    window.net().querySelector('[data-action=cancel-pairing]').click();
+    return true;
+  });
+  await page.until(() => window.pairState() === 'idle');
+  await page.evaluate(() => {
+    window.rejectConfirm();
+    return true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.net().querySelector('[data-error=pairing]'),
+      window.net().querySelector('#pair-url').invalid,
+    ]),
+    [null, false]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a failed pairing tries again with the field focused, or dismisses', async (t) => {
   const page = await open(t, 'pairing');
   await network(page);
@@ -261,13 +303,20 @@ test('a forgotten device shows its note with an icon', async (t) => {
       const row = window.net().querySelector('[data-device=link-quay]');
       const note = row.querySelector('[data-note]');
       return [
+        window.net().querySelector('details').open,
         row.dataset.state,
         note.textContent.replace(/\s+/g, ' ').trim(),
         !!note.querySelector('swc-icon-alert-triangle'),
         row.querySelectorAll('sp-switch, [data-access], [data-control]').length,
       ];
     }),
-    ['offline', 'Warning: SLICC on quay-studio no longer knows this seven. Pair it again.', true, 0]
+    [
+      true,
+      'offline',
+      'Warning: SLICC on quay-studio no longer knows this seven. Pair it again.',
+      true,
+      0,
+    ]
   );
   assert.deepEqual(page.errors, []);
 });

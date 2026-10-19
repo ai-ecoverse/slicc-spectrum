@@ -797,6 +797,9 @@ export class SliccNetwork extends ModelElement {
       .pairing h3 {
         margin: 0;
       }
+      .pairing h3:focus {
+        outline: none;
+      }
       .pairing code {
         font-family: var(--swc-code-font-family-stack);
         font-size: var(--swc-font-size-75);
@@ -807,7 +810,8 @@ export class SliccNetwork extends ModelElement {
         display: inline-block;
         padding: 0 var(--swc-spacing-75);
         border-radius: var(--swc-corner-radius-small-default);
-        background: var(--swc-background-layer-2-color);
+        background: var(--swc-gray-200);
+        font-size: var(--swc-font-size-100);
       }
       .pair-field {
         display: flex;
@@ -1024,26 +1028,32 @@ export class SliccNetwork extends ModelElement {
   ): Promise<boolean> {
     this.pairBusy = action;
     this.pairError = '';
+    let ok = true;
+    let error: unknown;
     try {
       await run();
-      if (then) {
-        await this.updateComplete;
-        this.focusOn(then);
-      }
-      return true;
-    } catch (error) {
+    } catch (reason) {
+      ok = false;
+      error = reason;
+    }
+    if (this.pairBusy !== action) return false;
+    this.pairBusy = '';
+    if (!ok) {
       this.pairError = failure(error);
       return false;
-    } finally {
-      if (this.pairBusy === action) this.pairBusy = '';
     }
+    if (then) {
+      await this.updateComplete;
+      this.focusOn(then);
+    }
+    return true;
   }
 
   async #submitPair(event: Event, port: NetworkPort): Promise<void> {
     event.preventDefault();
     const field = this.renderRoot.querySelector('#pair-url') as HTMLElement & { value: string };
     const url = field.value.trim();
-    if (!url || this.pairBusy) return;
+    if (!url || this.pairBusy || !port.pairComputer) return;
     if (await this.#pairAct('pair', () => port.pairComputer?.(url))) {
       field.value = '';
       this.pairFilled = false;
@@ -1076,7 +1086,7 @@ export class SliccNetwork extends ModelElement {
             ${this.#pairButton(port, 'cancel-pairing', 'Cancel')}
           </div>`;
       case 'linking':
-        return html`<div class="linking"><swc-progress-circle size="s" indeterminate label="Linking"></swc-progress-circle><span>Linking SLICC on this computer${after}…</span></div>
+        return html`<div class="linking"><swc-progress-circle size="s" indeterminate label="Linking" aria-hidden="true"></swc-progress-circle><span>Linking SLICC on this computer${after}…</span></div>
           <div class="actions">${this.#pairButton(port, 'cancel-pairing', 'Cancel')}</div>`;
       case 'linked':
         return html`<swc-status-light size="m" variant="positive" data-paired><span>Linked ${deviceName(pairing.name ?? 'SLICC on this computer')}${after}.</span></swc-status-light>
@@ -1092,7 +1102,7 @@ export class SliccNetwork extends ModelElement {
           <form class="pair-field" data-form="pair" @submit=${(event: Event) => this.#submitPair(event, port)}>
             <sp-field-label for="pair-url" size="m">Pairing link</sp-field-label>
             <sp-textfield id="pair-url" size="m" type="url" autocomplete="off" placeholder="http://127.0.0.1:…" ?invalid=${!!this.pairError} @input=${(event: Event) => this.#pairInput(event)} @keydown=${(event: KeyboardEvent) => this.#enterKey(event)}>${this.pairError ? html`<sp-help-text slot="negative-help-text" icon data-error="pairing">${this.pairError}</sp-help-text>` : nothing}</sp-textfield>
-            <swc-button size="m" variant="accent" data-action="pair" ?pending=${this.pairBusy === 'pair'} ?disabled=${!this.pairFilled} @click=${(event: Event) => this.#sendKey(event)}>Link</swc-button>
+            <swc-button size="m" variant="accent" data-action="pair" ?pending=${this.pairBusy === 'pair'} ?disabled=${!this.pairFilled || !port.pairComputer} @click=${(event: Event) => this.#sendKey(event)}>Link</swc-button>
           </form>`;
     }
   }
@@ -1553,7 +1563,8 @@ export class SliccNetwork extends ModelElement {
     const [variant, label] = linksLight(links);
     const pairing = links.pairing;
     const joinable = hasTray(links) || !!pairing;
-    const active = !!pairing && pairing.state !== 'idle';
+    const active =
+      !!pairing && (pairing.state !== 'idle' || links.devices.some((device) => device.note));
     return html`<section aria-labelledby="links" data-links=${linksSummary(links)}>
       <div class="head">
         <h2 id="links">Linked devices</h2>
