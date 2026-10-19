@@ -374,7 +374,7 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
         ? {
             installs: item.installs.map((install) => ({
               ...install,
-              version: item.offered ?? install.version,
+              version: item.offered as string,
             })),
           }
         : {}),
