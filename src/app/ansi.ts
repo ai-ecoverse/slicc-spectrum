@@ -49,8 +49,6 @@ const tints = [
   'gray-subtle-background-color-default',
 ];
 
-const greys = new Set([0, 7, 8, 15]);
-
 const plain: AnsiStyle = {
   bold: false,
   dim: false,
@@ -244,8 +242,7 @@ function paint(style: AnsiStyle): [string | null, string | null] {
   }
   if (typeof bg !== 'number') return [swatch(fg), bg];
   const tint = `var(--swc-${bg === 8 ? 'gray-700' : tints[bg % 8]})`;
-  if (bg % 8 === 0) return ['var(--swc-gray-25)', tint];
-  return [typeof fg === 'number' && greys.has(fg) ? null : swatch(fg), tint];
+  return [bg % 8 === 0 ? 'var(--swc-gray-25)' : null, tint];
 }
 
 function inline(style: AnsiStyle): string {
