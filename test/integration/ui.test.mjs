@@ -8789,24 +8789,78 @@ test('a panel that takes focus without the keyboard shows no focus ring, and sho
   assert.deepEqual(page.errors, []);
 });
 
-test('a vault endpoints purge reads as automatic in the activity log, with each provider and URL', async (t) => {
+test('vault endpoints entries read as automatic, and Unpin unpins a pinned MCP token', async (t) => {
   const page = await secretsPage(t, { vault: 'purged' });
   await page.until(
     () => !!window.settingsPart('slicc-secrets', 'ol.audit li[data-type=endpoints]')
   );
-  const row = await page.evaluate(() => {
-    const li = window.settingsPart('slicc-secrets', 'ol.audit li[data-type=endpoints]');
-    return {
-      text: li.querySelector('.what').textContent.replace(/\s+/g, ' ').trim(),
+  const rows = () =>
+    [
+      ...window
+        .settingsPart('slicc-secrets')
+        .shadowRoot.querySelectorAll('ol.audit li[data-type=endpoints]'),
+    ].map((li) => ({
+      text: (() => {
+        const what = li.querySelector('.what').cloneNode(true);
+        what.querySelector('.unpin')?.remove();
+        return what.textContent.replace(/\s+/g, ' ').trim();
+      })(),
       by: !!li.querySelector('.by'),
-      codes: [...li.querySelectorAll('code')].map((code) => code.textContent),
-    };
+      unpin: !!li.querySelector('[data-action=unpin]'),
+    }));
+  const order = await page.evaluate(() =>
+    [...window.settingsPart('slicc-secrets').shadowRoot.querySelectorAll('ol.audit li')]
+      .slice(0, 3)
+      .map((li) => Date.parse(li.querySelector('time').getAttribute('datetime')))
+  );
+  assert.deepEqual(
+    [...order].sort((a, b) => b - a),
+    order
+  );
+  assert.deepEqual(await page.evaluate(rows), [
+    {
+      text: 'DOCS_MCP_TOKEN pinned to docs.example automatically, on first use',
+      by: false,
+      unpin: true,
+    },
+    {
+      text: 'Removed custom model URLs an agent set, automatically: OpenAI at models.harbor.example, Anthropic at relay.harbor.example. Only you can set a model URL now, in Settings › Accounts. Kept the MCP servers your tokens use, automatically: docs at docs.example',
+      by: false,
+      unpin: false,
+    },
+  ]);
+  await page.evaluate(() => {
+    window.model.vault.fail('EACCES', 'vault is locked');
+    window
+      .settingsPart('slicc-secrets', 'ol.audit li[data-type=endpoints] [data-action=unpin]')
+      .click();
+    return true;
   });
-  assert.deepEqual(row, {
-    text: 'Removed custom model URLs an agent set, automatically: openai https://models.harbor.example/v1, anthropic https://relay.harbor.example',
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-error=unpin]'));
+  assert.equal(
+    await page.evaluate(() =>
+      window.settingsPart('slicc-secrets', '[data-error=unpin]').textContent.trim()
+    ),
+    'Unlock the vault first'
+  );
+  await page.evaluate(() => {
+    window
+      .settingsPart('slicc-secrets', 'ol.audit li[data-type=endpoints] [data-action=unpin]')
+      .click();
+    return true;
+  });
+  await page.until(() =>
+    window
+      .settingsPart('slicc-secrets', 'ol.audit li[data-type=endpoints]')
+      ?.textContent.includes('unpinned')
+  );
+  const after = await page.evaluate(rows);
+  assert.deepEqual(after[0], {
+    text: 'DOCS_MCP_TOKEN unpinned from docs.example; the next use pins it again',
     by: false,
-    codes: ['https://models.harbor.example/v1', 'https://relay.harbor.example'],
+    unpin: false,
   });
+  assert.equal(after[1].unpin, false);
   await clean(page);
   assert.deepEqual(page.errors, []);
 });

@@ -58,6 +58,7 @@ export {
 } from './dummy/network.ts';
 export type { NoticeScenario } from './dummy/notices.ts';
 export { DummyNotices, noticeFixtures } from './dummy/notices.ts';
+export { providerAccount, providerAccounts, providerFixtures } from './dummy/providers.ts';
 export type { TabsScenario } from './dummy/tabs.ts';
 export { DummyTabs, tabsFixtures } from './dummy/tabs.ts';
 export type {
@@ -75,6 +76,7 @@ export {
   vaultFixtures,
   vaultNotice,
   vaultOlder,
+  vaultPinned,
   vaultPolicy,
   vaultPurged,
   vaultRefused,
