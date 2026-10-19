@@ -726,3 +726,78 @@ test('your packages say where they live, and that updates keep them until you re
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('a package installed elsewhere shows as installed where it lives, never offers Install, and updates in place', async (t) => {
+  const page = await installing(t);
+  const row = await page.evaluate(async () => {
+    const port = window.model.updates;
+    const element = window.$('slicc-app', 'slicc-dock', 'slicc-updates');
+    const set = (patch) => {
+      const items = port
+        .packages()
+        .map((item) => (item.id === 'git' ? { ...item, ...patch } : item));
+      port.packages = () => items;
+      port.emit('packages', items);
+    };
+    const read = async () => {
+      await element.updateComplete;
+      const li = element.shadowRoot.querySelector('li[data-id=git]');
+      return {
+        state: li.dataset.state,
+        light: li.querySelector('swc-status-light')?.textContent.trim(),
+        version: li.querySelector('.version')?.textContent,
+        where: [...li.querySelectorAll('[data-install]')].map((span) => span.textContent),
+        actions: [...li.querySelectorAll('swc-button')].map((button) => button.dataset.action),
+        managed: li.querySelector('[data-managed]')?.textContent,
+      };
+    };
+    const installs = [
+      { version: '2.47.1', where: '/home/cone/.local/share/pnpm', user: 'cone', manager: 'pnpm' },
+    ];
+    set({ state: 'available', version: null, actions: ['install'], installs });
+    const found = await read();
+    set({ state: 'outdated', version: '2.47.1', offered: '2.48.0', actions: ['update'], installs });
+    return { found, newer: await read() };
+  });
+  assert.deepEqual(row.found, {
+    state: 'installed',
+    light: 'Installed',
+    version: '2.47.1',
+    where: ['for cone, via pnpm'],
+    actions: [],
+    managed: 'Managed by pnpm. Remove it with pnpm remove -g @harbor/git-wasm.',
+  });
+  assert.deepEqual(row.newer, {
+    state: 'outdated',
+    light: 'Update available',
+    version: '2.47.1 → 2.48.0',
+    where: ['for cone, via pnpm'],
+    actions: ['update'],
+    managed: 'Managed by pnpm. Remove it with pnpm remove -g @harbor/git-wasm.',
+  });
+
+  await page.goto('/ui/?updates=current&packages=elsewhere&color=light&delay=20');
+  await page.until(() => window.ready && window.app.dock.api.panels.length > 0);
+  await page.evaluate(() => {
+    window.pkg = (id, selector = '') =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-updates', `li[data-id=${id}] ${selector}`.trim());
+    window.app.show('updates');
+  });
+  await page.until(() => window.pkg('tsc', '[data-action=update]'));
+  assert.equal(await page.evaluate(() => window.pkg('git', '[data-action=install]')), null);
+  assert.equal(
+    await page.evaluate(() => window.pkg('ruff', '[data-action=install]')?.textContent.trim()),
+    'Install'
+  );
+  await page.evaluate(() => window.pkg('tsc', '[data-action=update]').click());
+  await page.until(() => window.pkg('tsc')?.dataset.state === 'installed');
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.pkg('tsc', '.version').textContent,
+      window.pkg('tsc', '[data-install]').textContent,
+      [...window.pkg('tsc').querySelectorAll('swc-button')].length,
+    ]),
+    ['5.9.3', 'for cone, via pnpm', 0]
+  );
+  assert.deepEqual(page.errors, []);
+});
