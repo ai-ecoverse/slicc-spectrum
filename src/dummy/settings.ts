@@ -1,6 +1,7 @@
 import { Emitter } from '../model/emitter.ts';
 import type {
   Account,
+  AccountField,
   AccountStatus,
   ModelOption,
   ProviderOption,
@@ -14,6 +15,28 @@ import { providerAccount } from './providers.ts';
 export const dummySettingsKey = 'slicc-ui.settings';
 export const signInClosed = 'The sign-in window was closed before it finished.';
 
+export type DummyTransport = 'none' | 'extension' | 'link';
+
+function chosen(
+  fields: readonly AccountField[] | undefined,
+  values: Record<string, string> | undefined
+): string[] {
+  return (fields ?? []).flatMap((field) => {
+    const option = field.options?.find((candidate) => candidate.value === values?.[field.name]);
+    return option ? [option.label] : [];
+  });
+}
+
+function kept(
+  fields: readonly AccountField[] | undefined,
+  values: Record<string, string> | undefined
+): Pick<Account, 'fields'> {
+  if (!(fields && values)) return {};
+  return {
+    fields: fields.map((field) => ({ ...field, value: values[field.name] ?? field.value })),
+  };
+}
+
 export class DummySettings extends Emitter<SettingsEvents> implements SettingsPort {
   #settings: Settings;
   #accounts: Account[];
@@ -24,6 +47,8 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   #signIns = new Map<string, { before: AccountStatus; stop: () => void }>();
   #gated: boolean;
   #fails: boolean;
+  #transport: DummyTransport | undefined;
+  #options: readonly ProviderOption[] = [];
   readonly connects: Array<{
     id: string;
     gesture: boolean | null;
@@ -41,11 +66,15 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
     keys: readonly string[] = [dummySettingsKey],
     gated = false,
     login?: 'ok' | 'fail',
-    providers?: readonly ProviderOption[]
+    providers?: readonly ProviderOption[],
+    transport?: DummyTransport
   ) {
     super();
+    this.#transport = transport;
     if (providers) {
-      this.providers = () => providers;
+      this.#options = providers;
+      this.providers = () =>
+        this.#transport === 'none' ? providers.map((option) => this.#block(option)) : providers;
       this.remove = async (id) => this.#drop(id);
     }
     this.#fails = login === 'fail';
@@ -90,7 +119,18 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   }
 
   accounts(): readonly Account[] {
-    return this.#accounts.map((account) => ({ ...account }));
+    return this.#accounts.map((account) => this.#block({ ...account }));
+  }
+
+  #block<T extends Account | ProviderOption>(row: T): T {
+    if (this.#transport !== 'none' || !row.needs) return row;
+    return { ...row, blocked: row.needs };
+  }
+
+  setTransport(transport: DummyTransport): void {
+    this.#transport = transport;
+    if (this.providers) this.emit('providers', this.providers());
+    this.emit('accounts', this.accounts());
   }
 
   #set(id: string, patch: Partial<Account>): void {
@@ -107,7 +147,7 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   }
 
   #add(id: string): boolean {
-    const option = this.providers?.().find((candidate) => candidate.id === id);
+    const option = this.#options.find((candidate) => candidate.id === id);
     if (!option || this.#accounts.some((account) => account.id === id)) return false;
     this.#accounts = [...this.#accounts, providerAccount(option)];
     this.emit('accounts', this.accounts());
@@ -154,9 +194,9 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
         : local
           ? 'On this device'
           : account?.auth === 'api-key'
-            ? 'API key'
+            ? ['API key', ...chosen(account.fields, fields)].join(' · ')
             : account?.identity || `${id}-user@example.com`;
-    this.#set(id, { status: 'connected', identity });
+    this.#set(id, { status: 'connected', identity, ...kept(account?.fields, fields) });
     return true;
   }
 

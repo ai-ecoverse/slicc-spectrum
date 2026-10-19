@@ -220,6 +220,8 @@ export interface LickMessage {
   state?: LickState;
   severity?: 'warn' | 'error';
   expiresAt?: number;
+  summary?: string;
+  report?: string;
 }
 
 export type Message = UserMessage | AssistantMessage | SystemMessage | ToolMessage | LickMessage;
@@ -504,6 +506,7 @@ export interface Account {
   status: AccountStatus;
   auth?: 'oauth' | 'api-key' | 'local';
   needs?: 'cors-free-transport';
+  blocked?: 'cors-free-transport';
   group?: 'providers' | 'mcp';
   secret?: 'api-key' | 'token';
   store?: 'vault';
@@ -511,6 +514,7 @@ export interface Account {
   keyUrl?: string;
   description?: string;
   vaultName?: string;
+  url?: string;
 }
 
 export interface AccountField {
@@ -559,6 +563,7 @@ export interface ProviderOption {
   fields?: AccountField[];
   keyUrl?: string;
   needs?: 'cors-free-transport';
+  blocked?: 'cors-free-transport';
   vaultName?: string;
 }
 
@@ -1198,6 +1203,8 @@ export interface SecretView {
   provider?: string;
   account?: string;
   server?: string;
+  url?: string;
+  pinned?: true;
   settings?: Record<string, string>;
   domains: string[];
   rules: Rule[];

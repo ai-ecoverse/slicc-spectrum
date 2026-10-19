@@ -14,7 +14,6 @@ const options: ProviderOption[] = [
     description: 'Claude and more through AWS',
     auth: 'fields',
     keyUrl: 'https://console.aws.example/bedrock/api-keys',
-    needs: 'cors-free-transport',
     fields: accounts.find((account) => account.id === 'amazon-bedrock')?.fields,
   },
   {
@@ -140,11 +139,12 @@ export function providerAccount(option: ProviderOption): Account {
     ...(option.keyUrl ? { keyUrl: option.keyUrl } : {}),
     ...(option.description ? { description: option.description } : {}),
     ...(option.needs ? { needs: option.needs } : {}),
+    ...(option.blocked ? { blocked: option.blocked } : {}),
     ...(option.vaultName ? { vaultName: option.vaultName } : {}),
   };
 }
 
-export function providerAccounts(rows: readonly Account[]): Account[] {
+export function providerAccounts(rows: readonly Account[], transport?: 'none'): Account[] {
   const added = (id: string, patch: Partial<Account>): Account => ({
     ...providerAccount(providerFixtures.find((option) => option.id === id) as ProviderOption),
     ...patch,
@@ -160,6 +160,7 @@ export function providerAccounts(rows: readonly Account[]): Account[] {
   return [
     ...providers,
     added('ollama', { status: 'connected', identity: 'On this device' }),
+    ...(transport ? [added('cloudflare', { status: 'connected', identity: 'API key' })] : []),
     ...servers,
   ];
 }

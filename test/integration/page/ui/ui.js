@@ -67,6 +67,8 @@ const model = createDummyModel({
   guests: params.get('guests') ?? 'off',
   accounts: params.get('accounts') ?? 'settings',
   providers: params.get('providers') ?? 'connected',
+  mcp: params.get('mcp') ?? undefined,
+  transport: params.get('transport') ?? undefined,
   hold: params.get('hold') ?? 'off',
   readonly: params.get('readonly') ?? 'off',
   browser: params.get('browser') ?? 'idle',

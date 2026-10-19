@@ -146,20 +146,18 @@ export const fieldStyles = css`
     font-size: var(--swc-font-size-75);
     color: var(--swc-neutral-subdued-content-color-default);
   }
-  .field input:not([type='checkbox']),
-  .field select {
+  .field input:not([type='checkbox']) {
     box-sizing: border-box;
     inline-size: 100%;
     font: inherit;
     min-height: var(--swc-component-height-100);
     padding: 0 var(--swc-spacing-100);
-    border: var(--swc-border-width-100) solid var(--swc-gray-400);
+    border: var(--swc-border-width-100) solid var(--swc-neutral-visual-color);
     border-radius: var(--swc-corner-radius-small-default);
     background: var(--swc-background-layer-2-color);
     color: inherit;
   }
-  .field input[aria-invalid='true'],
-  .field select[aria-invalid='true'] {
+  .field input[aria-invalid='true'] {
     border-color: var(--swc-negative-border-color-default);
   }
   .field input[type='file'] {
@@ -176,7 +174,6 @@ export const fieldStyles = css`
     color: inherit;
   }
   .field input:focus-visible,
-  .field select:focus-visible,
   input[type='checkbox']:focus-visible {
     outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
     outline-offset: var(--swc-focus-ring-gap);

@@ -196,7 +196,7 @@ const toolShapes: ToolCall[] = [
     'bash',
     'Check the staging routes',
     'wrangler routes list --env staging',
-    'ROUTE                                         ZONE              WORKER                  ENV\nforecast.harbor.example/v2/forecast/*         harbor.example    harbor-forecast-v2      staging\nerror: the route forecast.harbor.example/v2/units/* belongs to another account; ask its owner to release it first',
+    '\x1b[1mROUTE                                         ZONE              WORKER                  ENV\x1b[0m\nforecast.harbor.example/v2/forecast/*         harbor.example    \x1b[36mharbor-forecast-v2\x1b[0m      \x1b[2mstaging\x1b[0m\n\x1b[33mwarning:\x1b[0m the zone \x1b[1mharbor.example\x1b[0m has \x1b[37m2\x1b[0m routes on an old plan\n\x1b[1;31merror:\x1b[0m the route forecast.harbor.example/v2/units/* belongs to another account; ask its owner to release it first',
     {
       status: 'error',
       notes: [

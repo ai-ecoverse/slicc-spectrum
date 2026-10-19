@@ -56,6 +56,7 @@ import type {
   ToolStatus,
   UserMessage,
 } from '../model/types.ts';
+import { ansi } from './ansi.ts';
 import { markdown } from './markdown.ts';
 import { signInText } from './sign-in.ts';
 import type { ViewSet } from './view-state.ts';
@@ -483,7 +484,7 @@ export function tool(
   const label = `${call.title}, ${statusLabel(call.status)}`;
   const content = html`<div class="call">
       ${body(call, color)}
-      ${call.output ? html`<pre class="output">${call.output}</pre>` : nothing}
+      ${call.output ? html`<pre class="output">${ansi(call.output, call.status === 'running')}</pre>` : nothing}
       ${call.notes?.length ? notes(call.notes) : nothing}
       ${call.image ? html`<img class="shot" src=${call.image} alt=${call.title} />` : nothing}
       ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
@@ -622,7 +623,7 @@ function delegation(
 function part(entry: Exclude<MessagePart, { type: 'tool' }>, handlers: Handlers): TemplateResult {
   switch (entry.type) {
     case 'text':
-      return html`<div class="text">${markdown(entry.text)}</div>`;
+      return html`<div class="text markdown">${markdown(entry.text)}</div>`;
     case 'thinking':
       return html`<div class="thinking">${entry.text}</div>`;
     case 'media':
@@ -1066,6 +1067,47 @@ function decision(message: LickMessage, handlers: Handlers, pile: Pile): Templat
   </swc-conversation-turn>`;
 }
 
+const scoopWords: Record<string, string> = {
+  completed: 'finished',
+  failed: 'failed',
+  stopped: 'stopped',
+};
+
+const scoopBracket = /^\[(?:scoop |@)[^\]\n]* (completed|failed|stopped)\][^\S\n]*(?:\n|$)/;
+
+function scoopLine(message: LickMessage): [string, boolean, string, string] {
+  const icon = lickIcons[message.channel];
+  const [label] = lickLabels[message.channel];
+  const bracket = message.channel === 'scoop-notify' && scoopBracket.exec(message.text);
+  if (!bracket) return [message.text, false, icon, label];
+  const name = message.title.replace(/\s*\([^)]*\)$/, '');
+  const word = scoopWords[bracket[1]];
+  if (bracket[1] === 'completed') return [`Scoop ${name} ${word}`, false, icon, label];
+  return [`Scoop ${name} ${word}`, true, '❌', `Scoop ${word}`];
+}
+
+function lickBody(message: LickMessage): string | undefined {
+  return message.channel === 'scoop-notify'
+    ? (message.body ?? '').replace(scoopBracket, '').trim()
+    : message.body;
+}
+
+function lickContent(
+  message: LickMessage,
+  body: string | undefined,
+  handlers: Handlers
+): TemplateResult {
+  const scoop = message.channel === 'scoop-notify';
+  const report = message.report;
+  if (!scoop && !report) return html`<pre class="output">${body}</pre>`;
+  const shown = !body
+    ? nothing
+    : scoop
+      ? html`<div class="text">${markdown(body)}</div>`
+      : html`<pre class="output">${body}</pre>`;
+  return html`<div class="report">${shown}${report ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="open-report" @click=${() => handlers.open(report)}>Open the report</swc-button>` : nothing}</div>`;
+}
+
 export function lick(
   message: LickMessage,
   handlers: Handlers,
@@ -1073,28 +1115,30 @@ export function lick(
   pile: Pile = flatPile
 ): TemplateResult {
   if (pendingApproval(message)) return decision(message, handlers, pile);
-  const [label] = lickLabels[message.channel];
+  const [line, failed, icon, label] = scoopLine(message);
+  const severity = message.severity ?? (failed ? 'error' : undefined);
   const outcome =
     message.state === 'confirmed' ? 'Allowed' : message.state === 'dismissed' ? 'Denied' : '';
-  const head = html`${message.severity ? html`<span class="sr">${severities[message.severity].prefix}</span>` : nothing}
+  const head = html`${severity ? html`<span class="sr">${severities[severity].prefix}</span>` : nothing}
     ${outcome ? html`<span class="sr">${outcome}. </span>` : nothing}
-    <span class="text">${message.text}</span>
+    <span class="text" data-summary=${message.summary ? '' : nothing}>${message.summary || line}</span>
     ${message.count && message.count > 1 ? html`<span class="times" title="Coalesced events">×${message.count}</span>` : nothing}`;
   const outcomeIcon =
     message.state === 'confirmed' ? '👍' : message.state === 'dismissed' ? '👎' : '';
-  const reaction = html`<span class="reactions"><span class="reaction" title=${label} aria-hidden="true">${lickIcons[message.channel]}</span>${outcomeIcon ? html`<span class="reaction" title=${outcome} aria-hidden="true">${outcomeIcon}</span>` : nothing}</span>`;
-  const name = `${message.severity ? severities[message.severity].prefix : ''}${label} event`;
-  const byline = html`<div class="meta">${message.severity ? html`<span class="severity-icon">${severities[message.severity].icon}</span>` : nothing}<span class="who">${message.title}</span>${stamp ? when(message.createdAt) : unseen(message.createdAt)}</div>`;
-  if (!message.body) {
+  const reaction = html`<span class="reactions"><span class="reaction" title=${label} aria-hidden="true">${icon}</span>${outcomeIcon ? html`<span class="reaction" title=${outcome} aria-hidden="true">${outcomeIcon}</span>` : nothing}</span>`;
+  const name = `${severity ? severities[severity].prefix : ''}${label} event`;
+  const byline = html`<div class="meta">${severity ? html`<span class="severity-icon">${severities[severity].icon}</span>` : nothing}<span class="who">${message.title}</span>${stamp ? when(message.createdAt) : unseen(message.createdAt)}</div>`;
+  const body = lickBody(message);
+  if (!body && !message.report) {
     return outside(
       name,
       byline,
-      html`<div class="lick-frame"><div class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing}><div class="lick-head">${head}</div></div>${reaction}</div>`
+      html`<div class="lick-frame"><div class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${severity ?? nothing}><div class="lick-head">${head}</div></div>${reaction}</div>`
     );
   }
-  const details = html`<details class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${message.severity ?? nothing} ?open=${handlers.licks?.has(message.id) ?? false} @toggle=${handlers.licks?.details(message.id) ?? nothing}>
+  const details = html`<details class="lick" data-id=${message.id} data-channel=${message.channel} data-severity=${severity ?? nothing} ?open=${handlers.licks?.has(message.id) ?? false} @toggle=${handlers.licks?.details(message.id) ?? nothing}>
     <summary class="lick-head">${head}<swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right></summary>
-    <pre class="output">${message.body}</pre>
+    ${lickContent(message, body, handlers)}
   </details>`;
   return outside(name, byline, html`<div class="lick-frame">${details}${reaction}</div>`);
 }
@@ -1208,65 +1252,8 @@ export const messageCss = css`
   .attachment[data-error] .size {
     color: var(--swc-negative-content-color-default);
   }
-  .text p,
-  .text ul,
-  .text ol,
-  .text .table,
-  .text pre,
-  .text blockquote {
-    margin: var(--swc-spacing-200) 0;
-  }
-  .text ul,
-  .text ol,
   .plan ol {
     padding-inline-start: var(--swc-spacing-400);
-  }
-  .text li + li,
-  .text li > :is(ul, ol) {
-    margin-block-start: var(--swc-spacing-75);
-  }
-  .text li > :is(ul, ol) {
-    margin-block-end: 0;
-  }
-  .text .heading {
-    font-weight: 700;
-    line-height: var(--swc-line-height-100);
-    margin: var(--swc-spacing-400) 0 var(--swc-spacing-100);
-  }
-  .text .heading[aria-level='3'] {
-    font-size: var(--swc-font-size-400);
-  }
-  .text .heading[aria-level='4'] {
-    font-size: var(--swc-font-size-300);
-  }
-  .text > :first-child {
-    margin-block-start: 0;
-  }
-  .text > :last-child {
-    margin-block-end: 0;
-  }
-  .text img {
-    max-inline-size: 100%;
-    border-radius: var(--swc-corner-radius-100);
-  }
-  blockquote {
-    border-inline-start: var(--swc-border-width-200) solid var(--swc-gray-300);
-    padding-inline-start: var(--swc-spacing-200);
-    color: var(--swc-neutral-subdued-content-color-default);
-  }
-  hr {
-    border: 0;
-    border-block-start: var(--swc-border-width-100) solid var(--swc-gray-200);
-  }
-  li:has(> .task) {
-    list-style: none;
-    margin-inline-start: calc(-1 * var(--swc-spacing-400));
-  }
-  .task {
-    color: var(--swc-neutral-subdued-content-color-default);
-  }
-  .task[data-done='true'] {
-    color: var(--swc-positive-color-1000);
   }
   code,
   pre {
@@ -1287,22 +1274,6 @@ export const messageCss = css`
     line-height: var(--swc-line-height-200);
     overflow-x: auto;
     white-space: pre;
-  }
-  .table {
-    overflow-x: auto;
-  }
-  table {
-    border-collapse: collapse;
-    font-size: var(--swc-font-size-100);
-  }
-  th,
-  td {
-    border: var(--swc-border-width-100) solid var(--swc-gray-200);
-    padding: var(--swc-spacing-75) var(--swc-spacing-200);
-    text-align: start;
-  }
-  th {
-    background: var(--swc-background-layer-1-color);
   }
   a {
     color: var(--swc-accent-content-color-default);
@@ -1359,15 +1330,34 @@ export const messageCss = css`
   details[open] > summary .chevron {
     transform: rotate(90deg);
   }
-  .lick .text,
+  .lick-head .text,
   .runs .label {
     min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .lick .text {
+  .lick-head .text {
     flex: 1;
+  }
+  .lick-head .text[data-summary] {
+    white-space: normal;
+  }
+  .lick .report {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--swc-spacing-200);
+    padding: var(--swc-spacing-75) var(--swc-spacing-200) var(--swc-spacing-200);
+    overflow-wrap: anywhere;
+  }
+  .lick .report .heading {
+    font-size: inherit;
+  }
+  .lick .report > .text {
+    align-self: stretch;
+    max-block-size: calc(var(--swc-spacing-1000) * 4);
+    overflow: auto;
   }
   swc-system-message > slicc-tool-runs + slicc-tool-runs {
     margin-block-start: var(--swc-spacing-75);

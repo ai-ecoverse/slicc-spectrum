@@ -258,6 +258,9 @@ const suggestions = `${JSON.stringify(
 )}
 `;
 
+const upstreamReport =
+  '# Upstream limits\n\n## Summary\n\nThe forecast upstream allows **60 requests a minute** per key and answers `429` with a `Retry-After` header past that. A one-minute cache keeps harbor well under it.\n\n## Findings\n\n- Bursts after midnight UTC reach about 40 requests a minute.\n- `Retry-After` is in seconds, never a date.\n- Timeouts come from the upstream, not the network: 3 in the last 1,000 calls.\n';
+
 export const files: Record<string, string> = {
   '/workspace/harbor/README.md': readme,
   '/workspace/harbor/package.json': pkg,
@@ -275,6 +278,7 @@ export const files: Record<string, string> = {
   '/workspace/skills/release-notes/scripts/collect.jsh': collect,
   '/shared/MEMORY.md': memory,
   '/shared/notes/2026-10-04-standup.md': standup,
+  '/shared/scoop-notifications/amber-heron.md': upstreamReport,
   '/home/user/.bashrc': bashrc,
   '/home/.gelatiere/suggestions.json': suggestions,
   '/tmp/forecast-sample.json': sample,
@@ -399,6 +403,7 @@ export const accounts: Account[] = [
     id: 'mcp:docs',
     provider: 'docs',
     identity: 'docs.example',
+    url: 'https://docs.example/mcp',
     status: 'connected',
     auth: 'api-key',
     group: 'mcp',
@@ -408,6 +413,7 @@ export const accounts: Account[] = [
     id: 'mcp:tickets',
     provider: 'tickets',
     identity: 'tickets.example',
+    url: 'https://tickets.example/mcp',
     status: 'expired',
     auth: 'api-key',
     group: 'mcp',
@@ -657,6 +663,35 @@ export const conversations: Record<string, Message[]> = {
       text: 'Started: add retries with backoff around the upstream fetch',
       createdAt: at(9),
     },
+    {
+      id: 'm-h5',
+      role: 'lick',
+      channel: 'scoop-notify',
+      title: 'amber-heron (scout)',
+      text: '[scoop amber-heron (scout) completed]',
+      summary:
+        'The upstream allows 60 requests a minute, so a one-minute cache keeps harbor under it.',
+      report: '/shared/scoop-notifications/amber-heron.md',
+      body: `[scoop amber-heron (scout) completed]\n${upstreamReport}`,
+      createdAt: at(11),
+    },
+    {
+      id: 'm-h6',
+      role: 'lick',
+      channel: 'scoop-notify',
+      title: 'grey-tern (worker)',
+      text: '[scoop grey-tern (worker) failed]',
+      body: '[scoop grey-tern (worker) failed]\nThe deploy preview timed out after **120 s**. Nothing was pushed.',
+      createdAt: at(13),
+    },
+    {
+      id: 'm-h7',
+      role: 'lick',
+      channel: 'scoop-notify',
+      title: 'salt-gull (scout)',
+      text: '[scoop salt-gull (scout) completed]',
+      createdAt: at(15),
+    },
   ],
   'scoop-otter': [
     {
@@ -753,7 +788,7 @@ export const conversations: Record<string, Message[]> = {
         },
         {
           type: 'text',
-          text: '## harbor 1.9.0\n\n**Features**\n- Added a `/health` endpoint.\n\n**Fixes**\n- Requests without a city now get a 400 instead of a 500.\n\n**Chores**\n- Updated wrangler to 4.40.0.',
+          text: '## harbor 1.9.0\n\n#### Features\n- Added a `/health` endpoint.\n\n#### Fixes\n- Requests without a city now get a 400 instead of a 500.\n\n#### Chores\n- Updated wrangler to 4.40.0.',
         },
       ],
     },

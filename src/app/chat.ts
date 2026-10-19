@@ -22,6 +22,7 @@ import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './
 import type { SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
 import { following, onWatch, watchOnly } from './follow.ts';
+import { markdownCss } from './markdown.ts';
 import {
   assistant,
   day,
@@ -191,6 +192,7 @@ export class SliccChat extends ThemedElement {
 
   static styles = [
     shared,
+    markdownCss,
     messageCss,
     css`
       :host {
