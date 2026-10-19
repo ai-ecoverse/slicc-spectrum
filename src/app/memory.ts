@@ -1,12 +1,20 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
-import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
-import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
+import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
+import '@adobe/spectrum-wc-icons/swc-icon-briefcase.js';
+import '@adobe/spectrum-wc-icons/swc-icon-comment.js';
 import '@adobe/spectrum-wc-icons/swc-icon-delete.js';
+import '@adobe/spectrum-wc-icons/swc-icon-edit.js';
+import '@adobe/spectrum-wc-icons/swc-icon-file-text.js';
+import '@adobe/spectrum-wc-icons/swc-icon-file-user.js';
+import '@adobe/spectrum-wc-icons/swc-icon-people-group.js';
+import '@adobe/spectrum-wc-icons/swc-icon-user.js';
+import '@adobe/spectrum-wc-icons/swc-icon-user-settings.js';
 import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import type { Memory, MemoryScope, MemoryTag, SliccModel } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
 import { confirm } from './confirm.ts';
+import { chevron } from './disclosure.ts';
 import { panelCss } from './files.ts';
 import { markdown, markdownCss } from './markdown.ts';
 import { search, searchCss } from './search.ts';
@@ -56,11 +64,40 @@ export const tagLabels: Record<MemoryTag, string> = {
   project: 'Project',
 };
 
-export const tagVariants: Record<MemoryTag, string> = {
-  user: 'indigo',
-  feedback: 'purple',
-  project: 'seafoam',
+export const tagIcons: Record<MemoryTag, TemplateResult> = {
+  user: html`<swc-icon-file-user size="s" aria-hidden="true"></swc-icon-file-user>`,
+  feedback: html`<swc-icon-comment size="s" aria-hidden="true"></swc-icon-comment>`,
+  project: html`<swc-icon-briefcase size="s" aria-hidden="true"></swc-icon-briefcase>`,
 };
+
+export type ScopeKind = 'shared' | 'cone' | 'role';
+
+export const scopeIcons: Record<ScopeKind, TemplateResult> = {
+  shared: html`<swc-icon-people-group size="s" aria-hidden="true"></swc-icon-people-group>`,
+  cone: html`<swc-icon-user size="s" aria-hidden="true"></swc-icon-user>`,
+  role: html`<swc-icon-user-settings size="s" aria-hidden="true"></swc-icon-user-settings>`,
+};
+
+export function scopeKind(scope: MemoryScope): ScopeKind {
+  if (scope.id === 'global') return 'shared';
+  return scope.group === 'roles' || scope.id.startsWith('role:') ? 'role' : 'cone';
+}
+
+export function scopeMark(scope: MemoryScope): string {
+  return scope.id === 'global' ? 'Shared' : `${scope.label} only`;
+}
+
+export function tagRepeated(tag: MemoryTag, section: string, filter: TagFilter): boolean {
+  return filter === tag || section.trim().toLowerCase().replace(/s$/, '') === tag;
+}
+
+interface Mark {
+  kind: 'tag' | 'from' | 'scope';
+  label: string;
+  icon: TemplateResult;
+  tag?: MemoryTag;
+  scope?: string;
+}
 
 export function sections(memories: readonly Memory[]): Array<[string, Memory[]]> {
   const groups = new Map<string, Memory[]>();
@@ -145,46 +182,54 @@ export class SliccMemory extends ModelElement {
         overflow-y: auto;
         display: flex;
         flex-direction: column;
-        gap: var(--swc-spacing-200);
-        padding: var(--swc-spacing-50) var(--swc-spacing-100) var(--swc-spacing-200);
+        gap: var(--swc-spacing-300);
+        padding: var(--swc-spacing-100) var(--swc-spacing-100) var(--swc-spacing-200);
+        interpolate-size: allow-keywords;
       }
-      section,
+      section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--swc-spacing-75);
+      }
       ul {
         display: flex;
         flex-direction: column;
-        gap: var(--swc-spacing-50);
         margin: 0;
         padding: 0;
         list-style: none;
       }
       h3 {
         margin: 0;
-        padding: var(--swc-spacing-50) var(--swc-spacing-100) 0;
+        padding: 0 var(--swc-spacing-100);
         font-size: var(--swc-font-size-75);
         font-weight: var(--swc-bold-font-weight);
+        line-height: var(--swc-line-height-100);
         color: var(--swc-neutral-subdued-content-color-default);
       }
       .row {
+        --lead: var(--swc-spacing-300);
+        --indent: calc(var(--swc-spacing-100) + var(--lead) + var(--swc-spacing-75));
         border-radius: var(--swc-corner-radius-medium-default);
       }
-      .row[data-open] {
-        background: var(--swc-accent-subtle-background-color-default);
+      li.row + li.row {
+        border-block-start: var(--swc-border-width-100) solid var(--swc-gray-200);
+      }
+      .row:not([data-open]):hover,
+      .row[data-open] .head:hover {
+        background: var(--swc-gray-100);
       }
       .head {
         all: unset;
         box-sizing: border-box;
         display: grid;
-        grid-template-columns: auto minmax(0, 1fr);
+        grid-template-columns: var(--lead) minmax(0, 1fr) auto;
         column-gap: var(--swc-spacing-75);
-        row-gap: var(--swc-spacing-50);
         align-items: start;
         width: 100%;
-        padding: var(--swc-spacing-100);
+        padding: var(--swc-spacing-100) var(--swc-spacing-100) var(--swc-spacing-50);
         border-radius: var(--swc-corner-radius-medium-default);
+        line-height: var(--swc-line-height-100);
         cursor: pointer;
-      }
-      .row:not([data-open]) .head:hover {
-        background: var(--swc-gray-100);
       }
       .head:focus-visible {
         outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
@@ -193,53 +238,92 @@ export class SliccMemory extends ModelElement {
       .lead {
         display: flex;
         align-items: center;
+        justify-content: center;
         height: 1lh;
-        line-height: var(--swc-line-height-100);
         color: var(--swc-neutral-subdued-content-color-default);
       }
       .chevron {
-        transition: transform var(--swc-animation-duration-100);
+        transition: transform var(--swc-animation-duration-100) var(--swc-animation-ease-in-out);
       }
       .row[data-open] .chevron {
         transform: rotate(90deg);
       }
-      .head > :not(.lead) {
-        grid-column: 2;
+      :host(:dir(rtl)) .row:not([data-open]) .chevron {
+        transform: scaleX(-1);
       }
-      .title,
-      .summary {
+      .title {
         display: -webkit-box;
         -webkit-box-orient: vertical;
         -webkit-line-clamp: 2;
         overflow: hidden;
         overflow-wrap: anywhere;
-      }
-      .title {
-        grid-row: 1;
         font-weight: var(--swc-bold-font-weight);
-        line-height: var(--swc-line-height-100);
       }
-      .summary {
-        color: var(--swc-neutral-subdued-content-color-default);
-        line-height: var(--swc-line-height-100);
-      }
-      .meta {
+      .marks {
         display: flex;
-        flex-wrap: wrap;
         align-items: center;
         gap: var(--swc-spacing-75);
+        height: 1lh;
         color: var(--swc-neutral-subdued-content-color-default);
       }
-      .body {
-        padding: 0 var(--swc-spacing-100) var(--swc-spacing-50) var(--swc-spacing-400);
+      .mark {
+        display: inline-flex;
       }
-      .body p {
-        margin: var(--swc-spacing-75) 0;
+      .content {
+        overflow: hidden;
+        max-height: 2lh;
+        margin: 0 var(--swc-spacing-100) var(--swc-spacing-100) var(--indent);
+        line-height: var(--swc-line-height-100);
+        color: var(--swc-neutral-subdued-content-color-default);
+        overflow-wrap: anywhere;
+        cursor: pointer;
+      }
+      .row[data-open] .content {
+        max-height: none;
+        cursor: auto;
+      }
+      @supports (height: calc-size(auto, size)) {
+        .content {
+          max-height: none;
+          height: calc-size(auto, min(size, 2lh));
+          transition: height var(--swc-animation-duration-100) var(--swc-animation-ease-in-out);
+        }
+        .row[data-open] .content {
+          height: calc-size(auto, size);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .content,
+        .chevron {
+          transition: none;
+        }
+      }
+      .row:not([data-open]) .body {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+      }
+      .body.markdown :is(p, ul, ol, .table, pre, blockquote) {
+        margin-block: var(--swc-spacing-100);
+      }
+      .body.markdown > :first-child {
+        margin-block-start: 0;
+      }
+      .body.markdown > :last-child {
+        margin-block-end: 0;
       }
       .actions {
         display: flex;
+        justify-content: flex-end;
         gap: var(--swc-spacing-75);
-        padding: 0 var(--swc-spacing-100) var(--swc-spacing-100) var(--swc-spacing-300);
+        padding-block-start: var(--swc-spacing-100);
+      }
+      .actions [data-action='forget'] {
+        --swc-action-button-content-color-default: var(--swc-negative-content-color-default);
+        --swc-action-button-content-color-hover: var(--swc-negative-content-color-hover);
+        --swc-action-button-content-color-down: var(--swc-negative-content-color-down);
+        --swc-action-button-content-color-focus: var(--swc-negative-content-color-key-focus);
       }
       .editor {
         display: grid;
@@ -252,9 +336,9 @@ export class SliccMemory extends ModelElement {
       .editor .actions {
         padding: 0;
       }
-      code {
-        font-family: var(--swc-code-font-family-stack);
-        font-size: var(--swc-code-size-xs);
+      .markdown :not(pre) > code {
+        font-size: 0.85em;
+        padding: 0 var(--swc-spacing-50);
       }
     `,
   ];
@@ -304,51 +388,72 @@ export class SliccMemory extends ModelElement {
     </div>`;
   }
 
-  async #forget(memory: Memory): Promise<void> {
+  async #forget(memory: Memory, trigger: HTMLElement): Promise<void> {
     const body = 'Agents won’t remember this anymore. You can’t undo this.';
-    if (await confirm({ title: `Forget “${memory.title}”?`, body, action: 'Forget' }))
+    const title = `Forget “${memory.title}”?`;
+    if (await confirm({ title, body, action: 'Forget', variant: 'destructive', trigger }))
       this.model?.memory.remove(memory.id);
   }
 
-  #scopeName(id: string): string {
-    return this.#scopes.find((item) => item.id === id)?.label ?? id;
+  #scopeOf(id: string): MemoryScope {
+    return this.#scopes.find((item) => item.id === id) ?? { id, label: id };
   }
 
-  #meta(memory: Memory): TemplateResult | typeof nothing {
-    const scope = this.scope === everyone;
-    const notes = memory.source === 'notes';
-    if (!memory.tag && !scope && !notes) return nothing;
-    return html`<span class="meta">
-      ${memory.tag ? html`<swc-badge size="s" variant=${tagVariants[memory.tag]} subtle data-tag=${memory.tag}>${tagLabels[memory.tag]}</swc-badge>` : nothing}
-      ${scope ? html`<span class="scope" data-scope=${memory.scope}>${this.#scopeName(memory.scope)}</span>` : nothing}
-      ${notes ? html`<span class="from">From MEMORY.md</span>` : nothing}
-    </span>`;
+  #marks(memory: Memory, section: string): Mark[] {
+    const marks: Mark[] = [];
+    const tag = memory.tag;
+    if (tag && !tagRepeated(tag, section, this.tag))
+      marks.push({ kind: 'tag', label: tagLabels[tag], icon: tagIcons[tag], tag });
+    if (memory.source === 'notes')
+      marks.push({
+        kind: 'from',
+        label: 'From MEMORY.md',
+        icon: html`<swc-icon-file-text size="s" aria-hidden="true"></swc-icon-file-text>`,
+      });
+    if (this.scope === everyone) {
+      const scope = this.#scopeOf(memory.scope);
+      marks.push({
+        kind: 'scope',
+        label: scopeMark(scope),
+        icon: scopeIcons[scopeKind(scope)],
+        scope: memory.scope,
+      });
+    }
+    return marks;
   }
 
-  #row(memory: Memory): TemplateResult {
+  #row(memory: Memory, section: string): TemplateResult {
     if (this.editing === memory.id)
       return html`<li class="row" data-id=${memory.id}>${this.#form(memory)}</li>`;
     const open = this.open === memory.id;
+    const toggle = () => (this.open = open ? null : memory.id);
+    const marks = this.#marks(memory, section);
+    const id = (mark: Mark) => `${mark.kind}-${memory.id}`;
     return html`<li class="row" data-id=${memory.id} ?data-open=${open}>
-      <button class="head" aria-expanded=${open ? 'true' : 'false'} @click=${() => (this.open = open ? null : memory.id)}>
-        <span class="lead"><swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right></span>
+      <button class="head" aria-expanded=${open ? 'true' : 'false'} aria-controls=${`content-${memory.id}`} @click=${toggle}>
+        <span class="lead">${chevron}</span>
         <span class="title">${memory.title}</span>
-        ${open ? nothing : html`<span class="summary">${memory.body}</span>`}
-        ${this.#meta(memory)}
+        <span class="marks">${marks.map(
+          (mark) =>
+            html`<span class="mark ${mark.kind}" id=${id(mark)} role="img" aria-label=${mark.label} data-tag=${mark.tag ?? nothing} data-scope=${mark.scope ?? nothing}>${mark.icon}</span>`
+        )}</span>
       </button>
-      ${
-        open
-          ? html`<div class="body markdown">${markdown(memory.body)}</div>
-            <div class="actions">
+      ${marks.map((mark) => html`<swc-tooltip for=${id(mark)} placement="top">${mark.label}</swc-tooltip>`)}
+      <div class="content" id=${`content-${memory.id}`} @click=${() => open || toggle()}>
+        <div class="body markdown">${markdown(memory.body)}</div>
+        ${
+          open
+            ? html`<div class="actions">
               <swc-action-button size="s" quiet data-action="edit" @click=${() => (this.editing = memory.id)}>
                 <swc-icon-edit slot="icon"></swc-icon-edit>Edit
               </swc-action-button>
-              <swc-action-button size="s" quiet data-action="forget" @click=${() => this.#forget(memory)}>
+              <swc-action-button size="s" quiet data-action="forget" @click=${(event: Event) => this.#forget(memory, event.currentTarget as HTMLElement)}>
                 <swc-icon-delete slot="icon"></swc-icon-delete>Forget
               </swc-action-button>
             </div>`
-          : nothing
-      }
+            : nothing
+        }
+      </div>
     </li>`;
   }
 
@@ -408,7 +513,7 @@ export class SliccMemory extends ModelElement {
           shown.length
             ? sections(shown).map(
                 ([section, items]) =>
-                  html`<section><h3>${section}</h3><ul>${items.map((memory) => this.#row(memory))}</ul></section>`
+                  html`<section><h3>${section}</h3><ul>${items.map((memory) => this.#row(memory, section))}</ul></section>`
               )
             : html`<div class="note">${emptyNote(total, filtered, current)}</div>`
         }
