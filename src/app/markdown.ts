@@ -315,6 +315,9 @@ export const markdownCss = css`
     padding: var(--swc-spacing-75) var(--swc-spacing-200);
     text-align: start;
   }
+  .markdown :is(th, td) code {
+    overflow-wrap: normal;
+  }
   .markdown :is(th, td)[data-align='left'] {
     text-align: left;
   }

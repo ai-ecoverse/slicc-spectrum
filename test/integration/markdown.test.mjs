@@ -253,6 +253,7 @@ test('memory entries render the same markdown as the chat', async (t) => {
         ]),
         align: [...body.querySelectorAll('td')].map((cell) => cell.dataset.align ?? null),
         textAlign: cells.map((cell) => cell.textAlign),
+        whole: getComputedStyle(body.querySelector('td code')).overflowWrap,
       };
     }),
     {
@@ -264,6 +265,7 @@ test('memory entries render the same markdown as the chat', async (t) => {
       ],
       align: [null, 'right'],
       textAlign: ['start', 'right'],
+      whole: 'normal',
     }
   );
   assert.deepEqual(page.errors, []);
