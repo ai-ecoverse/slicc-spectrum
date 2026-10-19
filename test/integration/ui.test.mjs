@@ -8800,7 +8800,11 @@ test('vault endpoints entries read as automatic, and Unpin unpins a pinned MCP t
         .settingsPart('slicc-secrets')
         .shadowRoot.querySelectorAll('ol.audit li[data-type=endpoints]'),
     ].map((li) => ({
-      text: li.querySelector('.what').textContent.replace(/\s+/g, ' ').trim(),
+      text: (() => {
+        const what = li.querySelector('.what').cloneNode(true);
+        what.querySelector('.unpin')?.remove();
+        return what.textContent.replace(/\s+/g, ' ').trim();
+      })(),
       by: !!li.querySelector('.by'),
       unpin: !!li.querySelector('[data-action=unpin]'),
     }));

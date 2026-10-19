@@ -602,6 +602,13 @@ export class SliccSecrets extends ThemedElement {
       .audit .hint {
         display: block;
       }
+      .audit .unpin {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--swc-spacing-200);
+        margin-top: var(--swc-spacing-100);
+      }
       .row {
         display: flex;
         flex-wrap: wrap;
@@ -1281,11 +1288,11 @@ export class SliccSecrets extends ThemedElement {
     const key = `unpin:${entry.seq}`;
     if (this.unpinned.has(key)) return nothing;
     const busy = this.unpinning === key;
-    return html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="unpin" ?pending=${busy} @click=${() => this.#unpinNow(vault, name, key)}>Unpin</swc-button>${
+    return html`<span class="unpin"><swc-button size="s" variant="secondary" fill-style="outline" data-action="unpin" ?pending=${busy} @click=${() => this.#unpinNow(vault, name, key)}>Unpin</swc-button>${
       this.unpinFailure?.key === key
         ? html`<span class="warning" role="alert" data-error="unpin">${this.unpinFailure.message}</span>`
         : nothing
-    }`;
+    }</span>`;
   }
 
   async #unpinNow(vault: VaultPort, name: string, key: string): Promise<void> {
@@ -1307,8 +1314,7 @@ export class SliccSecrets extends ThemedElement {
     const name = entry.type === 'policy' || entry.type === 'endpoints' ? null : entry.name;
     return html`<li data-seq=${entry.seq} data-type=${entry.type}>
       <time datetime=${date.toISOString()} title=${date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}>${since(entry.at)}</time>
-      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices)}${entry.type === 'policy' || entry.type === 'refresh' || entry.type === 'endpoints' ? nothing : html` <span class="by">by ${who(entry)}</span>`}</span>
-      ${entry.type === 'endpoints' && vault ? this.#unpin(vault, entry) : nothing}
+      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices)}${entry.type === 'policy' || entry.type === 'refresh' || entry.type === 'endpoints' ? nothing : html` <span class="by">by ${who(entry)}</span>`}${entry.type === 'endpoints' && vault ? this.#unpin(vault, entry) : nothing}</span>
     </li>`;
   }
 
