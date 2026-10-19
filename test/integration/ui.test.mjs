@@ -2019,6 +2019,97 @@ test('tool cards show the command, its timeout, and an edit as a diff', async (t
   assert.deepEqual(page.errors, []);
 });
 
+test('a bash run renders its ANSI colours, strips other escapes and copies plain text', async (t) => {
+  const page = await open(t, { delay: '8' });
+  await page.evaluate(() => {
+    window.outputs = [];
+    const root = window.chatPart().shadowRoot;
+    const record = () => {
+      const card = [...root.querySelectorAll('.tool[data-tool=bash]')].find((node) =>
+        node.querySelector('pre.input')?.textContent.includes('./status')
+      );
+      const text = card?.querySelector('pre.output')?.textContent;
+      if (text !== undefined && window.outputs.at(-1) !== text) window.outputs.push(text);
+    };
+    new MutationObserver(record).observe(root, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+    });
+  });
+  await page.evaluate(() => window.model.agent.send('cone-sliccy', 'Print it in colours'));
+  await page.until(
+    () => window.chatPart('swc-conversation-turn.assistant:last-of-type')?.dataset.status === 'done'
+  );
+  const plain = 'bold cyan red bold green\nharbor ready\n';
+  const outputs = await page.evaluate(() => window.outputs);
+  assert.deepEqual(outputs, ['bold ', 'bold cyan red bold green\n', plain]);
+  await page.evaluate(() =>
+    window.chatPart('swc-conversation-turn.assistant:last-of-type details.tool summary').click()
+  );
+  await page.until(
+    () => !!window.chatPart('swc-conversation-turn.assistant:last-of-type details.tool[open]')
+  );
+  const read = () =>
+    page.evaluate(() => {
+      const pre = window.chatPart(
+        'swc-conversation-turn.assistant:last-of-type details.tool[open] pre.output'
+      );
+      const probe = (value) => {
+        const node = document.createElement('i');
+        node.style.color = value;
+        pre.append(node);
+        const color = getComputedStyle(node).color;
+        node.remove();
+        return color;
+      };
+      const span = (text) =>
+        [...pre.querySelectorAll('span')].find((node) => node.textContent === text);
+      const selection = getSelection();
+      selection.selectAllChildren(pre);
+      const copied = selection.toString();
+      selection.removeAllRanges();
+      return {
+        text: pre.textContent,
+        copied,
+        bold: getComputedStyle(span('bold')).fontWeight,
+        cyan: getComputedStyle(span('cyan')).color,
+        palette: probe('var(--slicc-terminal-color-6)'),
+        token: probe('var(--swc-cyan-1000)'),
+        body: getComputedStyle(pre).color,
+        green: getComputedStyle(span('bold green')).fontWeight,
+        raw: window.model.agent
+          .messages('cone-sliccy')
+          .at(-1)
+          .parts.find((part) => part.type === 'tool').tool.output,
+      };
+    });
+  const light = await read();
+  assert.equal(light.text, plain);
+  assert.equal(light.copied, plain.trimEnd());
+  assert.ok(!light.text.includes('[0m'));
+  assert.equal(light.bold, '700');
+  assert.equal(light.green, '700');
+  assert.equal(light.cyan, light.palette);
+  assert.equal(light.cyan, light.token);
+  assert.notEqual(light.cyan, light.body);
+  assert.match(light.raw, /^\x1b\[1mbold\x1b\[0m \x1b\[36mcyan/);
+  assert.match(light.raw, /\x1b\]0;done\x07ready\n$/);
+  await page.evaluate(() => window.model.settings.update({ color: 'dark' }));
+  await page.until(() => {
+    const span = [
+      ...window
+        .chatPart('swc-conversation-turn.assistant:last-of-type details.tool[open] pre.output')
+        .querySelectorAll('span'),
+    ].find((node) => node.textContent === 'cyan');
+    return getComputedStyle(span).color === 'rgb(78, 201, 176)';
+  });
+  const dark = await read();
+  assert.equal(dark.cyan, dark.palette);
+  assert.equal(dark.copied, plain.trimEnd());
+  assert.deepEqual(page.errors, []);
+});
+
 test('tool runs cluster across messages, pick their icons, and open from the keyboard', async (t) => {
   const page = await open(t);
   await page.evaluate(() => window.model.agent.select('cone-kitchen'));

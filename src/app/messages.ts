@@ -56,6 +56,7 @@ import type {
   ToolStatus,
   UserMessage,
 } from '../model/types.ts';
+import { ansi, ansiPalette } from './ansi.ts';
 import { markdown } from './markdown.ts';
 import { signInText } from './sign-in.ts';
 import type { ViewSet } from './view-state.ts';
@@ -483,7 +484,7 @@ export function tool(
   const label = `${call.title}, ${statusLabel(call.status)}`;
   const content = html`<div class="call">
       ${body(call, color)}
-      ${call.output ? html`<pre class="output">${call.output}</pre>` : nothing}
+      ${call.output ? html`<pre class="output">${ansi(call.output)}</pre>` : nothing}
       ${call.notes?.length ? notes(call.notes) : nothing}
       ${call.image ? html`<img class="shot" src=${call.image} alt=${call.title} />` : nothing}
       ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
@@ -1550,6 +1551,9 @@ export const messageCss = css`
   .call > pre {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+  .call > pre.output {
+    ${ansiPalette}
   }
   .notes {
     display: flex;
