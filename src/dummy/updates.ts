@@ -335,6 +335,7 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
     if (this.#fail) {
       this.#patchPackage(id, {
         state: 'failed',
+        progress: null,
         error: fetchFailed,
         actions: ['retry'],
         log: `${log}\nERR_PNPM_FETCH_TIMEOUT Request timed out after 30000ms`,

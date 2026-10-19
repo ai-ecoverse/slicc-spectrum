@@ -96,7 +96,7 @@ export function requiresText(item: PackageItem, all: readonly PackageItem[]): st
 }
 
 const fetched = (progress: InstallProgress) =>
-  progress.phase === 'download' && progress.bytes?.total ? progress.bytes : null;
+  progress.phase === 'download' && (progress.bytes?.total ?? 0) > 0 ? progress.bytes : null;
 
 const phased = (progress: InstallProgress): number => {
   const { done, total } = fetched(progress) ?? progress;
