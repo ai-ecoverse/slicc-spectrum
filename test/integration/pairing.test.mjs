@@ -85,13 +85,17 @@ test('pairing runs from the link through confirm and linking to linked, then Don
     ]),
     ['That isn’t a pairing link from slicc pair.', 'https://example.com/pair', 'idle']
   );
+  assert.equal(
+    await page.evaluate(() => window.net().querySelector('#pair-url').getAttribute('placeholder')),
+    await page.evaluate(() => `${location.origin}/#slicc-pair=…`)
+  );
   await page.evaluate(() => {
     window.fill('');
     window.net().querySelector('#pair-url').focus();
     return true;
   });
   await page.until(() => window.focusedIn('#pair-url'));
-  await page.insert('http://127.0.0.1:7801/p/9k');
+  await page.insert('https://seven.sliccy.ai/#slicc-pair=17117.t0k3n.ab12ef');
   await page.until(() => !window.net().querySelector('[data-action=pair]').disabled);
   await page.enter();
   await page.until(() => window.pairState() === 'confirm');
@@ -153,7 +157,9 @@ test('a pairing that reaches confirm unfolds itself, scrolls into view, and canc
   const page = await open(t, 'pairing');
   await network(page);
   assert.equal(await page.evaluate(() => window.net().querySelector('details').open), false);
-  await page.evaluate(() => window.model.network.pairComputer('http://127.0.0.1:7801/p/9k'));
+  await page.evaluate(() =>
+    window.model.network.pairComputer('https://seven.sliccy.ai/#slicc-pair=17117.t0k3n.ab12ef')
+  );
   await page.until(() => window.pairState() === 'confirm');
   await page.until(() => window.net().querySelector('details').open);
   await page.until(() => window.inView(window.pairing()));
@@ -186,7 +192,7 @@ test('a confirm that rejects after Cancel leaves no stale error under the field'
         throw new Error('Pairing was cancelled.');
       });
     };
-    return port.pairComputer('http://127.0.0.1:7801/p/9k');
+    return port.pairComputer('https://seven.sliccy.ai/#slicc-pair=17117.t0k3n.ab12ef');
   });
   await page.until(() => window.pairState() === 'confirm');
   await page.evaluate(() => {
@@ -218,7 +224,7 @@ test('a failed pairing tries again with the field focused, or dismisses', async 
   const page = await open(t, 'pairing');
   await network(page);
   const fail = async () => {
-    await page.evaluate(() => window.fill('http://127.0.0.1:7801/fail'));
+    await page.evaluate(() => window.fill('https://seven.sliccy.ai/#slicc-pair=17117.fail.ab12ef'));
     await page.evaluate(() => {
       window.net().querySelector('[data-action=pair]').click();
       return true;
@@ -259,7 +265,9 @@ test('a failed pairing tries again with the field focused, or dismisses', async 
 
 test('a pairing already in confirm opens unfolded and focused when the panel opens', async (t) => {
   const page = await open(t, 'pairing');
-  await page.evaluate(() => window.model.network.pairComputer('http://127.0.0.1:7801/p/9k'));
+  await page.evaluate(() =>
+    window.model.network.pairComputer('https://seven.sliccy.ai/#slicc-pair=17117.t0k3n.ab12ef')
+  );
   await page.evaluate(() => window.app.show('network'));
   await page.until(() => window.pairState() === 'confirm');
   await page.until(() => window.focusedIn('#pairing'));
@@ -337,7 +345,7 @@ test('pairing fits a phone at 420 without horizontal overflow in every state', a
   };
   await page.evaluate(() => {
     window.net().querySelector('details').open = true;
-    window.fill('http://127.0.0.1:7801/p/9k');
+    window.fill('https://seven.sliccy.ai/#slicc-pair=17117.t0k3n.ab12ef');
     return true;
   });
   await page.until(fits);

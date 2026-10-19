@@ -1101,7 +1101,7 @@ export class SliccNetwork extends ModelElement {
         return html`<p>Run <code>slicc pair</code> on this computer and paste the link it prints.</p>
           <form class="pair-field" data-form="pair" @submit=${(event: Event) => this.#submitPair(event, port)}>
             <sp-field-label for="pair-url" size="m">Pairing link</sp-field-label>
-            <sp-textfield id="pair-url" size="m" type="url" autocomplete="off" placeholder="http://127.0.0.1:…" ?invalid=${!!this.pairError} @input=${(event: Event) => this.#pairInput(event)} @keydown=${(event: KeyboardEvent) => this.#enterKey(event)}>${this.pairError ? html`<sp-help-text slot="negative-help-text" icon data-error="pairing">${this.pairError}</sp-help-text>` : nothing}</sp-textfield>
+            <sp-textfield id="pair-url" size="m" type="url" autocomplete="off" placeholder=${`${location.origin}/#slicc-pair=…`} ?invalid=${!!this.pairError} @input=${(event: Event) => this.#pairInput(event)} @keydown=${(event: KeyboardEvent) => this.#enterKey(event)}>${this.pairError ? html`<sp-help-text slot="negative-help-text" icon data-error="pairing">${this.pairError}</sp-help-text>` : nothing}</sp-textfield>
             <swc-button size="m" variant="accent" data-action="pair" ?pending=${this.pairBusy === 'pair'} ?disabled=${!this.pairFilled || !port.pairComputer} @click=${(event: Event) => this.#sendKey(event)}>Link</swc-button>
           </form>`;
     }
