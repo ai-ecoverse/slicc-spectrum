@@ -45,9 +45,17 @@ async function shot(page, name) {
 
 test('freezer import: pick, preview, import with progress, then done with badged rows and focus on the first', async (t) => {
   const page = await open(t, { import: 'v6', delay: '40' });
-  assert.equal(
-    await page.evaluate(() => window.inFreezer('[data-action=import-v6]').textContent.trim()),
-    'Import from SLICC 6…'
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const button = window.inFreezer('[data-action=import-v6]');
+      return {
+        text: button.textContent.trim(),
+        label: button.getAttribute('accessible-label'),
+        icon: !!button.querySelector('swc-icon-import[slot=icon]'),
+        tip: window.inFreezer('swc-tooltip[for=import-v6]').textContent.trim(),
+      };
+    }),
+    { text: 'Import', label: 'Import from SLICC 6', icon: true, tip: 'Import from SLICC 6' }
   );
   assert.equal(
     await page.evaluate(() => window.inFreezer('input[type=file]').accept),
@@ -116,7 +124,7 @@ test('freezer import: pick, preview, import with progress, then done with badged
         ['mounts', 'Not imported: 2 mounted folders.'],
       ],
       codes: ['files/cones/cone/.env'],
-      icons: ['true', 'true'],
+      icons: ['true', 'true', 'true'],
       buttons: [
         ['import-cancel', 'Cancel', 'secondary'],
         ['import-confirm', 'Import', 'accent'],
@@ -577,3 +585,150 @@ test('freezer import: in forced colours the dialog doesn’t scroll sideways', a
     { forced: true, wide: [] }
   );
 });
+
+test('freezer import: the import button stays on the bar’s first row at the default width', async (t) => {
+  const page = await open(t, { import: 'v6' });
+  await page.until(() => {
+    const button = window.inFreezer('[data-action=import-v6]');
+    return !!button && button.getBoundingClientRect().width > 0;
+  });
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const bar = window.inFreezer('.bar');
+      const count = bar.querySelector('span').getBoundingClientRect();
+      const button = window.inFreezer('[data-action=import-v6]').getBoundingClientRect();
+      return {
+        row: Math.abs(button.top + button.height / 2 - (count.top + count.height / 2)) <= 2,
+        inside: button.right <= bar.getBoundingClientRect().right,
+      };
+    }),
+    { row: true, inside: true }
+  );
+});
+
+test('freezer import: the preview summary leaves no cell alone on a row at 420 px', async (t) => {
+  const page = await open(t, { import: 'v6' });
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 420,
+    height: 860,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+  await page.evaluate(() => window.app.show('freezer'));
+  await page.until(() => {
+    const rect = window.inFreezer('[data-action=import-v6]')?.getBoundingClientRect();
+    return !!rect && rect.width > 0 && rect.right <= innerWidth;
+  });
+  await page.evaluate(() => window.pick());
+  await page.until(() => window.stage() === 'preview');
+  await page.until(() => window.inImport('dialog').getAnimations().length === 0);
+  const rows = await page.evaluate(() => {
+    const tops = new Map();
+    for (const cell of window.inImport('[data-summary]').children) {
+      const top = Math.round(cell.getBoundingClientRect().top);
+      tops.set(top, (tops.get(top) ?? 0) + 1);
+    }
+    return [...tops.values()];
+  });
+  assert.ok(rows.length > 1, `rows ${rows}`);
+  assert.ok(
+    rows.every((n) => n > 1),
+    `rows ${rows}`
+  );
+  assert.ok(Math.max(...rows) - Math.min(...rows) <= 1, `rows ${rows}`);
+});
+
+test('freezer import: the preview summary fits on one row on a desktop dialog', async (t) => {
+  const page = await open(t, { import: 'v6' });
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 1280,
+    height: 800,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await page.evaluate(() => window.pick());
+  await page.until(() => window.stage() === 'preview');
+  await page.until(() => window.inImport('dialog').getAnimations().length === 0);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const list = window.inImport('[data-summary]');
+      const content = window.inImport('.content');
+      const dialog = window.inImport('dialog');
+      return {
+        rows: new Set(
+          [...list.children].map((cell) => Math.round(cell.getBoundingClientRect().top))
+        ).size,
+        inside: [...list.children].every(
+          (cell) => cell.getBoundingClientRect().right <= list.getBoundingClientRect().right + 0.5
+        ),
+        content: content.scrollWidth <= content.clientWidth,
+        dialog: dialog.scrollWidth <= dialog.clientWidth,
+      };
+    }),
+    { rows: 1, inside: true, content: true, dialog: true }
+  );
+});
+
+test('freezer import: the mounts note’s text lines up with the notes that have icons', async (t) => {
+  const page = await open(t, { import: 'v6' });
+  await page.evaluate(() => window.pick());
+  await page.until(() => window.stage() === 'preview');
+  await page.until(() => window.inImport('dialog').getAnimations().length === 0);
+  const edges = await page.evaluate(() => {
+    const left = (note) => {
+      const walker = document.createTreeWalker(note, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) =>
+          node.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
+      });
+      const range = document.createRange();
+      range.selectNodeContents(walker.nextNode());
+      return Math.round(range.getClientRects()[0].left);
+    };
+    return ['providers', 'flagged', 'mounts'].map((note) =>
+      left(window.inImport(`[data-note=${note}]`))
+    );
+  });
+  assert.equal(edges[2], edges[0]);
+  assert.equal(edges[1], edges[0]);
+});
+
+for (const color of ['light', 'dark']) {
+  test(`freezer import: the SLICC 6 badge doesn’t look like the model badge (${color})`, async (t) => {
+    const page = await open(t, { import: 'v6', color });
+    await page.evaluate(() => window.pick());
+    await page.until(() => window.stage() === 'preview');
+    await page.evaluate(() => window.press('import-confirm'));
+    await page.until(() => window.stage() === 'done', { timeout: 15000 });
+    await page.evaluate(() => window.press('import-done'));
+    await page.until(() => !!window.inFreezer('.card[data-v6] [data-badge=v6]'));
+    const look = await page.evaluate(() => {
+      const card = window.inFreezer('.card[data-v6]');
+      const style = (badge) => {
+        const inner = badge.shadowRoot.querySelector('.swc-Badge');
+        const computed = getComputedStyle(inner);
+        return {
+          background: computed.backgroundColor,
+          border: computed.borderTopColor,
+          width: Number.parseFloat(computed.borderTopWidth),
+          text: badge.textContent.trim(),
+        };
+      };
+      const badges = [...card.querySelectorAll('.name swc-badge')];
+      const model = badges.find((badge) => !badge.dataset.badge);
+      const probe = document.createElement('div');
+      probe.style.color = 'var(--swc-neutral-visual-color)';
+      card.append(probe);
+      const outline = getComputedStyle(probe).color;
+      probe.remove();
+      return { v6: style(card.querySelector('[data-badge=v6]')), model: style(model), outline };
+    });
+    assert.equal(look.v6.text, 'SLICC 6');
+    assert.notEqual(look.v6.background, look.model.background);
+    assert.ok(look.v6.width > 0);
+    assert.equal(look.v6.border, look.outline);
+    assert.notEqual(look.model.border, look.outline);
+  });
+}
