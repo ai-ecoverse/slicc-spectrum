@@ -111,6 +111,12 @@ test('once the agent starts, the queued messages go to it in order and the rows 
     'Then list the moorings',
   ]);
   assert.equal(await page.evaluate(() => window.model.agent.starting()), null);
+  assert.deepEqual(
+    await page.evaluate(() =>
+      window.app.dock.api.panels.map((panel) => panel.id).filter((id) => id.startsWith('chat'))
+    ),
+    ['chat:cone-sliccy']
+  );
   assert.deepEqual(page.errors, []);
 });
 

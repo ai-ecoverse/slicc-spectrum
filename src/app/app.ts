@@ -660,6 +660,7 @@ export class SliccApp extends ThemedElement {
       for (const id of chats(dock)) {
         if (!known.has(chatAgent(id) as string)) dock.close(id);
       }
+      if (this.#active() && dock.has('chat')) dock.close('chat');
       if (this.model && this.#offers('terminal'))
         this.terminalPanels.sync(dock, this.model.terminals, this.screen);
     });

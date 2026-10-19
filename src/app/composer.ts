@@ -40,7 +40,7 @@ type Waiting = { id: string; text: string; attachments: Attachment[] };
 type Draft = { value: string; attachments: Attachment[] };
 
 const pages = new WeakMap<
-  Document,
+  object,
   {
     rows: readonly Waiting[];
     draft: Draft | null;
@@ -48,8 +48,18 @@ const pages = new WeakMap<
   }
 >();
 
+function owner(node: Node): object {
+  let at: Node | null = node;
+  while (at) {
+    if (at instanceof Element && at.localName === 'slicc-app') return at;
+    at = at.parentNode ?? (at instanceof ShadowRoot ? at.host : null);
+  }
+  return node.ownerDocument as Document;
+}
+
 class PageQueue implements ReactiveController {
   #host: SliccComposer;
+  #owner: object | null = null;
 
   constructor(host: SliccComposer) {
     this.#host = host;
@@ -57,7 +67,8 @@ class PageQueue implements ReactiveController {
   }
 
   #page() {
-    const page = this.#host.ownerDocument;
+    this.#owner ??= this.#host.isConnected ? owner(this.#host) : null;
+    const page = this.#owner ?? this.#host.ownerDocument;
     const found = pages.get(page) ?? { rows: [], draft: null, hosts: new Set() };
     pages.set(page, found);
     return found;
@@ -82,6 +93,7 @@ class PageQueue implements ReactiveController {
   }
 
   hostConnected(): void {
+    this.#owner = owner(this.#host);
     this.#page().hosts.add(this.#host);
   }
 
@@ -385,6 +397,7 @@ export class SliccComposer extends ThemedElement {
         margin: 0 0 var(--swc-spacing-100);
         padding: 0;
         display: grid;
+        grid-template-columns: minmax(0, 1fr);
         gap: var(--swc-spacing-75);
       }
       .queued {
@@ -675,6 +688,8 @@ export class SliccComposer extends ThemedElement {
       ...(model.agent.starting
         ? [
             model.agent.on('starting', () => {
+              if (this.#starting() && this.popup?.kind !== 'file' && this.popup?.kind !== 'secret')
+                this.popup = null;
               this.#arrived();
               update();
             }),
@@ -702,8 +717,10 @@ export class SliccComposer extends ThemedElement {
     const active = model.agent.active();
     const id = agents.some((agent) => agent.id === active) ? active : agents[0].id;
     this.#waiting.value = [];
-    for (const { text, attachments } of waiting)
-      this.#deliver(model, id, { text, attachments }, 'queue');
+    const [first, ...rest] = waiting;
+    this.#deliver(model, id, first, 'queue');
+    for (const { text, attachments } of rest)
+      this.#post(model, id, { text, attachments, mode: 'queue' });
   }
 
   #unwait(id: string): void {
@@ -786,9 +803,13 @@ export class SliccComposer extends ThemedElement {
     const busy = model.agent.busy(id);
     const resolved: SendMode =
       mode === 'queue' ? (busy ? 'queue' : 'send') : busy || mode === 'steer' ? 'steer' : 'send';
+    this.#post(model, id, { text: message.text, attachments: message.attachments, mode: resolved });
+  }
+
+  #post(model: SliccModel, id: string, message: Outgoing): void {
     const attachments = message.attachments ?? [];
     const done = () => retire(model.agent, id, attachments);
-    model.agent.send(id, { text: message.text, attachments, mode: resolved }).then(done, done);
+    model.agent.send(id, { ...message, attachments }).then(done, done);
   }
 
   #propose(model: SliccModel, text: string): void {
@@ -1417,6 +1438,7 @@ export class SliccComposer extends ThemedElement {
         (message) => html`<li class="queued" data-id=${message.id} data-mode="starting">
           <swc-icon-clock size="s" aria-hidden="true"></swc-icon-clock>
           <span class="text"><span class="sr">Queued: </span>${message.text || message.attachments.map((attachment) => attachment.name).join(', ')}</span>
+          ${message.text && message.attachments.length ? html`<span class="next" data-files><span class="sr">, </span>${message.attachments.length === 1 ? '1 file' : `${message.attachments.length} files`}</span>` : nothing}
           <span class="next">Sent when the agent starts</span>
           <swc-close-button size="s" data-action="unqueue" accessible-label="Remove from queue" @click=${() => this.#unwait(message.id)}></swc-close-button>
         </li>`
