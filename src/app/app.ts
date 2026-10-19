@@ -617,7 +617,14 @@ export class SliccApp extends ThemedElement {
     const saved = this.#saved();
     const restored = this.#offered(saved, dock.factories) && dock.restore(saved);
     if (!restored) {
-      defaultLayout(dock, this.screen, this.#active(), this.#available(), model.terminals.list());
+      defaultLayout(
+        dock,
+        this.screen,
+        this.#active(),
+        this.#available(),
+        model.terminals.list(),
+        !!model.agent.starting?.()
+      );
     }
     this.#started = this.screen;
     this.#prune();
@@ -694,7 +701,14 @@ export class SliccApp extends ThemedElement {
   resetLayout(): void {
     const terminals = this.model?.terminals.list();
     this.panels.quietly(() =>
-      defaultLayout(this.dock, this.screen, this.#active(), this.#available(), terminals)
+      defaultLayout(
+        this.dock,
+        this.screen,
+        this.#active(),
+        this.#available(),
+        terminals,
+        !!this.model?.agent.starting?.()
+      )
     );
     this.#save();
   }

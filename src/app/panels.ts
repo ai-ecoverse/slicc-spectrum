@@ -363,7 +363,8 @@ export function defaultLayout(
   screen: ScreenClass,
   agent: { id: string; name: string } | null,
   items: readonly Surface[] = surfaces,
-  terminals: readonly TerminalInfo[] = []
+  terminals: readonly TerminalInfo[] = [],
+  agentless = false
 ): void {
   dock.clear();
   const order: Side[] = ['center', 'left', 'right'];
@@ -373,9 +374,10 @@ export function defaultLayout(
       if (item.id === 'terminal') for (const info of terminals) openTerminal(dock, info, screen);
       else if (item.id !== 'chat') openSurface(dock, item, screen);
       else if (agent) openChat(dock, agent, screen, false);
+      else if (agentless) openSurface(dock, item, screen, false);
     }
   }
-  const chat = chats(dock)[0];
+  const chat = chats(dock)[0] ?? (dock.has('chat') ? 'chat' : null);
   if (chat) dock.api.getPanel(chat)?.api.setActive();
 }
 
