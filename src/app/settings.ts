@@ -40,6 +40,7 @@ const accountStatus = {
   rejected: ['notice', 'Rejected'],
   'needs-sign-in': ['neutral', 'Needs sign-in'],
   'sign-in-expired': ['notice', 'Sign-in expired'],
+  unreachable: ['notice', 'Unreachable'],
 } as const;
 
 const authHints: Record<ProviderAuth, string> = {
@@ -78,6 +79,7 @@ function draft(option: ProviderOption): Account {
     fields: option.fields,
     keyUrl: option.keyUrl,
     needs: option.needs,
+    blocked: option.blocked,
     vaultName: option.vaultName,
   };
 }
@@ -140,6 +142,7 @@ export class SliccSettings extends ThemedElement {
   declare filled: ReadonlySet<string>;
   #waits = new SignInWaits(() => this.requestUpdate());
   #landing: string | null = null;
+  #away = false;
   #bases = new Map<string, string>();
   #scroll = new ViewScroll(this, 'settings:scroll', { scroller: () => this, rows: '[data-id]' });
 
@@ -724,6 +727,7 @@ export class SliccSettings extends ThemedElement {
 
   #submit(event: Event, account: Account): void {
     event.preventDefault();
+    if (account.blocked) return;
     const form = event.currentTarget as HTMLElement;
     this.problem = null;
     this.filled = new Set([...this.filled].filter((name) => name !== 'value'));
@@ -840,6 +844,7 @@ export class SliccSettings extends ThemedElement {
   }
 
   #ready(account: Account): boolean {
+    if (account.blocked) return false;
     if (!this.#offered()) return true;
     const required = (account.fields ?? []).filter((field) => field.required);
     return ['value', ...required.map((field) => field.name)].every((name) => this.filled.has(name));
@@ -1019,13 +1024,14 @@ export class SliccSettings extends ThemedElement {
       data-action="connect"
       accessible-label=${popup(account) ? `Sign in to ${account.provider}` : `${label} ${account.provider}`}
       ?pending=${busy}
-      ?disabled=${entering}
+      ?disabled=${entering || !!account.blocked}
       @click=${() => this.#start(account)}
     >${label}</swc-button>`;
   }
 
   #status(account: Account): keyof typeof accountStatus {
     if (this.#signingIn(account)) return 'signing-in';
+    if (account.status === 'connected' && account.blocked) return 'unreachable';
     if (account.status === 'expired' && account.auth === 'api-key') return 'rejected';
     if (popup(account) && account.status === 'disconnected') return 'needs-sign-in';
     if (popup(account) && account.status === 'expired') return 'sign-in-expired';
@@ -1076,6 +1082,15 @@ export class SliccSettings extends ThemedElement {
       ><swc-tooltip for=${id} placement="top">${label}</swc-tooltip>`;
   }
 
+  async #closeTip(id: string): Promise<void> {
+    const tip = this.renderRoot.querySelector<LitElement & { open: boolean }>(
+      `swc-tooltip[for="${CSS.escape(id)}"]`
+    );
+    if (!tip) return;
+    tip.open = false;
+    await tip.updateComplete;
+  }
+
   async #remove(account: Account): Promise<void> {
     const model = this.model as SliccModel;
     const body =
@@ -1090,6 +1105,7 @@ export class SliccSettings extends ThemedElement {
     const keyed = account.store === 'vault' && account.auth === 'api-key' && !!vault?.remove;
     if (keyed && !(await this.#forget(account, vault as VaultPort))) return;
     if (this.model !== model) return;
+    await this.#closeTip(`remove-${account.id}`);
     this.#busy(account.id, true);
     this.failure = null;
     try {
@@ -1105,11 +1121,28 @@ export class SliccSettings extends ThemedElement {
   }
 
   #notice(
-    needs: Account['needs'],
+    row: Account | ProviderOption,
     size: 'short' | 'long' = 'long'
   ): TemplateResult | typeof nothing {
+    const needs = row.blocked;
     if (needs !== 'cors-free-transport') return nothing;
-    return html`<p class="notice" data-notice=${needs}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${corsNotice[size]}</span></p>`;
+    return html`<p class="notice" data-notice=${needs} data-blocked><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${corsNotice[size]} <a class="swc-Link swc-Link--quiet" href="#network" data-action="setup-network" aria-label="Set up the SLICC extension or CLI" @click=${(event: Event) => this.#setUp(event)}>Set up</a></span></p>`;
+  }
+
+  #setUp(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (this.picking) {
+      this.#away = true;
+      this.#closePicker();
+    }
+    this.dispatchEvent(
+      new CustomEvent('show-surface', {
+        detail: { id: 'network', section: 'whole' },
+        bubbles: true,
+        composed: true,
+      })
+    );
   }
 
   #signingNote(account: Account): TemplateResult | typeof nothing {
@@ -1122,7 +1155,7 @@ export class SliccSettings extends ThemedElement {
   }
 
   #rowNotes(account: Account): TemplateResult | typeof nothing {
-    const notice = this.#notice(account.needs);
+    const notice = this.#notice(account);
     const signing = this.adding?.id === account.id ? nothing : this.#signingNote(account);
     if (notice === nothing && signing === nothing) return nothing;
     return html`<div class="notes">${notice}${signing}</div>`;
@@ -1164,6 +1197,9 @@ export class SliccSettings extends ThemedElement {
     this.query = '';
     const landing = this.#landing;
     this.#landing = null;
+    const away = this.#away;
+    this.#away = false;
+    if (away) return;
     void this.updateComplete.then(() => {
       const root = this.renderRoot;
       const row = landing
@@ -1179,7 +1215,7 @@ export class SliccSettings extends ThemedElement {
   }
 
   #choose(option: ProviderOption): void {
-    if (this.#added(option.id)) return;
+    if (option.blocked || this.#added(option.id)) return;
     this.adding = option;
     this.failure = null;
     if (option.auth === 'api-key' || option.auth === 'fields') {
@@ -1224,12 +1260,13 @@ export class SliccSettings extends ThemedElement {
     if (event.key !== 'Enter') return;
     event.preventDefault();
     const first = matchProviders(this.#offered() ?? [], this.query).find(
-      (option) => !this.#added(option.id)
+      (option) => !option.blocked && !this.#added(option.id)
     );
     if (first) this.#choose(first);
   }
 
   #optionKey(event: KeyboardEvent, option: ProviderOption): void {
+    if (event.target !== event.currentTarget) return;
     const options = this.#options();
     const at = options.indexOf(event.currentTarget as HTMLElement);
     const moves: Record<string, number> = {
@@ -1259,7 +1296,8 @@ export class SliccSettings extends ThemedElement {
       tabindex="-1"
       data-provider=${option.id}
       data-auth=${option.auth}
-      aria-disabled=${added ? 'true' : 'false'}
+      ?data-blocked=${!!option.blocked}
+      aria-disabled=${added || option.blocked ? 'true' : 'false'}
       @click=${() => this.#choose(option)}
       @keydown=${(event: KeyboardEvent) => this.#optionKey(event, option)}
     >
@@ -1270,7 +1308,7 @@ export class SliccSettings extends ThemedElement {
           : authHints[option.auth]
       }</span>
       ${option.description ? html`<span class="description">${option.description}</span>` : nothing}
-      ${this.#notice(option.needs, 'short')}
+      ${this.#notice(option, 'short')}
     </div>`;
   }
 
@@ -1305,7 +1343,7 @@ export class SliccSettings extends ThemedElement {
             ? html`<swc-button size="m" variant="secondary" data-action="cancel-sign-in" @click=${() => this.#stopSigningIn(account)}>Cancel</swc-button>`
             : nothing
         }
-        <swc-button size="m" variant="accent" data-action="sign-in" ?pending=${signing} @click=${() => this.connect(account.id)}>${signing ? 'Signing in…' : 'Sign in'}</swc-button>
+        <swc-button size="m" variant="accent" data-action="sign-in" ?pending=${signing} ?disabled=${!!account.blocked} @click=${() => this.connect(account.id)}>${signing ? 'Signing in…' : 'Sign in'}</swc-button>
         ${signing ? nothing : this.#leave(account)}
       </div>`;
   }
@@ -1313,12 +1351,13 @@ export class SliccSettings extends ThemedElement {
   #localStep(account: Account): TemplateResult {
     return html`<p class="hint">SLICC connects to ${account.provider} on this device.</p>
       <div class="buttons">
-        <swc-button size="m" variant="accent" data-action="connect" ?pending=${this.pending.has(account.id)} @click=${() => this.connect(account.id)}>Connect</swc-button>
+        <swc-button size="m" variant="accent" data-action="connect" ?pending=${this.pending.has(account.id)} ?disabled=${!!account.blocked} @click=${() => this.connect(account.id)}>Connect</swc-button>
         ${this.#leave(account)}
       </div>`;
   }
 
-  #connectStep(option: ProviderOption): TemplateResult {
+  #connectStep(adding: ProviderOption): TemplateResult {
+    const option = this.#offered()?.find((candidate) => candidate.id === adding.id) ?? adding;
     const account = this.#added(option.id) ?? draft(option);
     const step =
       option.auth === 'oauth'
@@ -1328,7 +1367,7 @@ export class SliccSettings extends ThemedElement {
           : this.#key(account);
     return html`<div class="step" data-step=${option.auth} data-provider=${option.id}>
       ${option.description ? html`<p class="lead">${option.description}</p>` : nothing}
-      ${this.#notice(option.needs)}
+      ${this.#notice(option)}
       ${step}
       ${
         this.failure?.id === option.id

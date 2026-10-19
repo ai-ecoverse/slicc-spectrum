@@ -504,6 +504,7 @@ export interface Account {
   status: AccountStatus;
   auth?: 'oauth' | 'api-key' | 'local';
   needs?: 'cors-free-transport';
+  blocked?: 'cors-free-transport';
   group?: 'providers' | 'mcp';
   secret?: 'api-key' | 'token';
   store?: 'vault';
@@ -559,6 +560,7 @@ export interface ProviderOption {
   fields?: AccountField[];
   keyUrl?: string;
   needs?: 'cors-free-transport';
+  blocked?: 'cors-free-transport';
   vaultName?: string;
 }
 
