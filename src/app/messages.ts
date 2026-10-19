@@ -638,6 +638,7 @@ export function toolOnly(message: Message, showThinking: boolean): ToolCall[] | 
   if (message.role === 'tool') return [message.tool];
   if (message.role !== 'assistant' || (message.status !== 'done' && message.status !== 'streaming'))
     return null;
+  if (message.parts.some((entry) => entry.type === 'question')) return null;
   const shown = message.parts.filter((entry) => !silent(entry, showThinking));
   if (shown.some((entry) => entry.type !== 'tool')) return null;
   if (!shown.length && message.status === 'done') return null;

@@ -339,3 +339,65 @@ test('a streaming call never shows a secret-looking part of its arguments, and i
     );
   assert.deepEqual(quick, []);
 });
+
+test('a streaming reply that only asks a question shows it, even right after a run of tool calls', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    const added = [
+      { id: 'ask-user', role: 'user', text: 'Clean up when you are done', createdAt: now },
+      {
+        id: 'ask-tools',
+        role: 'assistant',
+        status: 'done',
+        createdAt: now,
+        model: 'claude-opus-5-5',
+        parts: [
+          {
+            type: 'tool',
+            tool: {
+              id: 'ask-t1',
+              name: 'bash',
+              title: 'List the scratch folder',
+              input: 'ls /tmp/harbor-repro',
+              output: 'fixtures',
+              status: 'done',
+              paths: [],
+            },
+          },
+        ],
+      },
+      {
+        id: 'ask-question',
+        role: 'assistant',
+        status: 'streaming',
+        createdAt: now,
+        model: 'claude-opus-5-5',
+        parts: [
+          {
+            type: 'question',
+            question: {
+              id: 'ask-q1',
+              kind: 'choice',
+              question: 'Delete the scratch folder?',
+              options: ['Delete it', 'Keep it'],
+              state: 'open',
+            },
+          },
+        ],
+      },
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  await page.until(() => !!window.chatPart('swc-conversation-turn[data-id="ask-tools"]'));
+  assert.equal(
+    await page.evaluate(
+      () => !!window.chatPart('swc-conversation-turn.decision-turn[data-id="ask-q1"][data-pending]')
+    ),
+    true
+  );
+});
