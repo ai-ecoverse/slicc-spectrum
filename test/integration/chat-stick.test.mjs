@@ -112,12 +112,31 @@ test('new output while the reader is scrolled up keeps their place and offers Ju
     }),
     { text: 'Jump to latest (2 new)', icon: true, inside: true, above: true }
   );
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.jump().getAttribute('accessible-label'),
+      window.chatPart('[data-jump-status]').textContent,
+      window.chatPart('[data-jump-status]').getAttribute('aria-live'),
+    ]),
+    ['Jump to latest, 2 new messages', '2 new messages below', 'polite']
+  );
+  const before = await page.evaluate(() => {
+    const log = window.log();
+    return [log.clientHeight, log.getBoundingClientRect().top];
+  });
 
   await page.evaluate(() => {
     window.jump().click();
     return true;
   });
   await page.until(() => window.gap() <= 1 && !window.jump());
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const log = window.log();
+      return [log.clientHeight, log.getBoundingClientRect().top];
+    }),
+    before
+  );
   await page.evaluate(() =>
     window.model.agent.lick('cone-kitchen', 'webhook', 'Pantry sensor', 'The sugar bin is low.')
   );

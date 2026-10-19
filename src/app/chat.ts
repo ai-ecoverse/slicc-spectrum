@@ -915,7 +915,11 @@ export class SliccChat extends ThemedElement {
 
   #latest(fresh: number): TemplateResult {
     const label = fresh > 0 ? `Jump to latest (${fresh} new)` : 'Jump to latest';
-    return html`<div class="jump"><swc-action-button size="s" data-action="jump-latest" @click=${this.#jump}><swc-icon-chevron-down slot="icon"></swc-icon-chevron-down>${label}</swc-action-button></div>`;
+    const spoken =
+      fresh > 0
+        ? `Jump to latest, ${fresh} new ${fresh === 1 ? 'message' : 'messages'}`
+        : 'Jump to latest';
+    return html`<div class="jump"><swc-action-button size="s" data-action="jump-latest" accessible-label=${spoken} @click=${this.#jump}><swc-icon-chevron-down slot="icon"></swc-icon-chevron-down>${label}</swc-action-button><span class="sr" role="status" aria-live="polite" data-jump-status>${fresh > 0 ? `${fresh} new ${fresh === 1 ? 'message' : 'messages'} below` : ''}</span></div>`;
   }
 
   render(): TemplateResult {
