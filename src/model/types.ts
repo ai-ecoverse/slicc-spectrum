@@ -1333,7 +1333,16 @@ export interface EndpointsEntry {
   at: number;
   uid: null;
   tag: null;
-  purged: Array<{ provider: string; url: string }>;
+  purged?: Array<{ provider: string; host?: string; url?: string }>;
+  adopted?: Array<{ server: string; host: string }>;
+  pinned?: EndpointPin;
+  unpinned?: EndpointPin;
+}
+
+export interface EndpointPin {
+  name?: string;
+  server: string;
+  host: string;
 }
 
 export interface PolicyEntry {
@@ -1480,6 +1489,7 @@ export interface VaultPort extends Subscribable<VaultEvents> {
   put?(name: string, value: string, request?: string, options?: PutOptions): Promise<SealResult>;
   cancel?(request: string): Promise<RequestState>;
   remove?(name: string, kind?: RecordKind): Promise<SealResult>;
+  unpin?(names: string[]): Promise<void>;
   restore?(name: string, kind?: RecordKind): Promise<SealResult>;
   import?(
     kind: ImportKind,

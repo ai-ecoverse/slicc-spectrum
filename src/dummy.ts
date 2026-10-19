@@ -76,6 +76,7 @@ export {
   vaultFixtures,
   vaultNotice,
   vaultOlder,
+  vaultPinned,
   vaultPolicy,
   vaultPurged,
   vaultRefused,

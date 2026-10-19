@@ -12,6 +12,7 @@ import type {
   AccountStatus,
   AuditEntry,
   ButtonConfig,
+  EndpointsEntry,
   ImportCandidate,
   ImportKind,
   ImportResult,
@@ -161,7 +162,38 @@ export function changes(entry: PolicyEntry, devices: readonly LinkedDevice[]): s
   return (entry.widened ?? []).map((change) => [change.kind, widening(change, devices)]);
 }
 
-export function auditLine(entry: AuditEntry, devices: readonly LinkedDevice[]): TemplateResult {
+const listed = <T>(items: readonly T[], one: (item: T) => TemplateResult): TemplateResult[] =>
+  items.map((item, index) => html`${index ? ', ' : ''}${one(item)}`);
+
+export function endpointsLine(
+  entry: EndpointsEntry,
+  named: (provider: string) => string = (provider) => provider
+): TemplateResult {
+  const parts: TemplateResult[] = [];
+  if (entry.purged?.length)
+    parts.push(
+      html`<span class="part" data-part="purged">Removed custom model URLs an agent set, automatically: ${listed(entry.purged, (item) => html`${named(item.provider)} at <code>${item.host ?? item.url}</code>`)}. Only you can set a model URL now, in Settings › Accounts</span>`
+    );
+  if (entry.adopted?.length)
+    parts.push(
+      html`<span class="part" data-part="adopted">Kept the MCP servers your tokens use, automatically: ${listed(entry.adopted, (item) => html`${item.server} at <code>${item.host}</code>`)}</span>`
+    );
+  if (entry.pinned)
+    parts.push(
+      html`<span class="part" data-part="pinned"><code>${entry.pinned.name ?? entry.pinned.server}</code> pinned to <code>${entry.pinned.host}</code> automatically, on first use</span>`
+    );
+  if (entry.unpinned)
+    parts.push(
+      html`<span class="part" data-part="unpinned"><code>${entry.unpinned.name ?? entry.unpinned.server}</code> unpinned from <code>${entry.unpinned.host}</code>; the next use pins it again</span>`
+    );
+  return html`${parts.map((part, index) => html`${index ? '. ' : ''}${part}`)}`;
+}
+
+export function auditLine(
+  entry: AuditEntry,
+  devices: readonly LinkedDevice[],
+  named?: (provider: string) => string
+): TemplateResult {
   switch (entry.type) {
     case 'inject':
     case 'forward':
@@ -177,7 +209,7 @@ export function auditLine(entry: AuditEntry, devices: readonly LinkedDevice[]): 
     case 'restore':
       return html`Restored`;
     case 'endpoints':
-      return html`Removed custom model URLs an agent set, automatically: ${entry.purged.map((item, index) => html`${index ? ', ' : ''}${item.provider} <code>${item.url}</code>`)}`;
+      return endpointsLine(entry, named);
     case 'refresh':
       return entry.grant
         ? html`Refreshed automatically with the sign-in <code>${entry.grant}</code>`
@@ -266,6 +298,9 @@ export class SliccSecrets extends ThemedElement {
     failure: { state: true },
     form: { state: true },
     busy: { state: true },
+    unpinning: { state: true },
+    unpinned: { state: true },
+    unpinFailure: { state: true },
     problem: { state: true },
     invalid: { state: true },
     said: { state: true },
@@ -284,6 +319,9 @@ export class SliccSecrets extends ThemedElement {
   declare failure: string | null;
   declare form: SecretForm | null;
   declare busy: boolean;
+  declare unpinning: string | null;
+  declare unpinned: ReadonlySet<string>;
+  declare unpinFailure: { key: string; message: string } | null;
   declare problem: string | null;
   declare invalid: string | null;
   declare said: Said | null;
@@ -305,6 +343,9 @@ export class SliccSecrets extends ThemedElement {
     this.failure = null;
     this.form = null;
     this.busy = false;
+    this.unpinning = null;
+    this.unpinned = new Set();
+    this.unpinFailure = null;
     this.problem = null;
     this.invalid = null;
     this.said = null;
@@ -568,6 +609,13 @@ export class SliccSecrets extends ThemedElement {
       .audit .hint {
         display: block;
       }
+      .audit .unpin {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--swc-spacing-200);
+        margin-top: var(--swc-spacing-100);
+      }
       .row {
         display: flex;
         flex-wrap: wrap;
@@ -631,6 +679,9 @@ export class SliccSecrets extends ThemedElement {
     this.failure = null;
     this.form = null;
     this.busy = false;
+    this.unpinning = null;
+    this.unpinned = new Set();
+    this.unpinFailure = null;
     this.problem = null;
     this.invalid = null;
     this.said = null;
@@ -1241,12 +1292,59 @@ export class SliccSecrets extends ThemedElement {
       </ul>`;
   }
 
-  #entry(entry: AuditEntry, devices: readonly LinkedDevice[]): TemplateResult {
+  #provider(id: string): string {
+    const settings = this.model?.settings;
+    const option = settings?.providers?.().find((item) => item.id === id);
+    const account = settings?.accounts().find((item) => item.id === id);
+    return option?.name ?? account?.provider ?? id;
+  }
+
+  #unpin(
+    vault: VaultPort,
+    entry: EndpointsEntry,
+    all: readonly AuditEntry[]
+  ): TemplateResult | typeof nothing {
+    const name = entry.pinned?.name;
+    if (!name || !vault.unpin) return nothing;
+    const key = `unpin:${entry.seq}`;
+    const undone = all.some(
+      (later) =>
+        later.type === 'endpoints' && later.seq > entry.seq && later.unpinned?.name === name
+    );
+    if (undone || this.unpinned.has(key)) return nothing;
+    const busy = this.unpinning === key;
+    return html`<span class="unpin"><swc-button size="s" variant="secondary" fill-style="outline" data-action="unpin" ?pending=${busy} ?disabled=${!!vault.status()?.locked} @click=${() => this.#unpinNow(vault, name, key)}>Unpin</swc-button>${
+      this.unpinFailure?.key === key
+        ? html`<span class="warning" role="alert" data-error="unpin">${this.unpinFailure.message}</span>`
+        : nothing
+    }</span>`;
+  }
+
+  async #unpinNow(vault: VaultPort, name: string, key: string): Promise<void> {
+    if (this.unpinning) return;
+    this.unpinning = key;
+    this.unpinFailure = null;
+    try {
+      await vault.unpin?.([name]);
+      if (this.#mine(vault)) this.unpinned = new Set([...this.unpinned, key]);
+    } catch (error) {
+      if (this.#mine(vault)) this.unpinFailure = { key, message: failureText(error) };
+    } finally {
+      if (this.#mine(vault)) this.unpinning = null;
+    }
+  }
+
+  #entry(
+    entry: AuditEntry,
+    devices: readonly LinkedDevice[],
+    vault?: VaultPort,
+    all: readonly AuditEntry[] = []
+  ): TemplateResult {
     const date = new Date(entry.at);
     const name = entry.type === 'policy' || entry.type === 'endpoints' ? null : entry.name;
     return html`<li data-seq=${entry.seq} data-type=${entry.type}>
       <time datetime=${date.toISOString()} title=${date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}>${since(entry.at)}</time>
-      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices)}${entry.type === 'policy' || entry.type === 'refresh' || entry.type === 'endpoints' ? nothing : html` <span class="by">by ${who(entry)}</span>`}</span>
+      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices, (provider) => this.#provider(provider))}${entry.type === 'policy' || entry.type === 'refresh' || entry.type === 'endpoints' ? nothing : html` <span class="by">by ${who(entry)}</span>`}${entry.type === 'endpoints' && vault ? this.#unpin(vault, entry, all) : nothing}</span>
     </li>`;
   }
 
@@ -1268,7 +1366,7 @@ export class SliccSecrets extends ThemedElement {
       </div>
       ${
         shown.length
-          ? html`<ol class="audit" aria-labelledby="secrets-audit">${shown.map((entry) => this.#entry(entry, devices))}</ol>`
+          ? html`<ol class="audit" aria-labelledby="secrets-audit">${shown.map((entry) => this.#entry(entry, devices, vault, entries))}</ol>`
           : html`<p class="muted" data-audit-empty>${this.reveals ? (more ? 'No reveals in the activity loaded so far.' : 'No program has been given a secret.') : 'Nothing has used a secret yet.'}</p>`
       }
       ${
