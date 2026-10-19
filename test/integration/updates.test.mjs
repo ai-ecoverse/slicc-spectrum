@@ -783,7 +783,7 @@ test('a package installed elsewhere shows as installed where it lives, never off
       window.$('slicc-app', 'slicc-dock', 'slicc-updates', `li[data-id=${id}] ${selector}`.trim());
     window.app.show('updates');
   });
-  await page.until(() => window.pkg('tsc', '[data-action=update]'));
+  await page.until(() => Boolean(window.pkg('tsc', '[data-action=update]')));
   assert.equal(await page.evaluate(() => window.pkg('git', '[data-action=install]')), null);
   assert.equal(
     await page.evaluate(() => window.pkg('ruff', '[data-action=install]')?.textContent.trim()),
