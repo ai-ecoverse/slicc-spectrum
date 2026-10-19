@@ -239,7 +239,14 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
       this.emit('message', { agentId, message: reply });
     }
     tool.input = step.input;
-    await this.#clock.sleep(step.ticks * run.pace);
+    const chunks = step.chunks ?? [];
+    for (const chunk of chunks) {
+      await this.#clock.sleep((step.ticks / (chunks.length + 1)) * run.pace);
+      if (run.stopped) break;
+      tool.output += chunk;
+      this.emit('message', { agentId, message: reply });
+    }
+    await this.#clock.sleep((step.ticks / (chunks.length + 1)) * run.pace);
     const done = run.stopped
       ? { status: 'cancelled' as const, output: 'Stopped' }
       : { status: 'done' as const, output: step.output };

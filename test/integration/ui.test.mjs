@@ -2011,6 +2011,166 @@ test('tool steps show the command, its timeout, and an edit as a diff', async (t
   assert.deepEqual(page.errors, []);
 });
 
+test('a bash run renders its ANSI colours, strips other escapes and copies plain text', async (t) => {
+  const page = await open(t, { delay: '8' });
+  await page.evaluate(() => {
+    window.outputs = [];
+    const root = window.chatPart().shadowRoot;
+    const record = () => {
+      const card = [...root.querySelectorAll('swc-response-status-step[data-tool=bash]')].find(
+        (node) => node.querySelector('pre.input')?.textContent.includes('./status')
+      );
+      const text = card?.querySelector('pre.output')?.textContent;
+      if (text !== undefined && window.outputs.at(-1) !== text) window.outputs.push(text);
+    };
+    new MutationObserver(record).observe(root, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+    });
+  });
+  await page.evaluate(() => window.model.agent.send('cone-sliccy', 'Print it in colors'));
+  await page.until(
+    () => window.chatPart('swc-conversation-turn.assistant:last-of-type')?.dataset.status === 'done'
+  );
+  const plain = 'bold cyan red bold green\nharbor ready\n FAIL   PASS   256 \n';
+  const outputs = await page.evaluate(() => window.outputs);
+  assert.deepEqual(outputs, ['bold ', 'bold cyan red bold green\n', plain]);
+  await page.evaluate(() => {
+    const step = window.chatPart(
+      'swc-conversation-turn.assistant:last-of-type swc-response-status-step[data-tool=bash]'
+    );
+    step
+      .closest('swc-response-status')
+      .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
+      .click();
+    step.shadowRoot.querySelector('.swc-ResponseStatusStep-toggle').click();
+    return true;
+  });
+  await page.until(
+    () =>
+      !!window.chatPart(
+        'swc-conversation-turn.assistant:last-of-type swc-response-status-step[data-tool=bash][open]'
+      )
+  );
+  const read = () =>
+    page.evaluate(() => {
+      const pre = window.chatPart(
+        'swc-conversation-turn.assistant:last-of-type swc-response-status-step[open] pre.output'
+      );
+      const probe = (value) => {
+        const node = document.createElement('i');
+        node.style.color = value;
+        pre.append(node);
+        const color = getComputedStyle(node).color;
+        node.remove();
+        return color;
+      };
+      const luminance = (color) => {
+        const [r, g, b] = color
+          .match(/[\d.]+/g)
+          .slice(0, 3)
+          .map((value) => {
+            const v = Number(value) / 255;
+            return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+          });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const ratio = (a, b) => {
+        const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+        return (high + 0.05) / (low + 0.05);
+      };
+      const span = (text) =>
+        [...pre.querySelectorAll('span')].find((node) => node.textContent === text);
+      const selection = getSelection();
+      selection.selectAllChildren(pre);
+      const copied = selection.toString();
+      selection.removeAllRanges();
+      return {
+        text: pre.textContent,
+        copied,
+        bold: getComputedStyle(span('bold')).fontWeight,
+        cyan: getComputedStyle(span('cyan')).color,
+        token: probe('var(--swc-cyan-1000)'),
+        body: getComputedStyle(pre).color,
+        green: getComputedStyle(span('bold green')).fontWeight,
+        ready: getComputedStyle(span('ready')).color,
+        badges: [' FAIL ', ' PASS ', ' 256 '].map((text) => {
+          const node = getComputedStyle(span(text));
+          return ratio(node.color, node.backgroundColor);
+        }),
+        failBg: getComputedStyle(span(' FAIL ')).backgroundColor,
+        negative: (() => {
+          const node = document.createElement('i');
+          node.style.background = 'var(--swc-negative-subtle-background-color-default)';
+          pre.append(node);
+          const color = getComputedStyle(node).backgroundColor;
+          node.remove();
+          return color;
+        })(),
+        fullGreen: probe('var(--swc-positive-color-900)'),
+        brightGreen: probe('var(--swc-positive-color-1000)'),
+        raw: window.model.agent
+          .messages('cone-sliccy')
+          .at(-1)
+          .parts.find((part) => part.type === 'tool').tool.output,
+      };
+    });
+  const light = await read();
+  assert.equal(light.text, plain);
+  assert.equal(light.copied, plain.slice(0, -1));
+  assert.ok(!light.text.includes('[0m'));
+  assert.equal(light.bold, '700');
+  assert.equal(light.green, '700');
+  assert.equal(light.cyan, light.token);
+  assert.notEqual(light.cyan, light.body);
+  assert.equal(light.ready, light.fullGreen);
+  assert.notEqual(light.ready, light.brightGreen);
+  assert.equal(light.failBg, light.negative);
+  assert.ok(
+    light.badges.every((value) => value >= 4.5),
+    JSON.stringify(light.badges)
+  );
+  assert.match(light.raw, /^\x1b\[1mbold\x1b\[0m \x1b\[36mcyan/);
+  assert.match(light.raw, /\x1b\]0;done\x07\x1b\[2;92mready\x1b\[0m\n\x1b\[1;41;97m FAIL /);
+  await page.evaluate(() => window.model.settings.update({ color: 'dark' }));
+  await page.until((cyan) => {
+    const span = [
+      ...window
+        .chatPart(
+          'swc-conversation-turn.assistant:last-of-type swc-response-status-step[open] pre.output'
+        )
+        .querySelectorAll('span'),
+    ].find((node) => node.textContent === 'cyan');
+    return getComputedStyle(span).color !== cyan;
+  }, light.cyan);
+  const dark = await read();
+  assert.equal(
+    await page.evaluate(() => {
+      const chat = window.chatPart();
+      chat.style.setProperty('--slicc-terminal-color-6', 'rgb(1, 2, 3)');
+      const span = [
+        ...window
+          .chatPart(
+            'swc-conversation-turn.assistant:last-of-type swc-response-status-step[open] pre.output'
+          )
+          .querySelectorAll('span'),
+      ].find((node) => node.textContent === 'cyan');
+      const color = getComputedStyle(span).color;
+      chat.style.removeProperty('--slicc-terminal-color-6');
+      return color;
+    }),
+    'rgb(1, 2, 3)'
+  );
+  assert.equal(dark.copied, plain.slice(0, -1));
+  assert.equal(dark.failBg, dark.negative);
+  assert.ok(
+    dark.badges.every((value) => value >= 4.5),
+    JSON.stringify(dark.badges)
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('tool steps join across messages, keep their states, and open from the keyboard', async (t) => {
   const page = await open(t);
   await page.evaluate(() => window.model.agent.select('cone-kitchen'));
@@ -2621,6 +2781,130 @@ test('licks sit on the right with a byline, a quiet chevron on their toggle and 
       .map((frame) => frame.querySelector('.lick').dataset.id);
   });
   assert.deepEqual(spill, []);
+  assert.deepEqual(page.errors, []);
+});
+
+test('scoop-notify licks read in plain language, expand to the report and open its file', async (t) => {
+  const page = await open(t, { delay: '0' });
+  await page.evaluate(() => window.model.agent.select('cone-harbor'));
+  await page.until(() => !!window.chatPart('.lick[data-id=m-h7]'));
+  const seen = await page.evaluate(() => {
+    const turn = (id) => window.chatPart(`.lick[data-id=${id}]`).closest('.lick-turn');
+    return ['m-h5', 'm-h6', 'm-h7'].map((id) => {
+      const lick = window.chatPart(`.lick[data-id=${id}]`);
+      return {
+        who: turn(id).querySelector('.meta .who').textContent,
+        line: lick.querySelector('.lick-head .text').textContent,
+        bracket: /\[scoop|\[@/.test(turn(id).textContent),
+        severity: lick.dataset.severity ?? null,
+        icon: !!turn(id).querySelector('.severity-icon'),
+        spoken: [...lick.querySelectorAll('.lick-head .sr')]
+          .map((node) => node.textContent)
+          .join(''),
+        pill: turn(id).querySelector('.reaction').textContent,
+        time: !!turn(id).querySelector('.meta time.when'),
+        named: turn(id).querySelector('.reaction').title,
+        label: turn(id).getAttribute('accessible-label'),
+        wraps: getComputedStyle(lick.querySelector('.lick-head .text')).whiteSpace !== 'nowrap',
+      };
+    });
+  });
+  assert.deepEqual(seen, [
+    {
+      who: 'amber-heron (scout)',
+      time: true,
+      line: 'The upstream allows 60 requests a minute, so a one-minute cache keeps harbor under it.',
+      bracket: false,
+      severity: null,
+      icon: false,
+      spoken: '',
+      pill: '✅',
+      named: 'Scoop done',
+      label: 'Scoop done event',
+      wraps: true,
+    },
+    {
+      who: 'grey-tern (worker)',
+      time: true,
+      line: 'Scoop grey-tern failed',
+      bracket: false,
+      severity: 'error',
+      icon: true,
+      spoken: 'Error: ',
+      pill: '❌',
+      named: 'Scoop failed',
+      label: 'Error: Scoop failed event',
+      wraps: false,
+    },
+    {
+      who: 'salt-gull (scout)',
+      time: true,
+      line: 'Scoop salt-gull finished',
+      bracket: false,
+      severity: null,
+      icon: false,
+      spoken: '',
+      pill: '✅',
+      named: 'Scoop done',
+      label: 'Scoop done event',
+      wraps: false,
+    },
+  ]);
+  await page.evaluate(() => {
+    window.chatPart('details.lick[data-id=m-h5] > summary').click();
+    window.chatPart('details.lick[data-id=m-h6] > summary').click();
+    return true;
+  });
+  await page.until(() => window.chatPart('details.lick[data-id=m-h5]').open);
+  const expanded = await page.evaluate(() => {
+    const report = (id) => window.chatPart(`details.lick[data-id=${id}] .report`);
+    return {
+      heading: report('m-h5').querySelector('.text .heading')?.textContent,
+      strong: report('m-h5').querySelector('.text strong')?.textContent,
+      bracket: /\[scoop/.test(report('m-h5').textContent + report('m-h6').textContent),
+      failed: report('m-h6').querySelector('.text strong')?.textContent,
+      buttons: ['m-h5', 'm-h6'].map(
+        (id) => report(id).querySelector('[data-action=open-report]')?.textContent ?? null
+      ),
+    };
+  });
+  assert.deepEqual(expanded, {
+    heading: 'Upstream limits',
+    strong: '60 requests a minute',
+    bracket: false,
+    failed: '120 s',
+    buttons: ['Open the report', null],
+  });
+  const reportHeading = await page.evaluate(
+    () =>
+      getComputedStyle(
+        window.chatPart('details.lick[data-id=m-h5] .report .heading[aria-level="3"]')
+      ).fontSize
+  );
+  await page.evaluate(() => {
+    window.opened = [];
+    window
+      .chatPart()
+      .addEventListener('open-file', (event) => window.opened.push(event.detail.path));
+    window.chatPart('details.lick[data-id=m-h5] [data-action=open-report]').click();
+    return true;
+  });
+  assert.deepEqual(await page.evaluate(() => window.opened), [
+    '/shared/scoop-notifications/amber-heron.md',
+  ]);
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .api.getPanel('file:/shared/scoop-notifications/amber-heron.md')
+  );
+  await page.evaluate(() => window.model.agent.select('cone-release'));
+  await page.until(() => !!window.chatPart('[data-id=m-r2] .text .heading[aria-level="6"]'));
+  const chatHeading = await page.evaluate(
+    () =>
+      getComputedStyle(window.chatPart('[data-id=m-r2] .text .heading[aria-level="6"]')).fontSize
+  );
+  assert.equal(reportHeading, chatHeading);
   assert.deepEqual(page.errors, []);
 });
 
@@ -8480,6 +8764,11 @@ test('Accounts keeps a vault-backed key in the vault and never shows it', async 
     window.settingsPart('form.key[data-id="mcp:tickets"] swc-button[data-action=save]').click();
     return true;
   });
+  await page.until(() => !!window.deep('slicc-confirm'));
+  await page.evaluate(() => {
+    window.deep('slicc-confirm').shadowRoot.querySelector('[data-action]').click();
+    return true;
+  });
   await page.until(() =>
     window
       .settingsPart('.account[data-id="mcp:tickets"] .identity')
@@ -8649,24 +8938,78 @@ test('a panel that takes focus without the keyboard shows no focus ring, and sho
   assert.deepEqual(page.errors, []);
 });
 
-test('a vault endpoints purge reads as automatic in the activity log, with each provider and URL', async (t) => {
+test('vault endpoints entries read as automatic, and Unpin unpins a pinned MCP token', async (t) => {
   const page = await secretsPage(t, { vault: 'purged' });
   await page.until(
     () => !!window.settingsPart('slicc-secrets', 'ol.audit li[data-type=endpoints]')
   );
-  const row = await page.evaluate(() => {
-    const li = window.settingsPart('slicc-secrets', 'ol.audit li[data-type=endpoints]');
-    return {
-      text: li.querySelector('.what').textContent.replace(/\s+/g, ' ').trim(),
+  const rows = () =>
+    [
+      ...window
+        .settingsPart('slicc-secrets')
+        .shadowRoot.querySelectorAll('ol.audit li[data-type=endpoints]'),
+    ].map((li) => ({
+      text: (() => {
+        const what = li.querySelector('.what').cloneNode(true);
+        what.querySelector('.unpin')?.remove();
+        return what.textContent.replace(/\s+/g, ' ').trim();
+      })(),
       by: !!li.querySelector('.by'),
-      codes: [...li.querySelectorAll('code')].map((code) => code.textContent),
-    };
+      unpin: !!li.querySelector('[data-action=unpin]'),
+    }));
+  const order = await page.evaluate(() =>
+    [...window.settingsPart('slicc-secrets').shadowRoot.querySelectorAll('ol.audit li')]
+      .slice(0, 3)
+      .map((li) => Date.parse(li.querySelector('time').getAttribute('datetime')))
+  );
+  assert.deepEqual(
+    [...order].sort((a, b) => b - a),
+    order
+  );
+  assert.deepEqual(await page.evaluate(rows), [
+    {
+      text: 'DOCS_MCP_TOKEN pinned to docs.example automatically, on first use',
+      by: false,
+      unpin: true,
+    },
+    {
+      text: 'Removed custom model URLs an agent set, automatically: OpenAI at models.harbor.example, Anthropic at relay.harbor.example. Only you can set a model URL now, in Settings › Accounts. Kept the MCP servers your tokens use, automatically: docs at docs.example',
+      by: false,
+      unpin: false,
+    },
+  ]);
+  await page.evaluate(() => {
+    window.model.vault.fail('EACCES', 'vault is locked');
+    window
+      .settingsPart('slicc-secrets', 'ol.audit li[data-type=endpoints] [data-action=unpin]')
+      .click();
+    return true;
   });
-  assert.deepEqual(row, {
-    text: 'Removed custom model URLs an agent set, automatically: openai https://models.harbor.example/v1, anthropic https://relay.harbor.example',
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-error=unpin]'));
+  assert.equal(
+    await page.evaluate(() =>
+      window.settingsPart('slicc-secrets', '[data-error=unpin]').textContent.trim()
+    ),
+    'Unlock the vault first'
+  );
+  await page.evaluate(() => {
+    window
+      .settingsPart('slicc-secrets', 'ol.audit li[data-type=endpoints] [data-action=unpin]')
+      .click();
+    return true;
+  });
+  await page.until(() =>
+    window
+      .settingsPart('slicc-secrets', 'ol.audit li[data-type=endpoints]')
+      ?.textContent.includes('unpinned')
+  );
+  const after = await page.evaluate(rows);
+  assert.deepEqual(after[0], {
+    text: 'DOCS_MCP_TOKEN unpinned from docs.example; the next use pins it again',
     by: false,
-    codes: ['https://models.harbor.example/v1', 'https://relay.harbor.example'],
+    unpin: false,
   });
+  assert.equal(after[1].unpin, false);
   await clean(page);
   assert.deepEqual(page.errors, []);
 });

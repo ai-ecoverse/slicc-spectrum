@@ -20,6 +20,7 @@ export type Step =
       paths: string[];
       ticks: number;
       streamed?: boolean;
+      chunks?: string[];
       effect?: (effects: Effects) => Promise<unknown> | unknown;
     };
 
@@ -61,6 +62,29 @@ function test(): Step[] {
       type: 'text',
       text: 'All **3 tests pass**, including the new one for the midnight rollover. Nothing else to fix.',
     },
+  ];
+}
+
+const colourChunks = [
+  '\x1b[1mbold\x1b[0m \x1b[3',
+  '6mcyan\x1b[0m \x1b[31mred\x1b[0m \x1b[1;32mbold green\x1b[0m\n',
+  '\x1b[2A\x1b[2K\x1b]8;;https://example.com/harbor\x1b\\harbor\x1b]8;;\x1b\\ \x1b]0;done\x07\x1b[2;92mready\x1b[0m\n\x1b[1;41;97m FAIL \x1b[0m \x1b[42;30m PASS \x1b[0m \x1b[48;5;226m 256 \x1b[0m\n',
+];
+
+function colours(): Step[] {
+  return [
+    {
+      type: 'tool',
+      name: 'bash',
+      title: 'Print in color',
+      input:
+        "printf '\\033[1mbold\\033[0m \\033[36mcyan\\033[0m \\033[31mred\\033[0m \\033[1;32mbold green\\033[0m\\n' && ./status",
+      output: colourChunks.join(''),
+      chunks: colourChunks,
+      paths: [],
+      ticks: 60,
+    },
+    { type: 'text', text: 'Printed it in **color**.' },
   ];
 }
 
@@ -466,6 +490,7 @@ export function script(
   if (/\b(ask|choose|decide)\b/.test(text)) return { steps: ask(), suggestion };
   if (/\b(debug|investigate)\b/.test(text)) return { steps: investigate(), suggestion };
   if (/\b(search|grep)\b/.test(text)) return { steps: search(), suggestion };
+  if (/\bcolou?rs?\b/.test(text)) return { steps: colours(), suggestion };
   if (/\btests?\b/.test(text)) return { steps: test(), suggestion };
   if (/\b(fix|edit|add|change)\b/.test(text)) return { steps: edit(), suggestion };
   if (/\b(open|browse|page|docs)\b/.test(text)) return { steps: browse(), suggestion };

@@ -6,6 +6,7 @@ import type {
   ButtonConfig,
   ButtonEvent,
   ButtonMessage,
+  EndpointSet,
   ErrorCode,
   ImportCandidate,
   ImportKind,
@@ -21,6 +22,7 @@ import type {
   SealResult,
   SecretView,
   VaultButton,
+  VaultEndpointChange,
   VaultEvents,
   VaultList,
   VaultPort,
@@ -38,7 +40,8 @@ export type VaultScenario =
   | 'request'
   | 'backup'
   | 'waiting'
-  | 'purged';
+  | 'purged'
+  | 'endpoints-fail';
 
 const minute = 60_000;
 const hour = 60 * minute;
@@ -139,7 +142,7 @@ export function vaultSecrets(now = Date.now()): SecretView[] {
   ];
 }
 
-export function accountRecords(now = Date.now()): SecretView[] {
+export function accountRecords(now = Date.now(), pin?: string): SecretView[] {
   return [
     {
       name: 'MCP_DOCS_TOKEN',
@@ -149,6 +152,7 @@ export function accountRecords(now = Date.now()): SecretView[] {
       source: 'settings',
       sourceDevice: null,
       server: 'docs',
+      ...(pin ? { url: pin, pinned: true as const } : {}),
       domains: ['docs.example'],
       rules: [{ domain: 'docs.example', header: 'Authorization', methods: [], paths: [] }],
       exec: false,
@@ -337,13 +341,26 @@ export function vaultPurged(now = Date.now()): AuditEntry {
     type: 'endpoints',
     seq: 13,
     id: 'audit-13',
-    at: now - 30 * minute,
+    at: now - 2 * minute,
     uid: null,
     tag: null,
     purged: [
-      { provider: 'openai', url: 'https://models.harbor.example/v1' },
-      { provider: 'anthropic', url: 'https://relay.harbor.example' },
+      { provider: 'openai', host: 'models.harbor.example' },
+      { provider: 'anthropic', host: 'relay.harbor.example' },
     ],
+    adopted: [{ server: 'docs', host: 'docs.example' }],
+  };
+}
+
+export function vaultPinned(now = Date.now()): AuditEntry {
+  return {
+    type: 'endpoints',
+    seq: 14,
+    id: 'audit-14',
+    at: now - minute,
+    uid: null,
+    tag: null,
+    pinned: { name: 'DOCS_MCP_TOKEN', server: 'docs', host: 'docs.example' },
   };
 }
 
@@ -449,7 +466,7 @@ export function vaultFixtures(
       ? []
       : [
           ...(policy ? [vaultPolicy(now)] : []),
-          ...(scenario === 'purged' ? [vaultPurged(now)] : []),
+          ...(scenario === 'purged' ? [vaultPinned(now), vaultPurged(now)] : []),
           ...vaultAudit(now),
         ],
     auditMore: !empty,
@@ -558,6 +575,8 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
   #serial = 0;
   buttons: DummyVaultButton[] = [];
   puts: { name: string; request?: string; options?: PutOptions }[] = [];
+  endpointChanges: VaultEndpointChange[] = [];
+  #refuses: boolean;
   cancelled: string[] = [];
   imports: DummyImport[] = [];
   exported = 0;
@@ -570,6 +589,34 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
     this.#list = { ...list, secrets: [...list.secrets, ...records] };
     this.#time = time;
     this.#available = scenario === 'waiting' ? 'waiting' : 'ready';
+    this.#refuses = scenario === 'endpoints-fail';
+  }
+
+  async endpoints(change: VaultEndpointChange): Promise<void> {
+    await this.#time.sleep(5);
+    const server = change.add?.mcp?.[0]?.url;
+    if (this.#refuses && server)
+      throw vaultFailure(
+        'EINVAL',
+        `The vault refused ${server} for this token. Check the server's address, then try again.`
+      );
+    if (this.#refuses)
+      throw vaultFailure(
+        'EINVAL',
+        'The vault refused that endpoint. Check the address and try again.'
+      );
+    this.endpointChanges.push(change);
+    const overrides = (secret: SecretView, list: EndpointSet | undefined) =>
+      secret.pinned && list?.mcp?.some((entry) => entry.server === secret.server);
+    this.#list = {
+      ...this.#list,
+      secrets: this.#list.secrets.map((secret) => {
+        if (!overrides(secret, change.add)) return secret;
+        const { url: _, pinned: __, ...rest } = secret;
+        return rest;
+      }),
+    };
+    this.emit('list', this.#list);
   }
 
   status(): VaultStatus | null {
@@ -730,6 +777,19 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
     this.#take(request);
     this.cancelled.push(request);
     return 'cancelled';
+  }
+
+  async unpin(names: string[]): Promise<void> {
+    await this.#time.sleep(5);
+    this.#unlocked();
+    for (const name of names) {
+      const pin = this.#list.audit.find(
+        (entry) => entry.type === 'endpoints' && entry.pinned?.name === name
+      );
+      if (pin?.type === 'endpoints' && pin.pinned)
+        this.#log(name, { type: 'endpoints', unpinned: pin.pinned });
+    }
+    this.emit('list', this.#list);
   }
 
   async remove(name: string, kind: RecordKind = 'secret'): Promise<SealResult> {

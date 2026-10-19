@@ -152,7 +152,7 @@ export const fieldStyles = css`
     font: inherit;
     min-height: var(--swc-component-height-100);
     padding: 0 var(--swc-spacing-100);
-    border: var(--swc-border-width-100) solid var(--swc-gray-400);
+    border: var(--swc-border-width-100) solid var(--swc-neutral-visual-color);
     border-radius: var(--swc-corner-radius-small-default);
     background: var(--swc-background-layer-2-color);
     color: inherit;
