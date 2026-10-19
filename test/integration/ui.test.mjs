@@ -3602,6 +3602,7 @@ async function dragOverChat(page) {
     window.chatDrag = (type, init = {}) => {
       const data = new DataTransfer();
       data.items.add(new File(['tide tables\n'], 'tides.txt', { type: 'text/plain' }));
+      window.lastTransfer = data;
       return window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log').dispatchEvent(
         new DragEvent(type, {
           dataTransfer: data,
@@ -3762,6 +3763,21 @@ test('a folder dragged onto the chat is refused with a chip that says so, next t
     })),
     { sent: [['tides.txt', 'text', false]], left: 0, chips: 0 }
   );
+
+  const [fx, fy] = await page.evaluate(() => {
+    const box = window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field', 'textarea')
+      .getBoundingClientRect();
+    return [Math.round(box.left + box.width / 2), Math.round(box.top + box.height / 2)];
+  });
+  const onField = { ...data, files: [join(dir, 'charts')] };
+  for (const type of ['dragEnter', 'dragOver', 'drop'])
+    await page.send('Input.dispatchDragEvent', { type, x: fx, y: fy, data: onField });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').attachments[0]?.error ===
+      'Folders can’t be attached'
+  );
   assert.deepEqual(page.errors, []);
 });
 
@@ -3772,7 +3788,9 @@ test('while the composer waits to reconnect, the chat takes no drop and shows no
       window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
         ?.disabled === true
   );
-  assert.equal(await dragOverChat(page), false);
+  assert.equal(await dragOverChat(page), true);
+  assert.equal(await page.evaluate(() => window.lastTransfer.dropEffect), 'none');
+  assert.equal(await page.evaluate(() => !window.chatDrag('drop')), true);
   await new Promise((resolve) => setTimeout(resolve, 300));
   await page.evaluate(() => window.chatDrag('drop'));
   await new Promise((resolve) => setTimeout(resolve, 300));
@@ -3807,7 +3825,8 @@ test('while the composer waits to reconnect, the chat takes no drop and shows no
       window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
         ?.disabled === true
   );
-  await page.evaluate(() => window.chatDrag('dragover'));
+  assert.equal(await page.evaluate(() => !window.chatDrag('dragover')), true);
+  assert.equal(await page.evaluate(() => window.lastTransfer.dropEffect), 'none');
   await page.until(
     () =>
       !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone') &&

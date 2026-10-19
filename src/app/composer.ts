@@ -201,6 +201,15 @@ export function readFile(file: Blob): Promise<string> {
   });
 }
 
+export function folders(transfer: DataTransfer | null): Set<File> {
+  const found = new Set<File>();
+  const items = [...(transfer?.items ?? [])].filter((item) => item.kind === 'file');
+  items.forEach((item, index) => {
+    if (item.webkitGetAsEntry?.()?.isDirectory) found.add((transfer as DataTransfer).files[index]);
+  });
+  return found;
+}
+
 async function readable(file: Blob): Promise<string> {
   await file.slice(0, 1).arrayBuffer();
   return '';
@@ -842,7 +851,16 @@ export class SliccComposer extends ThemedElement {
     return `a-${Date.now().toString(36)}-${this.#next++}`;
   }
 
-  async addFiles(files: readonly File[]): Promise<void> {
+  #folders: ReadonlySet<File> = new Set();
+
+  #mark = {
+    handleEvent: (event: DragEvent) => {
+      this.#folders = folders(event.dataTransfer);
+    },
+    capture: true,
+  };
+
+  async addFiles(files: readonly File[], dropped: ReadonlySet<File> = new Set()): Promise<void> {
     const added: Attachment[] = [];
     for (const file of files) {
       const base = {
@@ -868,7 +886,7 @@ export class SliccComposer extends ThemedElement {
         added.push({
           ...base,
           kind: 'file',
-          error: file.type ? 'Could not read the file' : 'Folders can’t be attached',
+          error: dropped.has(file) ? 'Folders can’t be attached' : 'Could not read the file',
         });
       else if (image) added.push({ ...base, kind: 'image', url: content });
       else if (textual) added.push({ ...base, kind: 'text', text: content });
@@ -1514,7 +1532,7 @@ export class SliccComposer extends ThemedElement {
     const talk = !!speech();
     const held = this.#held();
     const starting = this.#starting();
-    return html`<div class="column">
+    return html`<div class="column" @drop=${this.#mark}>
         <span id="keys" class="sr" aria-hidden="true">${this.#instructions(busy)}</span>
         ${this.#hold()}
         ${this.#starters()}
@@ -1535,7 +1553,7 @@ export class SliccComposer extends ThemedElement {
           @swc-prompt-field-input=${this.#input}
           @swc-prompt-field-submit=${() => this.send()}
           @swc-prompt-field-stop=${() => this.model?.agent.stop(this.#agent)}
-          @swc-prompt-field-drop=${(event: CustomEvent<{ files: File[] }>) => void this.addFiles(event.detail.files)}
+          @swc-prompt-field-drop=${(event: CustomEvent<{ files: File[] }>) => void this.addFiles(event.detail.files, this.#folders)}
           @paste=${this.#paste}
           @click=${() => this.#refresh()}
           @focusout=${() => {

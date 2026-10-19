@@ -20,7 +20,7 @@ import type {
   UserMessage,
 } from '../model/types.ts';
 import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
-import { limit, type SliccComposer } from './composer.ts';
+import { folders, limit, type SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
 import { following, onWatch, watchOnly } from './follow.ts';
 import { markdownCss } from './markdown.ts';
@@ -161,12 +161,15 @@ export class SliccChat extends ThemedElement {
   }
 
   #over = (event: DragEvent): void => {
+    if (!carriesFiles(event)) return;
+    event.preventDefault();
+    const transfer = event.dataTransfer as DataTransfer;
     if (!this.#accepts(event)) {
+      transfer.dropEffect = 'none';
       if (this.dropping) this.#clear();
       return;
     }
-    event.preventDefault();
-    (event.dataTransfer as DataTransfer).dropEffect = 'copy';
+    transfer.dropEffect = 'copy';
     clearTimeout(this.#leaving);
     if (this.dropping) return;
     this.dropping = true;
@@ -194,13 +197,13 @@ export class SliccChat extends ThemedElement {
 
   #drop = (event: DragEvent): void => {
     this.#clear();
+    if (!carriesFiles(event)) return;
+    event.preventDefault();
     if (!this.#accepts(event)) return;
     if (event.composedPath().some((node) => (node as Element).localName === 'swc-prompt-field'))
       return;
-    event.preventDefault();
-    void (this.#composer() as SliccComposer).addFiles([
-      ...(event.dataTransfer as DataTransfer).files,
-    ]);
+    const transfer = event.dataTransfer as DataTransfer;
+    void (this.#composer() as SliccComposer).addFiles([...transfer.files], folders(transfer));
   };
 
   static styles = [
