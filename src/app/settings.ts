@@ -359,7 +359,7 @@ export class SliccSettings extends ThemedElement {
         | HTMLSelectElement;
       const value = input.value.trim();
       if (value) values[field.name] = value;
-      else if (field.required) {
+      else if (field.required && field.options?.length !== 0) {
         this.#refuse(account.id, field.name, `${field.label} can’t be empty`);
         return null;
       }
