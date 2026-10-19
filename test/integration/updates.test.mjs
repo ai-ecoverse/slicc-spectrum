@@ -356,6 +356,92 @@ for (const [name, color, browser] of [
   });
 }
 
+test('an install fills one bar from download through linking and never goes back', async (t) => {
+  const page = await browser(t);
+  await page.until(() => window.$('slicc-app', 'slicc-dock', 'slicc-updates', 'li[data-id=git]'));
+  const phases = [
+    ['checking', null],
+    ['downloading', { phase: 'download', done: 10, total: 20 }],
+    ['downloading', { phase: 'download', done: 10, total: 40 }],
+    ['downloading', { phase: 'download', done: 40, total: 40 }],
+    ['linking', { phase: 'link', done: 4, total: 40 }],
+    ['checking', null],
+    ['linking', { phase: 'link', done: 40, total: 40 }],
+  ];
+  const seen = await page.evaluate(async (steps) => {
+    const port = window.model.updates;
+    const element = window.$('slicc-app', 'slicc-dock', 'slicc-updates');
+    const read = async (selector) => {
+      await element.updateComplete;
+      const bar = element.shadowRoot.querySelector(`${selector} swc-progress-bar`);
+      return bar.hasAttribute('indeterminate')
+        ? null
+        : [
+            bar.getAttribute('max-value'),
+            Number(bar.getAttribute('value')),
+            bar.getAttribute('value-label'),
+          ];
+    };
+    const drive = async (list, event, id, selector, running) => {
+      const values = [];
+      for (const [state, progress] of steps) {
+        const items = port[list]().map((item) =>
+          item.id === id ? { ...item, state: running ?? state, progress } : item
+        );
+        port[list] = () => items;
+        port.emit(event, items);
+        values.push(await read(selector));
+      }
+      return values;
+    };
+    return {
+      agent: await drive('list', 'items', 'agent', 'article[data-id=agent]'),
+      git: await drive('packages', 'packages', 'git', 'li[data-id=git]', 'updating'),
+    };
+  }, phases);
+  const counts = ['10 of 20', '10 of 40', '40 of 40', '4 of 40', '4 of 40', '40 of 40'];
+  for (const [row, suffix] of [
+    ['agent', ''],
+    ['git', ' packages'],
+  ]) {
+    assert.equal(seen[row][0], null, row);
+    const shown = seen[row].slice(1);
+    assert.deepEqual(
+      shown.map(([max]) => max),
+      Array(6).fill('100'),
+      row
+    );
+    assert.deepEqual(
+      shown.map(([, , label]) => label),
+      counts.map((count) => `${count}${suffix}`),
+      row
+    );
+    const values = shown.map(([, value]) => value);
+    assert.deepEqual(values, [25, 25, 50, 55, 55, 100], row);
+    assert.ok(
+      values.every((value, index) => index === 0 || value >= values[index - 1]),
+      row
+    );
+    assert.ok(
+      values.slice(0, 3).every((value) => value <= 50),
+      row
+    );
+    assert.ok(
+      values.slice(3).every((value) => value >= 50),
+      row
+    );
+  }
+  assert.deepEqual(page.errors, []);
+
+  async function browser(context) {
+    const opened = await chrome.page(context);
+    await opened.goto('/ui/?updates=current&packages=mixed&color=light&delay=20');
+    await opened.until(() => window.ready && window.app.dock.api.panels.length > 0);
+    await opened.evaluate(() => window.app.show('updates'));
+    return opened;
+  }
+});
+
 for (const [name, browser] of [
   ['wide', chrome],
   ['narrow', narrow],
