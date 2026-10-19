@@ -49,7 +49,7 @@ test('freezer import: pick, preview, import with progress, then done with badged
     await page.evaluate(() => {
       const button = window.inFreezer('[data-action=import-v6]');
       return {
-        text: button.textContent.trim(),
+        text: button.innerText.trim(),
         label: button.getAttribute('accessible-label'),
         icon: !!button.querySelector('swc-icon-import[slot=icon]'),
         tip: window.inFreezer('swc-tooltip[for=import-v6]').textContent.trim(),
@@ -735,7 +735,7 @@ for (const color of ['light', 'dark']) {
 
 test('freezer import: a dropped or picked file that isn’t a zip shows an inline error until the next drop, pick or dismiss', async (t) => {
   const page = await open(t, { import: 'v6' });
-  const copy = 'That’s not a SLICC 6 export. Drop the .zip from Export for SLICC 7.';
+  const copy = 'That’s not a SLICC 6 export. Use the .zip from Export for SLICC 7.';
   const drop = (name, type) =>
     page.evaluate(
       ([name, type]) => {
@@ -825,4 +825,31 @@ test('freezer import: the not-zip error doesn’t come back after the page turns
     await page.evaluate(() => window.inFreezer('[data-error=not-zip]').textContent.trim()),
     ''
   );
+});
+
+test('the import button shows its full label when the Freezer has room, and Import when narrow', async (t) => {
+  const page = await open(t, { import: 'v6' });
+  const shown = () => window.inFreezer('[data-action=import-v6]').innerText.trim();
+  const width = () => window.freezer().getBoundingClientRect().width;
+  const label = await page.evaluate(shown);
+  assert.equal(label, (await page.evaluate(width)) >= 416 ? 'Import from SLICC 6' : 'Import');
+  await page.evaluate(() => {
+    window.freezer().style.width = '600px';
+    return true;
+  });
+  await page.until(
+    () => window.inFreezer('[data-action=import-v6]').innerText.trim() === 'Import from SLICC 6'
+  );
+  await page.evaluate(() => {
+    window.freezer().style.width = '300px';
+    return true;
+  });
+  await page.until(() => window.inFreezer('[data-action=import-v6]').innerText.trim() === 'Import');
+  assert.equal(
+    await page.evaluate(() =>
+      window.inFreezer('[data-action=import-v6]').getAttribute('accessible-label')
+    ),
+    'Import from SLICC 6'
+  );
+  assert.deepEqual(page.errors, []);
 });

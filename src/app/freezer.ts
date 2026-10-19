@@ -50,7 +50,7 @@ export const frozenKinds: Record<FrozenKind, readonly ['indigo' | 'seafoam' | 'p
 
 export const zipTypes = ['application/zip', 'application/x-zip-compressed'];
 
-export const notZip = 'That’s not a SLICC 6 export. Drop the .zip from Export for SLICC 7.';
+export const notZip = 'That’s not a SLICC 6 export. Use the .zip from Export for SLICC 7.';
 
 export function isZip(file: File): boolean {
   return /\.zip$/i.test(file.name) || zipTypes.includes(file.type);
@@ -89,6 +89,18 @@ export class SliccFreezer extends ModelElement {
     css`
       :host {
         position: relative;
+        container: freezer / inline-size;
+      }
+      .bar .long {
+        display: none;
+      }
+      @container freezer (min-width: 26rem) {
+        .bar .long {
+          display: inline;
+        }
+        .bar .short {
+          display: none;
+        }
       }
       .bar {
         flex-wrap: wrap;
@@ -342,7 +354,7 @@ export class SliccFreezer extends ModelElement {
         <span>${rows.length} ${rows.length === 1 ? 'conversation' : 'conversations'}</span>
         ${
           this.importable
-            ? html`<swc-action-button id="import-v6" size="s" quiet data-action="import-v6" accessible-label="Import from SLICC 6" @click=${() => this.#pick()}><swc-icon-import slot="icon"></swc-icon-import>Import</swc-action-button><swc-tooltip for="import-v6" placement="bottom">Import from SLICC 6</swc-tooltip><input type="file" accept=${['.zip', ...zipTypes].join(',')} hidden data-action="import-file" @change=${this.#picked} />`
+            ? html`<swc-action-button id="import-v6" size="s" quiet data-action="import-v6" accessible-label="Import from SLICC 6" @click=${() => this.#pick()}><swc-icon-import slot="icon"></swc-icon-import><span class="long">Import from SLICC 6</span><span class="short">Import</span></swc-action-button><swc-tooltip for="import-v6" placement="bottom">Import from SLICC 6</swc-tooltip><input type="file" accept=${['.zip', ...zipTypes].join(',')} hidden data-action="import-file" @change=${this.#picked} />`
             : nothing
         }
       </div>
