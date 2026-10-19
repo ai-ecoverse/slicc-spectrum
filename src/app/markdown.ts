@@ -108,6 +108,10 @@ function parse(text: string): Parsed {
   return parsed;
 }
 
+function inert(value: string, strict: boolean): string {
+  return strict ? value.replace(/<[^>]*>/g, '') : value;
+}
+
 function safeUrl(url: string, images = false, strict = false): boolean {
   if (strict) return /^https:\/\//i.test(url);
   return (
@@ -145,8 +149,9 @@ function inline(node: { children: PhrasingContent[] }, context: Context): Output
 function phrasing(node: PhrasingContent, context: Context): Output {
   switch (node.type) {
     case 'text':
-    case 'html':
       return node.value;
+    case 'html':
+      return inert(node.value, context.strict);
     case 'inlineCode':
       return html`<code>${node.value}</code>`;
     case 'strong':
@@ -222,8 +227,10 @@ function flow(node: RootContent, context: Context): Output {
       return html`<blockquote>${node.children.map((child) => flow(child, context))}</blockquote>`;
     case 'thematicBreak':
       return html`<hr />`;
-    case 'html':
-      return html`<p>${node.value}</p>`;
+    case 'html': {
+      const text = inert(node.value, context.strict).trim();
+      return text ? html`<p>${text}</p>` : nothing;
+    }
     default:
       return nothing;
   }

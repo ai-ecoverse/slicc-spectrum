@@ -849,7 +849,9 @@ test('hostile release notes render as text and https links only, load no image a
         link.target,
         link.rel,
       ]),
-      hostileText: /<script>window\.pwned = 1<\/script>/.test(notes.textContent),
+      hostileText:
+        /window\.pwned = 1/.test(notes.textContent) &&
+        !/<script|<img|<iframe/.test(notes.textContent),
       length: notes.textContent.length,
       ellipsis: notes.textContent.trimEnd().endsWith('…'),
       cut: details.querySelector('.release[data-version="1.13.0"] [data-cut] a')?.href ?? null,
@@ -879,8 +881,8 @@ test('hostile release notes render as text and https links only, load no image a
     ]
   );
   assert.equal(seen.hostileText, true);
-  assert.ok(seen.length <= 65_536 + 1, String(seen.length));
-  assert.ok(seen.length > 60_000, String(seen.length));
+  assert.ok(seen.length <= 8_192 + 1, String(seen.length));
+  assert.ok(seen.length > 7_000, String(seen.length));
   assert.equal(seen.ellipsis, true);
   assert.equal(seen.cut, 'https://example.com/v1.13.0');
   assert.equal(seen.plainTitle, '1.12.2');

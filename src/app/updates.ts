@@ -191,7 +191,7 @@ const newer = (a: string, b: string): number => {
 
 const certBlock = /<!--\s*cert-verify\s*-->([\s\S]*?)<!--\s*\/cert-verify\s*-->/g;
 
-export const notesLimit = 65_536;
+export const notesLimit = 8_192;
 
 interface Notes {
   release: UpdateRelease;
@@ -217,7 +217,9 @@ export function releaseNotes(release: UpdateRelease): Notes {
     .join('\n')
     .trim();
   const cut = full.length > notesLimit;
-  const body = cut ? `${full.slice(0, notesLimit).trimEnd()}…` : full;
+  const head = full.slice(0, notesLimit);
+  const line = head.lastIndexOf('\n');
+  const body = cut ? `${(line > notesLimit / 2 ? head.slice(0, line) : head).trimEnd()}…` : full;
   const notes = { release, body, certified, cut };
   noted.set(release, notes);
   return notes;
@@ -552,7 +554,7 @@ export class SliccUpdates extends ModelElement {
       }
       .releases {
         display: grid;
-        gap: var(--swc-spacing-300);
+        gap: var(--swc-spacing-400);
         margin-block-start: var(--swc-spacing-200);
         padding: var(--swc-spacing-300);
         max-height: calc(var(--swc-spacing-1000) * 4);
@@ -563,6 +565,7 @@ export class SliccUpdates extends ModelElement {
       }
       .title {
         margin: 0;
+        font-size: var(--swc-font-size-200);
         font-weight: var(--swc-bold-font-weight);
         color: var(--swc-heading-color);
         display: flex;
@@ -578,7 +581,9 @@ export class SliccUpdates extends ModelElement {
         line-height: var(--swc-line-height-200);
       }
       .release .markdown .heading[aria-level] {
-        font-size: var(--swc-font-size-100);
+        font-size: var(--swc-font-size-75);
+        font-weight: var(--swc-medium-font-weight);
+        color: var(--swc-neutral-subdued-content-color-default);
         margin-block: var(--swc-spacing-200) var(--swc-spacing-75);
       }
       @container (max-width: 480px) {
@@ -778,9 +783,9 @@ export class SliccUpdates extends ModelElement {
           certified,
           cut,
         }) => html`<div class="release" data-version=${release.version}>
-          <p class="title" role="heading" aria-level=${level}>${secure(release.url) ? html`<a class="swc-Link" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${release.version} release notes`}>${release.version}</a>` : release.version}${certified ? html`<swc-badge size="s" variant="positive" subtle data-certified>Certified</swc-badge>` : nothing}</p>
+          <p class="title" role="heading" aria-level=${level}>${secure(release.url) ? html`<a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${release.version} release notes`}>${release.version}</a>` : release.version}${certified ? html`<swc-badge size="s" variant="positive" subtle data-certified>Certified</swc-badge>` : nothing}</p>
           ${body ? html`<div class="markdown">${markdown(body, { strict: true })}</div>` : nothing}
-          ${cut && secure(release.url) ? html`<p class="cut" data-cut><a class="swc-Link" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`Read the full notes for ${label} ${release.version}`}>Read the full notes</a></p>` : nothing}
+          ${cut && secure(release.url) ? html`<p class="cut" data-cut><a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`Read the full notes for ${label} ${release.version}`}>Read the full notes</a></p>` : nothing}
         </div>`
       )}</div>
     </details>`;
@@ -794,10 +799,10 @@ export class SliccUpdates extends ModelElement {
   ): TemplateResult | typeof nothing {
     const release = installed(releases, version);
     if (release) {
-      return html`<a class="swc-Link" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${version} release notes`}>Release notes</a>`;
+      return html`<a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${version} release notes`}>Release notes</a>`;
     }
     if (!npm) return nothing;
-    return html`<a class="swc-Link" href=${`https://www.npmjs.com/package/${npm}/v/${version}`} target="_blank" rel="noopener noreferrer" data-action="npm-page" aria-label=${`npm page for ${label} ${version}`}>npm page</a>`;
+    return html`<a class="swc-Link swc-Link--standalone" href=${`https://www.npmjs.com/package/${npm}/v/${version}`} target="_blank" rel="noopener noreferrer" data-action="npm-page" aria-label=${`npm page for ${label} ${version}`}>npm page</a>`;
   }
 
   #version(item: UpdateItem): TemplateResult {
