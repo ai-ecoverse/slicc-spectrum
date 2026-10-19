@@ -818,11 +818,19 @@ test('what’s new expands only the newest release, the older ones are headers t
       item.id === 'kernel'
         ? {
             ...item,
-            releases: item.releases.map((release) =>
-              release.version === '1.12.1'
-                ? { ...release, notes: `### Bug Fixes\n\n${'* tides\n'.repeat(2_000)}` }
-                : release
-            ),
+            releases: [
+              ...item.releases.map((release) =>
+                release.version === '1.12.1'
+                  ? { ...release, notes: `### Bug Fixes\n\n${'* tides\n'.repeat(2_000)}` }
+                  : release
+              ),
+              {
+                version: '1.12.5',
+                url: 'https://github.com/harbor-demo/harbor-kernel/releases/tag/v1.12.5',
+                notes:
+                  '<!-- cert-verify -->\ncertified @harbor/harbor-kernel@1.12.5\n<!-- /cert-verify -->',
+              },
+            ],
           }
         : item
     );
@@ -847,6 +855,7 @@ test('what’s new expands only the newest release, the older ones are headers t
           version: release.dataset.version,
           notes: Boolean(notes?.checkVisibility()),
           header: release.querySelector('summary')?.dataset.action ?? null,
+          name: release.querySelector('summary')?.getAttribute('aria-label') ?? null,
           link: release.querySelector('a[data-action=release-notes]')?.getAttribute('aria-label'),
           certified: Boolean(release.querySelector('[data-certified]')),
           cut: cut?.checkVisibility() ? cut.href : null,
@@ -858,7 +867,17 @@ test('what’s new expands only the newest release, the older ones are headers t
       version: '1.13.0',
       notes: true,
       header: null,
+      name: null,
       link: 'Kernel 1.13.0 release notes',
+      certified: true,
+      cut: null,
+    },
+    {
+      version: '1.12.5',
+      notes: false,
+      header: null,
+      name: null,
+      link: 'Kernel 1.12.5 release notes',
       certified: true,
       cut: null,
     },
@@ -866,6 +885,7 @@ test('what’s new expands only the newest release, the older ones are headers t
       version: '1.12.2',
       notes: false,
       header: 'release',
+      name: 'Kernel 1.12.2 notes, certified',
       link: 'Kernel 1.12.2 release notes',
       certified: true,
       cut: null,
@@ -874,6 +894,7 @@ test('what’s new expands only the newest release, the older ones are headers t
       version: '1.12.1',
       notes: false,
       header: 'release',
+      name: 'Kernel 1.12.1 notes',
       link: 'Kernel 1.12.1 release notes',
       certified: false,
       cut: null,
@@ -904,6 +925,7 @@ test('what’s new expands only the newest release, the older ones are headers t
     opened.map(({ version, notes, cut }) => [version, notes, cut]),
     [
       ['1.13.0', true, null],
+      ['1.12.5', false, null],
       ['1.12.2', false, null],
       ['1.12.1', true, 'https://github.com/harbor-demo/harbor-kernel/releases/tag/v1.12.1'],
     ]
