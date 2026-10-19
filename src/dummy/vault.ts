@@ -594,6 +594,12 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
 
   async endpoints(change: VaultEndpointChange): Promise<void> {
     await this.#time.sleep(5);
+    const server = change.add?.mcp?.[0]?.url;
+    if (this.#refuses && server)
+      throw vaultFailure(
+        'EINVAL',
+        `The vault refused ${server} for this token. Check the server's address, then try again.`
+      );
     if (this.#refuses)
       throw vaultFailure(
         'EINVAL',

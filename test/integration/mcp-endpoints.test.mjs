@@ -138,9 +138,10 @@ test('when the vault refuses the MCP URL, the form says why and connect never ru
   await confirmShown(page);
   await answer(page, true);
   await page.until(
-    () =>
+    (text) =>
       window.settingsPart('form.key[data-id="mcp:tickets"] #key-problem')?.textContent.trim() ===
-      'The vault refused that endpoint. Check the address and try again.'
+      text,
+    `The vault refused ${tickets} for this token. Check the server's address, then try again.`
   );
   assert.deepEqual(await page.evaluate(() => window.order), ['put', 'endpoints']);
   assert.equal(await page.evaluate(() => window.account('mcp:tickets').status), 'expired');
@@ -225,6 +226,54 @@ test('without a pin or a registration, a server is never moved', async (t) => {
     await page.evaluate(() => !!window.settingsPart('[data-action=reconnect-mcp]')),
     false
   );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a new token for a moved, expired server swaps the old registration in the same call', async (t) => {
+  const page = await open(t);
+  const old = 'https://old.tickets.example/mcp';
+  await page.evaluate(
+    ([key, old]) => {
+      localStorage.setItem(key, JSON.stringify({ tickets: old }));
+      return true;
+    },
+    [registrations, old]
+  );
+  await visit(page, {});
+  await page.until(
+    () =>
+      window.settingsPart('.account[data-id="mcp:tickets"] + .notes [data-notice=moved]')
+        ?.textContent ===
+      `The server moved to ${'https://tickets.example/mcp'}. Reconnect to send the token there.`
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.settingsPart('.account[data-id="mcp:tickets"]').querySelectorAll('swc-button').length
+    ),
+    1
+  );
+  await typeToken(page);
+  await confirmShown(page);
+  await answer(page, true);
+  await page.until(() => window.account('mcp:tickets').status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges), [
+    {
+      remove: { mcp: [{ server: 'tickets', url: old }] },
+      add: { mcp: [{ server: 'tickets', url: tickets }] },
+    },
+  ]);
+  assert.deepEqual(await stored(page), { tickets });
+  assert.deepEqual(page.errors, []);
+});
+
+test('Disconnect of a pinned server leaves the pin to the record’s removal', async (t) => {
+  const page = await open(t, { mcp: 'moved' });
+  await click(page, '.account[data-id="mcp:docs"] [data-action=disconnect]');
+  await page.until(() => !!window.dialog());
+  await answer(page, true);
+  await page.until(() => window.account('mcp:docs').status === 'disconnected');
+  assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges), []);
   assert.deepEqual(page.errors, []);
 });
 

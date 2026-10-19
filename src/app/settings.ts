@@ -576,8 +576,13 @@ export class SliccSettings extends ThemedElement {
     try {
       await vault.put?.(recordName(account), value, undefined, options);
       if (url) {
-        await vault.endpoints?.({ add: { mcp: [{ server: serverOf(account), url }] } });
-        register(serverOf(account), url);
+        const server = serverOf(account);
+        const old = registrations()[server];
+        await vault.endpoints?.({
+          ...(old && old !== url ? { remove: { mcp: [{ server, url: old }] } } : {}),
+          add: { mcp: [{ server, url }] },
+        });
+        register(server, url);
       }
     } catch (error) {
       this.#busy(id, false);
@@ -777,8 +782,9 @@ export class SliccSettings extends ThemedElement {
     if (problem) return this.#refuse(account.id, 'value', problem);
     const fields = this.#fields(form, account);
     if (fields === null || this.pending.has(account.id)) return;
+    const model = this.model;
     if (!(await this.#confirmUrl(url))) return;
-    if (!input.isConnected) return;
+    if (!input.isConnected || this.model !== model) return;
     await this.keep(account, take(input), fields);
   }
 
@@ -1051,7 +1057,11 @@ export class SliccSettings extends ThemedElement {
     clearValues(this.renderRoot);
     if (this.model !== model) return;
     const server = serverOf(account);
-    const url = account.group === 'mcp' ? (registrations()[server] ?? this.#mcpUrl(account)) : null;
+    const pinned = !!this.#pinned(account);
+    const url =
+      account.group === 'mcp'
+        ? (registrations()[server] ?? (pinned ? null : this.#mcpUrl(account)))
+        : null;
     if (stored && !(await this.#forget(account, stored))) return;
     if (this.model !== model) return;
     model?.settings.disconnect(account.id);
@@ -1171,7 +1181,7 @@ export class SliccSettings extends ThemedElement {
   }
 
   #actions(account: Account): TemplateResult {
-    const moved = this.#moved(account);
+    const moved = account.status === 'connected' ? this.#moved(account) : null;
     if (moved)
       return html`<div class="actions"><swc-button
           size="m"
