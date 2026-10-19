@@ -128,6 +128,11 @@ export function readFile(file: Blob): Promise<string> {
   });
 }
 
+async function readable(file: Blob): Promise<string> {
+  await file.slice(0, 1).arrayBuffer();
+  return '';
+}
+
 export const linger = 60_000;
 
 export function release(attachments: readonly Attachment[]): void {
@@ -612,6 +617,10 @@ export class SliccComposer extends ThemedElement {
     ];
   }
 
+  attachable(): boolean {
+    return !this.#held();
+  }
+
   #held(): string | null {
     const state = this.model?.follow?.state();
     return state?.link === 'reconnecting' ? state.owner : null;
@@ -717,16 +726,16 @@ export class SliccComposer extends ThemedElement {
       const textual =
         file.type.startsWith('text/') ||
         /\.(md|txt|json|ts|js|css|html|ya?ml|toml|csv)$/i.test(file.name);
-      if (image || textual) {
-        const content = await readFile(file);
-        added.push(
-          image
-            ? { ...base, kind: 'image', url: content }
-            : { ...base, kind: 'text', text: content }
-        );
-      } else {
-        added.push({ ...base, kind: 'file', url: URL.createObjectURL(file) });
-      }
+      const content = await (image || textual ? readFile(file) : readable(file)).catch(() => null);
+      if (content === null)
+        added.push({
+          ...base,
+          kind: 'file',
+          error: file.type ? 'Could not read the file' : 'Folders can’t be attached',
+        });
+      else if (image) added.push({ ...base, kind: 'image', url: content });
+      else if (textual) added.push({ ...base, kind: 'text', text: content });
+      else added.push({ ...base, kind: 'file', url: URL.createObjectURL(file) });
     }
     this.attachments = [...this.attachments, ...added];
   }
