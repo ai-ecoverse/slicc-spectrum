@@ -31,6 +31,10 @@ async function open(t, accounts) {
       window.settingsPart(`form.key[data-id=amazon-bedrock] ${selector}`);
     return true;
   });
+  await page.until(() => {
+    const picker = window.bedrock('sp-picker[data-account-field]');
+    return !picker || picker.disabled || !!picker.selectedItem;
+  });
   return page;
 }
 
