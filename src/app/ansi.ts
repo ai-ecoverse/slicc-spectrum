@@ -159,22 +159,26 @@ function sgr(style: AnsiStyle, body: string): AnsiStyle {
   const next = { ...style };
   const groups = body === '' ? [[0]] : body.split(';').map(numbers);
   for (let i = 0; i < groups.length; i++) {
-    const code = (groups[i] as number[])[0] as number;
+    const group = groups[i] as number[];
+    const code = group[0] as number;
     if (code === 38 || code === 48) {
       const { color, used } = wide(groups, i);
       i += used;
       if (color) next[code === 38 ? 'fg' : 'bg'] = color;
-    } else Object.assign(next, simple(code));
+    } else if (code === 4 && group.length > 1) next.underline = group[1] !== 0;
+    else Object.assign(next, simple(code));
   }
   return next;
 }
 
-function terminated(text: string, from: number): number {
+function terminated(text: string, from: number, streaming: boolean): number {
   for (let i = from; i < text.length; i++) {
     if (text[i] === '\x07') return i + 1;
     if (text[i] === '\x1b' && text[i + 1] === '\\') return i + 2;
   }
-  return -1;
+  if (streaming) return -1;
+  const line = text.indexOf('\n', from);
+  return line === -1 ? text.length : line;
 }
 
 function csi(text: string, from: number): { end: number; body: string; final: string } | null {
@@ -188,7 +192,12 @@ function csi(text: string, from: number): { end: number; body: string; final: st
   return null;
 }
 
-function escape(text: string, at: number, style: AnsiStyle): { end: number; style: AnsiStyle } {
+function escape(
+  text: string,
+  at: number,
+  style: AnsiStyle,
+  streaming: boolean
+): { end: number; style: AnsiStyle } {
   const kind = text[at + 1];
   if (kind === undefined) return { end: -1, style };
   if (kind === '[') {
@@ -197,7 +206,7 @@ function escape(text: string, at: number, style: AnsiStyle): { end: number; styl
     const styled = found.final === 'm' && /^[\d;:]*$/.test(found.body);
     return { end: found.end, style: styled ? sgr(style, found.body) : style };
   }
-  if (']PX^_'.includes(kind)) return { end: terminated(text, at + 2), style };
+  if (']PX^_'.includes(kind)) return { end: terminated(text, at + 2, streaming), style };
   let i = at + 1;
   while (i < text.length && text.charCodeAt(i) >= 0x20 && text.charCodeAt(i) <= 0x2f) i++;
   if (i === text.length) return { end: -1, style };
@@ -205,7 +214,7 @@ function escape(text: string, at: number, style: AnsiStyle): { end: number; styl
   return { end: final >= 0x30 && final <= 0x7e ? i + 1 : at + 1, style };
 }
 
-export function parseAnsi(text: string): AnsiRun[] {
+export function parseAnsi(text: string, streaming = false): AnsiRun[] {
   const runs: AnsiRun[] = [];
   let style = plain;
   let start = 0;
@@ -219,7 +228,7 @@ export function parseAnsi(text: string): AnsiRun[] {
   let i = text.indexOf('\x1b');
   while (i !== -1) {
     push(i);
-    const found = escape(text, i, style);
+    const found = escape(text, i, style, streaming);
     if (found.end === -1) return runs;
     style = found.style;
     start = found.end;
@@ -243,7 +252,11 @@ function inline(style: AnsiStyle): string {
       fg ?? 'var(--swc-neutral-content-color-default)',
     ];
   }
-  if (style.dim && !fg) fg = 'var(--swc-neutral-subdued-content-color-default)';
+  if (style.dim) {
+    fg = fg
+      ? `color-mix(in srgb, ${fg} 70%, var(--swc-background-layer-1-color))`
+      : 'var(--swc-neutral-subdued-content-color-default)';
+  }
   return [
     fg ? `color: ${fg}` : '',
     bg ? `background: ${bg}` : '',
@@ -255,8 +268,8 @@ function inline(style: AnsiStyle): string {
     .join('; ');
 }
 
-export function ansi(text: string): Array<TemplateResult | string> {
-  return parseAnsi(text).map((run) => {
+export function ansi(text: string, streaming = false): Array<TemplateResult | string> {
+  return parseAnsi(text, streaming).map((run) => {
     const style = inline(run.style);
     return style ? html`<span style=${style}>${run.text}</span>` : run.text;
   });

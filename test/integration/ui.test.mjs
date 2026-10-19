@@ -2078,6 +2078,8 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
         token: probe('var(--swc-cyan-1000)'),
         body: getComputedStyle(pre).color,
         green: getComputedStyle(span('bold green')).fontWeight,
+        ready: getComputedStyle(span('ready')).color,
+        fullGreen: probe('var(--slicc-terminal-color-2)'),
         raw: window.model.agent
           .messages('cone-sliccy')
           .at(-1)
@@ -2093,8 +2095,10 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
   assert.equal(light.cyan, light.palette);
   assert.equal(light.cyan, light.token);
   assert.notEqual(light.cyan, light.body);
+  assert.notEqual(light.ready, light.fullGreen);
+  assert.notEqual(light.ready, light.body);
   assert.match(light.raw, /^\x1b\[1mbold\x1b\[0m \x1b\[36mcyan/);
-  assert.match(light.raw, /\x1b\]0;done\x07ready\n$/);
+  assert.match(light.raw, /\x1b\]0;done\x07\x1b\[2;32mready\x1b\[0m\n$/);
   await page.evaluate(() => window.model.settings.update({ color: 'dark' }));
   await page.until(() => {
     const span = [

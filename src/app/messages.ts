@@ -484,7 +484,7 @@ export function tool(
   const label = `${call.title}, ${statusLabel(call.status)}`;
   const content = html`<div class="call">
       ${body(call, color)}
-      ${call.output ? html`<pre class="output">${ansi(call.output)}</pre>` : nothing}
+      ${call.output ? html`<pre class="output">${ansi(call.output, call.status === 'running')}</pre>` : nothing}
       ${call.notes?.length ? notes(call.notes) : nothing}
       ${call.image ? html`<img class="shot" src=${call.image} alt=${call.title} />` : nothing}
       ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}

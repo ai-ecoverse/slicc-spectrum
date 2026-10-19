@@ -66,7 +66,7 @@ function test(): Step[] {
 const colourChunks = [
   '\x1b[1mbold\x1b[0m \x1b[3',
   '6mcyan\x1b[0m \x1b[31mred\x1b[0m \x1b[1;32mbold green\x1b[0m\n',
-  '\x1b[2A\x1b[2K\x1b]8;;https://example.com/harbor\x1b\\harbor\x1b]8;;\x1b\\ \x1b]0;done\x07ready\n',
+  '\x1b[2A\x1b[2K\x1b]8;;https://example.com/harbor\x1b\\harbor\x1b]8;;\x1b\\ \x1b]0;done\x07\x1b[2;32mready\x1b[0m\n',
 ];
 
 function colours(): Step[] {
