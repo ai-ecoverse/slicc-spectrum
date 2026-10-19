@@ -8830,6 +8830,20 @@ test('vault endpoints entries read as automatic, and Unpin unpins a pinned MCP t
     },
   ]);
   await page.evaluate(() => {
+    window.model.vault.fail('EACCES', 'vault is locked');
+    window
+      .settingsPart('slicc-secrets', 'ol.audit li[data-type=endpoints] [data-action=unpin]')
+      .click();
+    return true;
+  });
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-error=unpin]'));
+  assert.equal(
+    await page.evaluate(() =>
+      window.settingsPart('slicc-secrets', '[data-error=unpin]').textContent.trim()
+    ),
+    'Unlock the vault first'
+  );
+  await page.evaluate(() => {
     window
       .settingsPart('slicc-secrets', 'ol.audit li[data-type=endpoints] [data-action=unpin]')
       .click();

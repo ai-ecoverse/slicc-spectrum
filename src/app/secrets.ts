@@ -679,6 +679,9 @@ export class SliccSecrets extends ThemedElement {
     this.failure = null;
     this.form = null;
     this.busy = false;
+    this.unpinning = null;
+    this.unpinned = new Set();
+    this.unpinFailure = null;
     this.problem = null;
     this.invalid = null;
     this.said = null;
@@ -1293,13 +1296,21 @@ export class SliccSecrets extends ThemedElement {
     return this.model?.settings.accounts().find((account) => account.id === id)?.provider ?? id;
   }
 
-  #unpin(vault: VaultPort, entry: EndpointsEntry): TemplateResult | typeof nothing {
+  #unpin(
+    vault: VaultPort,
+    entry: EndpointsEntry,
+    all: readonly AuditEntry[]
+  ): TemplateResult | typeof nothing {
     const name = entry.pinned?.name;
     if (!name || !vault.unpin) return nothing;
     const key = `unpin:${entry.seq}`;
-    if (this.unpinned.has(key)) return nothing;
+    const undone = all.some(
+      (later) =>
+        later.type === 'endpoints' && later.seq > entry.seq && later.unpinned?.name === name
+    );
+    if (undone || this.unpinned.has(key)) return nothing;
     const busy = this.unpinning === key;
-    return html`<span class="unpin"><swc-button size="s" variant="secondary" fill-style="outline" data-action="unpin" ?pending=${busy} @click=${() => this.#unpinNow(vault, name, key)}>Unpin</swc-button>${
+    return html`<span class="unpin"><swc-button size="s" variant="secondary" fill-style="outline" data-action="unpin" ?pending=${busy} ?disabled=${!!vault.status()?.locked} @click=${() => this.#unpinNow(vault, name, key)}>Unpin</swc-button>${
       this.unpinFailure?.key === key
         ? html`<span class="warning" role="alert" data-error="unpin">${this.unpinFailure.message}</span>`
         : nothing
@@ -1312,20 +1323,25 @@ export class SliccSecrets extends ThemedElement {
     this.unpinFailure = null;
     try {
       await vault.unpin?.([name]);
-      this.unpinned = new Set([...this.unpinned, key]);
+      if (this.#mine(vault)) this.unpinned = new Set([...this.unpinned, key]);
     } catch (error) {
-      this.unpinFailure = { key, message: (error as Error).message };
+      if (this.#mine(vault)) this.unpinFailure = { key, message: failureText(error) };
     } finally {
-      this.unpinning = null;
+      if (this.#mine(vault)) this.unpinning = null;
     }
   }
 
-  #entry(entry: AuditEntry, devices: readonly LinkedDevice[], vault?: VaultPort): TemplateResult {
+  #entry(
+    entry: AuditEntry,
+    devices: readonly LinkedDevice[],
+    vault?: VaultPort,
+    all: readonly AuditEntry[] = []
+  ): TemplateResult {
     const date = new Date(entry.at);
     const name = entry.type === 'policy' || entry.type === 'endpoints' ? null : entry.name;
     return html`<li data-seq=${entry.seq} data-type=${entry.type}>
       <time datetime=${date.toISOString()} title=${date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}>${since(entry.at)}</time>
-      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices, (provider) => this.#provider(provider))}${entry.type === 'policy' || entry.type === 'refresh' || entry.type === 'endpoints' ? nothing : html` <span class="by">by ${who(entry)}</span>`}${entry.type === 'endpoints' && vault ? this.#unpin(vault, entry) : nothing}</span>
+      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices, (provider) => this.#provider(provider))}${entry.type === 'policy' || entry.type === 'refresh' || entry.type === 'endpoints' ? nothing : html` <span class="by">by ${who(entry)}</span>`}${entry.type === 'endpoints' && vault ? this.#unpin(vault, entry, all) : nothing}</span>
     </li>`;
   }
 
@@ -1347,7 +1363,7 @@ export class SliccSecrets extends ThemedElement {
       </div>
       ${
         shown.length
-          ? html`<ol class="audit" aria-labelledby="secrets-audit">${shown.map((entry) => this.#entry(entry, devices, vault))}</ol>`
+          ? html`<ol class="audit" aria-labelledby="secrets-audit">${shown.map((entry) => this.#entry(entry, devices, vault, entries))}</ol>`
           : html`<p class="muted" data-audit-empty>${this.reveals ? (more ? 'No reveals in the activity loaded so far.' : 'No program has been given a secret.') : 'Nothing has used a secret yet.'}</p>`
       }
       ${
