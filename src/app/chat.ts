@@ -161,7 +161,10 @@ export class SliccChat extends ThemedElement {
   }
 
   #over = (event: DragEvent): void => {
-    if (!this.#accepts(event)) return;
+    if (!this.#accepts(event)) {
+      if (this.dropping) this.#clear();
+      return;
+    }
     event.preventDefault();
     (event.dataTransfer as DataTransfer).dropEffect = 'copy';
     clearTimeout(this.#leaving);

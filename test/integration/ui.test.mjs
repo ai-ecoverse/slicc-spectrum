@@ -3759,6 +3759,35 @@ test('while the composer waits to reconnect, the chat takes no drop and shows no
     })),
     { zone: false, attachments: 0 }
   );
+
+  await page.evaluate(() => {
+    window.model.follow.setScenario('full');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
+        ?.disabled === false
+  );
+  assert.equal(await dragOverChat(page), true);
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone[dragged]')
+  );
+  await page.evaluate(() => {
+    window.model.follow.setScenario('reconnecting');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
+        ?.disabled === true
+  );
+  await page.evaluate(() => window.chatDrag('dragover'));
+  await page.until(
+    () =>
+      !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone') &&
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', '[data-announce=drop]').textContent === ''
+  );
   assert.deepEqual(page.errors, []);
 });
 
