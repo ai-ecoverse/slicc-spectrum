@@ -870,6 +870,7 @@ export interface LinkedDevice {
   asking?: boolean;
   terminals?: number;
   folders?: readonly LinkedFolder[];
+  note?: string;
 }
 
 export interface LinkedFolder {
@@ -879,12 +880,22 @@ export interface LinkedFolder {
   mounted?: string;
 }
 
+export type PairingState = 'idle' | 'confirm' | 'linking' | 'linked' | 'failed';
+
+export interface LinkPairing {
+  state: PairingState;
+  code?: string;
+  name?: string;
+  error?: string;
+}
+
 export interface NetworkLinks {
-  joinUrl: string | null;
-  joinCommand: string | null;
+  joinUrl?: string | null;
+  joinCommand?: string | null;
   followUrl?: string | null;
   devices: readonly LinkedDevice[];
   permission?: 'prompt' | 'denied' | null;
+  pairing?: LinkPairing;
 }
 
 export type NetworkExit =
@@ -931,6 +942,9 @@ export interface NetworkPort extends Subscribable<{ network: NetworkStatus }> {
   disconnectLeader?(id: string): Promise<void>;
   reconnectLeader?(id: string): Promise<void>;
   forgetLeader?(id: string): Promise<void>;
+  pairComputer?(url: string): Promise<void>;
+  confirmPairing?(): Promise<void>;
+  cancelPairing?(): Promise<void>;
 }
 
 export interface NoticeAction {

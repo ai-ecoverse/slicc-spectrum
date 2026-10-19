@@ -45,10 +45,15 @@ export { createDummyModel } from './dummy/index.ts';
 export type { LeadersScenario, NetworkScenario, TailnetScenario } from './dummy/network.ts';
 export {
   DummyNetwork,
+  forgottenDevice,
   joinUrl,
   leadersFixtures,
   linksFixtures,
   networkFixtures,
+  pairedDevice,
+  pairingCode,
+  pairingRefused,
+  pairingStopped,
   tailnetFixtures,
 } from './dummy/network.ts';
 export type { NoticeScenario } from './dummy/notices.ts';
