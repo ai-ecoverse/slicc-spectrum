@@ -1126,7 +1126,7 @@ export class SliccSettings extends ThemedElement {
   ): TemplateResult | typeof nothing {
     const needs = row.blocked;
     if (needs !== 'cors-free-transport') return nothing;
-    return html`<p class="notice" data-notice=${needs} data-blocked><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${corsNotice[size]} <a class="swc-Link swc-Link--quiet" href="#network" data-action="setup-network" aria-label="Set up the SLICC extension or CLI" @click=${(event: Event) => this.#setUp(event)}>Set up</a></span></p>`;
+    return html`<p class="notice" data-notice=${needs} data-blocked><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${corsNotice[size]} <a class="swc-Link" href="#network" data-action="setup-network" aria-label="Set up the SLICC extension or CLI" @click=${(event: Event) => this.#setUp(event)}>Set up</a></span></p>`;
   }
 
   #setUp(event: Event): void {
