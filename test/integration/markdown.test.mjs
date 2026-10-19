@@ -186,6 +186,21 @@ test('a streaming reply renders like the finished text and keeps the DOM of its 
       if (heading && first !== heading) kept = false;
       heading ??= first;
     }
+    const interrupted = [
+      'Intro\n***',
+      'Intro\n***bold*** text',
+      'Intro\n***bold*** text\n\nUse\n#',
+      'Intro\n***bold*** text\n\nUse\n#include x',
+    ];
+    const lazy = await window.post('md-lazy', '', 'streaming');
+    for (const [index, prefix] of interrupted.entries()) {
+      lazy.parts[0].text = prefix;
+      reference.parts[0].text = `${'\n'.repeat(index + 11)}${prefix}`;
+      window.model.agent.emit('message', { agentId: 'cone-sliccy', message: lazy });
+      await window.chatPart().updateComplete;
+      if (clean(window.rendered('md-lazy')) !== clean(window.rendered('md-reference')))
+        mismatches.push(prefix);
+    }
     stream.parts[0].text = text;
     stream.status = 'done';
     reference.parts[0].text = `\n${text}`;

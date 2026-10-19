@@ -27,7 +27,8 @@ type Definitions = Map<string, Definition>;
 interface Parsed {
   text: string;
   blocks: RootContent[];
-  tail: number;
+  starts: number[];
+  keep: number;
   definitions: Definitions;
 }
 
@@ -46,7 +47,7 @@ const options: Options = {
   ],
 };
 
-const empty: Parsed = { text: '', blocks: [], tail: 0, definitions: new Map() };
+const empty: Parsed = { text: '', blocks: [], starts: [], keep: 0, definitions: new Map() };
 const cache = new Map<string, Parsed>();
 const streams: Parsed[] = [];
 const rendered = new WeakMap<RootContent, Output>();
@@ -59,20 +60,32 @@ function collect(nodes: Nodes[], found: Definitions): Definitions {
   return found;
 }
 
+function blankBefore(text: string, start: number): boolean {
+  return !text.slice(text.lastIndexOf('\n', start - 2) + 1, start - 1).trim();
+}
+
 function parse(text: string): Parsed {
   const hit = cache.get(text);
   if (hit) return hit;
   const base =
     (text.includes(']:') ? undefined : streams.find((entry) => text.startsWith(entry.text))) ??
     empty;
-  const tree = fromMarkdown(text.slice(base.tail), options);
-  const last = tree.children.at(-1);
+  const tail = base.starts[base.keep] ?? 0;
+  const tree = fromMarkdown(text.slice(tail), options);
+  const blocks = [...base.blocks.slice(0, base.keep), ...tree.children];
+  const starts = [
+    ...base.starts.slice(0, base.keep),
+    ...tree.children.map(
+      (node) => text.lastIndexOf('\n', tail + node.position!.start.offset! - 1) + 1
+    ),
+  ];
+  let keep = Math.max(blocks.length - 1, 0);
+  while (keep > 0 && !blankBefore(text, starts[keep]!)) keep--;
   const parsed: Parsed = {
     text,
-    blocks: [...base.blocks.slice(0, -1), ...tree.children],
-    tail: last
-      ? text.lastIndexOf('\n', base.tail + last.position!.start.offset! - 1) + 1
-      : base.tail,
+    blocks,
+    starts,
+    keep,
     definitions: collect(tree.children, new Map()),
   };
   cache.delete(base.text);
