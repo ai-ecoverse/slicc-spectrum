@@ -39,6 +39,7 @@ export type VaultScenario =
   | 'request'
   | 'backup'
   | 'waiting'
+  | 'purged'
   | 'endpoints-fail';
 
 const minute = 60_000;
@@ -333,6 +334,21 @@ export function vaultRefused(): RefusedRule[] {
   ];
 }
 
+export function vaultPurged(now = Date.now()): AuditEntry {
+  return {
+    type: 'endpoints',
+    seq: 13,
+    id: 'audit-13',
+    at: now - 30 * minute,
+    uid: null,
+    tag: null,
+    purged: [
+      { provider: 'openai', url: 'https://models.harbor.example/v1' },
+      { provider: 'anthropic', url: 'https://relay.harbor.example' },
+    ],
+  };
+}
+
 export function vaultPolicy(now = Date.now()): AuditEntry {
   return {
     type: 'policy',
@@ -431,7 +447,13 @@ export function vaultFixtures(
   const list: VaultList = {
     secrets,
     refused: policy ? vaultRefused() : [],
-    audit: empty ? [] : [...(policy ? [vaultPolicy(now)] : []), ...vaultAudit(now)],
+    audit: empty
+      ? []
+      : [
+          ...(policy ? [vaultPolicy(now)] : []),
+          ...(scenario === 'purged' ? [vaultPurged(now)] : []),
+          ...vaultAudit(now),
+        ],
     auditMore: !empty,
     exits: {
       file: '/etc/slicc/secrets-policy.toml',

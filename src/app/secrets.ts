@@ -176,6 +176,8 @@ export function auditLine(entry: AuditEntry, devices: readonly LinkedDevice[]): 
       return html`Removed`;
     case 'restore':
       return html`Restored`;
+    case 'endpoints':
+      return html`Removed custom model URLs an agent set, automatically: ${entry.purged.map((item, index) => html`${index ? ', ' : ''}${item.provider} <code>${item.url}</code>`)}`;
     case 'refresh':
       return entry.grant
         ? html`Refreshed automatically with the sign-in <code>${entry.grant}</code>`
@@ -1241,10 +1243,10 @@ export class SliccSecrets extends ThemedElement {
 
   #entry(entry: AuditEntry, devices: readonly LinkedDevice[]): TemplateResult {
     const date = new Date(entry.at);
-    const name = entry.type === 'policy' ? null : entry.name;
+    const name = entry.type === 'policy' || entry.type === 'endpoints' ? null : entry.name;
     return html`<li data-seq=${entry.seq} data-type=${entry.type}>
       <time datetime=${date.toISOString()} title=${date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}>${since(entry.at)}</time>
-      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices)}${entry.type === 'policy' || entry.type === 'refresh' ? nothing : html` <span class="by">by ${who(entry)}</span>`}</span>
+      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices)}${entry.type === 'policy' || entry.type === 'refresh' || entry.type === 'endpoints' ? nothing : html` <span class="by">by ${who(entry)}</span>`}</span>
     </li>`;
   }
 
