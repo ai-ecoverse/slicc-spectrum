@@ -158,7 +158,8 @@ export const fieldStyles = css`
     background: var(--swc-background-layer-2-color);
     color: inherit;
   }
-  .field input[aria-invalid='true'] {
+  .field input[aria-invalid='true'],
+  .field select[aria-invalid='true'] {
     border-color: var(--swc-negative-border-color-default);
   }
   .field input[type='file'] {

@@ -344,7 +344,7 @@ export class SliccSettings extends ThemedElement {
         .querySelector<HTMLElement>(
           field === 'value'
             ? '.key input[data-field=value]'
-            : `.key input[data-account-field="${field}"]`
+            : `.key [data-account-field="${field}"]`
         )
         ?.focus()
     );
@@ -450,7 +450,12 @@ export class SliccSettings extends ThemedElement {
   #control(account: Account, field: AccountField): TemplateResult {
     if (field.options?.length) {
       const chosen = field.value ?? field.options[0].value;
-      return html`<select data-account-field=${field.name}>
+      return html`<select
+          data-account-field=${field.name}
+          aria-required=${field.required ? 'true' : nothing}
+          aria-invalid=${this.#invalid(account, field.name)}
+          aria-describedby=${this.#described(account, field.name)}
+        >
           ${field.options.map((option) => html`<option value=${option.value} ?selected=${option.value === chosen}>${option.label}</option>`)}
         </select>`;
     }
