@@ -202,6 +202,23 @@ test('Install / Update shows every npm row state with its text and buttons', asy
     error: null,
     buttons: ['install-beta'],
   });
+  await page.evaluate(() => window.agentRow().querySelector('[data-action=whats-new]').click());
+  await page.until(() => window.agentRow().querySelector('[data-releases]').open);
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.agentRow().querySelectorAll('[data-releases] .release')].map((release) => [
+        release.dataset.version,
+        release.innerText.replace(/\s+/g, ' ').trim(),
+      ])
+    ),
+    [
+      [
+        '6.13.5',
+        '6.13.5 Bug Fixes tools: a tide table with a blank row no longer stops the import',
+      ],
+      ['6.10.0', '6.10.0 Features chat: answers can quote a buoy reading with its time and place'],
+    ]
+  );
   assert.equal(
     await page.evaluate(() =>
       window.agentRow().querySelector('[data-action=install-beta]').getAttribute('variant')
