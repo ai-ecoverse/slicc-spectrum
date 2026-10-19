@@ -305,6 +305,11 @@ async function azure(page, endpoint) {
   await page.evaluate(() => {
     window.order = [];
     const { vault, settings } = window.model;
+    const put = vault.put.bind(vault);
+    vault.put = (name, ...rest) => {
+      window.order.push(['put', name]);
+      return put(name, ...rest);
+    };
     const endpoints = vault.endpoints.bind(vault);
     vault.endpoints = (change) => {
       window.order.push(['endpoints', change]);
@@ -322,12 +327,13 @@ async function azure(page, endpoint) {
 
 const base = 'https://harbor.openai.azure.example';
 
-test('an https endpoint is registered with the vault before connect, and Remove takes it back', async (t) => {
+test('an https endpoint is bound to the key’s record after put and before connect, and Remove leaves it to the vault', async (t) => {
   const page = await open(t, { vault: 'secrets' });
   await azure(page, base);
   await page.until(() => window.account('azure-openai')?.status === 'connected');
   assert.deepEqual(await page.evaluate(() => window.order), [
-    ['endpoints', { add: { model: [{ provider: 'azure-openai', url: base }] } }],
+    ['put', 'AZURE_OPENAI_API_KEY'],
+    ['endpoints', { add: { model: [{ name: 'AZURE_OPENAI_API_KEY', url: base }] } }],
     ['connect', 'azure-openai'],
   ]);
   await click(page, '.account[data-id=azure-openai] [data-action=remove-account]');
@@ -337,10 +343,48 @@ test('an https endpoint is registered with the vault before connect, and Remove 
     return true;
   });
   await page.until(() => !window.account('azure-openai'));
-  await page.until(() => window.model.vault.endpointChanges.length === 2);
-  assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges.at(-1)), {
-    remove: { model: [{ provider: 'azure-openai', url: base }] },
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      changes: window.model.vault.endpointChanges.length,
+      record: window.model.vault
+        .list()
+        .secrets.find((secret) => secret.name === 'AZURE_OPENAI_API_KEY')?.state,
+    })),
+    { changes: 1, record: 'removed' }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a provider added again after Remove binds its endpoint again', async (t) => {
+  const page = await open(t, { vault: 'secrets' });
+  await azure(page, base);
+  await page.until(() => window.account('azure-openai')?.status === 'connected');
+  await click(page, '.account[data-id=azure-openai] [data-action=remove-account]');
+  await page.until(() => !!window.deep('slicc-confirm'));
+  await page.evaluate(() => {
+    window.deep('slicc-confirm').shadowRoot.querySelector('[data-action]').click();
+    return true;
   });
+  await page.until(() => !window.account('azure-openai'));
+  await azure(page, base);
+  await page.until(() => window.account('azure-openai')?.status === 'connected');
+  const bound = { add: { model: [{ name: 'AZURE_OPENAI_API_KEY', url: base }] } };
+  assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges), [bound, bound]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('while a picked provider connects, Accounts shows no second key form for it', async (t) => {
+  const page = await open(t, { delay: '60' });
+  await choose(page, 'groq');
+  await page.until(() => window.active()?.localName === 'sp-textfield');
+  await page.type('gsk-0123456789');
+  await page.press('Enter');
+  await page.until(() => !!window.settingsPart('.account[data-id=groq]'));
+  assert.equal(
+    await page.evaluate(() => window.inner().querySelectorAll('form.key[data-id=groq]').length),
+    1
+  );
+  await page.until(() => !window.picker());
   assert.deepEqual(page.errors, []);
 });
 
@@ -348,7 +392,10 @@ test('a bare resource name is not registered as an endpoint', async (t) => {
   const page = await open(t, { vault: 'secrets' });
   await azure(page, 'harbor');
   await page.until(() => window.account('azure-openai')?.status === 'connected');
-  assert.deepEqual(await page.evaluate(() => window.order), [['connect', 'azure-openai']]);
+  assert.deepEqual(await page.evaluate(() => window.order), [
+    ['put', 'AZURE_OPENAI_API_KEY'],
+    ['connect', 'azure-openai'],
+  ]);
   assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges), []);
   assert.deepEqual(page.errors, []);
 });
@@ -369,74 +416,7 @@ test('when the vault refuses the endpoint, the field says why and connect never 
         .getAttribute('aria-invalid'),
       added: !!window.account('azure-openai'),
     })),
-    { order: ['endpoints'], invalid: 'true', added: false }
-  );
-  assert.deepEqual(page.errors, []);
-});
-
-async function mcpToken(page) {
-  await click(page, '.account[data-id="mcp:tickets"] [data-action=connect]');
-  await page.until(
-    () => !!window.settingsPart('form.key[data-id="mcp:tickets"] input[data-field=value]')
-  );
-  await page.evaluate(() => {
-    window.settingsPart('form.key[data-id="mcp:tickets"] input[data-field=value]').focus();
-    return true;
-  });
-  await page.type('tickets-token-0123456789');
-  await click(page, 'form.key[data-id="mcp:tickets"] [data-action=save]');
-}
-
-const tickets = { server: 'tickets', url: 'https://tickets.example' };
-
-test('saving an MCP token registers its server URL first, and Disconnect takes it back', async (t) => {
-  const page = await open(t, { vault: 'secrets', accounts: 'vault' });
-  await page.evaluate(() => {
-    window.order = [];
-    const vault = window.model.vault;
-    for (const name of ['endpoints', 'put']) {
-      const real = vault[name].bind(vault);
-      vault[name] = (...args) => {
-        window.order.push(name);
-        return real(...args);
-      };
-    }
-    return true;
-  });
-  await mcpToken(page);
-  await page.until(() => window.account('mcp:tickets')?.status === 'connected');
-  assert.deepEqual(await page.evaluate(() => window.order), ['endpoints', 'put']);
-  assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges), [
-    { add: { mcp: [tickets] } },
-  ]);
-  await click(page, '.account[data-id="mcp:tickets"] [data-action=disconnect]');
-  await page.until(() => !!window.deep('slicc-confirm'));
-  await page.evaluate(() => {
-    window.deep('slicc-confirm').shadowRoot.querySelector('[data-action]').click();
-    return true;
-  });
-  await page.until(() => window.model.vault.endpointChanges.length === 2);
-  assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges.at(-1)), {
-    remove: { mcp: [tickets] },
-  });
-  assert.equal(await page.evaluate(() => window.account('mcp:tickets').status), 'disconnected');
-  assert.deepEqual(page.errors, []);
-});
-
-test('when the vault refuses an MCP server URL, the token isn’t saved and the form says why', async (t) => {
-  const page = await open(t, { vault: 'endpoints-fail', accounts: 'vault' });
-  await mcpToken(page);
-  await page.until(
-    () =>
-      window.settingsPart('form.key[data-id="mcp:tickets"] #key-problem')?.textContent.trim() ===
-      'The vault refused that endpoint. Check the address and try again.'
-  );
-  assert.deepEqual(
-    await page.evaluate(() => ({
-      puts: window.model.vault.puts.length,
-      status: window.account('mcp:tickets').status,
-    })),
-    { puts: 0, status: 'expired' }
+    { order: ['put', 'endpoints'], invalid: 'true', added: false }
   );
   assert.deepEqual(page.errors, []);
 });

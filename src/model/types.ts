@@ -524,7 +524,7 @@ export interface AccountField {
 }
 
 export interface ModelEndpoint {
-  provider: string;
+  name: string;
   url: string;
 }
 
