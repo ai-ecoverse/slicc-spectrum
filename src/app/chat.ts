@@ -609,15 +609,33 @@ export class SliccChat extends ThemedElement {
       ?.restore(latest ? { text: latest.text, attachments: latest.attachments } : restored);
   }
 
+  static closedAfter = 20_000;
+
   #logins = new Map<string, { pending: boolean; error?: string; cancelled?: boolean }>();
+  #signing = new Map<string, number>();
+
+  #waited(key: string): boolean {
+    const now = Date.now();
+    const since = this.#signing.get(key);
+    if (since === undefined) {
+      this.#signing.set(key, now);
+      setTimeout(() => this.requestUpdate(), SliccChat.closedAfter);
+      return false;
+    }
+    return now - since >= SliccChat.closedAfter;
+  }
 
   #loginState(accountId: string, messageId: string): Login {
     const settings = (this.model as SliccModel).settings;
     const account = settings.accounts().find((candidate) => candidate.id === accountId);
     const local = this.#logins.get(`${messageId}:${accountId}`);
     const cancel = !!settings.cancel;
-    if (account?.status === 'signing-in' || local?.pending) return { state: 'signing-in', cancel };
-    if (account?.status === 'connected') return { state: 'connected' };
+    const window = account?.auth === 'oauth';
+    const key = `${messageId}:${accountId}`;
+    if (account?.status === 'signing-in' || local?.pending)
+      return { state: 'signing-in', cancel, window, waited: window && this.#waited(key) };
+    this.#signing.delete(key);
+    if (account?.status === 'connected') return { state: 'connected', provider: account.provider };
     return { state: 'idle', error: local?.error };
   }
 

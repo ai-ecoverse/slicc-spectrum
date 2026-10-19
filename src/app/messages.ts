@@ -82,6 +82,9 @@ export interface Login {
   state: 'idle' | 'signing-in' | 'connected';
   error?: string;
   cancel?: boolean;
+  window?: boolean;
+  waited?: boolean;
+  provider?: string;
 }
 
 export interface Owner {
@@ -332,6 +335,8 @@ function actionLabel(action: ErrorAction, handlers: Handlers, messageId: string)
 }
 
 const signedIn = 'Signed in. Retry to send it again.';
+const continuing = 'Continue in the sign-in window that opened.';
+const closed = 'Closed the sign-in window? Cancel, then Log in again.';
 
 function stopSigningIn(event: Event, handlers: Handlers, account: string, id: string): void {
   const main = (event.currentTarget as HTMLElement).nextElementSibling as HTMLElement;
@@ -367,11 +372,13 @@ function errorCard(
       ? handlers.login?.(item.account, id)
       : undefined;
   const resolved = login?.state === 'connected';
-  const text = resolved ? signedIn : item.text;
+  const signing = login?.state === 'signing-in' && login.window;
+  const text = resolved ? signedIn : signing ? (login.waited ? closed : continuing) : item.text;
+  const title = resolved && login.provider ? `Signed in to ${login.provider} again.` : item.title;
   const failure = login?.state === 'idle' ? login.error : undefined;
   return html`<div class="error-card" role=${resolved ? nothing : 'alert'} aria-atomic=${resolved ? nothing : 'false'} data-id=${id || nothing} data-login=${login?.state ?? nothing}>
     ${resolved ? html`<swc-icon-info-circle class="icon" size="s" aria-hidden="true"></swc-icon-info-circle>` : html`<swc-icon-alert-diamond class="icon" size="s" aria-hidden="true"></swc-icon-alert-diamond>`}
-    ${resolved ? nothing : html`<span class="sr">Error: </span>`}<span class="lead">${item.title}</span>
+    ${resolved ? nothing : html`<span class="sr">Error: </span>`}<span class="lead">${title}</span>
     ${text ? html`<span class="detail" role=${login ? 'status' : nothing}>${text}</span>` : nothing}
     ${fix ? html`<div class="fix" aria-live="off">${fixButton(fix, item, handlers, login)}</div>` : nothing}
     ${
