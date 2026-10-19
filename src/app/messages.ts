@@ -199,10 +199,13 @@ export function toolSummary(calls: readonly ToolCall[]): string {
     const kind = toolKind(call.name);
     counts.set(kind, (counts.get(kind) ?? 0) + 1);
   }
-  return [...counts]
-    .sort((a, b) => b[1] - a[1])
+  const sorted = [...counts].sort((a, b) => b[1] - a[1]);
+  const named = sorted
+    .slice(0, 2)
     .map(([kind, count]) => `${count} ${count === 1 ? kind.one : kind.many}`)
     .join(', ');
+  const rest = sorted.slice(2).reduce((sum, [, count]) => sum + count, 0);
+  return rest ? `${named} and ${rest} more` : named;
 }
 
 const actionLabels: Record<ErrorAction, string> = {

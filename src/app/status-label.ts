@@ -103,7 +103,7 @@ export class SliccStatusLabel extends LitElement {
 
   #wanted(): string {
     const base = (this.state === 'complete' && this.#label()) || this.text;
-    return base && this.note ? `${base} · ${this.note}` : base;
+    return base && this.note ? `${this.note} · ${base}` : base;
   }
 
   #cancel(): void {

@@ -2176,8 +2176,8 @@ test('tool steps join across messages, keep their states, and open from the keyb
   await page.evaluate(() => window.model.agent.select('cone-kitchen'));
   await page.until(
     () =>
-      window.chatPart('[data-id=k-m8] slicc-status-label')?.textContent.startsWith('Compare') &&
-      window.chatPart('[data-id=k-m3] slicc-status-label')?.textContent.startsWith('Walk')
+      window.chatPart('[data-id=k-m8] slicc-status-label')?.textContent.includes('Compare') &&
+      window.chatPart('[data-id=k-m3] slicc-status-label')?.textContent.includes('Walk')
   );
   const shape = await page.evaluate(() => {
     const root = window.chatPart().shadowRoot;
@@ -2211,10 +2211,10 @@ test('tool steps join across messages, keep their states, and open from the keyb
     };
   });
   assert.deepEqual(shape.m3, [
-    ['complete', 17, 'Walk through every kind of tool · 2 failed, 1 cancelled'],
+    ['complete', 17, '2 failed, 1 cancelled · Walk through every kind of tool'],
   ]);
   assert.deepEqual(shape.m8, [
-    ['complete', 9, 'Compare the docs with the live API · 1 failed, 1 cancelled'],
+    ['complete', 9, '1 failed, 1 cancelled · Compare the docs with the live API'],
   ]);
   assert.deepEqual(shape.single, [['complete', 1, 'bash Check the preview port']]);
   assert.equal(shape.absorbed, false);
