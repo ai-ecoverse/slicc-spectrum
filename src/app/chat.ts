@@ -370,6 +370,8 @@ export class SliccChat extends ThemedElement {
       this.requestUpdate();
     };
     queueMicrotask(() => settleModels(model));
+    this.#stuck = true;
+    this.behind = false;
     const width = new ResizeObserver(([entry]) => {
       const size = (entry as ResizeObserverEntry).contentRect.width;
       this.compact = size > 0 && size < compactWidth;
