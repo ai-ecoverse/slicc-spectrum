@@ -234,6 +234,23 @@ test('an open memory names its tag and scope in words next to their icons, a clo
       ];
     });
   assert.deepEqual(await page.evaluate(labels, 'mem-6'), []);
+  const marks = (id) =>
+    window.parts(`.row[data-id=${id}] .head .mark`).map((mark) => {
+      const box = mark.getBoundingClientRect();
+      return [
+        mark.dataset.tag ?? mark.dataset.scope,
+        getComputedStyle(mark).visibility,
+        [box.left, box.top, box.width],
+      ];
+    });
+  const closed = await page.evaluate(marks, 'mem-6');
+  assert.deepEqual(
+    closed.map(([name, seen]) => [name, seen]),
+    [
+      ['project', 'visible'],
+      ['cone-harbor', 'visible'],
+    ]
+  );
   for (const [id, expected] of [
     [
       'mem-6',
@@ -257,6 +274,16 @@ test('an open memory names its tag and scope in words next to their icons, a clo
     await page.until((id) => !!window.part(`.row[data-id=${id}][data-open]`), id);
     await page.until(settled, id);
     assert.deepEqual(await page.evaluate(labels, id), expected);
+    const shown = await page.evaluate(marks, id);
+    assert.deepEqual(
+      shown.map(([, seen]) => seen),
+      ['hidden', 'hidden']
+    );
+    if (id === 'mem-6')
+      assert.deepEqual(
+        shown.map(([, , box]) => box),
+        closed.map(([, , box]) => box)
+      );
     assert.equal(await page.evaluate(() => window.parts('[data-label]').length), expected.length);
   }
   assert.deepEqual(page.errors, []);

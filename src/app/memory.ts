@@ -276,6 +276,9 @@ export class SliccMemory extends ModelElement {
       .mark {
         display: inline-flex;
       }
+      .row[data-open] .head :is(.tag, .scope) {
+        visibility: hidden;
+      }
       .content {
         overflow: hidden;
         max-height: 2lh;
