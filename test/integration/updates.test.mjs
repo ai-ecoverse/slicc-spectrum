@@ -754,7 +754,7 @@ test('a package installed elsewhere shows as installed where it lives, never off
     const installs = [
       { version: '2.47.1', where: '/home/cone/.local/share/pnpm', user: 'cone', manager: 'pnpm' },
     ];
-    set({ state: 'available', version: null, actions: ['install'], installs });
+    set({ state: 'available', version: null, actions: ['install', 'remove'], installs });
     const found = await read();
     set({ state: 'outdated', version: '2.47.1', offered: '2.48.0', actions: ['update'], installs });
     return { found, newer: await read() };

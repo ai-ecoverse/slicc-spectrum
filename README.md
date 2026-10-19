@@ -798,7 +798,7 @@ An installed pin reads "Pinned" with `0.24.0 · seven ships 0.25.0 · in /opt/ag
 A pin that is `removing` reads "Unpinning"; other states keep their usual lights.
 Offer `unpin` for pins and `remove` for additions.
 Optional `installs` lists where a package is installed, each with its `version`, `where` (a folder such as `/home/cone/.local/share/pnpm`), an optional `user` and an optional `manager` (`pnpm` or `panel`).
-A row with any install never offers `install`, and one the port still reports as `available` reads Installed, or Update available when `offered` differs, with its first install's `version`.
+A row with any install never offers `install`, nor `remove` unless one install's `manager` is `panel`, and one the port still reports as `available` reads Installed, or Update available when `offered` differs, with its first install's `version`.
 Each install the panel doesn't own shows in the meta line as `[data-install]`, such as "for cone, via pnpm" or "in /opt/tools", with its version in front when it differs from the row's.
 When no install is the panel's and the row has no `remove`, `[data-managed]` under it reads "Managed by pnpm. Remove it with pnpm remove -g <package>." (or "Installed outside this panel. Remove it where it was installed." for another manager).
 Offer `update` for such a row to update it in place, for that user and with that manager, never as a second copy; never offer `remove` for it.

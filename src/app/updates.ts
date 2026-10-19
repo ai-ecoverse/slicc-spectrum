@@ -83,12 +83,9 @@ function placed(item: PackageItem): PackageItem {
   const version = item.version ?? installs[0].version;
   const newer = item.offered !== null && item.offered !== version;
   const state = item.state === 'available' ? (newer ? 'outdated' : 'installed') : item.state;
-  return {
-    ...item,
-    version,
-    state,
-    actions: item.actions.filter((action) => action !== 'install'),
-  };
+  const owned = installs.some((install) => install.manager === 'panel');
+  const hidden = new Set<PackageAction>(owned ? ['install'] : ['install', 'remove']);
+  return { ...item, version, state, actions: item.actions.filter((action) => !hidden.has(action)) };
 }
 
 const elsewhere = (item: PackageItem): readonly PackageInstall[] =>
@@ -103,7 +100,6 @@ function installText(install: PackageInstall, version: string | null): string {
 function managedText(item: PackageItem): string | null {
   const others = elsewhere(item);
   if (!others.length || others.length !== item.installs?.length) return null;
-  if (item.actions.includes('remove')) return null;
   return others.every((install) => install.manager === 'pnpm')
     ? `Managed by pnpm. Remove it with pnpm remove -g ${item.package}.`
     : 'Installed outside this panel. Remove it where it was installed.';
