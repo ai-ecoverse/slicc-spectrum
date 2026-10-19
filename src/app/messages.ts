@@ -332,6 +332,7 @@ function actionLabel(action: ErrorAction, handlers: Handlers, messageId: string)
 }
 
 const signedIn = 'Signed in. Retry to send it again.';
+const continuing = 'Continue in the sign-in window that opened.';
 
 function stopSigningIn(event: Event, handlers: Handlers, account: string, id: string): void {
   const main = (event.currentTarget as HTMLElement).nextElementSibling as HTMLElement;
@@ -367,7 +368,7 @@ function errorCard(
       ? handlers.login?.(item.account, id)
       : undefined;
   const resolved = login?.state === 'connected';
-  const text = resolved ? signedIn : item.text;
+  const text = resolved ? signedIn : login?.state === 'signing-in' ? continuing : item.text;
   const failure = login?.state === 'idle' ? login.error : undefined;
   return html`<div class="error-card" role=${resolved ? nothing : 'alert'} aria-atomic=${resolved ? nothing : 'false'} data-id=${id || nothing} data-login=${login?.state ?? nothing}>
     ${resolved ? html`<swc-icon-info-circle class="icon" size="s" aria-hidden="true"></swc-icon-info-circle>` : html`<swc-icon-alert-diamond class="icon" size="s" aria-hidden="true"></swc-icon-alert-diamond>`}

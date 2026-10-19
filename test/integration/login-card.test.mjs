@@ -99,7 +99,7 @@ test('Log in on the expired-session card signs in within the click, then offers 
     actions: ['cancel-login', 'login'],
     label: 'Signing in…',
     pending: true,
-    detail: 'The Adobe session expired. Log in again to continue.',
+    detail: 'Continue in the sign-in window that opened.',
     error: null,
   });
   await page.until(() => window.cardState('k-s3').state === 'connected');
