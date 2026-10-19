@@ -54,6 +54,7 @@ export interface DummyOptions {
   guests?: GuestsScenario | 'off';
   accounts?: 'settings' | 'vault';
   providers?: 'connected' | 'none' | 'all';
+  mcp?: 'moved';
   hold?: AgentHold['reason'] | 'off';
   readonly?: 'version' | 'off';
   browser?: BrowserScenario;
@@ -82,6 +83,8 @@ export function vaultAccounts(accounts: readonly Account[]): Account[] {
       : account
   );
 }
+
+export const movedDocs = 'https://docs.eu.example/mcp';
 
 function settingsAccounts(
   accounts: 'settings' | 'vault',
@@ -128,6 +131,7 @@ export function createDummyModel({
   guests = 'off',
   accounts = 'settings',
   providers = 'connected',
+  mcp,
   hold = 'off',
   readonly = 'off',
   browser: scenario = 'idle',
@@ -177,7 +181,9 @@ export function createDummyModel({
     settings: new DummySettings(
       fixtures.defaults,
       providers === 'none' ? [...fixtures.models, ...fixtures.laterModels] : fixtures.models,
-      settingsAccounts(accounts, providers),
+      settingsAccounts(accounts, providers).map((account) =>
+        mcp === 'moved' && account.id === 'mcp:docs' ? { ...account, url: movedDocs } : account
+      ),
       storage,
       time,
       undefined,

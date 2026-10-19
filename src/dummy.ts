@@ -41,7 +41,7 @@ export {
   importTotal,
 } from './dummy/import.ts';
 export type { DummyModel, DummyOptions } from './dummy/index.ts';
-export { createDummyModel } from './dummy/index.ts';
+export { createDummyModel, movedDocs } from './dummy/index.ts';
 export type { LeadersScenario, NetworkScenario, TailnetScenario } from './dummy/network.ts';
 export {
   DummyNetwork,

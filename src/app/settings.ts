@@ -463,7 +463,7 @@ export class SliccSettings extends ThemedElement {
       model.settings.on('settings', settle),
       model.settings.on('accounts', settle),
       model.settings.on('providers', update),
-      ...(model.vault ? [model.vault.on('status', update)] : []),
+      ...(model.vault ? [model.vault.on('status', update), model.vault.on('list', update)] : []),
     ];
   }
 
@@ -553,8 +553,10 @@ export class SliccSettings extends ThemedElement {
         : { kind: 'model' as const, provider: account.id };
     this.#busy(id, true);
     this.failure = null;
+    const url = this.#mcpUrl(account);
     try {
       await vault.put?.(recordName(account), value, undefined, options);
+      if (url) await vault.endpoints?.({ add: { mcp: [{ server: serverOf(account), url }] } });
     } catch (error) {
       this.#busy(id, false);
       if (this.model === model) this.#refuse(id, 'value', failureText(error));
@@ -727,6 +729,11 @@ export class SliccSettings extends ThemedElement {
     const form = event.currentTarget as HTMLElement;
     this.problem = null;
     this.filled = new Set([...this.filled].filter((name) => name !== 'value'));
+    const url = this.#mcpUrl(account);
+    if (this.#vault(account) && url) {
+      void this.#confirmSubmit(form, account, url);
+      return;
+    }
     if (this.#vault(account)) {
       const value = take(form.querySelector('input[data-field=value]') as HTMLInputElement);
       const fields = this.#fields(form, account);
@@ -740,6 +747,74 @@ export class SliccSettings extends ThemedElement {
     field.value = '';
     const fields = this.#fields(form, account);
     if (secret && fields !== null) void this.#connectBases(account, secret, fields);
+  }
+
+  async #confirmSubmit(form: HTMLElement, account: Account, url: string): Promise<void> {
+    const input = form.querySelector('input[data-field=value]') as HTMLInputElement;
+    const problem = valueProblem(input.value);
+    if (problem) return this.#refuse(account.id, 'value', problem);
+    const fields = this.#fields(form, account);
+    if (fields === null || this.pending.has(account.id)) return;
+    if (!(await this.#confirmUrl(url))) return;
+    if (!input.isConnected) return;
+    await this.keep(account, take(input), fields);
+  }
+
+  #confirmUrl(url: string): Promise<boolean> {
+    return confirm({
+      title: `Connect to ${url}?`,
+      body: `SLICC sends this token only to ${url}.`,
+      action: 'Connect',
+      variant: 'confirmation',
+    });
+  }
+
+  #mcpUrl(account: Account): string | null {
+    if (account.group !== 'mcp' || !this.model?.vault?.endpoints) return null;
+    return this.#baseOf(account.url) ?? null;
+  }
+
+  #registered(account: Account): string | undefined {
+    const server = serverOf(account);
+    return this.model?.vault
+      ?.list()
+      ?.secrets.find(
+        (secret) => secret.kind === 'mcp' && secret.server === server && secret.state !== 'removed'
+      )?.url;
+  }
+
+  #moved(account: Account): string | null {
+    const url = this.#mcpUrl(account);
+    const old = this.#registered(account);
+    return url && old && old !== url ? url : null;
+  }
+
+  async #reconnectMcp(account: Account, url: string): Promise<void> {
+    const model = this.model as SliccModel;
+    const old = this.#registered(account) as string;
+    if (!(await this.#confirmUrl(url))) return;
+    if (this.model !== model) return;
+    const server = serverOf(account);
+    this.#busy(account.id, true);
+    this.failure = null;
+    try {
+      await model.vault?.endpoints?.({
+        remove: { mcp: [{ server, url: old }] },
+        add: { mcp: [{ server, url }] },
+      });
+    } catch (error) {
+      if (this.model === model) this.failure = { id: account.id, message: failureText(error) };
+      return;
+    } finally {
+      this.#busy(account.id, false);
+    }
+    if (this.model === model) await this.connect(account.id);
+  }
+
+  #movedNote(account: Account): TemplateResult | typeof nothing {
+    const url = this.#moved(account);
+    if (!url) return nothing;
+    return html`<div class="notes"><p class="notice" data-notice="moved"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>The server moved to ${url}. Reconnect to send the token there.</span></p></div>`;
   }
 
   #submitOnEnter(event: KeyboardEvent): void {
@@ -948,8 +1023,16 @@ export class SliccSettings extends ThemedElement {
     if (!(await confirm({ title, body, action: 'Disconnect', variant: 'confirmation' }))) return;
     clearValues(this.renderRoot);
     if (this.model !== model) return;
+    const url = this.#registered(account) ?? this.#mcpUrl(account);
     if (stored && !(await this.#forget(account, stored))) return;
-    if (this.model === model) model?.settings.disconnect(account.id);
+    if (this.model !== model) return;
+    model?.settings.disconnect(account.id);
+    if (!url || !stored?.endpoints) return;
+    await stored
+      .endpoints({ remove: { mcp: [{ server: serverOf(account), url }] } })
+      .catch((error) => {
+        if (this.model === model) this.failure = { id: account.id, message: failureText(error) };
+      });
   }
 
   async #forget(account: Account, vault: VaultPort): Promise<boolean> {
@@ -1051,10 +1134,27 @@ export class SliccSettings extends ThemedElement {
           : nothing
       }</span>
       <swc-status-light class="state" variant=${variant}>${label}</swc-status-light>
-      ${this.#removable(account) ? html`<div class="actions">${this.#action(account)}${this.#removeButton(account)}</div>` : this.#action(account)}
+      ${this.#actions(account)}
     </div>
     ${this.#offered() ? this.#rowNotes(account) : nothing}
+    ${this.#movedNote(account)}
     ${this.adding?.id === account.id ? nothing : html`${this.#key(account)}${failure}`}`;
+  }
+
+  #actions(account: Account): TemplateResult {
+    const moved = this.#moved(account);
+    if (moved)
+      return html`<div class="actions"><swc-button
+          size="m"
+          variant="accent"
+          data-action="reconnect-mcp"
+          accessible-label=${`Reconnect ${account.provider}`}
+          ?pending=${this.pending.has(account.id)}
+          @click=${() => this.#reconnectMcp(account, moved)}
+        >Reconnect</swc-button>${this.#action(account)}</div>`;
+    if (this.#removable(account))
+      return html`<div class="actions">${this.#action(account)}${this.#removeButton(account)}</div>`;
+    return this.#action(account);
   }
 
   #removable(account: Account): boolean {

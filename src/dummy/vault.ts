@@ -6,6 +6,7 @@ import type {
   ButtonConfig,
   ButtonEvent,
   ButtonMessage,
+  EndpointSet,
   ErrorCode,
   ImportCandidate,
   ImportKind,
@@ -151,6 +152,7 @@ export function accountRecords(now = Date.now()): SecretView[] {
       source: 'settings',
       sourceDevice: null,
       server: 'docs',
+      url: 'https://docs.example/mcp',
       domains: ['docs.example'],
       rules: [{ domain: 'docs.example', header: 'Authorization', methods: [], paths: [] }],
       exec: false,
@@ -585,6 +587,19 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
         'The vault refused that endpoint. Check the address and try again.'
       );
     this.endpointChanges.push(change);
+    const bound = (secret: SecretView, list: EndpointSet | undefined) =>
+      list?.mcp?.find((entry) => secret.kind === 'mcp' && entry.server === secret.server);
+    this.#list = {
+      ...this.#list,
+      secrets: this.#list.secrets.map((secret) => {
+        const added = bound(secret, change.add);
+        if (added) return { ...secret, url: added.url };
+        if (bound(secret, change.remove)?.url !== secret.url || !secret.url) return secret;
+        const { url: _, ...rest } = secret;
+        return rest;
+      }),
+    };
+    this.emit('list', this.#list);
   }
 
   status(): VaultStatus | null {
