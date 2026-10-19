@@ -66,8 +66,8 @@ test('Accounts lists connected providers first, then expired, then not connected
     'ollama',
     'adobe',
     'ai-adobe',
-    'amazon-bedrock',
     'openai',
+    'amazon-bedrock',
   ]);
   assert.equal(
     await page.evaluate(() => window.settingsPart('[data-action=add-provider]').textContent.trim()),
@@ -92,7 +92,7 @@ test('without providers(), Settings keeps its rows, order and actions', async (t
       group: window.settingsPart('.accounts').dataset.group ?? null,
     })),
     {
-      rows: ['anthropic', 'github', 'adobe', 'ai-adobe', 'openai'],
+      rows: ['anthropic', 'github', 'adobe', 'ai-adobe', 'openai', 'amazon-bedrock'],
       add: false,
       remove: false,
       group: null,

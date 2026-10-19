@@ -1,4 +1,5 @@
 import type { Account, ProviderOption } from '../model/types.ts';
+import { accounts } from './fixtures.ts';
 
 const options: ProviderOption[] = [
   {
@@ -14,7 +15,7 @@ const options: ProviderOption[] = [
     auth: 'fields',
     keyUrl: 'https://console.aws.example/bedrock/api-keys',
     needs: 'cors-free-transport',
-    fields: [{ name: 'region', label: 'Region', placeholder: 'us-west-2' }],
+    fields: accounts.find((account) => account.id === 'amazon-bedrock')?.fields,
   },
   {
     id: 'anthropic',
@@ -143,15 +144,20 @@ export function providerAccount(option: ProviderOption): Account {
   };
 }
 
-export function providerAccounts(accounts: readonly Account[]): Account[] {
+export function providerAccounts(rows: readonly Account[]): Account[] {
   const added = (id: string, patch: Partial<Account>): Account => ({
     ...providerAccount(providerFixtures.find((option) => option.id === id) as ProviderOption),
     ...patch,
   });
-  const providers = accounts.filter((account) => account.group !== 'mcp');
-  const servers = accounts.filter((account) => account.group === 'mcp');
+  const offered = (account: Account) => providerFixtures.find((option) => option.id === account.id);
+  const providers = rows
+    .filter((account) => account.group !== 'mcp')
+    .map((account) => {
+      const option = offered(account);
+      return option ? { ...providerAccount(option), ...account } : account;
+    });
+  const servers = rows.filter((account) => account.group === 'mcp');
   return [
-    added('amazon-bedrock', {}),
     ...providers,
     added('ollama', { status: 'connected', identity: 'On this device' }),
     ...servers,
