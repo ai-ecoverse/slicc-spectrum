@@ -374,7 +374,7 @@ function hosted(event: Event): boolean {
 function openStep(event: Event, call: ToolCall, runs: ViewSet | undefined, key: string): void {
   if (!hosted(event)) return;
   const step = event.currentTarget as HTMLElement & { open: boolean };
-  step.open = !step.open;
+  step.open = runs ? !runs.has(call.id) : !step.open;
   runs?.toggle(call.id, step.open);
   const status = step.closest('swc-response-status') as (HTMLElement & { open: boolean }) | null;
   if (!step.open || !status) return;
@@ -389,24 +389,33 @@ function openStatus(event: Event, runs: ViewSet | undefined, key: string): void 
   runs?.toggle(key, status.open);
 }
 
-export function step(call: ToolCall, context: RunContext, id?: string): TemplateResult {
+export function step(
+  call: ToolCall,
+  context: RunContext,
+  id?: string
+): TemplateResult | TemplateResult[] {
   const kind = toolKind(call.name);
   const owner = context.owners?.get(call.id);
   const runs = context.runs;
-  const quiet = !call.input && !call.output && !call.notes?.length && !call.meta && !owner;
   const verdict = verdicts[call.status];
-  const content = described(call, owner)
-    ? html`<div slot="description" class="call">
-      ${quiet ? html`<span class="sr">${headline(call)}</span>` : nothing}
+  const label = `${headline(call)}${verdict ? ` · ${verdict}` : ''}`;
+  const open = described(call, owner) && (runs?.has(call.id) ?? false);
+  const toggle = described(call, owner)
+    ? html`<button type="button" class="run-toggle" aria-expanded=${open ? 'true' : 'false'} aria-controls=${`detail-${call.id}`} @click=${() => runs?.toggle(call.id)}>${label}</button>`
+    : label;
+  const row = html`<swc-response-status-step id=${`run-${call.id}`} status=${stepStates[call.status]} data-id=${owner?.id ?? id ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id} data-action="open-run" data-target=${call.id} ?data-open=${open} @click=${(event: Event) => openStep(event, call, runs, `status:${context.anchor ?? call.id}`)}><span slot="label">${toggle}</span></swc-response-status-step>`;
+  if (!described(call, owner)) return row;
+  return [
+    row,
+    html`<div class="call run-detail" id=${`detail-${call.id}`} role="listitem" aria-label=${label} data-target=${call.id} ?hidden=${!open}>
       ${body(call, context.color)}
       ${call.output ? html`<pre class="output">${ansi(call.output, call.status === 'running')}</pre>` : nothing}
       ${call.notes?.length ? notes(call.notes) : nothing}
       ${call.image ? html`<img class="shot" src=${call.image} alt=${call.title} />` : nothing}
       ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
       ${owner ? html`<span class=${owner.stamp === false ? 'sr' : 'ran'}>Ran at ${when(owner.at)}</span>` : nothing}
-    </div>`
-    : nothing;
-  return html`<swc-response-status-step id=${`run-${call.id}`} status=${stepStates[call.status]} data-id=${owner?.id ?? id ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id} data-action="open-run" data-target=${call.id} ?open=${runs?.has(call.id) ?? false} @click=${(event: Event) => openStep(event, call, runs, `status:${context.anchor ?? call.id}`)} @swc-response-status-step-open-change=${(event: CustomEvent<{ open: boolean }>) => runs?.toggle(call.id, event.detail.open)}><span slot="label">${headline(call)}${verdict ? ` · ${verdict}` : ''}</span>${content}</swc-response-status-step>`;
+    </div>`,
+  ];
 }
 
 function headline(call: ToolCall): string {
@@ -1228,10 +1237,35 @@ export const messageCss = css`
   swc-response-status-step {
     line-height: var(--swc-line-height-200);
   }
-  swc-response-status-step > [slot='description'] {
-    color: var(--swc-neutral-content-color-default);
+  .run-toggle {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
   }
-  swc-response-status-step .call > pre {
+  .run-toggle:focus-visible {
+    outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+    outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
+    border-radius: var(--swc-corner-radius-75);
+  }
+  .run-detail {
+    margin-inline-start: calc(var(--swc-spacing-300) + var(--swc-spacing-75) + var(--swc-spacing-85));
+    margin-block-end: var(--swc-spacing-200);
+    padding: var(--swc-spacing-100);
+    border-radius: var(--swc-corner-radius-500);
+    background: var(--swc-background-layer-1-color);
+    color: var(--swc-neutral-content-color-default);
+    line-height: var(--swc-line-height-200);
+    min-inline-size: 0;
+  }
+  .call.run-detail[hidden] {
+    display: none;
+  }
+  .call.run-detail > pre {
     white-space: pre;
     overflow-wrap: normal;
   }

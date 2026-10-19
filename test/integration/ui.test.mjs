@@ -380,9 +380,13 @@ test('sending a message streams a reply with a tool call', async (t) => {
       'slicc-chat',
       'swc-conversation-turn.assistant:last-of-type swc-response-status-step'
     );
-    step.shadowRoot.querySelector('.swc-ResponseStatusStep-toggle').click();
-    await step.updateComplete;
-    return [step.open, step.querySelector('[slot=description] .output').textContent];
+    step.querySelector('.run-toggle').click();
+    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    await chat.updateComplete;
+    return [
+      step.hasAttribute('data-open'),
+      chat.shadowRoot.querySelector(`#detail-${step.dataset.target} .output`).textContent,
+    ];
   });
   assert.equal(opened[0], true);
   assert.match(opened[1], /ℹ pass 3/);
@@ -1954,21 +1958,24 @@ test('tool steps show the command, its timeout, and an edit as a diff', async (t
     const status = window.labelled('Find and fix the stale cache entry');
     status.shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button').click();
     const edit = status.querySelector('swc-response-status-step[data-tool="edit_file"]');
-    edit.shadowRoot.querySelector('.swc-ResponseStatusStep-toggle').click();
+    for (const toggle of status.querySelectorAll('.run-toggle')) toggle.click();
     await new Promise((resolve) => setTimeout(resolve, 300));
     window.statusSummary = [
       status.getAttribute('status'),
       status.getAttribute('slot'),
       status.querySelectorAll('swc-response-status-step').length,
       status.open,
-      edit.open,
+      edit.hasAttribute('data-open'),
     ];
-    return [...status.querySelectorAll('swc-response-status-step')].map((step) => ({
-      name: step.dataset.tool,
-      meta: step.querySelector('.tool-meta')?.textContent ?? null,
-      input: step.querySelector('pre.input')?.textContent ?? null,
-      diff: step.querySelector('slicc-diff-view')?.getAttribute('path') ?? null,
-    }));
+    return [...status.querySelectorAll('swc-response-status-step')].map((step) => {
+      const detail = status.querySelector(`#detail-${step.dataset.target}`);
+      return {
+        name: step.dataset.tool,
+        meta: detail?.querySelector('.tool-meta')?.textContent ?? null,
+        input: detail?.querySelector('pre.input')?.textContent ?? null,
+        diff: detail?.querySelector('slicc-diff-view')?.getAttribute('path') ?? null,
+      };
+    });
   });
   assert.deepEqual(await page.evaluate(() => window.statusSummary), [
     'complete',
@@ -1992,7 +1999,7 @@ test('tool steps show the command, its timeout, and an edit as a diff', async (t
   );
   await page.until(() =>
     window
-      .chatPart('swc-response-status-step slicc-diff-view')
+      .chatPart('.run-detail:not([hidden]) slicc-diff-view')
       ?.shadowRoot?.querySelector('diffs-container')
       ?.shadowRoot?.textContent.includes('dayOf')
   );
@@ -2005,7 +2012,7 @@ test('tool steps show the command, its timeout, and an edit as a diff', async (t
   await page.evaluate(() => window.model.settings.update({ color: 'dark' }));
   await page.until(
     () =>
-      window.chatPart('swc-response-status-step slicc-diff-view')?.getAttribute('color') === 'dark'
+      window.chatPart('.run-detail:not([hidden]) slicc-diff-view')?.getAttribute('color') === 'dark'
   );
   await shot(page, 'tool-steps-dark');
   assert.deepEqual(page.errors, []);
@@ -2017,8 +2024,8 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
     window.outputs = [];
     const root = window.chatPart().shadowRoot;
     const record = () => {
-      const card = [...root.querySelectorAll('swc-response-status-step[data-tool=bash]')].find(
-        (node) => node.querySelector('pre.input')?.textContent.includes('./status')
+      const card = [...root.querySelectorAll('.run-detail')].find((node) =>
+        node.querySelector('pre.input')?.textContent.includes('./status')
       );
       const text = card?.querySelector('pre.output')?.textContent;
       if (text !== undefined && window.outputs.at(-1) !== text) window.outputs.push(text);
@@ -2044,19 +2051,20 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
       .closest('swc-response-status')
       .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
       .click();
-    step.shadowRoot.querySelector('.swc-ResponseStatusStep-toggle').click();
+    step.querySelector('.run-toggle').click();
     return true;
   });
   await page.until(
     () =>
       !!window.chatPart(
-        'swc-conversation-turn.assistant:last-of-type swc-response-status-step[data-tool=bash][open]'
+        'swc-conversation-turn.assistant:last-of-type swc-response-status-step[data-tool=bash][data-open]'
       )
   );
+  await page.evaluate(() => new Promise((resolve) => setTimeout(() => resolve(true), 400)));
   const read = () =>
     page.evaluate(() => {
       const pre = window.chatPart(
-        'swc-conversation-turn.assistant:last-of-type swc-response-status-step[open] pre.output'
+        'swc-conversation-turn.assistant:last-of-type .run-detail:not([hidden]) pre.output'
       );
       const probe = (value) => {
         const node = document.createElement('i');
@@ -2138,7 +2146,7 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
     const span = [
       ...window
         .chatPart(
-          'swc-conversation-turn.assistant:last-of-type swc-response-status-step[open] pre.output'
+          'swc-conversation-turn.assistant:last-of-type .run-detail:not([hidden]) pre.output'
         )
         .querySelectorAll('span'),
     ].find((node) => node.textContent === 'cyan');
@@ -2152,7 +2160,7 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
       const span = [
         ...window
           .chatPart(
-            'swc-conversation-turn.assistant:last-of-type swc-response-status-step[open] pre.output'
+            'swc-conversation-turn.assistant:last-of-type .run-detail:not([hidden]) pre.output'
           )
           .querySelectorAll('span'),
       ].find((node) => node.textContent === 'cyan');
@@ -2196,7 +2204,7 @@ test('tool steps join across messages, keep their states, and open from the keyb
       single: statuses('k-tool2'),
       absorbed: !!root.querySelector('swc-conversation-turn[data-id=k-tool1]'),
       owner: [step?.dataset.id, step?.closest('swc-conversation-turn')?.dataset.id],
-      ran: step?.querySelector('.call > .ran')?.textContent,
+      ran: root.querySelector('#detail-k-t15 > .ran')?.textContent,
       states: [...root.querySelectorAll('[data-id=k-m8] swc-response-status-step')].map((item) => [
         item.id.slice(4),
         item.dataset.status,
@@ -2248,21 +2256,19 @@ test('tool steps join across messages, keep their states, and open from the keyb
   assert.equal(
     await page.evaluate(() => {
       const active = window.chatPart().shadowRoot.activeElement;
-      return `${active?.localName}#${active?.id}`;
+      return `${active?.className}@${active?.closest('swc-response-status-step')?.id}`;
     }),
-    'swc-response-status-step#run-k-r1'
+    'run-toggle@run-k-r1'
   );
-  await page.evaluate(() =>
-    window.chatPart('#run-k-r7').shadowRoot.querySelector('.swc-ResponseStatusStep-toggle').focus()
-  );
+  await page.evaluate(() => window.chatPart('#run-k-r7 .run-toggle').focus());
   await page.press('Enter');
-  await page.until(() => window.chatPart('#run-k-r7').open === true);
+  await page.until(() => window.chatPart('#run-k-r7').hasAttribute('data-open'));
   assert.match(
-    await page.evaluate(() => window.chatPart('#run-k-r7 pre.input').textContent),
+    await page.evaluate(() => window.chatPart('#detail-k-r7 pre.input').textContent),
     /^\$ npx vitest run src\/lib\/units\.test\.ts$/
   );
   await page.press(' ');
-  await page.until(() => window.chatPart('#run-k-r7').open === false);
+  await page.until(() => !window.chatPart('#run-k-r7').hasAttribute('data-open'));
   assert.deepEqual(page.errors, []);
 });
 

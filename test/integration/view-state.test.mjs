@@ -228,7 +228,10 @@ const panels = [
     },
     held: () => {
       const step = window.part('chat:cone-kitchen', '[data-action=open-run][data-target=k-r7]');
-      return step?.open === true && step.closest('[data-action=open-cluster]')?.open === true;
+      return (
+        !!step?.hasAttribute('data-open') &&
+        step.closest('[data-action=open-cluster]')?.open === true
+      );
     },
   },
   {
