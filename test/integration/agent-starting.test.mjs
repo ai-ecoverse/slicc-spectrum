@@ -482,3 +482,50 @@ test('a dropped row does not come back after a reload', async (t) => {
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('after Put back the reattach line names four files, opens the file picker, and goes when the field is cleared', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const composer = window.chat().querySelector('slicc-composer');
+    composer.attachments = ['a.csv', 'b.csv', 'c.csv', 'd.csv'].map((name, index) => ({
+      id: `f${index}`,
+      name,
+      kind: 'text',
+      mimeType: 'text/csv',
+      size: 3,
+      text: 'a,b',
+    }));
+    composer.value = 'Merge the four exports';
+    composer.send();
+    return true;
+  });
+  await page.until(() => window.rows().length === 1);
+  await reopen(page);
+  await page.until(() => !!window.composer()?.querySelector('[data-action=restore-starting]'));
+  await page.evaluate(() => {
+    window.composer().querySelector('[data-action=restore-starting]').click();
+    return true;
+  });
+  await page.until(() => !!window.composer().querySelector('[data-reattach]'));
+  assert.equal(
+    await page.evaluate(() =>
+      window.composer().querySelector('[data-reattach]').textContent.trim()
+    ),
+    'Attach these 4 files again: a.csv, b.csv, c.csv, d.csv.'
+  );
+  await page.evaluate(() => {
+    window.picked = 0;
+    window.composer().querySelector('input[type=file]').click = () => {
+      window.picked += 1;
+    };
+    window.composer().querySelector('[data-action=reattach]').click();
+    return true;
+  });
+  assert.equal(await page.evaluate(() => window.picked), 1);
+  await page.evaluate(() => {
+    window.chat().querySelector('slicc-composer').value = '';
+    return true;
+  });
+  await page.until(() => !window.composer().querySelector('[data-reattach]'));
+  assert.deepEqual(page.errors, []);
+});

@@ -138,7 +138,7 @@ function keep(owned: Set<string>, rows: readonly Waiting[]): void {
     })),
   ]);
 }
-type Draft = { value: string; attachments: Attachment[] };
+type Draft = { value: string; attachments: Attachment[]; reattach?: Kept[] | null };
 
 const pages = new WeakMap<
   object,
@@ -423,7 +423,7 @@ export class SliccComposer extends ThemedElement {
   declare failure: string | null;
   declare reattach: Kept[] | null;
   declare agent: string;
-  #drafts = new Map<string, { value: string; attachments: Attachment[] }>();
+  #drafts = new Map<string, Draft>();
   #waiting = new PageQueue(this);
   #history = -1;
   #paths: string[] = [];
@@ -758,18 +758,14 @@ export class SliccComposer extends ThemedElement {
     if (changed.has('agent') && this.agent && this.model && this.agent !== this.#agent) {
       this.#switch(this.agent);
     }
-    if (this.reattach && changed.has('attachments')) {
-      const back = new Set(
-        this.attachments
-          .filter((attachment) => !attachment.error)
-          .map((attachment) => attachment.name)
-      );
-      this.reattach = this.reattach.filter((file) => !back.has(file.name));
-    }
-    if (this.reattach && !(this.reattach.length && this.value.trim())) this.reattach = null;
-    const edited = changed.has('value') || changed.has('attachments');
+    if (this.reattach && !this.value.trim()) this.reattach = null;
+    const edited = changed.has('value') || changed.has('attachments') || changed.has('reattach');
     if (edited && this.hasUpdated && !this.#agent && this.#starting())
-      this.#waiting.draft = { value: this.value, attachments: this.attachments };
+      this.#waiting.draft = {
+        value: this.value,
+        attachments: this.attachments,
+        reattach: this.reattach,
+      };
   }
 
   connectedCallback(): void {
@@ -887,7 +883,11 @@ export class SliccComposer extends ThemedElement {
 
   #putBack(row: Waiting): void {
     this.value = this.value.trim() ? `${this.value}\n${row.text}` : row.text;
-    this.reattach = [...(this.reattach ?? []), ...(row.lost ?? [])];
+    const listed = new Set((this.reattach ?? []).map((file) => file.name));
+    const fresh = (row.lost ?? []).filter(
+      (file) => !listed.has(file.name) && listed.add(file.name)
+    );
+    this.reattach = [...(this.reattach ?? []), ...fresh];
     this.#history = -1;
     this.#unwait(row.id);
     this.focus();
@@ -906,13 +906,18 @@ export class SliccComposer extends ThemedElement {
 
   #switch(id: string): void {
     if (this.#agent)
-      this.#drafts.set(this.#agent, { value: this.value, attachments: this.attachments });
+      this.#drafts.set(this.#agent, {
+        value: this.value,
+        attachments: this.attachments,
+        reattach: this.reattach,
+      });
     const shared = this.#agent || !this.isConnected ? null : this.#waiting.draft;
     if (shared && id && !this.#drafts.has(id)) this.#waiting.draft = null;
     const draft = this.#drafts.get(id) ?? shared ?? undefined;
     this.#agent = id;
     this.value = draft?.value ?? '';
     this.attachments = draft?.attachments ?? [];
+    this.reattach = draft?.reattach ?? null;
     this.popup = null;
     this.#history = -1;
   }
@@ -1683,6 +1688,12 @@ export class SliccComposer extends ThemedElement {
     const talk = !!speech();
     const held = this.#held();
     const starting = this.#starting();
+    const back = new Set(
+      this.attachments
+        .filter((attachment) => !attachment.error)
+        .map((attachment) => attachment.name)
+    );
+    const missing = (this.reattach ?? []).filter((file) => !back.has(file.name));
     return html`<div class="column">
         <span id="keys" class="sr" aria-hidden="true">${this.#instructions(busy)}</span>
         ${this.#hold()}
@@ -1714,7 +1725,7 @@ export class SliccComposer extends ThemedElement {
         >
           ${this.attachments.map((attachment) => this.#attachment(attachment))}
         </swc-prompt-field>
-        ${this.reattach?.length ? html`<p class="reattach" data-reattach><swc-action-button size="s" quiet data-action="reattach" @click=${() => this.renderRoot.querySelector<HTMLInputElement>('input[type=file]')?.click()}><swc-icon-attach slot="icon"></swc-icon-attach>${reattach(this.reattach)}</swc-action-button></p>` : nothing}
+        ${missing.length ? html`<p class="reattach" data-reattach><swc-action-button size="s" quiet data-action="reattach" @click=${() => this.renderRoot.querySelector<HTMLInputElement>('input[type=file]')?.click()}><swc-icon-attach slot="icon"></swc-icon-attach>${reattach(missing)}</swc-action-button></p>` : nothing}
         <swc-popover placement="top-start" accessible-label="Add to the message" @keydown=${this.#menuKey} @swc-after-open=${() => this.renderRoot.querySelector<HTMLElement>('sp-menu')?.focus()}>
           <sp-menu label="Add to the message" @change=${this.#add}>
             <sp-menu-item value="upload">Upload from this computer</sp-menu-item>
