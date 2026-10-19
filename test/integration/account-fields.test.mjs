@@ -31,7 +31,21 @@ async function open(t, accounts) {
       window.settingsPart(`form.key[data-id=amazon-bedrock] ${selector}`);
     return true;
   });
+  await page.until(() => {
+    const picker = window.bedrock('sp-picker[data-account-field]');
+    return !picker || picker.disabled || !!picker.selectedItem;
+  });
   return page;
+}
+
+async function click(page, selector) {
+  const { x, y } = await page.evaluate((selector) => {
+    const box = window.bedrock(selector).getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  }, selector);
+  for (const type of ['mousePressed', 'mouseReleased']) {
+    await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  }
 }
 
 async function save(page) {
@@ -50,49 +64,94 @@ async function save(page) {
   );
 }
 
-test('a field with options is a dropdown preselected by its value, and the chosen one goes to connect', async (t) => {
+test('a field with options is a Spectrum picker preselected by its value, and the chosen one goes to connect and stays', async (t) => {
   const page = await open(t);
   assert.deepEqual(
     await page.evaluate(() => {
-      const select = window.bedrock('select[data-account-field=region]');
+      const picker = window.bedrock('sp-picker[data-account-field=region]');
+      const key = window.bedrock('sp-textfield');
       return {
-        inputs: !!window.bedrock('input[data-account-field]'),
-        label: select.closest('label').querySelector('span').textContent.trim(),
-        required: select.getAttribute('aria-required'),
-        value: select.value,
-        options: [...select.options].map((option) => [option.value, option.textContent.trim()]),
+        native: !!window.bedrock('input[data-account-field], select'),
+        labels: [...window.bedrock('').querySelectorAll('.field > sp-field-label')].map((label) =>
+          label.textContent.trim()
+        ),
+        labelledBy: picker
+          .getRootNode()
+          .querySelector(`sp-field-label[for="${picker.id}"]`)
+          .textContent.trim(),
+        required: picker.getAttribute('aria-required'),
+        value: picker.value,
+        shown: picker.selectedItem?.textContent.trim(),
+        options: [...picker.querySelectorAll('sp-menu-item')].map((item) => [
+          item.value,
+          item.textContent.trim(),
+        ]),
+        aligned: key.getBoundingClientRect().width === picker.getBoundingClientRect().width,
       };
     }),
     {
-      inputs: false,
-      label: 'Region',
+      native: false,
+      labels: ['Amazon Bedrock API key', 'Region'],
+      labelledBy: 'Region',
       required: 'true',
       value: 'us-west-2',
+      shown: 'US West (Oregon)',
       options: [
         ['us-east-1', 'US East (N. Virginia)'],
         ['us-west-2', 'US West (Oregon)'],
         ['eu-central-1', 'Europe (Frankfurt)'],
         ['ap-northeast-1', 'Asia Pacific (Tokyo)'],
       ],
+      aligned: true,
     }
   );
+  await click(page, 'sp-field-label[for=field-region]');
+  await page.until(() => {
+    const picker = window.bedrock('sp-picker[data-account-field=region]');
+    return picker.getRootNode().activeElement === picker;
+  });
+  await click(page, 'sp-picker[data-account-field=region]');
+  await page.until(() => window.bedrock('sp-picker[data-account-field=region]').open === true);
+  await page.until(
+    () => window.bedrock('sp-menu-item[value=eu-central-1]').getBoundingClientRect().height > 0
+  );
+  await click(page, 'sp-menu-item[value=eu-central-1]');
+  await page.until(
+    () => window.bedrock('sp-picker[data-account-field=region]').value === 'eu-central-1'
+  );
+  assert.deepEqual(await save(page), [{ region: 'eu-central-1' }]);
+  assert.equal(
+    await page.evaluate(() =>
+      window.settingsPart('.account[data-id=amazon-bedrock] .identity').textContent.trim()
+    ),
+    'API key · Europe (Frankfurt)'
+  );
   await page.evaluate(() => {
-    const select = window.bedrock('select[data-account-field=region]');
-    select.value = 'eu-central-1';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+    window.model.settings.disconnect('amazon-bedrock');
     return true;
   });
-  assert.deepEqual(await save(page), [{ region: 'eu-central-1' }]);
+  await page.until(
+    () => !!window.settingsPart('.account[data-id=amazon-bedrock] swc-button[data-action=connect]')
+  );
+  await page.evaluate(() =>
+    window.settingsPart('.account[data-id=amazon-bedrock] swc-button[data-action=connect]').click()
+  );
+  await page.until(() => !!window.bedrock('sp-picker[data-account-field=region]'));
+  assert.equal(
+    await page.evaluate(() => window.bedrock('sp-picker[data-account-field=region]').value),
+    'eu-central-1'
+  );
   assert.deepEqual(page.errors, []);
 });
 
-test('without a value the first option is chosen, and a field without options stays a text input', async (t) => {
+test('without a value the first option is chosen, an empty list explains itself, and a field without options stays a text input', async (t) => {
   const page = await open(t, (account) =>
     account.id === 'amazon-bedrock'
       ? {
           ...account,
           fields: [
             { ...account.fields[0], value: undefined },
+            { name: 'zone', label: 'Zone', required: true, options: [] },
             { name: 'profile', label: 'Profile' },
           ],
         }
@@ -100,11 +159,13 @@ test('without a value the first option is chosen, and a field without options st
   );
   assert.deepEqual(
     await page.evaluate(() => [
-      window.bedrock('select[data-account-field=region]').value,
+      window.bedrock('sp-picker[data-account-field=region]').value,
+      window.bedrock('sp-picker[data-account-field=zone]').disabled,
+      window.bedrock('[data-empty=zone]')?.textContent.trim(),
       window.bedrock('input[data-account-field=profile]')?.type,
-      !!window.bedrock('select[data-account-field=profile]'),
+      !!window.bedrock('sp-picker[data-account-field=profile]'),
     ]),
-    ['us-east-1', 'text', false]
+    ['us-east-1', true, 'Nothing to choose from yet. You can connect without it.', 'text', false]
   );
   await page.evaluate(() => {
     window.bedrock('input[data-account-field=profile]').value = 'harbor';

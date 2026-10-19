@@ -1,6 +1,7 @@
 import { Emitter } from '../model/emitter.ts';
 import type {
   Account,
+  AccountField,
   AccountStatus,
   ModelOption,
   ProviderOption,
@@ -15,6 +16,26 @@ export const dummySettingsKey = 'slicc-ui.settings';
 export const signInClosed = 'The sign-in window was closed before it finished.';
 
 export type DummyTransport = 'none' | 'extension' | 'link';
+
+function chosen(
+  fields: readonly AccountField[] | undefined,
+  values: Record<string, string> | undefined
+): string[] {
+  return (fields ?? []).flatMap((field) => {
+    const option = field.options?.find((candidate) => candidate.value === values?.[field.name]);
+    return option ? [option.label] : [];
+  });
+}
+
+function kept(
+  fields: readonly AccountField[] | undefined,
+  values: Record<string, string> | undefined
+): Pick<Account, 'fields'> {
+  if (!(fields && values)) return {};
+  return {
+    fields: fields.map((field) => ({ ...field, value: values[field.name] ?? field.value })),
+  };
+}
 
 export class DummySettings extends Emitter<SettingsEvents> implements SettingsPort {
   #settings: Settings;
@@ -173,9 +194,9 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
         : local
           ? 'On this device'
           : account?.auth === 'api-key'
-            ? 'API key'
+            ? ['API key', ...chosen(account.fields, fields)].join(' · ')
             : account?.identity || `${id}-user@example.com`;
-    this.#set(id, { status: 'connected', identity });
+    this.#set(id, { status: 'connected', identity, ...kept(account?.fields, fields) });
     return true;
   }
 
