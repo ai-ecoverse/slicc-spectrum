@@ -82,6 +82,8 @@ export interface Login {
   state: 'idle' | 'signing-in' | 'connected';
   error?: string;
   cancel?: boolean;
+  window?: boolean;
+  provider?: string;
 }
 
 export interface Owner {
@@ -368,11 +370,16 @@ function errorCard(
       ? handlers.login?.(item.account, id)
       : undefined;
   const resolved = login?.state === 'connected';
-  const text = resolved ? signedIn : login?.state === 'signing-in' ? continuing : item.text;
+  const text = resolved
+    ? signedIn
+    : login?.state === 'signing-in' && login.window
+      ? continuing
+      : item.text;
+  const title = resolved && login.provider ? `Signed in to ${login.provider} again.` : item.title;
   const failure = login?.state === 'idle' ? login.error : undefined;
   return html`<div class="error-card" role=${resolved ? nothing : 'alert'} aria-atomic=${resolved ? nothing : 'false'} data-id=${id || nothing} data-login=${login?.state ?? nothing}>
     ${resolved ? html`<swc-icon-info-circle class="icon" size="s" aria-hidden="true"></swc-icon-info-circle>` : html`<swc-icon-alert-diamond class="icon" size="s" aria-hidden="true"></swc-icon-alert-diamond>`}
-    ${resolved ? nothing : html`<span class="sr">Error: </span>`}<span class="lead">${item.title}</span>
+    ${resolved ? nothing : html`<span class="sr">Error: </span>`}<span class="lead">${title}</span>
     ${text ? html`<span class="detail" role=${login ? 'status' : nothing}>${text}</span>` : nothing}
     ${fix ? html`<div class="fix" aria-live="off">${fixButton(fix, item, handlers, login)}</div>` : nothing}
     ${

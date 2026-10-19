@@ -616,8 +616,10 @@ export class SliccChat extends ThemedElement {
     const account = settings.accounts().find((candidate) => candidate.id === accountId);
     const local = this.#logins.get(`${messageId}:${accountId}`);
     const cancel = !!settings.cancel;
-    if (account?.status === 'signing-in' || local?.pending) return { state: 'signing-in', cancel };
-    if (account?.status === 'connected') return { state: 'connected' };
+    const window = account?.auth === 'oauth';
+    if (account?.status === 'signing-in' || local?.pending)
+      return { state: 'signing-in', cancel, window };
+    if (account?.status === 'connected') return { state: 'connected', provider: account.provider };
     return { state: 'idle', error: local?.error };
   }
 

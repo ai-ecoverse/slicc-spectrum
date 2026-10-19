@@ -111,6 +111,10 @@ test('Log in on the expired-session card signs in within the click, then offers 
     detail: 'Signed in. Retry to send it again.',
     error: null,
   });
+  assert.equal(
+    await page.evaluate(() => window.card('k-s3', '.lead').textContent),
+    'Signed in to Adobe AI again.'
+  );
   assert.deepEqual(
     await page.evaluate(() => {
       const icon = window.card('k-s3', '.icon');
@@ -253,5 +257,26 @@ test('a watch-only follower cannot start the sign-in from the card', async (t) =
     [true, null]
   );
   assert.deepEqual(await page.evaluate(() => window.model.settings.connects), []);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a sign-in that opens no window keeps the card’s own detail while it signs in', async (t) => {
+  const page = await open(t, { delay: '200' });
+  await page.evaluate(() => {
+    const settings = window.model.settings;
+    const accounts = settings.accounts.bind(settings);
+    settings.accounts = () =>
+      accounts().map((account) =>
+        account.id === 'ai-adobe' ? { ...account, auth: 'local' } : account
+      );
+    return true;
+  });
+  await kitchen(page);
+  await click(page, 'k-s3', 'login');
+  await page.until(() => window.cardState('k-s3').state === 'signing-in');
+  assert.equal(
+    (await page.evaluate(() => window.cardState('k-s3'))).detail,
+    'The Adobe session expired. Log in again to continue.'
+  );
   assert.deepEqual(page.errors, []);
 });
