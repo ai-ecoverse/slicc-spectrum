@@ -319,13 +319,20 @@ export class SliccChat extends ThemedElement {
         margin-block-end: calc(-1 * var(--swc-spacing-400));
       }
       .asks {
-        flex: none;
+        flex: 0 1 auto;
+        min-block-size: 0;
         max-block-size: 50%;
         overflow-y: auto;
         container-type: inline-size;
         padding: var(--swc-spacing-200) var(--swc-spacing-300);
         border-block-end: var(--swc-border-width-100) solid var(--swc-gray-200);
         font-size: var(--swc-font-size-200);
+      }
+      .asks:has(.waiting) {
+        scroll-padding-block-start: calc(var(--swc-component-height-100) + var(--swc-spacing-100));
+      }
+      .asks + .stage {
+        min-block-size: calc(var(--composer-height, 0px) + var(--composer-fade, 0px) + var(--swc-spacing-1000));
       }
       .waiting {
         position: sticky;
@@ -344,6 +351,11 @@ export class SliccChat extends ThemedElement {
         .waiting {
           padding-inline: var(--swc-spacing-300);
         }
+      }
+      .ask-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--swc-spacing-200);
       }
       .waiting .timer {
         margin-inline: auto var(--swc-spacing-300);
@@ -661,6 +673,8 @@ export class SliccChat extends ThemedElement {
       this.#tick = undefined;
     }
     this.#refocus();
+    const asks = [...this.renderRoot.querySelectorAll<HTMLElement>('.ask-list > .decision-turn')];
+    for (const turn of asks) turn.tabIndex = turn === asks.at(-1) ? 0 : -1;
   }
 
   #timed(): boolean {
@@ -931,11 +945,11 @@ export class SliccChat extends ThemedElement {
           ? html`<div class="waiting"><swc-action-button size="s" quiet data-action="show-waiting" aria-expanded=${open ? 'true' : 'false'} @click=${toggle}><swc-icon-chevron-down slot="icon"></swc-icon-chevron-down>${asks.length} waiting</swc-action-button>${timed.length ? askTimer(Math.min(...timed)) : nothing}</div>`
           : nothing
       }
-      <swc-conversation-thread class="ask-list" aria-live="polite">${repeat(
+      <div class="ask-list" aria-live="polite">${repeat(
         open ? asks : asks.slice(-1),
         ({ key }) => key,
         ({ card }) => card
-      )}</swc-conversation-thread>
+      )}</div>
     </div></section>`;
   }
 
