@@ -157,3 +157,51 @@ test('if the line clears with no agent, the queued rows stay', async (t) => {
   assert.equal(await page.evaluate(() => window.model.agent.list().length), 0);
   assert.deepEqual(page.errors, []);
 });
+
+async function swap(page) {
+  await page.evaluate(async () => {
+    const { createDummyModel } = await import('/dist/slicc-dummy.js');
+    window.old = window.model;
+    window.model = createDummyModel({ delay: 5, color: 'light' });
+    window.app.model = window.model;
+    return true;
+  });
+}
+
+test('when the embedder swaps in a new model with agents, the rows go to it in order', async (t) => {
+  const page = await open(t);
+  await say(page, 'Check the harbor tides');
+  await say(page, 'Then list the moorings');
+  await swap(page);
+  await page.until(() => window.rows().length === 0 && window.users().length === 3);
+  assert.deepEqual(await page.evaluate(() => window.users()), [
+    'What is on my plate today?',
+    'Check the harbor tides',
+    'Then list the moorings',
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('the old model clearing its line after a swap sends nothing twice', async (t) => {
+  const page = await open(t);
+  await say(page, 'Check the harbor tides');
+  await swap(page);
+  await page.until(() => window.rows().length === 0 && window.users().length === 2);
+  await page.evaluate(() => {
+    window.old.agent.arrive();
+    return true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.users(),
+      window.model.agent.queue(window.model.agent.active()).length,
+      window.old.agent
+        .messages(window.old.agent.active())
+        .filter((message) => message.role === 'user')
+        .map((message) => message.text),
+    ]),
+    [['What is on my plate today?', 'Check the harbor tides'], 0, ['What is on my plate today?']]
+  );
+  assert.deepEqual(page.errors, []);
+});

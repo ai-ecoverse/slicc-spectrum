@@ -8,7 +8,14 @@ import '@adobe/spectrum-wc-icons/swc-icon-clock.js';
 import '@adobe/spectrum-wc-icons/swc-icon-file.js';
 import '@adobe/spectrum-wc-icons/swc-icon-file-text.js';
 import '@adobe/spectrum-wc-icons/swc-icon-lock.js';
-import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
+import {
+  css,
+  html,
+  nothing,
+  type PropertyValues,
+  type ReactiveController,
+  type TemplateResult,
+} from 'lit';
 import { live } from 'lit/directives/live.js';
 import type {
   AgentPort,
@@ -26,11 +33,49 @@ import { chatModels, shared, speech, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import { deadline, mine, size } from './messages.ts';
 import { away, clearValues, failureText, fieldOf, type PopupDetail, take } from './vault.ts';
-import { ViewState } from './view-state.ts';
 
 export const limit = 25 * 1024 * 1024;
 
 type Waiting = { id: string; text: string; attachments: Attachment[] };
+
+const pages = new WeakMap<
+  Document,
+  { rows: readonly Waiting[]; hosts: Set<HTMLElement & { requestUpdate(): void }> }
+>();
+
+class PageQueue implements ReactiveController {
+  #host: SliccComposer;
+
+  constructor(host: SliccComposer) {
+    this.#host = host;
+    host.addController(this);
+  }
+
+  #page() {
+    const page = this.#host.ownerDocument;
+    const found = pages.get(page) ?? { rows: [], hosts: new Set() };
+    pages.set(page, found);
+    return found;
+  }
+
+  get value(): readonly Waiting[] {
+    return this.#page().rows;
+  }
+
+  set value(rows: readonly Waiting[]) {
+    const page = this.#page();
+    page.rows = rows;
+    for (const host of [...page.hosts]) host.requestUpdate();
+  }
+
+  hostConnected(): void {
+    this.#page().hosts.add(this.#host);
+  }
+
+  hostDisconnected(): void {
+    this.#page().hosts.delete(this.#host);
+  }
+}
 
 export interface Choice {
   value: string;
@@ -235,7 +280,7 @@ export class SliccComposer extends ThemedElement {
   declare failure: string | null;
   declare agent: string;
   #drafts = new Map<string, { value: string; attachments: Attachment[] }>();
-  #waiting = new ViewState<readonly Waiting[]>(this, 'chat:starting', () => []);
+  #waiting = new PageQueue(this);
   #history = -1;
   #paths: string[] = [];
   #agent = '';
