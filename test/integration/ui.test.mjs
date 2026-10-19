@@ -6397,69 +6397,19 @@ test('chat lets the reader scroll up by wheel or keyboard while content streams 
   });
   await page.until(() => window.chatGap() <= 21);
   await page.evaluate(() => {
-    const log = window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log');
     window.trace = [];
-    const t0 = performance.now();
-    const at = () => Math.round(performance.now() - t0);
-    const desc = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
-    Object.defineProperty(log, 'scrollTop', {
-      get() {
-        return desc.get.call(this);
-      },
-      set(v) {
-        window.trace.push([
-          'set',
-          at(),
-          desc.get.call(this),
-          Math.round(v),
-          new Error().stack
-            .split('\n')
-            .slice(2, 7)
-            .map((l) => l.trim().slice(0, 80))
-            .join(' < '),
-        ]);
-        desc.set.call(this, v);
-      },
-      configurable: true,
-    });
-    for (const type of ['keydown', 'scroll', 'focusin', 'focusout', 'wheel'])
-      log.addEventListener(
-        type,
-        (e) =>
-          window.trace.push([
-            type,
-            at(),
-            log.scrollTop,
-            log.scrollHeight - log.scrollTop - log.clientHeight,
-            e.key ?? '',
-            window.focused(),
-          ]),
-        true
-      );
-    window.addEventListener(
-      'keydown',
-      (e) =>
-        window.trace.push([
-          'win-keydown',
-          at(),
-          e.key,
-          e.composedPath()[0]?.localName,
-          e.defaultPrevented,
-        ]),
-      true
-    );
-    return true;
-  });
-  await page.evaluate(() => window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log').focus());
-  await page.evaluate(() => {
-    window.trace.push(['focused', window.focused()]);
+    const log = window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log');
+    log.focus();
     return true;
   });
   await page.press('PageUp');
   try {
     await page.until(() => window.chatGap() > 200);
   } catch (error) {
-    console.log('TRACE', JSON.stringify(await page.evaluate(() => window.trace.slice(0, 60))));
+    console.log(
+      'TRACE',
+      JSON.stringify(await page.evaluate(() => [window.focused(), ...window.trace.slice(0, 40)]))
+    );
     throw error;
   }
   const key = await held();
