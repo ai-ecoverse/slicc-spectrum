@@ -1074,11 +1074,13 @@ const scoopWords: Record<string, string> = {
 
 const scoopBracket = /^\[(?:scoop |@)[^\]\n]* (completed|failed|stopped)\][^\S\n]*(?:\n|$)/;
 
-function scoopLine(message: LickMessage): [string, boolean] {
+function scoopLine(message: LickMessage): [string, boolean, string] {
+  const icon = lickIcons[message.channel];
   const bracket = message.channel === 'scoop-notify' && scoopBracket.exec(message.text);
-  if (!bracket) return [message.text, false];
+  if (!bracket) return [message.text, false, icon];
   const name = message.title.replace(/\s*\([^)]*\)$/, '');
-  return [`Scoop ${name} ${scoopWords[bracket[1]]}`, bracket[1] !== 'completed'];
+  const failed = bracket[1] !== 'completed';
+  return [`Scoop ${name} ${scoopWords[bracket[1]]}`, failed, failed ? '❌' : icon];
 }
 
 function lickBody(message: LickMessage): string | undefined {
@@ -1110,18 +1112,18 @@ export function lick(
   pile: Pile = flatPile
 ): TemplateResult {
   if (pendingApproval(message)) return decision(message, handlers, pile);
-  const [line, failed] = scoopLine(message);
+  const [line, failed, icon] = scoopLine(message);
   const severity = message.severity ?? (failed ? 'error' : undefined);
   const [label] = lickLabels[message.channel];
   const outcome =
     message.state === 'confirmed' ? 'Allowed' : message.state === 'dismissed' ? 'Denied' : '';
   const head = html`${severity ? html`<span class="sr">${severities[severity].prefix}</span>` : nothing}
     ${outcome ? html`<span class="sr">${outcome}. </span>` : nothing}
-    <span class="text">${message.summary || line}</span>
+    <span class="text" data-summary=${message.summary ? '' : nothing}>${message.summary || line}</span>
     ${message.count && message.count > 1 ? html`<span class="times" title="Coalesced events">×${message.count}</span>` : nothing}`;
   const outcomeIcon =
     message.state === 'confirmed' ? '👍' : message.state === 'dismissed' ? '👎' : '';
-  const reaction = html`<span class="reactions"><span class="reaction" title=${label} aria-hidden="true">${lickIcons[message.channel]}</span>${outcomeIcon ? html`<span class="reaction" title=${outcome} aria-hidden="true">${outcomeIcon}</span>` : nothing}</span>`;
+  const reaction = html`<span class="reactions"><span class="reaction" title=${label} aria-hidden="true">${icon}</span>${outcomeIcon ? html`<span class="reaction" title=${outcome} aria-hidden="true">${outcomeIcon}</span>` : nothing}</span>`;
   const name = `${severity ? severities[severity].prefix : ''}${label} event`;
   const byline = html`<div class="meta">${severity ? html`<span class="severity-icon">${severities[severity].icon}</span>` : nothing}<span class="who">${message.title}</span>${stamp ? when(message.createdAt) : unseen(message.createdAt)}</div>`;
   const body = lickBody(message);
@@ -1408,6 +1410,9 @@ export const messageCss = css`
   }
   .lick-head .text {
     flex: 1;
+  }
+  .lick-head .text[data-summary] {
+    white-space: normal;
   }
   .lick .report {
     display: flex;

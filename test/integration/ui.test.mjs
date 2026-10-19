@@ -2781,6 +2781,8 @@ test('scoop-notify licks read in plain language, expand to the report and open i
         spoken: [...lick.querySelectorAll('.lick-head .sr')]
           .map((node) => node.textContent)
           .join(''),
+        pill: turn(id).querySelector('.reaction').textContent,
+        wraps: getComputedStyle(lick.querySelector('.lick-head .text')).whiteSpace !== 'nowrap',
       };
     });
   });
@@ -2792,6 +2794,8 @@ test('scoop-notify licks read in plain language, expand to the report and open i
       severity: null,
       icon: false,
       spoken: '',
+      pill: '✅',
+      wraps: true,
     },
     {
       who: 'grey-tern (worker)',
@@ -2800,6 +2804,8 @@ test('scoop-notify licks read in plain language, expand to the report and open i
       severity: 'error',
       icon: true,
       spoken: 'Error: ',
+      pill: '❌',
+      wraps: false,
     },
     {
       who: 'salt-gull (scout)',
@@ -2808,6 +2814,8 @@ test('scoop-notify licks read in plain language, expand to the report and open i
       severity: null,
       icon: false,
       spoken: '',
+      pill: '✅',
+      wraps: false,
     },
   ]);
   await page.evaluate(() => {
