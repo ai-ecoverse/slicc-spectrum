@@ -35,7 +35,7 @@ const lightPalette = [
 ];
 
 const darkPalette = [
-  '#1d1d1d',
+  'var(--swc-gray-800)',
   '#f44747',
   '#6a9955',
   '#d7ba7d',
@@ -43,7 +43,7 @@ const darkPalette = [
   '#c586c0',
   '#4ec9b0',
   '#d4d4d4',
-  '#808080',
+  'var(--swc-gray-700)',
   '#f44747',
   '#6a9955',
   '#d7ba7d',
