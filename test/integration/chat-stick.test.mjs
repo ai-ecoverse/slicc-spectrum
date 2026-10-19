@@ -193,12 +193,12 @@ test('a tool card opening above the viewport does not move the message being rea
     return { tools: tools.length, top: window.reading?.getBoundingClientRect().top };
   });
   assert.ok(before.tools > 0 && before.top !== undefined, JSON.stringify(before));
-  const height = await page.evaluate(() => window.log().scrollHeight);
   await page.evaluate(() => {
+    window.height = window.log().scrollHeight;
     window.opened.open = true;
     return true;
   });
-  await page.until(() => window.log().scrollHeight > height);
+  await page.until(() => window.log().scrollHeight > window.height);
   await wait(300);
   const after = await page.evaluate(() => window.reading.getBoundingClientRect().top);
   assert.ok(Math.abs(after - before.top) <= 1, JSON.stringify({ before, after }));
