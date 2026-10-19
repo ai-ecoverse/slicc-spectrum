@@ -2041,7 +2041,7 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
   await page.until(
     () => window.chatPart('swc-conversation-turn.assistant:last-of-type')?.dataset.status === 'done'
   );
-  const plain = 'bold cyan red bold green\nharbor ready\n FAIL   PASS \n';
+  const plain = 'bold cyan red bold green\nharbor ready\n FAIL   PASS   256 \n';
   const outputs = await page.evaluate(() => window.outputs);
   assert.deepEqual(outputs, ['bold ', 'bold cyan red bold green\n', plain]);
   await page.evaluate(() =>
@@ -2088,12 +2088,11 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
         copied,
         bold: getComputedStyle(span('bold')).fontWeight,
         cyan: getComputedStyle(span('cyan')).color,
-        palette: probe('var(--slicc-terminal-color-6)'),
         token: probe('var(--swc-cyan-1000)'),
         body: getComputedStyle(pre).color,
         green: getComputedStyle(span('bold green')).fontWeight,
         ready: getComputedStyle(span('ready')).color,
-        badges: [' FAIL ', ' PASS '].map((text) => {
+        badges: [' FAIL ', ' PASS ', ' 256 '].map((text) => {
           const node = getComputedStyle(span(text));
           return ratio(node.color, node.backgroundColor);
         }),
@@ -2106,8 +2105,8 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
           node.remove();
           return color;
         })(),
-        fullGreen: probe('var(--slicc-terminal-color-2)'),
-        brightGreen: probe('var(--slicc-terminal-color-10)'),
+        fullGreen: probe('var(--swc-positive-color-900)'),
+        brightGreen: probe('var(--swc-positive-color-1000)'),
         raw: window.model.agent
           .messages('cone-sliccy')
           .at(-1)
@@ -2120,7 +2119,6 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
   assert.ok(!light.text.includes('[0m'));
   assert.equal(light.bold, '700');
   assert.equal(light.green, '700');
-  assert.equal(light.cyan, light.palette);
   assert.equal(light.cyan, light.token);
   assert.notEqual(light.cyan, light.body);
   assert.equal(light.ready, light.fullGreen);
@@ -2142,7 +2140,21 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
     return getComputedStyle(span).color !== cyan;
   }, light.cyan);
   const dark = await read();
-  assert.equal(dark.cyan, dark.palette);
+  assert.equal(
+    await page.evaluate(() => {
+      const chat = window.chatPart();
+      chat.style.setProperty('--slicc-terminal-color-6', 'rgb(1, 2, 3)');
+      const span = [
+        ...window
+          .chatPart('swc-conversation-turn.assistant:last-of-type details.tool[open] pre.output')
+          .querySelectorAll('span'),
+      ].find((node) => node.textContent === 'cyan');
+      const color = getComputedStyle(span).color;
+      chat.style.removeProperty('--slicc-terminal-color-6');
+      return color;
+    }),
+    'rgb(1, 2, 3)'
+  );
   assert.equal(dark.copied, plain.slice(0, -1));
   assert.equal(dark.failBg, dark.negative);
   assert.ok(

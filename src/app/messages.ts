@@ -56,7 +56,7 @@ import type {
   ToolStatus,
   UserMessage,
 } from '../model/types.ts';
-import { ansi, terminalPalette } from './ansi.ts';
+import { ansi } from './ansi.ts';
 import { markdown } from './markdown.ts';
 import { signInText } from './sign-in.ts';
 import type { ViewSet } from './view-state.ts';
@@ -1551,9 +1551,6 @@ export const messageCss = css`
   .call > pre {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-  }
-  .call > pre.output {
-    ${terminalPalette}
   }
   .notes {
     display: flex;

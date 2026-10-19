@@ -227,7 +227,17 @@ export function stripAnsi(text: string): string {
 
 function swatch(color: Color): string | null {
   if (color === null) return null;
-  return typeof color === 'number' ? `var(--slicc-terminal-color-${color})` : color;
+  return typeof color === 'number'
+    ? `var(--slicc-terminal-color-${color}, var(--swc-${lightPalette[color]}))`
+    : color;
+}
+
+function on(rgb: string): string {
+  const [r, g, b] = (rgb.match(/\d+/g) as string[]).map((value) => {
+    const v = Number(value) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.179 ? 'var(--swc-black)' : 'var(--swc-white)';
 }
 
 function paint(style: AnsiStyle): [string | null, string | null] {
@@ -240,7 +250,8 @@ function paint(style: AnsiStyle): [string | null, string | null] {
   if (style.dim && fg === null && bg === null) {
     return ['var(--swc-neutral-subdued-content-color-default)', null];
   }
-  if (typeof bg !== 'number') return [swatch(fg), bg];
+  if (bg === null) return [swatch(fg), null];
+  if (typeof bg === 'string') return [typeof fg === 'string' ? fg : on(bg), bg];
   const tint = `var(--swc-${bg === 8 ? 'gray-700' : tints[bg % 8]})`;
   return [bg % 8 === 0 ? 'var(--swc-gray-25)' : null, tint];
 }
@@ -250,7 +261,7 @@ function inline(style: AnsiStyle): string {
   return [
     fg ? `color: ${fg}` : '',
     bg ? `background: ${bg}` : '',
-    style.bold ? 'font-weight: bold' : '',
+    style.bold ? 'font-weight: var(--swc-bold-font-weight)' : '',
     style.italic ? 'font-style: italic' : '',
     style.underline ? 'text-decoration: underline' : '',
   ]
