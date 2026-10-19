@@ -177,7 +177,7 @@ function flow(node: RootContent, definitions: Definitions): Output {
     case 'paragraph':
       return paragraph(node, definitions, false, nothing);
     case 'heading':
-      return html`<p class="heading" role="heading" aria-level=${node.depth + 2}>${inline(node, definitions)}</p>`;
+      return html`<p class="heading" role="heading" aria-level=${Math.min(node.depth + 2, 6)}>${inline(node, definitions)}</p>`;
     case 'code':
       return html`<pre class="code" data-lang=${node.lang || nothing}><code>${node.value}</code></pre>`;
     case 'list':
