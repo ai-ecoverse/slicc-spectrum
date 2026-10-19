@@ -390,6 +390,7 @@ export class SliccChat extends ThemedElement {
       model.agent.on('agents', settle),
       ...(model.tabs ? [model.tabs.on('tabs', () => this.requestUpdate())] : []),
       ...onWatch(model, settle),
+      ...(model.agent.starting ? [model.agent.on('starting', () => this.requestUpdate())] : []),
       model.agent.on('messages', (agentId) => {
         if (agentId === this.#id()) this.#refresh(this.#sent(agentId));
       }),
@@ -961,7 +962,9 @@ export class SliccChat extends ThemedElement {
                   )}</swc-conversation-thread>`
                 : this.model?.tabs?.state().role === 'connecting'
                   ? html`<div class="empty" data-connecting>${connecting}</div>`
-                  : html`<div class="empty" data-empty>${empty(watch, seat, agent?.name ?? 'the agent')}</div>`
+                  : this.model?.agent.starting?.()
+                    ? nothing
+                    : html`<div class="empty" data-empty>${empty(watch, seat, agent?.name ?? 'the agent')}</div>`
             }
           </div>
         </div>

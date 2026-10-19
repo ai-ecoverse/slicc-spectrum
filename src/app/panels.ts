@@ -358,12 +358,24 @@ export function openTerminal(dock: SliccDock, info: TerminalInfo, screen: Screen
   return id;
 }
 
+function openChatSlot(
+  dock: SliccDock,
+  item: Surface,
+  screen: ScreenClass,
+  agent: { id: string; name: string } | null,
+  agentless: boolean
+): void {
+  if (agent) openChat(dock, agent, screen, false);
+  else if (agentless) openSurface(dock, item, screen, false);
+}
+
 export function defaultLayout(
   dock: SliccDock,
   screen: ScreenClass,
   agent: { id: string; name: string } | null,
   items: readonly Surface[] = surfaces,
-  terminals: readonly TerminalInfo[] = []
+  terminals: readonly TerminalInfo[] = [],
+  agentless = false
 ): void {
   dock.clear();
   const order: Side[] = ['center', 'left', 'right'];
@@ -371,11 +383,11 @@ export function defaultLayout(
     for (const item of items) {
       if (item.side !== side || !item.open.includes(screen)) continue;
       if (item.id === 'terminal') for (const info of terminals) openTerminal(dock, info, screen);
-      else if (item.id !== 'chat') openSurface(dock, item, screen);
-      else if (agent) openChat(dock, agent, screen, false);
+      else if (item.id === 'chat') openChatSlot(dock, item, screen, agent, agentless);
+      else openSurface(dock, item, screen);
     }
   }
-  const chat = chats(dock)[0];
+  const chat = chats(dock)[0] ?? (dock.has('chat') ? 'chat' : null);
   if (chat) dock.api.getPanel(chat)?.api.setActive();
 }
 

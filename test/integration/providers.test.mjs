@@ -216,7 +216,11 @@ test('with the vault, the key goes to the provider’s vault name before connect
   await page.until(() => window.account('cloudflare')?.status === 'connected');
   assert.deepEqual(await page.evaluate(() => window.model.vault.puts.at(-1)), {
     name: 'CLOUDFLARE_WORKERS_AI_API_KEY',
-    options: { kind: 'model', provider: 'cloudflare' },
+    options: {
+      kind: 'model',
+      provider: 'cloudflare',
+      settings: { CLOUDFLARE_ACCOUNT_ID: 'acct-1' },
+    },
   });
   await click(page, '.account[data-id=cloudflare] [data-action=disconnect]');
   await page.until(() => !!window.deep('slicc-confirm'));
