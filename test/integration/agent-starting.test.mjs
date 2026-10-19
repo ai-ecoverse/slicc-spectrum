@@ -289,7 +289,7 @@ test('a reload while the agent starts leaves the next normal load with the agent
   assert.deepEqual(page.errors, []);
 });
 
-test('queued rows survive a reload, a file named as not kept, and flush on arrival', async (t) => {
+test('after a reload a row whose file was lost is held, Put back fills the field, and the other rows still send', async (t) => {
   const page = await open(t);
   await say(page, 'Check the harbor tides');
   await page.evaluate(() => {
@@ -297,48 +297,60 @@ test('queued rows survive a reload, a file named as not kept, and flush on arriv
     composer.attachments = [
       { id: 'n1', name: 'tides.csv', kind: 'text', mimeType: 'text/csv', size: 3, text: 'a,b' },
     ];
-    composer.value = 'Then list the moorings';
+    composer.value = 'Compare with the attached tides';
     composer.send();
     return true;
   });
-  await page.until(() => window.rows().length === 2);
-  await page.reload();
-  await page.until(() => window.ready === true && window.app.dock.has('chat'));
-  await page.evaluate(() => {
-    window.chat = () =>
-      window.app.dock.content('chat:cone-sliccy')?.shadowRoot ??
-      window.app.dock.content('chat')?.shadowRoot ??
-      null;
-    window.composer = () => window.chat()?.querySelector('slicc-composer')?.shadowRoot ?? null;
-    return true;
-  });
+  await say(page, 'Then list the moorings');
+  await reopen(page);
   await page.until(
-    () => window.composer()?.querySelectorAll('li.queued[data-mode=starting]').length === 2
+    () => window.composer()?.querySelectorAll('li.queued[data-mode=starting]').length === 3
   );
   assert.deepEqual(
     await page.evaluate(() =>
       [...window.composer().querySelectorAll('li.queued[data-mode=starting]')].map((row) => [
         row.querySelector('.text').textContent.trim(),
         row.querySelector('[data-lost]')?.textContent.trim() ?? null,
+        !!row.querySelector('[data-action=restore-starting]'),
       ])
     ),
     [
-      ['Queued: Check the harbor tides', null],
-      ['Queued: Then list the moorings', ', Not kept after reload: tides.csv'],
+      ['Queued: Check the harbor tides', null, false],
+      [
+        'Held: Compare with the attached tides',
+        ', Not sent: tides.csv wasn’t kept after reload.',
+        true,
+      ],
+      ['Queued: Then list the moorings', null, false],
     ]
   );
   await page.evaluate(() => {
     window.model.agent.arrive();
     return true;
   });
-  await page.until(() => {
-    const id = window.model.agent.active();
-    const sent = window.model.agent
-      .messages(id)
-      .filter((message) => message.role === 'user')
-      .map((message) => message.text);
-    return sent.length === 3 && sent[2] === 'Then list the moorings';
+  await page.until(() => window.app.dock.has('chat:cone-sliccy') && window.users().length === 3);
+  assert.deepEqual(await page.evaluate(() => window.users()), [
+    'What is on my plate today?',
+    'Check the harbor tides',
+    'Then list the moorings',
+  ]);
+  await page.until(() => !!window.composer()?.querySelector('[data-action=restore-starting]'));
+  await page.evaluate(() => {
+    window.composer().querySelector('[data-action=restore-starting]').click();
+    return true;
   });
+  await page.until(
+    () =>
+      window.field()?.value === 'Compare with the attached tides' &&
+      window.composer().querySelector('swc-prompt-field').shadowRoot.activeElement ===
+        window.field() &&
+      !window.composer().querySelector('li.queued[data-mode=starting]')
+  );
+  assert.deepEqual(await page.evaluate(() => window.users()), [
+    'What is on my plate today?',
+    'Check the harbor tides',
+    'Then list the moorings',
+  ]);
   assert.equal(await page.evaluate(() => sessionStorage.getItem('slicc-spectrum.starting')), null);
   assert.deepEqual(page.errors, []);
 });
@@ -352,6 +364,13 @@ async function reopen(page) {
       window.app.dock.content('chat')?.shadowRoot ??
       null;
     window.composer = () => window.chat()?.querySelector('slicc-composer')?.shadowRoot ?? null;
+    window.field = () =>
+      window.composer()?.querySelector('swc-prompt-field')?.shadowRoot?.querySelector('textarea');
+    window.users = () =>
+      window.model.agent
+        .messages(window.model.agent.active())
+        .filter((message) => message.role === 'user')
+        .map((message) => message.text);
     return true;
   });
   await page.until(() => !!window.composer()?.querySelector('swc-prompt-field'));
