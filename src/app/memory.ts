@@ -320,6 +320,10 @@ export class SliccMemory extends ModelElement {
       .body.markdown > :last-child {
         margin-block-end: 0;
       }
+      .row:not([data-open]) .body.markdown * {
+        margin-block: 0;
+        padding-block: 0;
+      }
       .actions {
         display: flex;
         flex-wrap: wrap;
