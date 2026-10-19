@@ -1293,7 +1293,12 @@ export class SliccSecrets extends ThemedElement {
   }
 
   #provider(id: string): string {
-    return this.model?.settings.accounts().find((account) => account.id === id)?.provider ?? id;
+    const settings = this.model?.settings;
+    return (
+      settings?.providers?.().find((option) => option.id === id)?.name ??
+      settings?.accounts().find((account) => account.id === id)?.provider ??
+      id
+    );
   }
 
   #unpin(
