@@ -9,8 +9,21 @@ const docs = 'https://docs.example/mcp';
 const moved = 'https://docs.eu.example/mcp';
 const tickets = 'https://tickets.example/mcp';
 
+const registrations = 'slicc-spectrum.mcp-endpoints';
+
 async function open(t, params = {}) {
   const page = await chrome.page(t);
+  await page.goto('/ui/?delay=5');
+  await page.until(() => window.ready === true);
+  await page.evaluate((key) => {
+    localStorage.removeItem(key);
+    return true;
+  }, registrations);
+  await visit(page, params);
+  return page;
+}
+
+async function visit(page, params) {
   await page.goto(
     `/ui/?${new URLSearchParams({ delay: '5', color: 'light', vault: 'secrets', accounts: 'vault', ...params })}`
   );
@@ -37,8 +50,10 @@ async function open(t, params = {}) {
     return true;
   });
   await page.until(() => !!window.settingsPart('.account[data-id="mcp:docs"]'));
-  return page;
 }
+
+const stored = (page) =>
+  page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? '{}'), registrations);
 
 async function click(page, selector) {
   await page.until((selector) => {
@@ -105,6 +120,15 @@ test('saving an MCP token asks to connect to its URL, then puts, registers and c
   assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges), [
     { add: { mcp: [{ server: 'tickets', url: tickets }] } },
   ]);
+  assert.deepEqual(await stored(page), { tickets });
+  await click(page, '.account[data-id="mcp:tickets"] [data-action=disconnect]');
+  await page.until(() => !!window.dialog());
+  await answer(page, true);
+  await page.until(() => window.model.vault.endpointChanges.length === 2);
+  assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges.at(-1)), {
+    remove: { mcp: [{ server: 'tickets', url: tickets }] },
+  });
+  assert.deepEqual(await stored(page), {});
   assert.deepEqual(page.errors, []);
 });
 
@@ -123,7 +147,7 @@ test('when the vault refuses the MCP URL, the form says why and connect never ru
   assert.deepEqual(page.errors, []);
 });
 
-test('a moved MCP server offers Reconnect, and re-registers only after the confirm', async (t) => {
+test('a pinned MCP server whose URL moved offers Reconnect, and registers only after the confirm', async (t) => {
   const page = await open(t, { mcp: 'moved' });
   await page.until(
     () => !!window.settingsPart('.account[data-id="mcp:docs"] [data-action=reconnect-mcp]')
@@ -144,12 +168,63 @@ test('a moved MCP server offers Reconnect, and re-registers only after the confi
   await answer(page, true);
   await page.until(() => !window.settingsPart('[data-action=reconnect-mcp]'));
   assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges), [
-    {
-      remove: { mcp: [{ server: 'docs', url: docs }] },
-      add: { mcp: [{ server: 'docs', url: moved }] },
-    },
+    { add: { mcp: [{ server: 'docs', url: moved }] } },
   ]);
   assert.equal(await page.evaluate(() => !!window.settingsPart('[data-notice=moved]')), false);
+  assert.deepEqual(await stored(page), { docs: moved });
+  assert.deepEqual(page.errors, []);
+});
+
+test('the page’s own registration survives a reload, and a later move swaps it in one call', async (t) => {
+  const page = await open(t, { mcp: 'moved' });
+  await click(page, '.account[data-id="mcp:docs"] [data-action=reconnect-mcp]');
+  await confirmShown(page);
+  await answer(page, true);
+  await page.until(() => !window.settingsPart('[data-action=reconnect-mcp]'));
+  await visit(page, {});
+  await page.until(
+    () =>
+      window.settingsPart('[data-notice=moved]')?.textContent ===
+      `The server moved to ${'https://docs.example/mcp'}. Reconnect to send the token there.`
+  );
+  await click(page, '.account[data-id="mcp:docs"] [data-action=reconnect-mcp]');
+  assert.equal((await confirmShown(page)).title, `Connect to ${docs}?`);
+  await answer(page, true);
+  await page.until(() => !window.settingsPart('[data-action=reconnect-mcp]'));
+  assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges), [
+    {
+      remove: { mcp: [{ server: 'docs', url: moved }] },
+      add: { mcp: [{ server: 'docs', url: docs }] },
+    },
+  ]);
+  assert.deepEqual(await stored(page), { docs });
+  assert.deepEqual(page.errors, []);
+});
+
+test('without a pin or a registration, a server is never moved', async (t) => {
+  const page = await open(t);
+  assert.equal(await page.evaluate(() => !!window.settingsPart('[data-notice=moved]')), false);
+  await visit(page, { mcp: 'moved' });
+  await page.evaluate(() => {
+    const { vault } = window.model;
+    const list = vault.list.bind(vault);
+    vault.list = () => ({
+      ...list(),
+      secrets: list().secrets.map((secret) =>
+        secret.name === 'MCP_DOCS_TOKEN'
+          ? { ...secret, pinned: undefined, url: 'http://127.0.0.1:7801/mcp' }
+          : secret
+      ),
+    });
+    window.app.show('agents');
+    window.app.show('settings');
+    return true;
+  });
+  await page.until(() => !!window.settingsPart('.account[data-id="mcp:docs"]'));
+  assert.equal(
+    await page.evaluate(() => !!window.settingsPart('[data-action=reconnect-mcp]')),
+    false
+  );
   assert.deepEqual(page.errors, []);
 });
 
@@ -163,6 +238,7 @@ test('Disconnect takes the MCP server URL back after removing the token', async 
   assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges), [
     { remove: { mcp: [{ server: 'docs', url: docs }] } },
   ]);
+  assert.deepEqual(await stored(page), {});
   assert.equal(
     await page.evaluate(
       () =>

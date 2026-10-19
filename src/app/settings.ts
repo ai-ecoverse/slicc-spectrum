@@ -99,6 +99,25 @@ interface BaseChange {
   old: string | undefined;
 }
 
+export const mcpRegistrations = 'slicc-spectrum.mcp-endpoints';
+
+function registrations(): Record<string, string> {
+  try {
+    return JSON.parse(globalThis.localStorage.getItem(mcpRegistrations) ?? '{}') ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function register(server: string, url: string | undefined): void {
+  const all = registrations();
+  if (url) all[server] = url;
+  else delete all[server];
+  try {
+    globalThis.localStorage.setItem(mcpRegistrations, JSON.stringify(all));
+  } catch {}
+}
+
 const popup = (account: Account) => account.group === 'mcp' && account.auth === 'oauth';
 
 const secretNames = { 'api-key': 'API key', token: 'token' } as const;
@@ -556,7 +575,10 @@ export class SliccSettings extends ThemedElement {
     const url = this.#mcpUrl(account);
     try {
       await vault.put?.(recordName(account), value, undefined, options);
-      if (url) await vault.endpoints?.({ add: { mcp: [{ server: serverOf(account), url }] } });
+      if (url) {
+        await vault.endpoints?.({ add: { mcp: [{ server: serverOf(account), url }] } });
+        register(serverOf(account), url);
+      }
     } catch (error) {
       this.#busy(id, false);
       if (this.model === model) this.#refuse(id, 'value', failureText(error));
@@ -774,34 +796,39 @@ export class SliccSettings extends ThemedElement {
     return this.#baseOf(account.url) ?? null;
   }
 
-  #registered(account: Account): string | undefined {
+  #pinned(account: Account): string | undefined {
     const server = serverOf(account);
     return this.model?.vault
       ?.list()
       ?.secrets.find(
-        (secret) => secret.kind === 'mcp' && secret.server === server && secret.state !== 'removed'
+        (secret) =>
+          secret.kind === 'mcp' &&
+          secret.server === server &&
+          secret.state !== 'removed' &&
+          secret.pinned
       )?.url;
   }
 
   #moved(account: Account): string | null {
     const url = this.#mcpUrl(account);
-    const old = this.#registered(account);
+    const old = registrations()[serverOf(account)] ?? this.#pinned(account);
     return url && old && old !== url ? url : null;
   }
 
   async #reconnectMcp(account: Account, url: string): Promise<void> {
     const model = this.model as SliccModel;
-    const old = this.#registered(account) as string;
+    const server = serverOf(account);
+    const old = registrations()[server];
     if (!(await this.#confirmUrl(url))) return;
     if (this.model !== model) return;
-    const server = serverOf(account);
     this.#busy(account.id, true);
     this.failure = null;
     try {
       await model.vault?.endpoints?.({
-        remove: { mcp: [{ server, url: old }] },
+        ...(old ? { remove: { mcp: [{ server, url: old }] } } : {}),
         add: { mcp: [{ server, url }] },
       });
+      register(server, url);
     } catch (error) {
       if (this.model === model) this.failure = { id: account.id, message: failureText(error) };
       return;
@@ -1023,13 +1050,15 @@ export class SliccSettings extends ThemedElement {
     if (!(await confirm({ title, body, action: 'Disconnect', variant: 'confirmation' }))) return;
     clearValues(this.renderRoot);
     if (this.model !== model) return;
-    const url = this.#registered(account) ?? this.#mcpUrl(account);
+    const server = serverOf(account);
+    const url = account.group === 'mcp' ? (registrations()[server] ?? this.#mcpUrl(account)) : null;
     if (stored && !(await this.#forget(account, stored))) return;
     if (this.model !== model) return;
     model?.settings.disconnect(account.id);
     if (!url || !stored?.endpoints) return;
     await stored
-      .endpoints({ remove: { mcp: [{ server: serverOf(account), url }] } })
+      .endpoints({ remove: { mcp: [{ server, url }] } })
+      .then(() => register(server, undefined))
       .catch((error) => {
         if (this.model === model) this.failure = { id: account.id, message: failureText(error) };
       });
