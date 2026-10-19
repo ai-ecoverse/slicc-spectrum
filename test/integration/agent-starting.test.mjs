@@ -381,7 +381,10 @@ test('a file-only row reloads as not sent, is not sent on arrival, and goes when
       ]
     );
   };
-  assert.deepEqual(await page.evaluate(row), ['Queued: radar.png', 'Not sent. Attach the files again.']);
+  assert.deepEqual(await page.evaluate(row), [
+    'Queued: radar.png',
+    'Not sent. Attach the files again.',
+  ]);
   await page.evaluate(() => {
     window.model.agent.arrive();
     return true;
