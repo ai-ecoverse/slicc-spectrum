@@ -52,6 +52,7 @@ const model = createDummyModel({
   storage: localStorage,
   updates: params.get('updates') ?? 'current',
   packages: params.get('packages') ?? 'off',
+  beta: params.get('beta') ?? 'off',
   confirm,
   mounts: params.get('mounts') ?? 'off',
   network: params.get('network') ?? (follow === 'off' ? 'limited' : 'off'),

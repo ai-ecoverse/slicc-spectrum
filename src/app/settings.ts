@@ -1,6 +1,7 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/close-button/swc-close-button.js';
+import '@adobe/spectrum-wc/components/progress-circle/swc-progress-circle.js';
 import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc-icons/swc-icon-add.js';
@@ -10,6 +11,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-delete.js';
 import link from '@adobe/spectrum-wc/link.css';
 import '@spectrum-web-components/field-label/sp-field-label.js';
 import { css, html, type LitElement, nothing, type TemplateResult, unsafeCSS } from 'lit';
+import { live } from 'lit/directives/live.js';
 import { repeat } from 'lit/directives/repeat.js';
 import type {
   Account,
@@ -22,6 +24,7 @@ import type {
   SecretView,
   Settings,
   SliccModel,
+  UpdatesPort,
   VaultEndpointChange,
   VaultPort,
 } from '../model/types.ts';
@@ -161,6 +164,8 @@ export class SliccSettings extends ThemedElement {
     adding: { state: true },
     query: { state: true },
     filled: { state: true },
+    developing: { state: true },
+    developerError: { state: true },
   };
   declare pending: ReadonlySet<string>;
   declare entering: string | null;
@@ -171,10 +176,15 @@ export class SliccSettings extends ThemedElement {
   declare adding: ProviderOption | null;
   declare query: string;
   declare filled: ReadonlySet<string>;
+  declare developing: boolean;
+  declare developerError: string | null;
   #waits = new SignInWaits(() => this.requestUpdate());
   #landing: string | null = null;
   #away = false;
   #bases = new Map<string, string>();
+  #wanted: boolean | null = null;
+  #developerPort: UpdatesPort | undefined;
+  #call = 0;
   #scroll = new ViewScroll(this, 'settings:scroll', { scroller: () => this, rows: '[data-id]' });
 
   constructor() {
@@ -188,6 +198,8 @@ export class SliccSettings extends ThemedElement {
     this.adding = null;
     this.query = '';
     this.filled = new Set();
+    this.developing = false;
+    this.developerError = null;
   }
 
   static styles = [
@@ -311,6 +323,21 @@ export class SliccSettings extends ThemedElement {
       }
       .switched {
         grid-column: 2;
+      }
+      .developer {
+        display: grid;
+        gap: var(--swc-spacing-75);
+        padding-block: var(--swc-spacing-75);
+      }
+      .toggle {
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-100);
+      }
+      .developer .hint,
+      .developer .failure {
+        margin: 0;
+        line-height: var(--swc-line-height-200);
       }
       .failure,
       .problem {
@@ -512,8 +539,17 @@ export class SliccSettings extends ThemedElement {
       update();
     };
     queueMicrotask(() => settleModels(model));
+    if (model.updates !== this.#developerPort) {
+      this.#developerPort = model.updates;
+      this.#call += 1;
+      this.developing = false;
+      this.developerError = null;
+      this.#wanted = null;
+    }
+    const developer = typeof model.updates?.setDeveloper === 'function';
     return [
       ...super.subscribe(model),
+      ...(developer && model.updates ? [model.updates.on('items', update)] : []),
       model.settings.on('settings', settle),
       model.settings.on('accounts', settle),
       model.settings.on('providers', update),
@@ -556,6 +592,44 @@ export class SliccSettings extends ThemedElement {
 
   #checked(event: Event): boolean {
     return (event.target as HTMLElement & { checked: boolean }).checked;
+  }
+
+  async #developer(event: Event): Promise<void> {
+    const port = this.model?.updates;
+    const on = this.#checked(event);
+    const call = ++this.#call;
+    this.#wanted = on;
+    this.developing = true;
+    this.developerError = null;
+    try {
+      await port?.setDeveloper?.(on);
+    } catch (error) {
+      if (call === this.#call) {
+        this.developerError = error instanceof Error ? error.message : String(error);
+      }
+    } finally {
+      if (call === this.#call) {
+        this.#wanted = null;
+        this.developing = false;
+      }
+    }
+  }
+
+  #developerRow(): TemplateResult | typeof nothing {
+    const port = this.model?.updates;
+    if (typeof port?.setDeveloper !== 'function') return nothing;
+    const on = port.developer?.() ?? false;
+    return html`<div class="row">
+      <span class="label">Updates</span>
+      <div class="developer">
+        <div class="toggle">
+          <sp-switch .checked=${live(this.#wanted ?? on)} ?disabled=${this.developing} aria-busy=${this.developing ? 'true' : nothing} data-setting="developer" @change=${(event: Event) => void this.#developer(event)}>Developer mode</sp-switch>
+          ${this.developing ? html`<swc-progress-circle size="s" indeterminate label="Saving developer mode" data-pending></swc-progress-circle>` : nothing}
+        </div>
+        <p class="hint">Check npm for newer releases that aren't certified yet, and offer them as betas in Install / Update.</p>
+        ${this.developerError ? html`<p class="failure" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.developerError}</span></p>` : nothing}
+      </div>
+    </div>`;
   }
 
   #cancelled = new Set<string>();
@@ -1711,6 +1785,7 @@ export class SliccSettings extends ThemedElement {
           <sp-menu-item value="split">Split</sp-menu-item>
         </sp-picker>
       </div>
+      ${this.#developerRow()}
       </div>
       <h2 data-section="accounts">Accounts</h2>
       ${this.#providerList(providers)}
