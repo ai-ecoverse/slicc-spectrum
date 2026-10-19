@@ -1277,6 +1277,16 @@ export interface RefreshEntry extends AuditBase {
   grant?: string;
 }
 
+export interface EndpointsEntry {
+  type: 'endpoints';
+  seq: number;
+  id: string;
+  at: number;
+  uid: null;
+  tag: null;
+  purged: Array<{ provider: string; url: string }>;
+}
+
 export interface PolicyEntry {
   type: 'policy';
   seq: number;
@@ -1297,6 +1307,7 @@ export type AuditEntry =
   | SealEntry
   | RemoveEntry
   | RefreshEntry
+  | EndpointsEntry
   | PolicyEntry;
 
 export interface AuditPage {
