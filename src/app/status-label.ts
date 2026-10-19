@@ -23,12 +23,14 @@ export const hold = 1000;
 export class SliccStatusLabel extends LitElement {
   static properties = {
     text: { attribute: false },
+    note: { attribute: false },
     state: { attribute: false },
     calls: { attribute: false },
     agent: { attribute: false },
     model: { attribute: false },
   };
   declare text: string;
+  declare note: string;
   declare state: 'active' | 'complete' | 'stopped';
   declare calls: ToolCall[];
   declare agent: string;
@@ -40,6 +42,7 @@ export class SliccStatusLabel extends LitElement {
   constructor() {
     super();
     this.text = '';
+    this.note = '';
     this.state = 'active';
     this.calls = [];
     this.agent = '';
@@ -99,7 +102,8 @@ export class SliccStatusLabel extends LitElement {
   }
 
   #wanted(): string {
-    return (this.state === 'complete' && this.#label()) || this.text;
+    const base = (this.state === 'complete' && this.#label()) || this.text;
+    return base && this.note ? `${base} · ${this.note}` : base;
   }
 
   #cancel(): void {

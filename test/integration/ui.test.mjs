@@ -2174,7 +2174,11 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
 test('tool steps join across messages, keep their states, and open from the keyboard', async (t) => {
   const page = await open(t);
   await page.evaluate(() => window.model.agent.select('cone-kitchen'));
-  await page.until(() => !!window.chatPart('[data-id=k-m8] swc-response-status'));
+  await page.until(
+    () =>
+      window.chatPart('[data-id=k-m8] slicc-status-label')?.textContent.startsWith('Compare') &&
+      window.chatPart('[data-id=k-m3] slicc-status-label')?.textContent.startsWith('Walk')
+  );
   const shape = await page.evaluate(() => {
     const root = window.chatPart().shadowRoot;
     const statuses = (id) =>
@@ -2199,13 +2203,19 @@ test('tool steps join across messages, keep their states, and open from the keyb
         item.getAttribute('status'),
       ]),
       cards: root.querySelectorAll('slicc-tool-runs, .runs, details.tool').length,
+      hooks: [
+        root.querySelectorAll('swc-response-status[data-action=open-cluster]').length,
+        root.querySelectorAll('swc-response-status-step[data-action=open-run][data-target]').length,
+      ],
+      failed: root.querySelector('#run-k-r7 [slot=label]').textContent,
     };
   });
-  assert.deepEqual(
-    shape.m3.map(([state, steps]) => [state, steps]),
-    [['active', 17]]
-  );
-  assert.deepEqual(shape.m8, [['active', 9, 'bash Watch the preview logs']]);
+  assert.deepEqual(shape.m3, [
+    ['complete', 17, 'Walk through every kind of tool · 2 failed, 1 cancelled'],
+  ]);
+  assert.deepEqual(shape.m8, [
+    ['complete', 9, 'Compare the docs with the live API · 1 failed, 1 cancelled'],
+  ]);
   assert.deepEqual(shape.single, [['complete', 1, 'bash Check the preview port']]);
   assert.equal(shape.absorbed, false);
   assert.deepEqual(shape.owner, ['k-tool1', 'k-m3']);
@@ -2222,6 +2232,8 @@ test('tool steps join across messages, keep their states, and open from the keyb
     ['k-r9', 'running', 'active'],
   ]);
   assert.equal(shape.cards, 0);
+  assert.deepEqual(shape.hooks, [4, 27]);
+  assert.equal(shape.failed, 'bash Run the unit tests · Failed');
 
   await page.evaluate(() =>
     window

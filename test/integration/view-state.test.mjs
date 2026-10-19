@@ -221,19 +221,14 @@ const panels = [
     name: 'an open tool run in the chat',
     id: 'chat:cone-kitchen',
     before: () => window.model.agent.select('cone-kitchen'),
-    ready: '#run-k-r7',
+    ready: '[data-action=open-run][data-target=k-r7]',
     act: () => {
-      const step = window.part('chat:cone-kitchen', '#run-k-r7');
-      step
-        .closest('swc-response-status')
-        .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
-        .click();
-      step.shadowRoot.querySelector('.swc-ResponseStatusStep-toggle').click();
+      window.part('chat:cone-kitchen', '[data-action=open-run][data-target=k-r7]').click();
       return true;
     },
     held: () => {
-      const step = window.part('chat:cone-kitchen', '#run-k-r7');
-      return step?.open === true && step.closest('swc-response-status').open === true;
+      const step = window.part('chat:cone-kitchen', '[data-action=open-run][data-target=k-r7]');
+      return step?.open === true && step.closest('[data-action=open-cluster]')?.open === true;
     },
   },
   {

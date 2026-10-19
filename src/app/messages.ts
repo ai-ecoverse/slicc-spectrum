@@ -82,7 +82,9 @@ export interface Owner {
   stamp?: boolean;
 }
 
-export type RunContext = Pick<Handlers, 'color' | 'model' | 'owners' | 'agentId' | 'runs'>;
+export type RunContext = Pick<Handlers, 'color' | 'model' | 'owners' | 'agentId' | 'runs'> & {
+  anchor?: string;
+};
 
 export interface Joined {
   calls: ToolCall[];
@@ -359,12 +361,39 @@ function described(call: ToolCall, owner: Owner | undefined): boolean {
   );
 }
 
-export function step(call: ToolCall, context: RunContext): TemplateResult {
+const verdicts: Partial<Record<ToolStatus, string>> = { error: 'Failed', cancelled: 'Cancelled' };
+
+function hosted(event: Event): boolean {
+  return event.composedPath()[0] === event.currentTarget;
+}
+
+function openStep(event: Event, call: ToolCall, runs: ViewSet | undefined, key: string): void {
+  if (!hosted(event)) return;
+  const step = event.currentTarget as HTMLElement & { open: boolean };
+  step.open = !step.open;
+  runs?.toggle(call.id, step.open);
+  const status = step.closest('swc-response-status') as (HTMLElement & { open: boolean }) | null;
+  if (!step.open || !status) return;
+  status.open = true;
+  runs?.toggle(key, true);
+}
+
+function openStatus(event: Event, runs: ViewSet | undefined, key: string): void {
+  if (!hosted(event)) return;
+  const status = event.currentTarget as HTMLElement & { open: boolean };
+  status.open = !status.open;
+  runs?.toggle(key, status.open);
+}
+
+export function step(call: ToolCall, context: RunContext, id?: string): TemplateResult {
   const kind = toolKind(call.name);
   const owner = context.owners?.get(call.id);
   const runs = context.runs;
+  const quiet = !call.input && !call.output && !call.notes?.length && !call.meta && !owner;
+  const verdict = verdicts[call.status];
   const content = described(call, owner)
     ? html`<div slot="description" class="call">
+      ${quiet ? html`<span class="sr">${headline(call)}</span>` : nothing}
       ${body(call, context.color)}
       ${call.output ? html`<pre class="output">${ansi(call.output, call.status === 'running')}</pre>` : nothing}
       ${call.notes?.length ? notes(call.notes) : nothing}
@@ -373,7 +402,7 @@ export function step(call: ToolCall, context: RunContext): TemplateResult {
       ${owner ? html`<span class=${owner.stamp === false ? 'sr' : 'ran'}>Ran at ${when(owner.at)}</span>` : nothing}
     </div>`
     : nothing;
-  return html`<swc-response-status-step id=${`run-${call.id}`} status=${stepStates[call.status]} data-id=${owner?.id ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id} ?open=${runs?.has(call.id) ?? false} @swc-response-status-step-open-change=${(event: CustomEvent<{ open: boolean }>) => runs?.toggle(call.id, event.detail.open)}><span slot="label">${headline(call)}</span>${content}</swc-response-status-step>`;
+  return html`<swc-response-status-step id=${`run-${call.id}`} status=${stepStates[call.status]} data-id=${owner?.id ?? id ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id} data-action="open-run" data-target=${call.id} ?open=${runs?.has(call.id) ?? false} @click=${(event: Event) => openStep(event, call, runs, `status:${context.anchor ?? call.id}`)} @swc-response-status-step-open-change=${(event: CustomEvent<{ open: boolean }>) => runs?.toggle(call.id, event.detail.open)}><span slot="label">${headline(call)}${verdict ? ` · ${verdict}` : ''}</span>${content}</swc-response-status-step>`;
 }
 
 function headline(call: ToolCall): string {
@@ -390,9 +419,7 @@ function phase(
 ): Phase | null {
   if (status === 'stopped') return 'stopped';
   if (!calls.length) return status === 'streaming' && !said ? 'active' : null;
-  if (status === 'streaming' || live || calls.some((call) => call.status === 'running'))
-    return 'active';
-  return 'complete';
+  return status === 'streaming' || live ? 'active' : 'complete';
 }
 
 function loader(calls: readonly ToolCall[]): string {
@@ -402,6 +429,14 @@ function loader(calls: readonly ToolCall[]): string {
 
 function settled(calls: readonly ToolCall[]): string {
   return calls.length > 1 ? toolSummary(calls) : headline(calls[0] as ToolCall);
+}
+
+function tally(calls: readonly ToolCall[]): string {
+  const count = (status: ToolStatus) => calls.filter((call) => call.status === status).length;
+  const [failed, cancelled] = [count('error'), count('cancelled')];
+  return [failed ? `${failed} failed` : '', cancelled ? `${cancelled} cancelled` : '']
+    .filter(Boolean)
+    .join(', ');
 }
 
 function caption(state: Phase, calls: readonly ToolCall[]): string {
@@ -420,10 +455,11 @@ function status(
   if (!state) return nothing;
   const text = caption(state, calls);
   const runs = context.runs;
-  const open = `status:${calls[0]?.id ?? key}`;
-  return html`<swc-response-status slot="status" status=${state} loader=${loader(calls)} accessible-label="Tool calls" data-id=${key} ?open=${runs?.has(open) ?? false} @swc-response-status-toggle=${(event: CustomEvent<{ open: boolean }>) => runs?.toggle(open, event.detail.open)}>
-    <slicc-status-label slot="label" .text=${text} .state=${state} .calls=${calls} .agent=${context.agentId ?? ''} .model=${context.model}></slicc-status-label>
-    ${calls.map((call) => step(call, context))}
+  const anchor = calls[0]?.id ?? key;
+  const open = `status:${anchor}`;
+  return html`<swc-response-status slot="status" status=${state} loader=${loader(calls)} accessible-label="Tool calls" data-id=${key} data-action="open-cluster" ?open=${runs?.has(open) ?? false} @click=${(event: Event) => openStatus(event, runs, open)} @swc-response-status-toggle=${(event: CustomEvent<{ open: boolean }>) => runs?.toggle(open, event.detail.open)}>
+    <slicc-status-label slot="label" .text=${text} .note=${tally(calls)} .state=${state} .calls=${calls} .agent=${context.agentId ?? ''} .model=${context.model}></slicc-status-label>
+    ${calls.map((call) => step(call, { ...context, anchor }, key))}
   </swc-response-status>`;
 }
 
