@@ -5,7 +5,7 @@ import { launch } from './chrome.mjs';
 const chrome = await launch();
 after(() => chrome.close());
 
-async function open(t, links, width = 1280, height = 1000) {
+async function open(t, links, width = 1280, height = 1000, delay = '5') {
   const page = await chrome.page(t);
   await page.send('Emulation.setDeviceMetricsOverride', {
     width,
@@ -14,7 +14,7 @@ async function open(t, links, width = 1280, height = 1000) {
     mobile: false,
   });
   t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
-  await page.goto(`/ui/?${new URLSearchParams({ delay: '5', color: 'light', links })}`);
+  await page.goto(`/ui/?${new URLSearchParams({ delay, color: 'light', links })}`);
   await page.until(() => window.ready === true && window.app.dock.api.panels.length > 0);
   await page.evaluate(() => {
     window.net = () => window.$('slicc-app', 'slicc-dock').content('network')?.shadowRoot;
@@ -172,18 +172,19 @@ test('a pairing that reaches confirm unfolds itself, scrolls into view, and canc
 });
 
 test('a confirm that rejects after Cancel leaves no stale error under the field', async (t) => {
-  const page = await open(t, 'pairing');
+  const page = await open(t, 'pairing', 1280, 1000, '1000');
   await network(page);
   await page.evaluate(() => {
     const port = window.model.network;
     const confirm = port.confirmPairing;
-    port.confirmPairing = async () => {
-      confirm();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      await new Promise((resolve) => {
+    port.confirmPairing = () => {
+      const settled = new Promise((resolve) => {
         window.rejectConfirm = resolve;
       });
-      throw new Error('Pairing was cancelled.');
+      confirm();
+      return settled.then(() => {
+        throw new Error('Pairing was cancelled.');
+      });
     };
     return port.pairComputer('http://127.0.0.1:7801/p/9k');
   });
@@ -197,7 +198,7 @@ test('a confirm that rejects after Cancel leaves no stale error under the field'
     window.net().querySelector('[data-action=cancel-pairing]').click();
     return true;
   });
-  await page.until(() => window.pairState() === 'idle');
+  await page.within(15000, () => window.pairState() === 'idle');
   await page.evaluate(() => {
     window.rejectConfirm();
     return true;
