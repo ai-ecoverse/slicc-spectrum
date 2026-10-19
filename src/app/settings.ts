@@ -30,6 +30,8 @@ const accountStatus = {
 
 const popup = (account: Account) => account.group === 'mcp' && account.auth === 'oauth';
 
+const nothingToChoose = 'Nothing to choose from yet. You can connect without it.';
+
 const secretNames = { 'api-key': 'API key', token: 'token' } as const;
 const rejectedNames = { 'api-key': 'API key rejected', token: 'Token rejected' } as const;
 const keptNames = { 'api-key': 'Key kept in the vault', token: 'Token kept in the vault' } as const;
@@ -157,6 +159,18 @@ export class SliccSettings extends ThemedElement {
         display: grid;
         gap: var(--swc-spacing-200);
         max-width: 420px;
+      }
+      .key.stacked sp-textfield,
+      .field sp-picker {
+        width: 100%;
+      }
+      .sr {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
       }
       .buttons,
       .locked {
@@ -354,9 +368,9 @@ export class SliccSettings extends ThemedElement {
     if (!account.fields?.length) return undefined;
     const values: Record<string, string> = {};
     for (const field of account.fields) {
-      const input = form.querySelector(`[data-account-field="${field.name}"]`) as
-        | HTMLInputElement
-        | HTMLSelectElement;
+      const input = form.querySelector(`[data-account-field="${field.name}"]`) as HTMLElement & {
+        value: string;
+      };
       const value = input.value.trim();
       if (value) values[field.name] = value;
       else if (field.required && field.options?.length !== 0) {
@@ -441,24 +455,34 @@ export class SliccSettings extends ThemedElement {
   #extra(account: Account): TemplateResult[] {
     return (account.fields ?? []).map(
       (field) => html`<label class="field">
-          <span>${field.label}</span>${this.#control(account, field)}
+          <span id=${`field-${field.name}`}>${field.label}</span>${this.#control(account, field)}
         </label>
+        ${field.options?.length === 0 ? html`<p class="hint" data-empty=${field.name}>${nothingToChoose}</p>` : nothing}
         ${this.#problem(account, field.name)}`
     );
   }
 
   #control(account: Account, field: AccountField): TemplateResult {
     if (field.options) {
-      const chosen = field.value ?? field.options[0]?.value;
-      return html`<select
+      const empty = !field.options.length;
+      const described = this.problem?.id === account.id && this.problem.field === field.name;
+      return html`<sp-picker
+          size="m"
           data-account-field=${field.name}
-          ?disabled=${!field.options.length}
+          label=${empty ? 'None available' : field.label}
+          aria-labelledby=${`field-${field.name}`}
+          value=${field.value ?? field.options[0]?.value ?? ''}
+          ?disabled=${empty}
+          ?invalid=${described}
           aria-required=${field.required ? 'true' : nothing}
-          aria-invalid=${this.#invalid(account, field.name)}
-          aria-describedby=${this.#described(account, field.name)}
         >
-          ${field.options.map((option) => html`<option value=${option.value} ?selected=${option.value === chosen}>${option.label}</option>`)}
-        </select>`;
+          ${field.options.map((option) => html`<sp-menu-item value=${option.value}>${option.label}</sp-menu-item>`)}
+          ${
+            described || empty
+              ? html`<span slot="description" class="sr">${described ? this.problem?.message : nothingToChoose}</span>`
+              : nothing
+          }
+        </sp-picker>`;
     }
     return html`<input
           type="text"
@@ -517,17 +541,24 @@ export class SliccSettings extends ThemedElement {
     const busy = this.pending.has(account.id);
     const extra = account.fields?.length;
     return html`<form class=${extra ? 'key stacked' : 'key'} data-id=${account.id} @submit=${(event: Event) => this.#submit(event, account)} @keydown=${(event: KeyboardEvent) => this.#submitOnEnter(event)}>
-        <sp-textfield
+        ${extra ? html`<label class="field"><span>${this.#secretLabel(account)}</span>${this.#secret(account)}</label>${this.#extra(account)}` : this.#secret(account)}
+        ${extra ? html`<div class="buttons">${this.#buttons(busy)}</div>` : this.#buttons(busy)}
+      </form>`;
+  }
+
+  #secretLabel(account: Account): string {
+    return `${account.provider} ${secretNames[account.secret ?? 'api-key']}`;
+  }
+
+  #secret(account: Account): TemplateResult {
+    return html`<sp-textfield
           size="m"
           type="password"
           autocomplete="off"
-          label=${`${account.provider} ${secretNames[account.secret ?? 'api-key']}`}
+          label=${this.#secretLabel(account)}
           placeholder=${`Paste the ${secretNames[account.secret ?? 'api-key']}`}
           @keydown=${(event: KeyboardEvent) => this.#enter(event)}
-        ></sp-textfield>
-        ${extra ? this.#extra(account) : nothing}
-        ${extra ? html`<div class="buttons">${this.#buttons(busy)}</div>` : this.#buttons(busy)}
-      </form>`;
+        ></sp-textfield>`;
   }
 
   #buttons(busy: boolean): TemplateResult {
