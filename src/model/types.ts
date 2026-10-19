@@ -758,12 +758,19 @@ export type UpdateState =
   | 'failed';
 export type UpdateAction = 'retry' | 'restart-agent' | 'reload' | 'update-now';
 
+export interface InstallProgress {
+  phase: 'download' | 'link';
+  done: number;
+  total: number;
+  bytes?: { done: number; total: number };
+}
+
 export interface UpdateItem {
   id: string;
   label: string;
   kind: UpdateKind;
   state: UpdateState;
-  progress: { phase: 'download' | 'link'; done: number; total: number } | null;
+  progress: InstallProgress | null;
   from: string | null;
   to: string | null;
   checkedAt: number | null;
@@ -802,7 +809,7 @@ export interface PackageItem {
   version: string | null;
   offered: string | null;
   size?: number;
-  progress: { phase: 'download' | 'link'; done: number; total: number } | null;
+  progress: InstallProgress | null;
   error: string | null;
   actions: readonly PackageAction[];
   log?: string;

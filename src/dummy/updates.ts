@@ -323,10 +323,19 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
       actions: [],
       log: `${log}\nProgress: resolved 1, downloaded 0, added 0`,
     });
-    await this.#clock.sleep(4);
+    await this.#clock.sleep(2);
+    if (item.size !== undefined) {
+      const half = Math.round(item.size / 2);
+      this.#patchPackage(id, {
+        progress: { phase: 'download', done: 0, total: 1, bytes: { done: half, total: item.size } },
+        log: `${log}\nProgress: resolved 1, downloaded 0, added 0\nDownloading ${item.package}@${item.offered}: ${half} B/${item.size} B`,
+      });
+    }
+    await this.#clock.sleep(2);
     if (this.#fail) {
       this.#patchPackage(id, {
         state: 'failed',
+        progress: null,
         error: fetchFailed,
         actions: ['retry'],
         log: `${log}\nERR_PNPM_FETCH_TIMEOUT Request timed out after 30000ms`,

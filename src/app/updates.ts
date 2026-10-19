@@ -6,6 +6,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import type {
+  InstallProgress,
   PackageAction,
   PackageItem,
   PackagePin,
@@ -94,10 +95,20 @@ export function requiresText(item: PackageItem, all: readonly PackageItem[]): st
   return parts.length ? parts.join('; ') : null;
 }
 
-type Progress = NonNullable<UpdateItem['progress']>;
+const fetched = (progress: InstallProgress) =>
+  progress.phase === 'download' && (progress.bytes?.total ?? 0) > 0 ? progress.bytes : null;
 
-const phased = ({ phase, done, total }: Progress): number =>
-  Math.round(((phase === 'link' ? 1 : 0) + (total ? Math.min(done / total, 1) : 0)) * 50);
+const phased = (progress: InstallProgress): number => {
+  const { done, total } = fetched(progress) ?? progress;
+  const half = progress.phase === 'link' ? 1 : 0;
+  return Math.round((half + (total ? Math.min(done / total, 1) : 0)) * 50);
+};
+
+const counted = (progress: InstallProgress, unit = ''): string => {
+  const bytes = fetched(progress);
+  if (bytes) return `${size(bytes.done)} of ${size(bytes.total)}`;
+  return `${progress.done} of ${progress.total}${unit}`;
+};
 
 const itemBusy = (item: UpdateItem): boolean =>
   running.has(item.state) || item.state === 'starting' || item.progress !== null;
@@ -516,7 +527,7 @@ export class SliccUpdates extends ModelElement {
   #bar(
     key: string,
     busy: boolean,
-    progress: Progress | null,
+    progress: InstallProgress | null,
     count: string,
     accessible: string
   ): TemplateResult | typeof nothing {
@@ -549,7 +560,7 @@ export class SliccUpdates extends ModelElement {
       `item:${item.id}`,
       itemBusy(item),
       progress,
-      progress ? `${progress.done} of ${progress.total}` : '',
+      progress ? counted(progress) : '',
       `${item.label}: ${phase ?? states[item.state][1].toLowerCase()}`
     );
   }
@@ -637,7 +648,7 @@ export class SliccUpdates extends ModelElement {
       `package:${item.id}`,
       packageBusy(item),
       progress,
-      progress ? `${progress.done} of ${progress.total} packages` : '',
+      progress ? counted(progress, ' packages') : '',
       `${item.label}: ${phase ?? packageLight(item)?.[1].toLowerCase()}`
     );
   }
