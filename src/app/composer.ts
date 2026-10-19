@@ -307,6 +307,20 @@ export function readFile(file: Blob): Promise<string> {
   });
 }
 
+export function folders(transfer: DataTransfer | null): Set<File> {
+  const found = new Set<File>();
+  const items = [...(transfer?.items ?? [])].filter((item) => item.kind === 'file');
+  items.forEach((item, index) => {
+    if (item.webkitGetAsEntry?.()?.isDirectory) found.add((transfer as DataTransfer).files[index]);
+  });
+  return found;
+}
+
+async function readable(file: Blob): Promise<string> {
+  await file.slice(0, 1).arrayBuffer();
+  return '';
+}
+
 export const linger = 60_000;
 
 export const fade = css`
@@ -861,6 +875,10 @@ export class SliccComposer extends ThemedElement {
     ];
   }
 
+  attachable(): boolean {
+    return !this.#held();
+  }
+
   #starting(): string | null {
     return this.model?.agent.starting?.() ?? null;
   }
@@ -1002,7 +1020,16 @@ export class SliccComposer extends ThemedElement {
     return `a-${Date.now().toString(36)}-${this.#next++}`;
   }
 
-  async addFiles(files: readonly File[]): Promise<void> {
+  #folders: ReadonlySet<File> = new Set();
+
+  #mark = {
+    handleEvent: (event: DragEvent) => {
+      this.#folders = folders(event.dataTransfer);
+    },
+    capture: true,
+  };
+
+  async addFiles(files: readonly File[], dropped: ReadonlySet<File> = new Set()): Promise<void> {
     const added: Attachment[] = [];
     for (const file of files) {
       const base = {
@@ -1023,16 +1050,16 @@ export class SliccComposer extends ThemedElement {
       const textual =
         file.type.startsWith('text/') ||
         /\.(md|txt|json|ts|js|css|html|ya?ml|toml|csv)$/i.test(file.name);
-      if (image || textual) {
-        const content = await readFile(file);
-        added.push(
-          image
-            ? { ...base, kind: 'image', url: content }
-            : { ...base, kind: 'text', text: content }
-        );
-      } else {
-        added.push({ ...base, kind: 'file', url: URL.createObjectURL(file) });
-      }
+      const content = await (image || textual ? readFile(file) : readable(file)).catch(() => null);
+      if (content === null)
+        added.push({
+          ...base,
+          kind: 'file',
+          error: dropped.has(file) ? 'Folders can’t be attached' : 'Could not read the file',
+        });
+      else if (image) added.push({ ...base, kind: 'image', url: content });
+      else if (textual) added.push({ ...base, kind: 'text', text: content });
+      else added.push({ ...base, kind: 'file', url: URL.createObjectURL(file) });
     }
     this.attachments = [...this.attachments, ...added];
   }
@@ -1694,7 +1721,7 @@ export class SliccComposer extends ThemedElement {
         .map((attachment) => attachment.name)
     );
     const missing = (this.reattach ?? []).filter((file) => !back.has(file.name));
-    return html`<div class="column">
+    return html`<div class="column" @drop=${this.#mark}>
         <span id="keys" class="sr" aria-hidden="true">${this.#instructions(busy)}</span>
         ${this.#hold()}
         ${this.#starters()}
@@ -1715,7 +1742,7 @@ export class SliccComposer extends ThemedElement {
           @swc-prompt-field-input=${this.#input}
           @swc-prompt-field-submit=${() => this.send()}
           @swc-prompt-field-stop=${() => this.model?.agent.stop(this.#agent)}
-          @swc-prompt-field-drop=${(event: CustomEvent<{ files: File[] }>) => void this.addFiles(event.detail.files)}
+          @swc-prompt-field-drop=${(event: CustomEvent<{ files: File[] }>) => void this.addFiles(event.detail.files, this.#folders)}
           @paste=${this.#paste}
           @click=${() => this.#refresh()}
           @focusout=${() => {

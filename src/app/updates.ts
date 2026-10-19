@@ -1,9 +1,11 @@
+import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/divider/swc-divider.js';
 import '@adobe/spectrum-wc/components/progress-bar/swc-progress-bar.js';
 import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
-import { css, html, nothing, type TemplateResult } from 'lit';
+import link from '@adobe/spectrum-wc/link.css';
+import { css, html, nothing, type TemplateResult, unsafeCSS } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import type {
   InstallProgress,
@@ -15,11 +17,13 @@ import type {
   SliccModel,
   UpdateAction,
   UpdateItem,
+  UpdateRelease,
   UpdateState,
   UpdatesPort,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
 import { chevron, disclosureStyles } from './disclosure.ts';
+import { markdown, markdownCss } from './markdown.ts';
 import { size } from './messages.ts';
 import { ViewSet } from './view-state.ts';
 
@@ -153,6 +157,92 @@ const itemBusy = (item: UpdateItem): boolean =>
 const packageBusy = (item: PackageItem): boolean =>
   packageRunning.has(item.state) || item.progress !== null;
 
+const parts = (version: string): [string, string | null] => {
+  const main = version.replace(/^v/, '').split('+')[0];
+  const dash = main.indexOf('-');
+  return dash < 0 ? [main, null] : [main.slice(0, dash), main.slice(dash + 1)];
+};
+
+const identifier = (a: string, b: string): number => {
+  const numeric = [/^\d+$/.test(a), /^\d+$/.test(b)];
+  if (numeric[0] && numeric[1]) return Math.sign(Number(a) - Number(b));
+  if (numeric[0] !== numeric[1]) return numeric[0] ? -1 : 1;
+  return a < b ? -1 : a > b ? 1 : 0;
+};
+
+const dotted = (a: string, b: string): number => {
+  const left = a.split('.');
+  const right = b.split('.');
+  for (let index = 0; index < Math.min(left.length, right.length); index++) {
+    const order = identifier(left[index], right[index]);
+    if (order) return order;
+  }
+  return Math.sign(left.length - right.length);
+};
+
+const newer = (a: string, b: string): number => {
+  const [coreA, preA] = parts(a);
+  const [coreB, preB] = parts(b);
+  const core = dotted(coreA, coreB);
+  if (core || preA === preB) return core;
+  if (preA === null) return 1;
+  return preB === null ? -1 : dotted(preA, preB);
+};
+
+const certBlock = /<!--\s*cert-verify\s*-->([\s\S]*?)<!--\s*\/cert-verify\s*-->/g;
+
+export const notesLimit = 8_192;
+
+interface Notes {
+  release: UpdateRelease;
+  body: string;
+  certified: boolean;
+  cut: boolean;
+}
+
+const noted = new WeakMap<UpdateRelease, Notes>();
+
+export function releaseNotes(release: UpdateRelease): Notes {
+  const known = noted.get(release);
+  if (known) return known;
+  const text = release.notes ?? '';
+  const certified = [...text.matchAll(certBlock)].some(([, inner]) =>
+    /^certified\b/.test(inner.trim())
+  );
+  const lines = text.replace(certBlock, '').trim().split('\n');
+  const heading =
+    /^#{1,6}\s/.test(lines[0]) && lines[0].includes(release.version.replace(/^v/, ''));
+  const full = lines
+    .slice(heading ? 1 : 0)
+    .join('\n')
+    .trim();
+  const cut = full.length > notesLimit;
+  const head = full.slice(0, notesLimit);
+  const line = head.lastIndexOf('\n');
+  const body = cut ? `${(line > notesLimit / 2 ? head.slice(0, line) : head).trimEnd()}…` : full;
+  const notes = { release, body, certified, cut };
+  noted.set(release, notes);
+  return notes;
+}
+
+export function whatsNew(
+  releases: readonly UpdateRelease[] | undefined,
+  from: string | null,
+  to: string | null
+): readonly Notes[] {
+  if (!releases || from === null || to === null || to === from) return [];
+  const range = releases
+    .filter((release) => newer(release.version, from) > 0 && newer(release.version, to) <= 0)
+    .sort((a, b) => newer(b.version, a.version))
+    .map(releaseNotes);
+  return range.some((entry) => entry.body) ? range : [];
+}
+
+const secure = (url: string) => /^https:\/\//i.test(url);
+
+const installed = (releases: readonly UpdateRelease[] | undefined, version: string) =>
+  releases?.find((release) => newer(release.version, version) === 0 && secure(release.url));
+
 type Failures = ReadonlyMap<string, string>;
 type Snapshot = ReadonlyMap<string, { state: string; error: string | null }>;
 
@@ -247,7 +337,9 @@ export class SliccUpdates extends ModelElement {
   }
 
   static styles = [
+    unsafeCSS(link),
     disclosureStyles,
+    markdownCss,
     css`
       :host {
         display: block;
@@ -345,12 +437,12 @@ export class SliccUpdates extends ModelElement {
       section > .hint {
         margin-block-end: var(--swc-spacing-100);
       }
-      ul {
+      .rows {
         margin: 0;
         padding: 0;
         list-style: none;
       }
-      li {
+      .rows > li {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         grid-template-areas: 'name buttons' 'description buttons';
@@ -359,7 +451,7 @@ export class SliccUpdates extends ModelElement {
         padding: var(--swc-spacing-200) 0;
         border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
       }
-      li > :not(.name, .buttons, .description) {
+      .rows > li > :not(.name, .buttons, .description) {
         grid-column: 1 / -1;
         margin: 0;
       }
@@ -390,11 +482,11 @@ export class SliccUpdates extends ModelElement {
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      li .meta {
+      .rows > li > .meta {
         justify-content: flex-start;
         gap: 0;
       }
-      li .meta > * + *::before {
+      .rows > li > .meta > * + *::before {
         content: '·';
         margin-inline: var(--swc-spacing-100);
       }
@@ -448,6 +540,55 @@ export class SliccUpdates extends ModelElement {
       .package {
         color: var(--swc-neutral-subdued-content-color-default);
       }
+      .swc-Link {
+        font-size: inherit;
+      }
+      .title .swc-Link {
+        font-weight: inherit;
+      }
+      .installed {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: var(--swc-spacing-200);
+      }
+      .releases {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--swc-spacing-400);
+        margin-block-start: var(--swc-spacing-200);
+        padding: var(--swc-spacing-300);
+        border: var(--swc-border-width-100) solid transparent;
+        background: var(--swc-background-layer-1-color);
+        border-radius: var(--swc-corner-radius-medium-default);
+        overflow-wrap: anywhere;
+      }
+      .release {
+        min-width: 0;
+      }
+      .title {
+        margin: 0;
+        font-size: var(--swc-font-size-100);
+        font-weight: var(--swc-bold-font-weight);
+        color: var(--swc-heading-color);
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--swc-spacing-100);
+      }
+      .cut {
+        margin: var(--swc-spacing-100) 0 0;
+      }
+      .release > .markdown {
+        margin-block-start: var(--swc-spacing-100);
+        line-height: var(--swc-line-height-200);
+      }
+      .release .markdown .heading[aria-level] {
+        font-size: var(--swc-font-size-100);
+        font-weight: var(--swc-bold-font-weight);
+        color: var(--swc-neutral-subdued-content-color-default);
+        margin-block: var(--swc-spacing-200) var(--swc-spacing-75);
+      }
       @container (max-width: 480px) {
         .page {
           padding: var(--swc-spacing-300);
@@ -457,7 +598,7 @@ export class SliccUpdates extends ModelElement {
           flex-direction: column;
           gap: var(--swc-spacing-50);
         }
-        li {
+        .rows > li {
           grid-template-areas: 'name buttons' 'description description';
         }
         .description {
@@ -629,6 +770,53 @@ export class SliccUpdates extends ModelElement {
     return html`<span>Checked <time datetime=${date.toISOString()}>${shown}</time></span>`;
   }
 
+  #whatsNew(
+    key: string,
+    label: string,
+    entries: readonly Notes[],
+    level: number
+  ): TemplateResult | typeof nothing {
+    if (!entries.length) return nothing;
+    return html`<details data-releases ?open=${this.#logs.has(key)} @toggle=${this.#logs.details(key)}>
+      <summary data-action="whats-new">${chevron}What’s new</summary>
+      <div class="releases">${entries.map(
+        ({
+          release,
+          body,
+          certified,
+          cut,
+        }) => html`<div class="release" data-version=${release.version}>
+          <p class="title" role="heading" aria-level=${level}>${secure(release.url) ? html`<a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${release.version} release notes`}>${release.version}</a>` : release.version}${certified ? html`<swc-badge size="s" variant="positive" subtle data-certified>Certified</swc-badge>` : nothing}</p>
+          ${body ? html`<div class="markdown">${markdown(body, { strict: true, level })}</div>` : nothing}
+          ${cut && secure(release.url) ? html`<p class="cut" data-cut><a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`Read the full notes for ${label} ${release.version}`}>Read the full notes</a></p>` : nothing}
+        </div>`
+      )}</div>
+    </details>`;
+  }
+
+  #releaseLink(
+    label: string,
+    version: string,
+    releases: readonly UpdateRelease[] | undefined,
+    npm?: string
+  ): TemplateResult | typeof nothing {
+    const release = installed(releases, version);
+    if (release) {
+      return html`<a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${version} release notes`}>Release notes</a>`;
+    }
+    if (!npm) return nothing;
+    return html`<a class="swc-Link swc-Link--standalone" href=${`https://www.npmjs.com/package/${npm}/v/${version}`} target="_blank" rel="noopener noreferrer" data-action="npm-page" aria-label=${`npm page for ${label} ${version}`}>npm page</a>`;
+  }
+
+  #version(item: UpdateItem): TemplateResult {
+    const text = html`<span class="version">${item.from ?? 'Not installed'}${item.to && item.to !== item.from ? html` → ${item.to}` : nothing}</span>`;
+    const link =
+      item.from !== null && (item.to === null || item.to === item.from)
+        ? this.#releaseLink(item.label, item.from, item.releases)
+        : nothing;
+    return link === nothing ? text : html`<span class="installed">${text}${link}</span>`;
+  }
+
   #item(item: UpdateItem): TemplateResult {
     const [variant, state] = states[item.state];
     const label = item.state === 'failed' && item.from !== null ? 'Update failed' : state;
@@ -640,7 +828,7 @@ export class SliccUpdates extends ModelElement {
         <swc-status-light variant=${variant}>${label}</swc-status-light>
       </div>
       <div class="meta">
-        <span class="version">${item.from ?? 'Not installed'}${item.to && item.to !== item.from ? html` → ${item.to}` : nothing}</span>
+        ${this.#version(item)}
         ${item.state === 'starting' ? nothing : this.#checked(item.checkedAt)}
       </div>
       ${this.#progress(item)}
@@ -653,6 +841,7 @@ export class SliccUpdates extends ModelElement {
           : nothing
       }
       ${this.#actions(item)}
+      ${this.#whatsNew(`releases:item:${item.id}`, item.label, whatsNew(item.releases, item.from, item.to), 3)}
       ${item.log ? html`<details ?open=${this.#logs.has(`item:${item.id}`)} @toggle=${this.#logs.details(`item:${item.id}`)}><summary>${chevron}Install log</summary><pre>${item.log}</pre></details>` : nothing}
     </article>`;
   }
@@ -681,7 +870,14 @@ export class SliccUpdates extends ModelElement {
       ${elsewhere(item).map((install) => html`<span data-install>${installText(install, item.version)}</span>`)}
       ${download ? html`<span>${size(item.size as number)}</span>` : nothing}
       ${requires ? html`<span data-requires>${requires}</span>` : nothing}
+      ${this.#packageLink(item)}
     </p>`;
+  }
+
+  #packageLink(item: PackageItem): TemplateResult | typeof nothing {
+    if (item.version === null || (item.offered !== null && item.offered !== item.version))
+      return nothing;
+    return html`<span>${this.#releaseLink(item.label, item.version, item.releases, item.package)}</span>`;
   }
 
   #packageProgress(item: PackageItem): TemplateResult | typeof nothing {
@@ -736,6 +932,7 @@ export class SliccUpdates extends ModelElement {
             )}</p>`
           : nothing
       }
+      ${this.#whatsNew(`releases:package:${item.id}`, item.label, whatsNew(item.releases, item.version, item.offered), 4)}
       ${this.#packageProgress(item)}
       ${
         error
@@ -754,7 +951,7 @@ export class SliccUpdates extends ModelElement {
     all: readonly PackageItem[],
     port: UpdatesPort
   ): TemplateResult {
-    return html`<ul>${repeat(
+    return html`<ul class="rows">${repeat(
       items,
       (item) => item.id,
       (item) => this.#package(item, all, Boolean(port.actPackage))

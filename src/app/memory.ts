@@ -209,10 +209,17 @@ export class SliccMemory extends ModelElement {
       .row {
         --lead: var(--swc-spacing-300);
         --indent: calc(var(--swc-spacing-100) + var(--lead) + var(--swc-spacing-75));
+        position: relative;
         border-radius: var(--swc-corner-radius-medium-default);
       }
-      li.row + li.row {
-        border-block-start: var(--swc-border-width-100) solid var(--swc-gray-200);
+      li.row + li.row::before {
+        content: '';
+        position: absolute;
+        inset-block-start: 0;
+        inset-inline: 0;
+        block-size: var(--swc-border-width-100);
+        background: var(--swc-gray-200);
+        pointer-events: none;
       }
       .row:not([data-open]):hover,
       .row[data-open] .head:hover {
@@ -269,9 +276,12 @@ export class SliccMemory extends ModelElement {
       .mark {
         display: inline-flex;
       }
+      .row[data-open] .head :is(.tag, .scope) {
+        visibility: hidden;
+      }
       .content {
         overflow: hidden;
-        max-height: 2lh;
+        max-height: calc(2lh + var(--swc-spacing-100));
         margin: 0 var(--swc-spacing-100) var(--swc-spacing-100) var(--indent);
         line-height: var(--swc-line-height-100);
         color: var(--swc-neutral-subdued-content-color-default);
@@ -285,7 +295,7 @@ export class SliccMemory extends ModelElement {
       @supports (height: calc-size(auto, size)) {
         .content {
           max-height: none;
-          height: calc-size(auto, min(size, 2lh));
+          height: calc-size(auto, min(size, 2lh + var(--swc-spacing-100)));
           transition: height var(--swc-animation-duration-100) var(--swc-animation-ease-in-out);
         }
         .row[data-open] .content {
@@ -315,9 +325,29 @@ export class SliccMemory extends ModelElement {
       }
       .actions {
         display: flex;
+        flex-wrap: wrap;
+        align-items: center;
         justify-content: flex-end;
         gap: var(--swc-spacing-75);
         padding-block-start: var(--swc-spacing-100);
+      }
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--swc-spacing-50) var(--swc-spacing-200);
+        margin-inline-end: auto;
+        font-size: var(--swc-font-size-75);
+      }
+      .meta .label {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--swc-spacing-75);
+      }
+      .buttons {
+        display: flex;
+        gap: var(--swc-spacing-75);
+        margin-inline-start: auto;
       }
       .actions [data-action='forget'] {
         --swc-action-button-content-color-default: var(--swc-negative-content-color-default);
@@ -422,6 +452,16 @@ export class SliccMemory extends ModelElement {
     return marks;
   }
 
+  #meta(marks: Mark[]): TemplateResult | typeof nothing {
+    const labelled = marks.filter((mark) => mark.kind !== 'from');
+    return labelled.length
+      ? html`<div class="meta">${labelled.map(
+          (mark) =>
+            html`<span class="label" data-label=${mark.kind}>${mark.icon}${mark.label}</span>`
+        )}</div>`
+      : nothing;
+  }
+
   #row(memory: Memory, section: string): TemplateResult {
     if (this.editing === memory.id)
       return html`<li class="row" data-id=${memory.id}>${this.#form(memory)}</li>`;
@@ -444,12 +484,15 @@ export class SliccMemory extends ModelElement {
         ${
           open
             ? html`<div class="actions">
+              ${this.#meta(marks)}
+              <div class="buttons">
               <swc-action-button size="s" quiet data-action="edit" @click=${() => (this.editing = memory.id)}>
                 <swc-icon-edit slot="icon"></swc-icon-edit>Edit
               </swc-action-button>
               <swc-action-button size="s" quiet data-action="forget" @click=${(event: Event) => this.#forget(memory, event.currentTarget as HTMLElement)}>
                 <swc-icon-delete slot="icon"></swc-icon-delete>Forget
               </swc-action-button>
+              </div>
             </div>`
             : nothing
         }
