@@ -104,8 +104,9 @@ test('once the agent starts, the queued messages go to it in order and the rows 
   });
   await page.until(() => window.model.agent.list().length > 0);
   await page.until(() => window.rows().length === 0);
-  await page.until(() => window.users().length === 2);
+  await page.until(() => window.users().length === 3);
   assert.deepEqual(await page.evaluate(() => window.users()), [
+    'What is on my plate today?',
     'Check the harbor tides',
     'Then list the moorings',
   ]);
