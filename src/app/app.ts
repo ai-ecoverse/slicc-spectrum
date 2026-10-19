@@ -17,6 +17,7 @@ import { networkHealth, networkIcon, networkLabel, networkStatus, remoteLight } 
 import { Panels } from './panel-command.ts';
 import {
   chatAgent,
+  chatId,
   chats,
   create,
   type DocumentKind,
@@ -616,10 +617,19 @@ export class SliccApp extends ThemedElement {
     const saved = this.#saved();
     const restored = this.#offered(saved, dock.factories) && dock.restore(saved);
     if (!restored) {
-      defaultLayout(dock, this.screen, this.#active(), this.#available(), model.terminals.list());
+      defaultLayout(
+        dock,
+        this.screen,
+        this.#active(),
+        this.#available(),
+        model.terminals.list(),
+        !!model.agent.starting?.()
+      );
     }
     this.#started = this.screen;
     this.#prune();
+    if (!(this.#active() || chats(dock).length || dock.has('chat')) && model.agent.starting?.())
+      this.#open('chat', false);
     this.#saving = true;
     this.#save();
   }
@@ -656,13 +666,28 @@ export class SliccApp extends ThemedElement {
     const dock = this.renderRoot.querySelector('slicc-dock') as SliccDock | null;
     if (!dock || !this.#started) return;
     const known = new Set(this.model?.agent.list().map((agent) => agent.id));
+    const agent = this.#active();
+    const held = !!agent && !!dock.content('chat')?.shadowRoot?.activeElement;
     this.panels.quietly(() => {
       for (const id of chats(dock)) {
         if (!known.has(chatAgent(id) as string)) dock.close(id);
       }
+      if (agent && dock.has('chat')) {
+        if (this.#offers('chat') && !dock.has(chatId(agent.id)))
+          dock.open({
+            id: chatId(agent.id),
+            component: 'chat',
+            title: agent.name,
+            params: { agent: agent.id },
+            inactive: true,
+            position: { referencePanel: 'chat', direction: 'within' },
+          });
+        dock.close('chat');
+      }
       if (this.model && this.#offers('terminal'))
         this.terminalPanels.sync(dock, this.model.terminals, this.screen);
     });
+    if (agent && held && this.#offers('chat')) openChat(dock, agent, this.screen, true);
   }
 
   #activated(event: Event): void {
@@ -676,7 +701,14 @@ export class SliccApp extends ThemedElement {
   resetLayout(): void {
     const terminals = this.model?.terminals.list();
     this.panels.quietly(() =>
-      defaultLayout(this.dock, this.screen, this.#active(), this.#available(), terminals)
+      defaultLayout(
+        this.dock,
+        this.screen,
+        this.#active(),
+        this.#available(),
+        terminals,
+        !!this.model?.agent.starting?.()
+      )
     );
     this.#save();
   }
