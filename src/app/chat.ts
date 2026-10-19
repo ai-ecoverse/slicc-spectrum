@@ -307,7 +307,7 @@ export class SliccChat extends ThemedElement {
         position: absolute;
         inset-inline: 0;
         bottom: calc(var(--composer-height, 0px) + var(--swc-spacing-200));
-        z-index: 2;
+        z-index: 3;
         display: flex;
         justify-content: center;
         pointer-events: none;
