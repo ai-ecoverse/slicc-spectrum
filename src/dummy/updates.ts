@@ -5,6 +5,7 @@ import type {
   UpdateAction,
   UpdateItem,
   UpdateKind,
+  UpdateRelease,
   UpdatesEvents,
   UpdatesPort,
 } from '../model/types.ts';
@@ -20,6 +21,64 @@ export type PackageConfirm = (options: {
 }) => Promise<boolean>;
 
 const checkedAt = Date.UTC(2026, 9, 8, 8, 42);
+
+const tag = (repo: string, version: string, notes?: string): UpdateRelease => ({
+  version,
+  url: `https://github.com/harbor-demo/${repo}/releases/tag/v${version}`,
+  ...(notes ? { notes } : {}),
+});
+
+const certified = (name: string, version: string) =>
+  `\n\n<!-- cert-verify -->\ncertified @harbor/${name}@${version} sha256=0f3c9a1e (covers ${version}; downstream: PASS)\n<!-- /cert-verify -->\n`;
+
+const notes = (repo: string, version: string, sections: string) =>
+  `# [${version}](https://github.com/harbor-demo/${repo}/compare/v${version}) (2026-10-07)\n\n${sections}`;
+
+const releaseFixtures: Readonly<Record<string, readonly UpdateRelease[]>> = {
+  kernel: [
+    tag(
+      'harbor-kernel',
+      '1.13.0',
+      notes(
+        'harbor-kernel',
+        '1.13.0',
+        '### Features\n\n* **fs:** watch a folder and get one event per batch of changes\n* **jobs:** `wait -n` returns the first job that finishes'
+      ) + certified('harbor-kernel', '1.13.0')
+    ),
+    tag(
+      'harbor-kernel',
+      '1.12.2',
+      notes(
+        'harbor-kernel',
+        '1.12.2',
+        '### Bug Fixes\n\n* **net:** a slow DNS answer no longer stalls the next request'
+      ) + certified('harbor-kernel', '1.12.2')
+    ),
+    tag(
+      'harbor-kernel',
+      '1.12.1',
+      notes(
+        'harbor-kernel',
+        '1.12.1',
+        '### Bug Fixes\n\n* **tty:** resizing a terminal mid-line keeps the cursor on its column'
+      )
+    ),
+    tag('harbor-kernel', '1.12.0'),
+  ],
+  agent: [
+    tag(
+      'harbor-agent',
+      '0.25.0',
+      notes(
+        'harbor-agent',
+        '0.25.0',
+        '### Features\n\n* **tools:** the agent can read a tide table from a CSV file\n\n### Bug Fixes\n\n* **chat:** a long answer keeps its code blocks intact when it is cut'
+      )
+    ),
+    tag('harbor-agent', '0.24.0'),
+  ],
+  grammars: [tag('harbor-grammars', '4.5.0')],
+};
 
 export function updateFixtures(scenario: UpdateScenario): readonly UpdateItem[] {
   const components: readonly [UpdateKind, string, string][] = [
@@ -41,6 +100,7 @@ export function updateFixtures(scenario: UpdateScenario): readonly UpdateItem[] 
     checkedAt,
     error: null,
     actions: [],
+    ...(releaseFixtures[kind] ? { releases: releaseFixtures[kind] } : {}),
   }));
   const agent = items[2];
   if (scenario === 'boot') {
@@ -218,7 +278,28 @@ export function packageFixtures(scenario: PackageScenario): readonly PackageItem
     notes: ['1 untested dependency: @harbor/wasi-sockets@0.4.2-1'],
     actions: ['remove'],
   });
-  patch('uv', { state: 'outdated', version: '0.8.1', actions: ['update', 'remove'] });
+  patch('python', {
+    releases: [
+      { version: '3.13.1', url: 'https://github.com/harbor-demo/python-wasm/releases/tag/v3.13.1' },
+    ],
+  });
+  patch('uv', {
+    state: 'outdated',
+    version: '0.8.1',
+    actions: ['update', 'remove'],
+    releases: [
+      {
+        version: '0.9.2',
+        url: 'https://github.com/harbor-demo/uv-wasm/releases/tag/v0.9.2',
+        notes: '## 0.9.2\n\n### Bug Fixes\n\n* `uv run` finds the project in a parent folder again',
+      },
+      {
+        version: '0.9.0',
+        url: 'https://github.com/harbor-demo/uv-wasm/releases/tag/v0.9.0',
+        notes: '## 0.9.0\n\n### Features\n\n* `uv add` keeps the comments in `pyproject.toml`',
+      },
+    ],
+  });
   patch('esbuild', {
     state: 'installing',
     actions: [],
