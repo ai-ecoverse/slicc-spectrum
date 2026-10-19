@@ -37,10 +37,15 @@ import { away, clearValues, failureText, fieldOf, type PopupDetail, take } from 
 export const limit = 25 * 1024 * 1024;
 
 type Waiting = { id: string; text: string; attachments: Attachment[] };
+type Draft = { value: string; attachments: Attachment[] };
 
 const pages = new WeakMap<
   Document,
-  { rows: readonly Waiting[]; hosts: Set<HTMLElement & { requestUpdate(): void }> }
+  {
+    rows: readonly Waiting[];
+    draft: Draft | null;
+    hosts: Set<HTMLElement & { requestUpdate(): void }>;
+  }
 >();
 
 class PageQueue implements ReactiveController {
@@ -53,7 +58,7 @@ class PageQueue implements ReactiveController {
 
   #page() {
     const page = this.#host.ownerDocument;
-    const found = pages.get(page) ?? { rows: [], hosts: new Set() };
+    const found = pages.get(page) ?? { rows: [], draft: null, hosts: new Set() };
     pages.set(page, found);
     return found;
   }
@@ -66,6 +71,14 @@ class PageQueue implements ReactiveController {
     const page = this.#page();
     page.rows = rows;
     for (const host of [...page.hosts]) host.requestUpdate();
+  }
+
+  get draft(): Draft | null {
+    return this.#page().draft;
+  }
+
+  set draft(draft: Draft | null) {
+    this.#page().draft = draft;
   }
 
   hostConnected(): void {
@@ -581,6 +594,9 @@ export class SliccComposer extends ThemedElement {
     if (changed.has('agent') && this.agent && this.model && this.agent !== this.#agent) {
       this.#switch(this.agent);
     }
+    const edited = changed.has('value') || changed.has('attachments');
+    if (edited && this.hasUpdated && !this.#agent && this.#starting())
+      this.#waiting.draft = { value: this.value, attachments: this.attachments };
   }
 
   connectedCallback(): void {
@@ -600,8 +616,9 @@ export class SliccComposer extends ThemedElement {
     globalThis.removeEventListener('keyup', this.#release);
     globalThis.removeEventListener('blur', this.#release);
     clearValues(this.renderRoot);
+    const kept = this.#waiting.draft?.attachments;
     const held = [
-      this.attachments,
+      this.attachments === kept ? [] : this.attachments,
       ...[...this.#drafts.values()].map((draft) => draft.attachments),
     ];
     if (held.flat().some((attachment) => attachment.url?.startsWith('blob:')))
@@ -703,7 +720,9 @@ export class SliccComposer extends ThemedElement {
   #switch(id: string): void {
     if (this.#agent)
       this.#drafts.set(this.#agent, { value: this.value, attachments: this.attachments });
-    const draft = this.#drafts.get(id);
+    const shared = this.#agent || !this.isConnected ? null : this.#waiting.draft;
+    if (shared && id && !this.#drafts.has(id)) this.#waiting.draft = null;
+    const draft = this.#drafts.get(id) ?? shared ?? undefined;
     this.#agent = id;
     this.value = draft?.value ?? '';
     this.attachments = draft?.attachments ?? [];

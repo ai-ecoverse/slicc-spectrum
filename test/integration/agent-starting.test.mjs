@@ -205,3 +205,38 @@ test('the old model clearing its line after a swap sends nothing twice', async (
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('text typed but not sent while the agent starts is still in the field once it arrives', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    window.chat().querySelector('slicc-composer').focus();
+    return true;
+  });
+  await page.until(
+    () =>
+      window.composer().querySelector('swc-prompt-field').shadowRoot.activeElement ===
+      window.field()
+  );
+  await page.type('half typed');
+  await page.until(() => window.field().value === 'half typed');
+  await page.evaluate(() => {
+    window.model.agent.arrive();
+    return true;
+  });
+  await page.until(() => !!window.app.dock.content('chat:cone-sliccy'));
+  await page.until(() => window.field()?.value === 'half typed');
+  assert.deepEqual(page.errors, []);
+});
+
+test('text typed but not sent while the agent starts survives a model swap', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    window.chat().querySelector('slicc-composer').value = 'half typed';
+    return true;
+  });
+  await page.until(() => window.field().value === 'half typed');
+  await swap(page);
+  await page.until(() => !!window.app.dock.content('chat:cone-sliccy'));
+  await page.until(() => window.field()?.value === 'half typed');
+  assert.deepEqual(page.errors, []);
+});
