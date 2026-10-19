@@ -106,6 +106,7 @@ export class SliccFreezerImport extends LitElement {
         gap: var(--swc-spacing-300);
         padding: var(--swc-spacing-75);
         overflow-wrap: anywhere;
+        container-type: inline-size;
       }
       .checking {
         display: flex;
@@ -114,9 +115,17 @@ export class SliccFreezerImport extends LitElement {
       }
       dl {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: var(--swc-spacing-200) var(--swc-spacing-300);
+        grid-template-columns: repeat(7, auto);
+        justify-content: space-between;
+        gap: var(--swc-spacing-200);
         margin: 0;
+      }
+      @container (inline-size < 25rem) {
+        dl {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          justify-content: stretch;
+          column-gap: var(--swc-spacing-300);
+        }
       }
       dl div {
         display: grid;
@@ -129,6 +138,7 @@ export class SliccFreezerImport extends LitElement {
       }
       dd {
         margin: 0;
+        white-space: nowrap;
         font-weight: var(--swc-bold-font-weight);
         font-variant-numeric: tabular-nums;
       }

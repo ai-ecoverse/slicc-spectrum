@@ -154,9 +154,6 @@ export class SliccFreezer extends ModelElement {
       .meta {
         color: var(--swc-neutral-subdued-content-color-default);
       }
-      .name [data-badge='v6'] {
-        --swc-badge-outline-background-color: transparent;
-      }
       .name swc-status-light {
         font-weight: normal;
       }
@@ -298,7 +295,7 @@ export class SliccFreezer extends ModelElement {
       ...(cone.thawedAs ? [`thawed as ${this.#thawedAs(cone.thawedAs)}`] : []),
     ];
     return html`<div class="card" tabindex="-1" data-id=${cone.id} data-kind=${cone.kind ?? 'cone'} ?data-live=${cone.live} ?data-v6=${cone.v6}>
-      <div class="name">${cone.name}<swc-badge size="s" variant=${kind[0]} subtle data-badge="kind">${kind[1]}</swc-badge>${cone.v6 ? html`<swc-badge size="s" variant="informative" outline data-badge="v6">SLICC 6</swc-badge>` : nothing}<swc-badge size="s" variant="neutral" subtle>${label}</swc-badge>${cone.live ? html`<swc-status-light size="s" variant="positive" data-live>Live</swc-status-light>` : nothing}</div>
+      <div class="name">${cone.name}<swc-badge size="s" variant=${kind[0]} subtle data-badge="kind">${kind[1]}</swc-badge>${cone.v6 ? html`<swc-badge size="s" variant="neutral" outline data-badge="v6">SLICC 6</swc-badge>` : nothing}<swc-badge size="s" variant="neutral" subtle>${label}</swc-badge>${cone.live ? html`<swc-status-light size="s" variant="positive" data-live>Live</swc-status-light>` : nothing}</div>
       <div class="title" title=${cone.title}>${cone.title}</div>
       <div class="meta">${meta.join(' · ')}</div>
       <div class="actions">${this.#actions(cone)}</div>
@@ -311,7 +308,7 @@ export class SliccFreezer extends ModelElement {
         <span>${rows.length} ${rows.length === 1 ? 'conversation' : 'conversations'}</span>
         ${
           this.importable
-            ? html`<swc-action-button id="import-v6" size="s" quiet data-action="import-v6" accessible-label="Import from SLICC 6…" @click=${() => this.#pick()}><swc-icon-import slot="icon"></swc-icon-import>Import</swc-action-button><swc-tooltip for="import-v6" placement="bottom">Import from SLICC 6…</swc-tooltip><input type="file" accept=".zip,application/zip" hidden data-action="import-file" @change=${this.#picked} />`
+            ? html`<swc-action-button id="import-v6" size="s" quiet data-action="import-v6" accessible-label="Import from SLICC 6" @click=${() => this.#pick()}><swc-icon-import slot="icon"></swc-icon-import>Import</swc-action-button><swc-tooltip for="import-v6" placement="bottom">Import from SLICC 6</swc-tooltip><input type="file" accept=".zip,application/zip" hidden data-action="import-file" @change=${this.#picked} />`
             : nothing
         }
       </div>
