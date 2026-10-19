@@ -87,6 +87,15 @@ function pendingAsks(messages: readonly Message[]): Array<[string, { id: string;
   });
 }
 
+function into(card: Element, dock: HTMLElement): void {
+  const box = card.getBoundingClientRect();
+  const view = dock.getBoundingClientRect();
+  const start = view.top + (Number.parseFloat(getComputedStyle(dock).scrollPaddingBlockStart) || 0);
+  if (box.top < start) dock.scrollTop -= start - box.top;
+  else if (box.bottom > view.bottom)
+    dock.scrollTop += Math.min(box.bottom - view.bottom, box.top - start);
+}
+
 const place = (id: string): TemplateResult =>
   html`<div class="ask-place" data-place=${id} aria-hidden="true"></div>`;
 
@@ -324,15 +333,68 @@ export class SliccChat extends ThemedElement {
         max-block-size: 50%;
         overflow-y: auto;
         container-type: inline-size;
+        position: relative;
+        z-index: 1;
         padding: var(--swc-spacing-200) var(--swc-spacing-300);
         border-block-end: var(--swc-border-width-100) solid var(--swc-gray-200);
+        background: var(--swc-background-layer-2-color);
+        box-shadow: 0 var(--swc-drop-shadow-elevated-y) var(--swc-drop-shadow-elevated-blur) var(--swc-drop-shadow-color-100);
         font-size: var(--swc-font-size-200);
+        scrollbar-width: thin;
+        scrollbar-color: transparent transparent;
+      }
+      .asks:hover,
+      .asks:focus-within {
+        scrollbar-color: var(--swc-gray-500) transparent;
+      }
+      .asks::after {
+        content: '';
+        position: sticky;
+        bottom: calc(-1 * var(--swc-spacing-200));
+        display: none;
+        block-size: var(--swc-spacing-500);
+        margin-block-start: calc(-1 * var(--swc-spacing-500));
+        background: linear-gradient(to bottom, transparent, var(--swc-background-layer-2-color));
+        pointer-events: none;
+      }
+      .asks[data-more]::after {
+        display: block;
       }
       .asks:has(.waiting) {
         scroll-padding-block-start: calc(var(--swc-component-height-100) + var(--swc-spacing-100));
       }
       .asks + .stage {
         min-block-size: calc(var(--composer-height, 0px) + var(--composer-fade, 0px) + var(--swc-spacing-1000));
+      }
+      .asks[data-open] + .stage {
+        min-block-size: calc(var(--composer-height, 0px) + var(--composer-fade, 0px));
+      }
+      .asks[data-open] .decision {
+        gap: var(--swc-spacing-75);
+        padding-block: var(--swc-spacing-100);
+      }
+      .asks[data-open] .decide {
+        padding: 0;
+      }
+      .asks[data-open] .question.decision .options {
+        margin-block-start: 0;
+      }
+      .asks[data-open] .decision-head {
+        align-items: center;
+      }
+      .asks[data-open] .decision-head .who {
+        margin-inline-end: auto;
+      }
+      .asks[data-open] .decision-head .detail {
+        display: inline-flex;
+      }
+      .asks[data-open] .decision-turn:not([data-detail]) .command {
+        display: none;
+      }
+      .asks[data-open] .decision-turn:not([data-detail]) .decision-text {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
       }
       .waiting {
         position: sticky;
@@ -423,8 +485,16 @@ export class SliccChat extends ThemedElement {
   ];
 
   #licks = new ViewSet(this, 'chat:licks');
+  #details = new Set<string>();
   #handlers: Handlers = {
     licks: this.#licks,
+    detail: {
+      has: (id) => this.#details.has(id),
+      toggle: (id) => {
+        if (!this.#details.delete(id)) this.#details.add(id);
+        this.requestUpdate();
+      },
+    },
     color: 'light',
     model: null,
     readOnly: false,
@@ -506,9 +576,20 @@ export class SliccChat extends ThemedElement {
   #all = false;
 
   #focused = (event: FocusEvent): void => {
-    this.#held =
-      (event.target as Element).closest<HTMLElement>('.decision-turn[data-pending]')?.dataset.id ??
-      '';
+    const target = event.target as Element;
+    this.#held = target.closest<HTMLElement>('.decision-turn[data-pending]')?.dataset.id ?? '';
+    const card = target.closest('.ask');
+    if (card) into(card, card.closest('.asks') as HTMLElement);
+  };
+
+  #more = (): void => {
+    const dock = this.renderRoot.querySelector<HTMLElement>('.asks');
+    if (!dock) return;
+    const end = Number.parseFloat(getComputedStyle(dock).paddingBlockEnd) || 0;
+    dock.toggleAttribute(
+      'data-more',
+      dock.scrollHeight - dock.scrollTop - dock.clientHeight > end + 1
+    );
   };
 
   #refocus(): void {
@@ -529,6 +610,7 @@ export class SliccChat extends ThemedElement {
   }
 
   #resize = new ResizeObserver(() => {
+    this.#more();
     const log = this.#log();
     if (!this.#stuck && log.scrollHeight <= log.clientHeight) this.#follow();
     else this.#pin();
@@ -674,7 +756,8 @@ export class SliccChat extends ThemedElement {
     }
     this.#refocus();
     const asks = [...this.renderRoot.querySelectorAll<HTMLElement>('.ask-list .decision-turn')];
-    for (const turn of asks) turn.tabIndex = turn === asks.at(-1) ? 0 : -1;
+    for (const turn of asks) turn.tabIndex = 0;
+    this.#more();
   }
 
   #timed(): boolean {
@@ -939,7 +1022,7 @@ export class SliccChat extends ThemedElement {
       this.#all = !open;
       this.requestUpdate();
     };
-    return html`<section class="asks" aria-label="Waiting for you" ?data-open=${open}><div class="column">
+    return html`<section class="asks" aria-label="Waiting for you" ?data-open=${open} @scroll=${this.#more}><div class="column">
       ${
         older.length
           ? html`<div class="waiting"><swc-action-button size="s" quiet data-action="show-waiting" aria-expanded=${open ? 'true' : 'false'} @click=${toggle}><swc-icon-chevron-down slot="icon"></swc-icon-chevron-down>${asks.length} waiting</swc-action-button>${timed.length ? askTimer(Math.min(...timed)) : nothing}</div>`

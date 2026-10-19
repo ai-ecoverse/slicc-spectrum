@@ -3076,7 +3076,6 @@ async function asks(page) {
         };
       });
       const hit = (element) => {
-        element.scrollIntoView({ block: 'nearest' });
         const box = rect(element);
         const at = root.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
         return !!at && (at === element || element.contains(at));
@@ -3086,7 +3085,16 @@ async function asks(page) {
           '.decision-turn[data-pending] :is([data-action=allow], [data-action=deny], [data-action=answer], .timer)'
         ),
       ].filter((control) => control.checkVisibility());
+      const dock = root.querySelector('.asks');
+      const area = dock ? rect(dock) : null;
+      const leaks = [];
+      for (let y = area ? area.top + 2 : 0; area && y < area.bottom - 1; y += 16)
+        for (let x = area.left + 2; x < area.right - 1; x += 24) {
+          const at = root.elementFromPoint(x, y);
+          if (!at?.closest('.asks')) leaks.push([Math.round(x), Math.round(y), at?.localName]);
+        }
       return {
+        leaks: leaks.slice(0, 5),
         cards: cards.map((card) => card.dataset.id),
         covered: cards.flatMap((card, index) =>
           shown.some((box) => overlap(boxes[index], box)) ? [card.dataset.id] : []
@@ -3113,16 +3121,15 @@ for (const [width, height] of [
     await page.send('Emulation.setEmulatedMedia', {
       features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
     });
-    if (width < 1280) {
-      await page.send('Emulation.setDeviceMetricsOverride', {
-        width,
-        height,
-        deviceScaleFactor: 1,
-        mobile: false,
-      });
-      t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+    await page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+    if (width < 1280)
       await page.until(() => document.querySelector('slicc-app').screen === 'phone');
-    }
     await page.evaluate(() => window.model.agent.select('cone-kitchen'));
     await page.until(
       (wide) =>
@@ -3139,6 +3146,7 @@ for (const [width, height] of [
     });
     await new Promise((resolve) => setTimeout(resolve, 300));
     const pending = await page.evaluate(() => window.askLayout());
+    assert.deepEqual(pending.leaks, []);
     assert.deepEqual(pending.covered, [], JSON.stringify(pending));
     assert.equal(pending.stacked, false);
     assert.deepEqual(pending.blocked, []);
@@ -3153,11 +3161,45 @@ for (const [width, height] of [
     await page.until(() => !!window.chatPart('.asks[data-open] .decision-turn[data-id=k-q3]'));
     await new Promise((resolve) => setTimeout(resolve, 300));
     const all = await page.evaluate(() => window.askLayout());
+    assert.deepEqual(all.leaks, []);
     assert.deepEqual(all.cards, ['k-q3', 'k-l17']);
     assert.deepEqual(all.covered, [], JSON.stringify(all));
     assert.equal(all.stacked, false);
     assert.deepEqual(all.blocked, []);
     assert.ok(all.controls >= 6, JSON.stringify(all));
+    await page.evaluate(() => {
+      window.chatPart('[data-action=show-waiting]').focus();
+      return true;
+    });
+    const reached = [];
+    for (let i = 0; i < 12; i++) {
+      await page.press('Tab');
+      const step = await page.evaluate(() => {
+        const root = window.chatPart().shadowRoot;
+        const active = root.activeElement;
+        const card = active?.closest?.('.asks .ask');
+        if (!card) return null;
+        const box = card.getBoundingClientRect();
+        const view = root.querySelector('.asks').getBoundingClientRect();
+        return [
+          card.querySelector('.decision-turn').dataset.id,
+          active.dataset.action ?? 'card',
+          box.top >= view.top - 1 && box.bottom <= view.bottom + 1,
+        ];
+      });
+      if (!step) break;
+      reached.push(step);
+    }
+    assert.deepEqual(reached, [
+      ['k-q3', 'card', true],
+      ['k-q3', 'answer', true],
+      ['k-q3', 'answer', true],
+      ['k-q3', 'answer', true],
+      ['k-l17', 'card', true],
+      ['k-l17', 'ask-detail', true],
+      ['k-l17', 'deny', true],
+      ['k-l17', 'allow', true],
+    ]);
 
     await page.evaluate(() => {
       window.chatPart('.decision-turn[data-id=k-l17] [data-action=allow]').click();
@@ -3187,6 +3229,91 @@ for (const [width, height] of [
     assert.deepEqual(page.errors, []);
   });
 }
+
+test('four open asks at 420 fade at the cut edge while more is below, and Tab scrolls each card into view', async (t) => {
+  const page = await open(t, { delay: '0' });
+  await page.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+  });
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 420,
+    height: 860,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+  await page.evaluate(() => window.model.agent.select('cone-kitchen'));
+  await page.until(() => !!window.chatPart('.decision-turn[data-id=k-l17] [data-action=allow]'));
+  const [tag, late] = await page.evaluate(() => {
+    const agent = window.model.agent;
+    const ids = [];
+    for (const [title, text] of [
+      ['quiet-otter', 'Wants to tag 1.9.0'],
+      ['amber-heron', 'Wants to delete the preview branch'],
+    ]) {
+      agent.lick('cone-kitchen', 'sudo-request', title, text, 'git tag v1.9.0');
+      const message = agent.messages('cone-kitchen').at(-1);
+      message.state = 'pending';
+      ids.push(message.id);
+    }
+    agent.emit('messages', 'cone-kitchen');
+    return ids;
+  });
+  await page.until((card) => !!window.chatPart(`.asks .decision-turn[data-id=${card}]`), late);
+  await page.evaluate(() => {
+    window.chatPart('[data-action=show-waiting]').click();
+    return true;
+  });
+  await page.until(() => !!window.chatPart('.asks[data-open]'));
+  await page.until(() => {
+    const dock = window.chatPart('.asks');
+    return dock.scrollHeight > dock.clientHeight && dock.hasAttribute('data-more');
+  });
+  assert.equal(
+    await page.evaluate(() => getComputedStyle(window.chatPart('.asks'), '::after').display),
+    'block'
+  );
+  await page.evaluate(() => {
+    window.chatPart('[data-action=show-waiting]').focus();
+    return true;
+  });
+  const seen = [];
+  for (let i = 0; i < 24; i++) {
+    await page.press('Tab');
+    const step = await page.evaluate(() => {
+      const root = window.chatPart().shadowRoot;
+      const active = root.activeElement;
+      const card = active?.closest?.('.asks .ask');
+      if (!card) return null;
+      const box = card.getBoundingClientRect();
+      const view = root.querySelector('.asks').getBoundingClientRect();
+      return [
+        card.querySelector('.decision-turn').dataset.id,
+        active.dataset.action ?? 'card',
+        box.top >= view.top - 1 && box.bottom <= view.bottom + 1,
+      ];
+    });
+    if (!step) break;
+    seen.push(step);
+  }
+  assert.deepEqual(
+    seen.filter(([, action]) => ['allow', 'deny', 'answer'].includes(action)),
+    [
+      ['k-q3', 'answer', true],
+      ['k-q3', 'answer', true],
+      ['k-q3', 'answer', true],
+      ['k-l17', 'deny', true],
+      ['k-l17', 'allow', true],
+      [tag, 'deny', true],
+      [tag, 'allow', true],
+      [late, 'deny', true],
+      [late, 'allow', true],
+    ]
+  );
+  await page.until(() => !window.chatPart('.asks').hasAttribute('data-more'));
+  assert.deepEqual(page.errors, []);
+});
 
 test('decision cards dock above the log, reveal their place from the keyboard and keep focus when one leaves', async (t) => {
   const page = await open(t, { delay: '0' });

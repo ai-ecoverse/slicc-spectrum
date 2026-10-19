@@ -78,6 +78,7 @@ export interface Handlers {
   agentId?: string;
   seat?: string;
   licks?: ViewSet;
+  detail?: { has(id: string): boolean; toggle(id: string): void };
 }
 
 export interface Login {
@@ -1001,7 +1002,7 @@ function clock(ms: number): string {
 const still = (): boolean => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 function reveal(event: Event): void {
-  if ((event.target as Element).closest('swc-button, input, textarea')) return;
+  if ((event.target as Element).closest('swc-button, swc-action-button, input, textarea')) return;
   if (
     event instanceof KeyboardEvent &&
     (event.key !== 'Enter' || event.target !== event.currentTarget)
@@ -1049,9 +1050,14 @@ function decision(message: LickMessage, handlers: Handlers): TemplateResult {
         <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'dismissed')}>Deny</swc-button>
         <swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>
       </div>`;
-  return html`<swc-conversation-turn type="system" class="message decision-turn" tabindex="-1" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-pending=${settled ? nothing : ''} data-expired=${expired ? '' : nothing} @click=${reveal} @keydown=${reveal}>
+  const detail = settled ? undefined : handlers.detail;
+  const shown = !!detail?.has(message.id);
+  const more = detail
+    ? html`<swc-action-button size="s" quiet class="detail" data-action="ask-detail" aria-expanded=${shown ? 'true' : 'false'} accessible-label=${shown ? 'Hide details' : 'Show details'} @click=${() => detail.toggle(message.id)}><swc-icon-chevron-right slot="icon" class="chevron"></swc-icon-chevron-right></swc-action-button>`
+    : nothing;
+  return html`<swc-conversation-turn type="system" class="message decision-turn" tabindex="-1" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-pending=${settled ? nothing : ''} data-expired=${expired ? '' : nothing} data-detail=${shown ? '' : nothing} @click=${reveal} @keydown=${reveal}>
     <div class="decision" data-kind="approval">
-      <div class="decision-head"><span class="who">${message.title}</span>${timer}</div>
+      <div class="decision-head"><span class="who">${message.title}</span>${timer}${more}</div>
       <p class="decision-text">${message.text}</p>
       ${message.body ? html`<pre class="command">${message.body}</pre>` : nothing}
       ${actions}
@@ -1947,6 +1953,12 @@ export const messageCss = css`
   }
   .decision-head .who {
     font-weight: var(--swc-bold-font-weight);
+  }
+  .decision-head .detail {
+    display: none;
+  }
+  .decision-turn[data-detail] .detail .chevron {
+    transform: rotate(90deg);
   }
   .timer {
     color: var(--swc-neutral-subdued-content-color-default);
