@@ -557,15 +557,14 @@ export class SliccUpdates extends ModelElement {
         gap: var(--swc-spacing-400);
         margin-block-start: var(--swc-spacing-200);
         padding: var(--swc-spacing-300);
-        max-height: calc(var(--swc-spacing-1000) * 4);
-        overflow: auto;
+        border: var(--swc-border-width-100) solid transparent;
         background: var(--swc-background-layer-1-color);
         border-radius: var(--swc-corner-radius-medium-default);
         overflow-wrap: anywhere;
       }
       .title {
         margin: 0;
-        font-size: var(--swc-font-size-200);
+        font-size: var(--swc-font-size-100);
         font-weight: var(--swc-bold-font-weight);
         color: var(--swc-heading-color);
         display: flex;
@@ -784,7 +783,7 @@ export class SliccUpdates extends ModelElement {
           cut,
         }) => html`<div class="release" data-version=${release.version}>
           <p class="title" role="heading" aria-level=${level}>${secure(release.url) ? html`<a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${release.version} release notes`}>${release.version}</a>` : release.version}${certified ? html`<swc-badge size="s" variant="positive" subtle data-certified>Certified</swc-badge>` : nothing}</p>
-          ${body ? html`<div class="markdown">${markdown(body, { strict: true })}</div>` : nothing}
+          ${body ? html`<div class="markdown">${markdown(body, { strict: true, level })}</div>` : nothing}
           ${cut && secure(release.url) ? html`<p class="cut" data-cut><a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`Read the full notes for ${label} ${release.version}`}>Read the full notes</a></p>` : nothing}
         </div>`
       )}</div>

@@ -27,10 +27,12 @@ type Definitions = Map<string, Definition>;
 interface Context {
   definitions: Definitions;
   strict: boolean;
+  level: number | null;
 }
 
 export interface MarkdownOptions {
   strict?: boolean;
+  level?: number;
 }
 
 interface Parsed {
@@ -59,10 +61,7 @@ const options: Options = {
 const empty: Parsed = { text: '', blocks: [], starts: [], keep: 0, definitions: new Map() };
 const cache = new Map<string, Parsed>();
 const streams: Parsed[] = [];
-const rendered = {
-  loose: new WeakMap<RootContent, Output>(),
-  strict: new WeakMap<RootContent, Output>(),
-};
+const rendered = new Map<string, WeakMap<RootContent, Output>>();
 
 function collect(nodes: Nodes[], found: Definitions): Definitions {
   for (const node of nodes) {
@@ -216,7 +215,7 @@ function flow(node: RootContent, context: Context): Output {
     case 'paragraph':
       return paragraph(node, context, false, nothing);
     case 'heading':
-      return html`<p class="heading" role="heading" aria-level=${Math.min(node.depth + 2, 6)}>${inline(node, context)}</p>`;
+      return html`<p class="heading" role="heading" aria-level=${Math.min(context.level === null ? node.depth + 2 : context.level + 1, 6)}>${inline(node, context)}</p>`;
     case 'code':
       return html`<pre class="code" data-lang=${node.lang || nothing}><code>${node.value}</code></pre>`;
     case 'list':
@@ -237,7 +236,9 @@ function flow(node: RootContent, context: Context): Output {
 }
 
 function block(node: RootContent, context: Context): Output {
-  const cache = context.strict ? rendered.strict : rendered.loose;
+  const key = `${context.strict}:${context.level}`;
+  const cache = rendered.get(key) ?? new WeakMap<RootContent, Output>();
+  rendered.set(key, cache);
   let output = cache.get(node);
   if (output === undefined) {
     output = flow(node, context);
@@ -248,7 +249,7 @@ function block(node: RootContent, context: Context): Output {
 
 export function markdown(text: string, options: MarkdownOptions = {}): TemplateResult {
   const { blocks, definitions } = parse(text);
-  const context = { definitions, strict: options.strict === true };
+  const context = { definitions, strict: options.strict === true, level: options.level ?? null };
   return html`${blocks.map((node) => block(node, context))}`;
 }
 
