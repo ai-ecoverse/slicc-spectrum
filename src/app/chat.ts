@@ -433,7 +433,7 @@ export class SliccChat extends ThemedElement {
 
   #resize = new ResizeObserver(() => {
     const log = this.#log();
-    if (!this.#stuck && log.scrollHeight <= log.clientHeight) this.#follow();
+    if (!this.#stuck && log.scrollHeight <= log.clientHeight) this.#follow('resize');
     else this.#pin();
   });
   #fitted: Element | null = null;
@@ -467,7 +467,20 @@ export class SliccChat extends ThemedElement {
     this.#height = log.scrollHeight;
   }
 
-  #follow(): void {
+  #follow(why = ''): void {
+    const log = this.#log();
+    (globalThis as unknown as { trace?: unknown[] }).trace?.push([
+      'follow',
+      why,
+      Math.round(performance.now()),
+      log.scrollTop,
+      this.#last,
+      this.#height,
+      log.scrollHeight,
+      log.clientHeight,
+      Math.round(performance.now() - this.#up),
+      new Error().stack?.split('\n').slice(2, 4).join('<'),
+    ]);
     this.#stuck = true;
     this.behind = false;
     this.#pin();
@@ -485,7 +498,7 @@ export class SliccChat extends ThemedElement {
     const down = top - this.#last;
     if (this.#bottom()) {
       if (!this.#stuck && down > 1 && (performance.now() - this.#up > 1000 || down > this.#slack()))
-        this.#follow();
+        this.#follow('scroll');
     } else if (
       top < this.#last &&
       (performance.now() - this.#input < 1000 || before > 2 * this.#slack())
@@ -507,6 +520,15 @@ export class SliccChat extends ThemedElement {
             (upward.has(event.key) || (event.key === ' ' && event.shiftKey));
       this.#up = up ? this.#input : Number.NEGATIVE_INFINITY;
       if (up && this.#log().scrollTop > 0) this.#stuck = false;
+      (globalThis as unknown as { trace?: unknown[] }).trace?.push([
+        'intent',
+        event.type,
+        (event as KeyboardEvent).key,
+        up,
+        this.#log().scrollTop,
+        this.#stuck,
+        Math.round(performance.now()),
+      ]);
     },
   };
 
@@ -520,6 +542,7 @@ export class SliccChat extends ThemedElement {
 
   #refresh(jump: boolean): void {
     if (jump) {
+      (globalThis as unknown as { trace?: unknown[] }).trace?.push(['refresh-jump']);
       this.#stuck = true;
       this.behind = false;
     } else if (!this.#stuck) this.behind = true;
