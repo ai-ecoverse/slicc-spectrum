@@ -24,7 +24,11 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   #signIns = new Map<string, { before: AccountStatus; stop: () => void }>();
   #gated: boolean;
   #fails: boolean;
-  readonly connects: Array<{ id: string; gesture: boolean | null }> = [];
+  readonly connects: Array<{
+    id: string;
+    gesture: boolean | null;
+    fields?: Record<string, string>;
+  }> = [];
   providers?: () => readonly ProviderOption[];
   remove?: (id: string) => Promise<void>;
 
@@ -112,7 +116,11 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
 
   async connect(id: string, secret?: string, fields?: Record<string, string>): Promise<void> {
     const activation = (globalThis.navigator as Navigator | undefined)?.userActivation;
-    this.connects.push({ id, gesture: activation ? activation.isActive : null });
+    this.connects.push({
+      id,
+      gesture: activation ? activation.isActive : null,
+      ...(fields ? { fields } : {}),
+    });
     const fresh = this.#add(id);
     try {
       if (!(await this.#connect(id, secret, fields)) && fresh) this.#drop(id);

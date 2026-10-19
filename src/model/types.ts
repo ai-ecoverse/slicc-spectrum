@@ -520,7 +520,13 @@ export interface AccountField {
   placeholder?: string;
   help?: string;
   customBase?: true;
+  options?: readonly AccountFieldOption[];
   value?: string;
+}
+
+export interface AccountFieldOption {
+  value: string;
+  label: string;
 }
 
 export interface ModelEndpoint {

@@ -671,7 +671,7 @@ export class SliccSettings extends ThemedElement {
         .querySelector<HTMLElement>(
           field === 'value'
             ? '.key input[data-field=value]'
-            : `.key input[data-account-field="${field}"]`
+            : `.key [data-account-field="${field}"]`
         )
         ?.focus()
     );
@@ -681,12 +681,12 @@ export class SliccSettings extends ThemedElement {
     if (!account.fields?.length) return undefined;
     const values: Record<string, string> = {};
     for (const field of account.fields) {
-      const input = form.querySelector(
-        `input[data-account-field="${field.name}"]`
-      ) as HTMLInputElement;
+      const input = form.querySelector(`[data-account-field="${field.name}"]`) as
+        | HTMLInputElement
+        | HTMLSelectElement;
       const value = input.value.trim();
       if (value) values[field.name] = value;
-      else if (field.required) {
+      else if (field.required && field.options?.length !== 0) {
         this.#refuse(account.id, field.name, `${field.label} can’t be empty`);
         return null;
       }
@@ -714,7 +714,9 @@ export class SliccSettings extends ThemedElement {
     this.failure = null;
     this.problem = null;
     this.filled = new Set(
-      (account.fields ?? []).filter((field) => field.value?.trim()).map((field) => field.name)
+      (account.fields ?? [])
+        .filter((field) => field.options || field.value?.trim())
+        .map((field) => field.name)
     );
     this.entering = account.id;
     void this.updateComplete.then(() => this.focusOn('.key sp-textfield', '.key input'));
@@ -782,11 +784,35 @@ export class SliccSettings extends ThemedElement {
   }
 
   #extra(account: Account): TemplateResult[] {
-    return (account.fields ?? []).map((field) => {
-      const help = field.help ? `help-${field.name}` : '';
-      const problem = this.#described(account, field.name);
-      const described = [problem === nothing ? '' : problem, help].filter(Boolean).join(' ');
-      return html`<label class="field"><span>${field.label}</span><input
+    return (account.fields ?? []).map(
+      (field) => html`<label class="field">
+          <span>${field.label}</span>${this.#control(account, field)}
+        </label>
+        ${field.help ? html`<p class="hint" id=${`help-${field.name}`}>${field.help}</p>` : nothing}
+        ${this.#problem(account, field.name)}`
+    );
+  }
+
+  #describedBy(account: Account, field: AccountField): string | typeof nothing {
+    const problem = this.#described(account, field.name);
+    const ids = [problem === nothing ? '' : problem, field.help ? `help-${field.name}` : ''];
+    return ids.filter(Boolean).join(' ') || nothing;
+  }
+
+  #control(account: Account, field: AccountField): TemplateResult {
+    if (field.options) {
+      const chosen = field.value ?? field.options[0]?.value;
+      return html`<select
+          data-account-field=${field.name}
+          ?disabled=${!field.options.length}
+          aria-required=${field.required ? 'true' : nothing}
+          aria-invalid=${this.#invalid(account, field.name)}
+          aria-describedby=${this.#describedBy(account, field)}
+        >
+          ${field.options.map((option) => html`<option value=${option.value} ?selected=${option.value === chosen}>${option.label}</option>`)}
+        </select>`;
+    }
+    return html`<input
           type="text"
           autocomplete="off"
           spellcheck="false"
@@ -795,11 +821,8 @@ export class SliccSettings extends ThemedElement {
           placeholder=${field.placeholder ?? nothing}
           aria-required=${field.required ? 'true' : nothing}
           aria-invalid=${this.#invalid(account, field.name)}
-          aria-describedby=${described || nothing}
-        /></label>
-        ${field.help ? html`<p class="hint" id=${help}>${field.help}</p>` : nothing}
-        ${this.#problem(account, field.name)}`;
-    });
+          aria-describedby=${this.#describedBy(account, field)}
+        />`;
   }
 
   #getKey(account: Account): TemplateResult | typeof nothing {
