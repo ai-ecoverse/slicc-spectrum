@@ -6,6 +6,7 @@ import '@adobe/spectrum-wc/components/illustrated-message/swc-illustrated-messag
 import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc/patterns/ai-toolkit/conversation-thread/swc-conversation-thread.js';
 import '@adobe/spectrum-wc-icons/swc-icon-attach.js';
+import '@adobe/spectrum-wc-icons/swc-icon-chevron-down.js';
 import '@adobe/spectrum-wc-icons/swc-icon-new.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
@@ -20,7 +21,7 @@ import type {
   UserMessage,
 } from '../model/types.ts';
 import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
-import { folders, limit, type SliccComposer } from './composer.ts';
+import { fade, folders, limit, type SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
 import { following, onWatch, watchOnly } from './follow.ts';
 import { markdownCss } from './markdown.ts';
@@ -135,17 +136,20 @@ export class SliccChat extends ThemedElement {
     agent: {},
     dropping: { state: true },
     compact: { state: true },
+    behind: { state: true },
   };
   static leaveAfter = 100;
   declare agent: string;
   declare dropping: boolean;
   declare compact: boolean;
+  declare behind: boolean;
 
   constructor() {
     super();
     this.agent = '';
     this.dropping = false;
     this.compact = false;
+    this.behind = false;
     this.addEventListener('dragenter', this.#over);
     this.addEventListener('dragover', this.#over);
     this.addEventListener('dragleave', this.#leave);
@@ -208,6 +212,7 @@ export class SliccChat extends ThemedElement {
 
   static styles = [
     shared,
+    fade,
     markdownCss,
     messageCss,
     css`
@@ -270,13 +275,20 @@ export class SliccChat extends ThemedElement {
         font-size: var(--swc-font-size-100);
         color: var(--swc-neutral-subdued-content-color-default);
       }
+      .stage {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+      }
       .log {
         flex: 1;
         min-height: 0;
         overflow-y: auto;
         container-type: inline-size;
-        padding: var(--swc-spacing-400) var(--swc-spacing-300) calc(var(--composer-height, 0px) + var(--swc-spacing-500));
-        scroll-padding-block-end: calc(var(--composer-height, 0px) + var(--swc-spacing-200));
+        padding: var(--swc-spacing-400) var(--swc-spacing-300) calc(var(--composer-height, 0px) + var(--composer-fade) + 1lh);
+        scroll-padding-block-end: calc(var(--composer-height, 0px) + var(--composer-fade) + var(--swc-spacing-200));
         font-size: var(--swc-font-size-200);
         scroll-padding-block-start: var(--pile, 0px);
       }
@@ -306,6 +318,21 @@ export class SliccChat extends ThemedElement {
       swc-dropzone swc-icon-attach {
         --swc-icon-inline-size: 100%;
         --swc-icon-block-size: 100%;
+      }
+      .jump {
+        position: absolute;
+        inset-inline: 0;
+        bottom: calc(var(--composer-height, 0px) + var(--swc-spacing-200));
+        z-index: 3;
+        display: flex;
+        justify-content: center;
+        pointer-events: none;
+      }
+      .jump swc-action-button {
+        pointer-events: auto;
+        border-radius: var(--swc-corner-radius-1000);
+        background: var(--swc-background-elevated-color);
+        box-shadow: var(--swc-drop-shadow-elevated);
       }
       .empty {
         color: var(--swc-neutral-subdued-content-color-default);
@@ -359,6 +386,8 @@ export class SliccChat extends ThemedElement {
       this.requestUpdate();
     };
     queueMicrotask(() => settleModels(model));
+    this.#stuck = true;
+    this.behind = false;
     const width = new ResizeObserver(([entry]) => {
       const size = (entry as ResizeObserverEntry).contentRect.width;
       this.compact = size > 0 && size < compactWidth;
@@ -390,12 +419,10 @@ export class SliccChat extends ThemedElement {
   #height = 0;
   #input = Number.NEGATIVE_INFINITY;
   #up = Number.NEGATIVE_INFINITY;
-  #from = 0;
-  #start = 0;
-  #settle: ReturnType<typeof setTimeout> | undefined;
   #tick: ReturnType<typeof setInterval> | undefined;
   #tail = '';
   #held = '';
+  #mark = 0;
 
   #focused = (event: FocusEvent): void => {
     const turn = (event.target as Element).closest<HTMLElement>('.decision-turn[data-pending]');
@@ -418,8 +445,12 @@ export class SliccChat extends ThemedElement {
     return seat ? mine(last, seat) : (last.origin ?? 'user') === 'user';
   }
 
-  #resize = new ResizeObserver(() => this.#pin());
-  #fitted: Element | null = null;
+  #resize = new ResizeObserver(() => {
+    const log = this.#log();
+    if (!this.#stuck && log.scrollHeight <= log.clientHeight) this.#follow();
+    else this.#pin();
+  });
+  #fitted: Element | null | undefined;
   #fit = new ResizeObserver(([entry]) => {
     this.style.setProperty('--composer-height', `${(entry.target as HTMLElement).offsetHeight}px`);
     this.#pin();
@@ -427,6 +458,19 @@ export class SliccChat extends ThemedElement {
 
   #log(): HTMLElement {
     return this.renderRoot.querySelector<HTMLElement>('.log') as HTMLElement;
+  }
+
+  #slack(): number {
+    return Number.parseFloat(getComputedStyle(this.#log()).lineHeight) || 0;
+  }
+
+  #gap(): number {
+    const log = this.#log();
+    return log.scrollHeight - log.scrollTop - log.clientHeight;
+  }
+
+  #bottom(): boolean {
+    return this.#gap() <= this.#slack();
   }
 
   #pin(): void {
@@ -437,15 +481,30 @@ export class SliccChat extends ThemedElement {
     this.#height = log.scrollHeight;
   }
 
+  #follow(): void {
+    this.#stuck = true;
+    this.behind = false;
+    this.#pin();
+  }
+
+  #jump = (): void => {
+    this.#follow();
+    this.#log().focus({ preventScroll: true });
+  };
+
   #scroll = (): void => {
     const log = this.#log();
-    const reader =
-      log.scrollHeight <= this.#height ||
-      this.#height - log.scrollTop - log.clientHeight >= 48 ||
-      performance.now() - this.#input < 1000;
-    const rising = performance.now() - this.#up < 1000 && log.scrollTop <= this.#from;
-    if (log.scrollHeight - log.scrollTop - log.clientHeight < 48) this.#stuck ||= !rising;
-    else if (reader && log.scrollTop < this.#last) this.#stuck = false;
+    const top = log.scrollTop;
+    const before = this.#height - top - log.clientHeight;
+    const down = top - this.#last;
+    if (this.#bottom()) {
+      if (!this.#stuck && down > 1 && (performance.now() - this.#up > 1000 || down > this.#slack()))
+        this.#follow();
+    } else if (
+      top < this.#last &&
+      (performance.now() - this.#input < 1000 || before > 2 * this.#slack())
+    )
+      this.#stuck = false;
     this.#last = log.scrollTop;
     this.#height = log.scrollHeight;
     this.#pile();
@@ -460,19 +519,12 @@ export class SliccChat extends ThemedElement {
           ? event.deltaY < 0 && !event.ctrlKey
           : event instanceof KeyboardEvent &&
             (upward.has(event.key) || (event.key === ' ' && event.shiftKey));
-      const at = this.#log().scrollTop;
-      if (!up || at <= 0) return;
-      this.#from = at;
-      this.#up = this.#input;
-      if (this.#settle === undefined) this.#start = Math.max(at, this.#last);
+      this.#up = up ? this.#input : Number.NEGATIVE_INFINITY;
+      const log = this.#log();
+      if (!up || log.scrollTop <= 0) return;
       this.#stuck = false;
-      clearTimeout(this.#settle);
-      this.#settle = setTimeout(() => {
-        this.#settle = undefined;
-        if (this.#start - this.#log().scrollTop >= 48) return;
-        this.#stuck = true;
-        this.#pin();
-      }, 400);
+      this.#last = log.scrollTop;
+      this.#height = log.scrollHeight;
     },
   };
 
@@ -485,7 +537,10 @@ export class SliccChat extends ThemedElement {
   };
 
   #refresh(jump: boolean): void {
-    if (jump) this.#stuck = true;
+    if (jump) {
+      this.#stuck = true;
+      this.behind = false;
+    } else if (!this.#stuck) this.behind = true;
     this.requestUpdate();
     void this.updateComplete.then(() => this.#pin());
   }
@@ -503,6 +558,7 @@ export class SliccChat extends ThemedElement {
     if (composer === this.#fitted) return;
     this.#fit.disconnect();
     this.#fitted = composer;
+    this.style.setProperty('--composer-fade', composer ? '' : '0px');
     if (composer) this.#fit.observe(composer);
     else this.style.setProperty('--composer-height', '0px');
   }
@@ -520,8 +576,7 @@ export class SliccChat extends ThemedElement {
     globalThis.removeEventListener('pointercancel', this.#release, true);
     this.#resize.disconnect();
     this.#fit.disconnect();
-    this.#fitted = null;
-    clearTimeout(this.#settle);
+    this.#fitted = undefined;
     clearInterval(this.#tick);
     this.#tick = undefined;
   }
@@ -873,6 +928,15 @@ export class SliccChat extends ThemedElement {
       <swc-tooltip for="new-chat" placement="bottom">${agent.kind === 'cone' && model.agent.freeze ? 'Start a new conversation. This one stays in the Freezer.' : 'Start a new conversation'}</swc-tooltip>`;
   }
 
+  #latest(fresh: number): TemplateResult {
+    const label = fresh > 0 ? `Jump to latest (${fresh} new)` : 'Jump to latest';
+    const spoken =
+      fresh > 0
+        ? `Jump to latest, ${fresh} new ${fresh === 1 ? 'message' : 'messages'}`
+        : 'Jump to latest';
+    return html`<div class="jump"><swc-action-button size="s" data-action="jump-latest" accessible-label=${spoken} @click=${this.#jump}><swc-icon-chevron-down slot="icon"></swc-icon-chevron-down>${label}</swc-action-button><span class="sr" role="status" aria-live="polite" data-jump-status>${fresh > 0 ? `${fresh} new ${fresh === 1 ? 'message' : 'messages'} below` : ''}</span></div>`;
+  }
+
   render(): TemplateResult {
     this.#handlers.color = this.color;
     this.#handlers.model = this.model ?? null;
@@ -884,40 +948,46 @@ export class SliccChat extends ThemedElement {
     this.#handlers.seat = seat?.label;
     const messages = agent ? (this.model?.agent.messages(agent.id) ?? []) : [];
     this.#tail = messages.at(-1)?.id ?? '';
+    const items = agent && messages.length > 0 ? this.#items(messages, agent) : [];
+    const count = items.filter(([key]) => !key.startsWith('day:')).length;
+    if (!this.behind) this.#mark = count;
     return html`
       <header ?data-compact=${this.compact}>
         ${agent ? this.#meta(agent, !messages.length) : html`<span>No agent</span>`}
       </header>
       <slicc-notices .model=${this.model}></slicc-notices>
-      <div
-        class="log"
-        role="log"
-        aria-live="polite"
-        aria-label="Conversation"
-        tabindex="-1"
-        @scroll=${this.#scroll}
-        @wheel=${this.#intent}
-        @touchstart=${this.#intent}
-        @touchmove=${this.#intent}
-        @keydown=${this.#intent}
-        @pointerdown=${this.#hold}
-        @focusin=${this.#focused}
-      >
-        <div class="column" @keydown=${this.#keys}>
-          ${
-            agent && messages.length > 0
-              ? html`<swc-conversation-thread>${repeat(
-                  this.#items(messages, agent),
-                  ([key]) => key,
-                  ([, item]) => item
-                )}</swc-conversation-thread>`
-              : this.model?.tabs?.state().role === 'connecting'
-                ? html`<div class="empty" data-connecting>${connecting}</div>`
-                : this.model?.agent.starting?.()
-                  ? nothing
-                  : html`<div class="empty" data-empty>${empty(watch, seat, agent?.name ?? 'the agent')}</div>`
-          }
+      <div class="stage">
+        <div
+          class="log"
+          role="log"
+          aria-live="polite"
+          aria-label="Conversation"
+          tabindex="-1"
+          @scroll=${this.#scroll}
+          @wheel=${this.#intent}
+          @touchstart=${this.#intent}
+          @touchmove=${this.#intent}
+          @keydown=${this.#intent}
+          @pointerdown=${this.#hold}
+          @focusin=${this.#focused}
+        >
+          <div class="column" @keydown=${this.#keys}>
+            ${
+              items.length
+                ? html`<swc-conversation-thread>${repeat(
+                    items,
+                    ([key]) => key,
+                    ([, item]) => item
+                  )}</swc-conversation-thread>`
+                : this.model?.tabs?.state().role === 'connecting'
+                  ? html`<div class="empty" data-connecting>${connecting}</div>`
+                  : this.model?.agent.starting?.()
+                    ? nothing
+                    : html`<div class="empty" data-empty>${empty(watch, seat, agent?.name ?? 'the agent')}</div>`
+            }
+          </div>
         </div>
+        ${this.behind ? this.#latest(count - this.#mark) : nothing}
       </div>
       ${
         this.dropping

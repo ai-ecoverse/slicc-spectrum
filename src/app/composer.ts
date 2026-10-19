@@ -36,13 +36,105 @@ import { away, clearValues, failureText, fieldOf, type PopupDetail, take } from 
 
 export const limit = 25 * 1024 * 1024;
 
-type Waiting = { id: string; text: string; attachments: Attachment[] };
+type Kept = Pick<Attachment, 'name' | 'mimeType' | 'size'>;
+type Waiting = {
+  id: string;
+  text: string;
+  mode: SendMode;
+  attachments: Attachment[];
+  lost?: Kept[];
+};
+
+export const startingKey = 'slicc-spectrum.starting';
+
+const names = (files: readonly Kept[]): string => files.map((file) => file.name).join(', ');
+
+const notKept = (files: readonly Kept[]): string =>
+  files.length === 1
+    ? `Not sent: ${files[0].name} wasn’t kept after reload.`
+    : `Not sent: ${files.length} files weren’t kept after reload.`;
+
+function session(): Storage | null {
+  try {
+    return globalThis.sessionStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+type Stored = Omit<Waiting, 'attachments'> & { attachments: Kept[] };
+
+function stored(): Stored[] {
+  try {
+    const rows = JSON.parse(session()?.getItem(startingKey) ?? '[]');
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
+function write(rows: readonly Stored[]): void {
+  try {
+    if (rows.length) session()?.setItem(startingKey, JSON.stringify(rows));
+    else session()?.removeItem(startingKey);
+  } catch {
+    return;
+  }
+}
+
+function reloaded(): boolean {
+  const [entry] = globalThis.performance?.getEntriesByType?.('navigation') ?? [];
+  return (entry as PerformanceNavigationTiming | undefined)?.type === 'reload';
+}
+
+let claimed: Set<string> | null = null;
+
+function restore(owned: Set<string>): Waiting[] {
+  if (!claimed) {
+    claimed = new Set();
+    if (!reloaded()) write([]);
+  }
+  const taken = claimed;
+  const fresh = stored().filter((row) => !taken.has(row.id));
+  for (const row of fresh) {
+    taken.add(row.id);
+    owned.add(row.id);
+  }
+  return fresh.map(({ id, text, mode, attachments, lost = [] }) => ({
+    id,
+    text,
+    mode,
+    attachments: [],
+    lost: [...lost, ...attachments],
+  }));
+}
+
+function keep(owned: Set<string>, rows: readonly Waiting[]): void {
+  const meta = ({ name, mimeType, size }: Kept): Kept => ({ name, mimeType, size });
+  const others = stored().filter((row) => !owned.has(row.id));
+  owned.clear();
+  for (const row of rows) {
+    owned.add(row.id);
+    claimed?.add(row.id);
+  }
+  write([
+    ...others,
+    ...rows.map((row) => ({
+      id: row.id,
+      text: row.text,
+      mode: row.mode,
+      attachments: row.attachments.map(meta),
+      lost: (row.lost ?? []).map(meta),
+    })),
+  ]);
+}
 type Draft = { value: string; attachments: Attachment[] };
 
 const pages = new WeakMap<
   object,
   {
     rows: readonly Waiting[];
+    owned: Set<string>;
     draft: Draft | null;
     hosts: Set<HTMLElement & { requestUpdate(): void }>;
   }
@@ -69,7 +161,10 @@ class PageQueue implements ReactiveController {
   #page() {
     this.#owner ??= this.#host.isConnected ? owner(this.#host) : null;
     const page = this.#owner ?? this.#host.ownerDocument;
-    const found = pages.get(page) ?? { rows: [], draft: null, hosts: new Set() };
+    const known = pages.get(page);
+    if (known) return known;
+    const owned = new Set<string>();
+    const found = { rows: restore(owned), owned, draft: null, hosts: new Set<SliccComposer>() };
     pages.set(page, found);
     return found;
   }
@@ -81,6 +176,7 @@ class PageQueue implements ReactiveController {
   set value(rows: readonly Waiting[]) {
     const page = this.#page();
     page.rows = rows;
+    keep(page.owned, rows);
     for (const host of [...page.hosts]) host.requestUpdate();
   }
 
@@ -217,6 +313,17 @@ async function readable(file: Blob): Promise<string> {
 
 export const linger = 60_000;
 
+export const fade = css`
+  :host {
+    --composer-fade: 72px;
+  }
+  @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+    :host {
+      --composer-fade: 0px;
+    }
+  }
+`;
+
 export function release(attachments: readonly Attachment[]): void {
   for (const attachment of attachments)
     if (attachment.url?.startsWith('blob:')) URL.revokeObjectURL(attachment.url);
@@ -351,6 +458,7 @@ export class SliccComposer extends ThemedElement {
 
   static styles = [
     shared,
+    fade,
     css`
       :host {
         display: block;
@@ -365,7 +473,7 @@ export class SliccComposer extends ThemedElement {
       :host::before {
         content: '';
         position: absolute;
-        top: -72px;
+        top: calc(-1 * var(--composer-fade));
         left: 0;
         right: 0;
         bottom: 0;
@@ -374,12 +482,11 @@ export class SliccComposer extends ThemedElement {
         background: color-mix(in srgb, var(--swc-background-layer-1-color) 72%, transparent);
         backdrop-filter: blur(16px) saturate(1.4);
         -webkit-backdrop-filter: blur(16px) saturate(1.4);
-        mask-image: linear-gradient(to bottom, transparent, black 72px);
-        -webkit-mask-image: linear-gradient(to bottom, transparent, black 72px);
+        mask-image: linear-gradient(to bottom, transparent, black var(--composer-fade));
+        -webkit-mask-image: linear-gradient(to bottom, transparent, black var(--composer-fade));
       }
       @media (prefers-reduced-transparency: reduce) {
         :host::before {
-          top: 0;
           background: var(--swc-background-layer-1-color);
           backdrop-filter: none;
           -webkit-backdrop-filter: none;
@@ -389,7 +496,6 @@ export class SliccComposer extends ThemedElement {
       }
       @media (forced-colors: active) {
         :host::before {
-          top: 0;
           background: Canvas;
           backdrop-filter: none;
           -webkit-backdrop-filter: none;
@@ -463,6 +569,22 @@ export class SliccComposer extends ThemedElement {
       }
       .queued .next {
         flex: none;
+        font-size: var(--swc-font-size-75);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .queued .body {
+        flex: 1;
+        min-inline-size: 0;
+        display: grid;
+      }
+      .queued > swc-icon-alert-triangle {
+        flex: none;
+        --swc-icon-color: var(--swc-notice-visual-color);
+      }
+      .queued [data-lost] {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         font-size: var(--swc-font-size-75);
         color: var(--swc-neutral-subdued-content-color-default);
       }
@@ -740,11 +862,20 @@ export class SliccComposer extends ThemedElement {
     if (!(model && waiting.length && agents.length) || this.#starting()) return;
     const active = model.agent.active();
     const id = agents.some((agent) => agent.id === active) ? active : agents[0].id;
-    this.#waiting.value = [];
-    const [first, ...rest] = waiting;
+    const sendable = (row: Waiting) => !!(row.text || row.attachments.length) && !row.lost?.length;
+    const [first, ...rest] = waiting.filter(sendable);
+    if (!first) return;
+    this.#waiting.value = waiting.filter((row) => !sendable(row));
     this.#deliver(model, id, first, 'queue');
     for (const { text, attachments } of rest)
       this.#post(model, id, { text, attachments, mode: 'queue' });
+  }
+
+  #putBack(row: Waiting): void {
+    this.value = this.value.trim() ? `${this.value}\n${row.text}` : row.text;
+    this.#history = -1;
+    this.#unwait(row.id);
+    this.focus();
   }
 
   #unwait(id: string): void {
@@ -812,7 +943,7 @@ export class SliccComposer extends ThemedElement {
     this.popup = null;
     this.#history = -1;
     if (this.#starting()) {
-      this.#waiting.value = [...this.#waiting.value, { id: this.#id(), text, attachments }];
+      this.#waiting.value = [...this.#waiting.value, { id: this.#id(), text, mode, attachments }];
       return;
     }
     if (known) {
@@ -1467,17 +1598,31 @@ export class SliccComposer extends ThemedElement {
     const waiting = this.#waiting.value;
     if (waiting.length === 0) return nothing;
     return html`<ul class="queue" aria-label="Waiting for the agent">
-      ${waiting.map(
-        (message) => html`<li class="queued" data-id=${message.id} data-mode="starting">
-          <swc-icon-clock size="s" aria-hidden="true"></swc-icon-clock>
-          ${message.text ? nothing : html`<swc-icon-file size="xs" aria-hidden="true"></swc-icon-file>`}
-          <span class="text"><span class="sr">Queued: </span>${message.text || message.attachments.map((attachment) => attachment.name).join(', ')}</span>
-          ${message.text && message.attachments.length ? html`<span class="next" data-files><swc-icon-file size="xs" aria-hidden="true"></swc-icon-file><span class="sr">, </span>${message.attachments.length === 1 ? '1 file' : `${message.attachments.length} files`}</span>` : nothing}
-          <span class="next">Sent when the agent starts</span>
-          <swc-close-button size="s" data-action="unqueue" accessible-label="Remove from queue" @click=${() => this.#unwait(message.id)}></swc-close-button>
-        </li>`
-      )}
+      ${waiting.map((message) => this.#starter(message))}
     </ul>`;
+  }
+
+  #starter(message: Waiting): TemplateResult {
+    const lost = message.lost ?? [];
+    const empty = !(message.text || message.attachments.length);
+    const held = !empty && lost.length > 0;
+    const alert = empty || held;
+    const files = message.attachments.length;
+    return html`<li class="queued" data-id=${message.id} data-mode="starting" ?data-unsent=${empty} ?data-held=${held}>
+      ${alert ? html`<swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>` : html`<swc-icon-clock size="s" aria-hidden="true"></swc-icon-clock>`}
+      ${message.text ? nothing : html`<swc-icon-file size="xs" aria-hidden="true"></swc-icon-file>`}
+      <span class="body">
+        <span class="text"><span class="sr">${held ? 'Held: ' : 'Queued: '}</span>${message.text || names(message.attachments) || names(lost)}</span>
+        ${lost.length ? html`<span class="lost" data-lost title=${names(lost)}><span class="sr">, </span>${held ? notKept(lost) : 'Not kept after reload'}${lost.length > 1 ? html`<span class="sr"> (${names(lost)})</span>` : nothing}</span>` : nothing}
+      </span>
+      ${message.text && files ? html`<span class="next" data-files><swc-icon-file size="xs" aria-hidden="true"></swc-icon-file><span class="sr">, </span>${files === 1 ? '1 file' : `${files} files`}</span>` : nothing}
+      ${
+        held
+          ? html`<swc-action-button size="s" quiet data-action="restore-starting" accessible-label=${`Put back: ${message.text}`} @click=${() => this.#putBack(message)}>Put back</swc-action-button>`
+          : html`<span class="next">${empty ? 'Not sent. Attach the files again.' : 'Sent when the agent starts'}</span>`
+      }
+      <swc-close-button size="s" data-action="unqueue" accessible-label=${alert ? 'Dismiss' : 'Remove from queue'} @click=${() => this.#unwait(message.id)}></swc-close-button>
+    </li>`;
   }
 
   #review(): TemplateResult | typeof nothing {
