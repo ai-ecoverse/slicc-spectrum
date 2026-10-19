@@ -449,7 +449,7 @@ It closes, clearing the field, when the request leaves `waiting` or while the va
 #### `<slicc-updates>`
 
 Install / Update: component states, version changes, last checks, download and link counts, action buttons, failures with Retry, and collapsible install logs behind a quiet chevron, which stay open across a layout switch.
-An install shows one bar for update rows and package rows alike: it fills 0–50% while downloading and 50–100% while linking (`value` against `max-value="100"`). While the row runs it never goes back, not when pnpm's total grows and not when progress drops out between passes. Its value label is the phase's "n of m" count, or "10.0 MB of 40.0 MB" while a download reports bytes (then the first half fills by bytes), and it starts at 0 again once the row settles.
+An install shows one bar for update rows and package rows alike: it fills 0–50% while downloading and 50–100% while linking (`value` against `max-value="100"`). While the row runs it never goes back, not when pnpm's total grows and not when progress drops out between passes. While a download reports `bytes` with a total above 0, the first half fills by bytes and the value label reads "10.0 MB of 40.0 MB". Otherwise, and always while linking, the label falls back to the phase's "n of m" count. The bar starts at 0 again once the row settles.
 Opens at boot until the agent is ready without failures.
 Background updates stay in the header's update status; new failures reopen the panel, and after a reload into a boot that isn't ready yet such a panel closes once the agent is ready.
 Every automatic close is saved to the layout.
@@ -773,7 +773,7 @@ Connection, role, float kind, followers, spend and budget; `reconnect` and `disc
 
 Later backed by: BIOS installers.
 `list()` returns `UpdateItem` rows for BIOS, kernel, agent, grammars, global pnpm packages, skills and UI.
-A row's and a package's `progress` (`InstallProgress`) is the `phase` (`download` or `link`) with `done` of `total` packages, and optionally `bytes` (`{ done, total }`) during a download, summed from pnpm's `Downloading <package>: <done>/<total>` lines; send it even when pnpm counts a single package, since a few large tarballs are most of an install's time.
+A row's and a package's `progress` (`InstallProgress`) is the `phase` (`download` or `link`) with `done` of `total` packages, and an optional `bytes` (`{ done, total }`), which counts only while `phase` is `download` (it's ignored while linking and when its total is 0), summed from pnpm's `Downloading <package>: <done>/<total>` lines; send it even when pnpm counts a single package, since a few large tarballs are most of an install's time.
 `ready()` explicitly reports agent readiness, independently of agent activity.
 Emit `items` whenever rows or readiness change.
 Use `queued` for a row that waits for another component before it starts; it reads "Waiting" and doesn't count as updating.
