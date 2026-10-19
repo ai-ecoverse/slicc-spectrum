@@ -292,6 +292,17 @@ export function readFile(file: Blob): Promise<string> {
 
 export const linger = 60_000;
 
+export const fade = css`
+  :host {
+    --composer-fade: 72px;
+  }
+  @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+    :host {
+      --composer-fade: 0px;
+    }
+  }
+`;
+
 export function release(attachments: readonly Attachment[]): void {
   for (const attachment of attachments)
     if (attachment.url?.startsWith('blob:')) URL.revokeObjectURL(attachment.url);
@@ -426,6 +437,7 @@ export class SliccComposer extends ThemedElement {
 
   static styles = [
     shared,
+    fade,
     css`
       :host {
         display: block;
@@ -440,7 +452,7 @@ export class SliccComposer extends ThemedElement {
       :host::before {
         content: '';
         position: absolute;
-        top: -72px;
+        top: calc(-1 * var(--composer-fade));
         left: 0;
         right: 0;
         bottom: 0;
@@ -449,12 +461,11 @@ export class SliccComposer extends ThemedElement {
         background: color-mix(in srgb, var(--swc-background-layer-1-color) 72%, transparent);
         backdrop-filter: blur(16px) saturate(1.4);
         -webkit-backdrop-filter: blur(16px) saturate(1.4);
-        mask-image: linear-gradient(to bottom, transparent, black 72px);
-        -webkit-mask-image: linear-gradient(to bottom, transparent, black 72px);
+        mask-image: linear-gradient(to bottom, transparent, black var(--composer-fade));
+        -webkit-mask-image: linear-gradient(to bottom, transparent, black var(--composer-fade));
       }
       @media (prefers-reduced-transparency: reduce) {
         :host::before {
-          top: 0;
           background: var(--swc-background-layer-1-color);
           backdrop-filter: none;
           -webkit-backdrop-filter: none;
@@ -464,7 +475,6 @@ export class SliccComposer extends ThemedElement {
       }
       @media (forced-colors: active) {
         :host::before {
-          top: 0;
           background: Canvas;
           backdrop-filter: none;
           -webkit-backdrop-filter: none;
