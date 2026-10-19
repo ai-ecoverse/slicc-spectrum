@@ -6,8 +6,8 @@ export interface AnsiStyle {
   italic: boolean;
   underline: boolean;
   inverse: boolean;
-  fg: string | null;
-  bg: string | null;
+  fg: number | string | null;
+  bg: number | string | null;
 }
 
 export interface AnsiRun {
@@ -34,37 +34,22 @@ const lightPalette = [
   'gray-800',
 ];
 
-const darkPalette = [
-  'var(--swc-gray-800)',
-  '#f44747',
-  '#6a9955',
-  '#d7ba7d',
-  '#569cd6',
-  '#c586c0',
-  '#4ec9b0',
-  '#d4d4d4',
-  'var(--swc-gray-700)',
-  '#f44747',
-  '#6a9955',
-  '#d7ba7d',
-  '#569cd6',
-  '#c586c0',
-  '#4ec9b0',
-  '#ffffff',
-];
-
-export const lightTerminalPalette = unsafeCSS(
+export const terminalPalette = unsafeCSS(
   lightPalette.map((token, n) => `--slicc-terminal-color-${n}: var(--swc-${token});`).join('\n')
 );
 
-export const ansiPalette = unsafeCSS(
-  lightPalette
-    .map(
-      (token, n) =>
-        `--slicc-terminal-color-${n}: light-dark(var(--swc-${token}), ${darkPalette[n]});`
-    )
-    .join('\n')
-);
+const tints = [
+  'gray-800',
+  'negative-subtle-background-color-default',
+  'positive-subtle-background-color-default',
+  'notice-subtle-background-color-default',
+  'informative-subtle-background-color-default',
+  'purple-subtle-background-color-default',
+  'cyan-subtle-background-color-default',
+  'gray-subtle-background-color-default',
+];
+
+const greys = new Set([0, 7, 8, 15]);
 
 const plain: AnsiStyle = {
   bold: false,
@@ -78,13 +63,9 @@ const plain: AnsiStyle = {
 
 const levels = [0, 95, 135, 175, 215, 255];
 
-function palette(n: number): string {
-  return `var(--slicc-terminal-color-${n})`;
-}
-
-function indexed(n: number): string | null {
+function indexed(n: number): number | string | null {
   if (!Number.isInteger(n) || n < 0 || n > 255) return null;
-  if (n < 16) return palette(n);
+  if (n < 16) return n;
   if (n >= 232) {
     const grey = 8 + (n - 232) * 10;
     return `rgb(${grey}, ${grey}, ${grey})`;
@@ -100,7 +81,9 @@ function channel(value: number): number | null {
   return Number.isInteger(value) && value >= 0 && value <= 255 ? value : null;
 }
 
-function extended(params: number[], at: number): { color: string | null; used: number } {
+type Color = number | string | null;
+
+function extended(params: number[], at: number): { color: Color; used: number } {
   const mode = params[at + 1];
   if (mode === 5) return { color: indexed(params[at + 2] as number), used: 2 };
   if (mode === 2) {
@@ -141,10 +124,10 @@ function simple(code: number): Partial<AnsiStyle> | null {
   const flag = flags[code];
   if (flag) return flag;
   const range = ranges.find(([start]) => code >= start && code < start + 8);
-  return range ? { [range[1]]: palette(code - range[0] + range[2]) } : null;
+  return range ? { [range[1]]: code - range[0] + range[2] } : null;
 }
 
-function wide(groups: number[][], i: number): { color: string | null; used: number } {
+function wide(groups: number[][], i: number): { color: Color; used: number } {
   const group = groups[i] as number[];
   if (group.length === 1)
     return extended(
@@ -164,7 +147,7 @@ function sgr(style: AnsiStyle, body: string): AnsiStyle {
     if (code === 38 || code === 48) {
       const { color, used } = wide(groups, i);
       i += used;
-      if (color) next[code === 38 ? 'fg' : 'bg'] = color;
+      if (color !== null) next[code === 38 ? 'fg' : 'bg'] = color;
     } else if (code === 4 && group.length > 1) next.underline = group[1] !== 0;
     else Object.assign(next, simple(code));
   }
@@ -244,19 +227,29 @@ export function stripAnsi(text: string): string {
     .join('');
 }
 
+function swatch(color: Color): string | null {
+  if (color === null) return null;
+  return typeof color === 'number' ? `var(--slicc-terminal-color-${color})` : color;
+}
+
+function paint(style: AnsiStyle): [string | null, string | null] {
+  let { fg, bg } = style;
+  if (style.inverse && fg === null && bg === null) {
+    return ['var(--swc-background-layer-1-color)', 'var(--swc-neutral-content-color-default)'];
+  }
+  if (style.inverse) [fg, bg] = [bg, fg];
+  if (style.dim && typeof fg === 'number' && fg >= 8) fg -= 8;
+  if (style.dim && fg === null && bg === null) {
+    return ['var(--swc-neutral-subdued-content-color-default)', null];
+  }
+  if (typeof bg !== 'number') return [swatch(fg), bg];
+  const tint = `var(--swc-${bg === 8 ? 'gray-700' : tints[bg % 8]})`;
+  if (bg % 8 === 0) return ['var(--swc-gray-25)', tint];
+  return [typeof fg === 'number' && greys.has(fg) ? null : swatch(fg), tint];
+}
+
 function inline(style: AnsiStyle): string {
-  let [fg, bg] = [style.fg, style.bg];
-  if (style.inverse) {
-    [fg, bg] = [
-      bg ?? 'var(--swc-background-layer-1-color)',
-      fg ?? 'var(--swc-neutral-content-color-default)',
-    ];
-  }
-  if (style.dim) {
-    fg = fg
-      ? `color-mix(in srgb, ${fg} 70%, var(--swc-background-layer-1-color))`
-      : 'var(--swc-neutral-subdued-content-color-default)';
-  }
+  const [fg, bg] = paint(style);
   return [
     fg ? `color: ${fg}` : '',
     bg ? `background: ${bg}` : '',

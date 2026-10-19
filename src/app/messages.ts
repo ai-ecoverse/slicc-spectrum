@@ -56,7 +56,7 @@ import type {
   ToolStatus,
   UserMessage,
 } from '../model/types.ts';
-import { ansi, ansiPalette } from './ansi.ts';
+import { ansi, terminalPalette } from './ansi.ts';
 import { markdown } from './markdown.ts';
 import { signInText } from './sign-in.ts';
 import type { ViewSet } from './view-state.ts';
@@ -1553,7 +1553,7 @@ export const messageCss = css`
     overflow-wrap: anywhere;
   }
   .call > pre.output {
-    ${ansiPalette}
+    ${terminalPalette}
   }
   .notes {
     display: flex;

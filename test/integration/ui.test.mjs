@@ -2037,11 +2037,11 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
       characterData: true,
     });
   });
-  await page.evaluate(() => window.model.agent.send('cone-sliccy', 'Print it in colours'));
+  await page.evaluate(() => window.model.agent.send('cone-sliccy', 'Print it in colors'));
   await page.until(
     () => window.chatPart('swc-conversation-turn.assistant:last-of-type')?.dataset.status === 'done'
   );
-  const plain = 'bold cyan red bold green\nharbor ready\n';
+  const plain = 'bold cyan red bold green\nharbor ready\n FAIL   PASS \n';
   const outputs = await page.evaluate(() => window.outputs);
   assert.deepEqual(outputs, ['bold ', 'bold cyan red bold green\n', plain]);
   await page.evaluate(() =>
@@ -2063,6 +2063,20 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
         node.remove();
         return color;
       };
+      const luminance = (color) => {
+        const [r, g, b] = color
+          .match(/[\d.]+/g)
+          .slice(0, 3)
+          .map((value) => {
+            const v = Number(value) / 255;
+            return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+          });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const ratio = (a, b) => {
+        const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+        return (high + 0.05) / (low + 0.05);
+      };
       const span = (text) =>
         [...pre.querySelectorAll('span')].find((node) => node.textContent === text);
       const selection = getSelection();
@@ -2079,7 +2093,21 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
         body: getComputedStyle(pre).color,
         green: getComputedStyle(span('bold green')).fontWeight,
         ready: getComputedStyle(span('ready')).color,
+        badges: [' FAIL ', ' PASS '].map((text) => {
+          const node = getComputedStyle(span(text));
+          return ratio(node.color, node.backgroundColor);
+        }),
+        failBg: getComputedStyle(span(' FAIL ')).backgroundColor,
+        negative: (() => {
+          const node = document.createElement('i');
+          node.style.background = 'var(--swc-negative-subtle-background-color-default)';
+          pre.append(node);
+          const color = getComputedStyle(node).backgroundColor;
+          node.remove();
+          return color;
+        })(),
         fullGreen: probe('var(--slicc-terminal-color-2)'),
+        brightGreen: probe('var(--slicc-terminal-color-10)'),
         raw: window.model.agent
           .messages('cone-sliccy')
           .at(-1)
@@ -2088,29 +2116,39 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
     });
   const light = await read();
   assert.equal(light.text, plain);
-  assert.equal(light.copied, plain.trimEnd());
+  assert.equal(light.copied, plain.slice(0, -1));
   assert.ok(!light.text.includes('[0m'));
   assert.equal(light.bold, '700');
   assert.equal(light.green, '700');
   assert.equal(light.cyan, light.palette);
   assert.equal(light.cyan, light.token);
   assert.notEqual(light.cyan, light.body);
-  assert.notEqual(light.ready, light.fullGreen);
-  assert.notEqual(light.ready, light.body);
+  assert.equal(light.ready, light.fullGreen);
+  assert.notEqual(light.ready, light.brightGreen);
+  assert.equal(light.failBg, light.negative);
+  assert.ok(
+    light.badges.every((value) => value >= 4.5),
+    JSON.stringify(light.badges)
+  );
   assert.match(light.raw, /^\x1b\[1mbold\x1b\[0m \x1b\[36mcyan/);
-  assert.match(light.raw, /\x1b\]0;done\x07\x1b\[2;32mready\x1b\[0m\n$/);
+  assert.match(light.raw, /\x1b\]0;done\x07\x1b\[2;92mready\x1b\[0m\n\x1b\[1;41;97m FAIL /);
   await page.evaluate(() => window.model.settings.update({ color: 'dark' }));
-  await page.until(() => {
+  await page.until((cyan) => {
     const span = [
       ...window
         .chatPart('swc-conversation-turn.assistant:last-of-type details.tool[open] pre.output')
         .querySelectorAll('span'),
     ].find((node) => node.textContent === 'cyan');
-    return getComputedStyle(span).color === 'rgb(78, 201, 176)';
-  });
+    return getComputedStyle(span).color !== cyan;
+  }, light.cyan);
   const dark = await read();
   assert.equal(dark.cyan, dark.palette);
-  assert.equal(dark.copied, plain.trimEnd());
+  assert.equal(dark.copied, plain.slice(0, -1));
+  assert.equal(dark.failBg, dark.negative);
+  assert.ok(
+    dark.badges.every((value) => value >= 4.5),
+    JSON.stringify(dark.badges)
+  );
   assert.deepEqual(page.errors, []);
 });
 

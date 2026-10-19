@@ -4,7 +4,7 @@ import type { TerminalBackend, TerminalSession, TerminalSink, TerminalSize } fro
 import type { IDockviewPanel, SliccDock } from '../components/dock.ts';
 import type { SliccModel, TerminalInfo, TerminalPort } from '../model/types.ts';
 import type { SliccTerminal } from '../slicc-terminal.ts';
-import { lightTerminalPalette } from './ansi.ts';
+import { terminalPalette } from './ansi.ts';
 import { ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import { agentName } from './files.ts';
@@ -237,7 +237,7 @@ export class SliccTerminalPanel extends ThemedElement {
         --slicc-terminal-font-size: var(--swc-font-size-100);
       }
       :host([color='light']) {
-        ${lightTerminalPalette}
+        ${terminalPalette}
       }
     `,
   ];
