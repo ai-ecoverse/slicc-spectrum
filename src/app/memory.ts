@@ -8,7 +8,7 @@ import type { Memory, MemoryScope, MemoryTag, SliccModel } from '../model/types.
 import { ModelElement, shared } from './base.ts';
 import { confirm } from './confirm.ts';
 import { panelCss } from './files.ts';
-import { markdown } from './markdown.ts';
+import { markdown, markdownCss } from './markdown.ts';
 import { search, searchCss } from './search.ts';
 import { ViewScroll, ViewState } from './view-state.ts';
 
@@ -108,6 +108,7 @@ export class SliccMemory extends ModelElement {
     shared,
     panelCss,
     searchCss,
+    markdownCss,
     css`
       :host {
         container-type: inline-size;
@@ -337,7 +338,7 @@ export class SliccMemory extends ModelElement {
       </button>
       ${
         open
-          ? html`<div class="body">${markdown(memory.body)}</div>
+          ? html`<div class="body markdown">${markdown(memory.body)}</div>
             <div class="actions">
               <swc-action-button size="s" quiet data-action="edit" @click=${() => (this.editing = memory.id)}>
                 <swc-icon-edit slot="icon"></swc-icon-edit>Edit
