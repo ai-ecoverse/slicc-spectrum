@@ -236,6 +236,14 @@ export class SliccFreezerImport extends LitElement {
       swc-progress-bar {
         inline-size: 100%;
       }
+      @media (forced-colors: active) {
+        dialog {
+          outline: solid;
+        }
+        sp-alert-dialog {
+          border: none;
+        }
+      }
       .sr {
         position: absolute;
         width: 1px;

@@ -553,3 +553,27 @@ test('freezer import: nothing overflows sideways at 420 px', async (t) => {
   assert.deepEqual(await page.evaluate(fits), ok);
   await shot(page, 'import-done-420');
 });
+
+test('freezer import: in forced colours the dialog doesn’t scroll sideways', async (t) => {
+  const page = await open(t, { import: 'fail' });
+  await page.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'forced-colors', value: 'active' }],
+  });
+  t.after(() => page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {}));
+  await page.evaluate(() => window.pick());
+  await page.until(() => window.stage() === 'failed');
+  await page.until(() => window.inImport('dialog').getAnimations().length === 0);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const alert = window.inImport('sp-alert-dialog');
+      const nodes = [window.inImport('dialog'), alert, ...alert.shadowRoot.querySelectorAll('*')];
+      return {
+        forced: matchMedia('(forced-colors: active)').matches,
+        wide: nodes
+          .filter((node) => node.scrollWidth > node.clientWidth && node.clientWidth > 0)
+          .map((node) => node.localName + (node.className ? `.${node.className}` : '')),
+      };
+    }),
+    { forced: true, wide: [] }
+  );
+});
