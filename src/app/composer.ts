@@ -546,6 +546,15 @@ export class SliccComposer extends ThemedElement {
         min-inline-size: 0;
         display: grid;
       }
+      .queued > swc-icon-alert-triangle {
+        flex: none;
+        --swc-icon-color: var(--swc-notice-visual-color);
+      }
+      .queued [data-lost] swc-icon-alert-triangle {
+        vertical-align: middle;
+        margin-inline-end: var(--swc-spacing-50);
+        --swc-icon-color: var(--swc-notice-visual-color);
+      }
       .queued [data-lost] {
         overflow: hidden;
         text-overflow: ellipsis;
@@ -1547,16 +1556,16 @@ export class SliccComposer extends ThemedElement {
       ${waiting.map((message) => {
         const lost = message.lost ?? [];
         const empty = !(message.text || message.attachments.length);
-        return html`<li class="queued" data-id=${message.id} data-mode="starting">
-          <swc-icon-clock size="s" aria-hidden="true"></swc-icon-clock>
+        return html`<li class="queued" data-id=${message.id} data-mode="starting" ?data-unsent=${empty}>
+          ${empty ? html`<swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>` : html`<swc-icon-clock size="s" aria-hidden="true"></swc-icon-clock>`}
           ${message.text ? nothing : html`<swc-icon-file size="xs" aria-hidden="true"></swc-icon-file>`}
           <span class="body">
             <span class="text"><span class="sr">Queued: </span>${message.text || names(message.attachments) || names(lost)}</span>
-            ${lost.length ? html`<span class="lost" data-lost><span class="sr">, </span>Not kept after reload${message.text ? `: ${names(lost)}` : ''}</span>` : nothing}
+            ${lost.length ? html`<span class="lost" data-lost><swc-icon-alert-triangle size="xs" aria-hidden="true"></swc-icon-alert-triangle><span class="sr">, </span>Not kept after reload${message.text ? `: ${names(lost)}` : ''}</span>` : nothing}
           </span>
           ${message.text && message.attachments.length ? html`<span class="next" data-files><swc-icon-file size="xs" aria-hidden="true"></swc-icon-file><span class="sr">, </span>${message.attachments.length === 1 ? '1 file' : `${message.attachments.length} files`}</span>` : nothing}
-          <span class="next">${empty ? 'Attach it again' : 'Sent when the agent starts'}</span>
-          <swc-close-button size="s" data-action="unqueue" accessible-label="Remove from queue" @click=${() => this.#unwait(message.id)}></swc-close-button>
+          <span class="next">${empty ? 'Not sent. Attach the files again.' : 'Sent when the agent starts'}</span>
+          <swc-close-button size="s" data-action="unqueue" accessible-label=${empty ? 'Dismiss' : 'Remove from queue'} @click=${() => this.#unwait(message.id)}></swc-close-button>
         </li>`;
       })}
     </ul>`;

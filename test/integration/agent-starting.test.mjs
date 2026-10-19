@@ -357,7 +357,7 @@ async function reopen(page) {
   await page.until(() => !!window.composer()?.querySelector('swc-prompt-field'));
 }
 
-test('a file-only row reloads as Attach it again, is not sent on arrival, and goes when dropped', async (t) => {
+test('a file-only row reloads as not sent, is not sent on arrival, and goes when dropped', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {
     const composer = window.chat().querySelector('slicc-composer');
@@ -381,7 +381,7 @@ test('a file-only row reloads as Attach it again, is not sent on arrival, and go
       ]
     );
   };
-  assert.deepEqual(await page.evaluate(row), ['Queued: radar.png', 'Attach it again']);
+  assert.deepEqual(await page.evaluate(row), ['Queued: radar.png', 'Not sent. Attach the files again.']);
   await page.evaluate(() => {
     window.model.agent.arrive();
     return true;
