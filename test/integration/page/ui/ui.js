@@ -96,6 +96,8 @@ window.model = model;
 window.app = app;
 await app.updateComplete;
 window.ready = true;
+if (params.has('replay'))
+  void model.agent.send(params.get('replay') || 'cone-sliccy', 'Replay the long tool calls');
 
 window.$ = (...path) => {
   let node = document;
@@ -246,3 +248,44 @@ window.screen = () =>
   [...(window.terminal()?.shadowRoot.querySelectorAll('slicc-terminal .term-row') ?? [])]
     .map((row) => row.textContent.trimEnd())
     .join('\n');
+
+window.watchShifts = () => {
+  const moves = [];
+  let tops = new Map();
+  const frame = (now) => {
+    const log = window.chatPart('.log');
+    const next = new Map(
+      [...(log?.querySelectorAll('swc-conversation-turn') ?? [])].map((turn) => [
+        turn,
+        turn.getBoundingClientRect().top,
+      ])
+    );
+    let down = null;
+    let up = 0;
+    for (const [turn, top] of next) {
+      const before = tops.get(turn);
+      if (before === undefined) continue;
+      const delta = top - before;
+      if (delta > 0.25 && (!down || top > down.top)) down = { delta, turn, top };
+      up = Math.min(up, delta);
+    }
+    if (down || up < -0.25)
+      moves.push({
+        at: Math.round(now),
+        down: down ? Math.round(down.delta * 10) / 10 : 0,
+        up: Math.round(up * 10) / 10,
+        turn: down ? (down.turn.dataset.id ?? down.turn.className) : null,
+        label: down ? down.turn.textContent.replace(/\s+/g, ' ').trim().slice(0, 80) : null,
+      });
+    tops = next;
+    window.shiftFrame = requestAnimationFrame(frame);
+  };
+  window.shifts = moves;
+  window.shiftFrame = requestAnimationFrame(frame);
+  return true;
+};
+
+window.stopShifts = () => {
+  cancelAnimationFrame(window.shiftFrame);
+  return window.shifts;
+};

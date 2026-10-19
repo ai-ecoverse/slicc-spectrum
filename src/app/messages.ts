@@ -13,26 +13,12 @@ import '@adobe/spectrum-wc/patterns/ai-toolkit/user-message/swc-user-message.js'
 import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
-import '@adobe/spectrum-wc-icons/swc-icon-cancel.js';
-import '@adobe/spectrum-wc-icons/swc-icon-checkmark.js';
-import '@adobe/spectrum-wc-icons/swc-icon-clock-pending.js';
-import '@adobe/spectrum-wc-icons/swc-icon-code.js';
-import '@adobe/spectrum-wc-icons/swc-icon-data.js';
-import '@adobe/spectrum-wc-icons/swc-icon-edit.js';
 import '@adobe/spectrum-wc-icons/swc-icon-file.js';
 import '@adobe/spectrum-wc-icons/swc-icon-file-text.js';
-import '@adobe/spectrum-wc-icons/swc-icon-globe-grid.js';
 import '@adobe/spectrum-wc-icons/swc-icon-info-circle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-lock.js';
-import '@adobe/spectrum-wc-icons/swc-icon-plugin.js';
-import '@adobe/spectrum-wc-icons/swc-icon-search.js';
-import '@adobe/spectrum-wc-icons/swc-icon-tools.js';
-import '@adobe/spectrum-wc-icons/swc-icon-user-group.js';
-import '@adobe/spectrum-wc-icons/swc-icon-web-page.js';
 import '@spectrum-web-components/help-text/sp-help-text.js';
-import { createFileTreeIconResolver, getBuiltInSpriteSheet } from '@pierre/trees';
-import { css, html, nothing, svg, type TemplateResult } from 'lit';
-import { unsafeSVG } from 'lit/directives/unsafe-svg.js';
+import { css, html, nothing, type TemplateResult } from 'lit';
 import type {
   ActionCard,
   AssistantMessage,
@@ -76,6 +62,7 @@ export interface Handlers {
   agentId?: string;
   seat?: string;
   licks?: ViewSet;
+  runs?: ViewSet;
 }
 
 export interface Login {
@@ -93,7 +80,14 @@ export interface Owner {
   stamp?: boolean;
 }
 
-export type RunContext = Pick<Handlers, 'color' | 'model' | 'owners' | 'agentId'>;
+export type RunContext = Pick<Handlers, 'color' | 'model' | 'owners' | 'agentId' | 'runs'>;
+
+export interface Joined {
+  calls: ToolCall[];
+  live: boolean;
+}
+
+export const alone: Joined = { calls: [], live: false };
 
 export const lickLabels: Record<LickChannel, [string, string]> = {
   webhook: ['Webhook', 'informative'],
@@ -115,13 +109,6 @@ export const lickLabels: Record<LickChannel, [string, string]> = {
   'sudo-request': ['Permission', 'notice'],
 };
 
-const toolStates: Record<ToolStatus, string> = {
-  running: 'Running',
-  done: 'Done',
-  error: 'Failed',
-  cancelled: 'Cancelled',
-};
-
 const stepStates: Record<ToolStatus, string> = {
   running: 'active',
   done: 'complete',
@@ -133,7 +120,6 @@ interface ToolKind {
   id: string;
   one: string;
   many: string;
-  icon: TemplateResult;
 }
 
 const toolKinds: Array<ToolKind & { match: RegExp }> = [
@@ -142,63 +128,54 @@ const toolKinds: Array<ToolKind & { match: RegExp }> = [
     match: /^mcp__/,
     one: 'MCP tool',
     many: 'MCP tools',
-    icon: html`<swc-icon-plugin size="s" aria-hidden="true"></swc-icon-plugin>`,
   },
   {
     id: 'command',
     match: /^(bash|shell|javascript)$/,
     one: 'command',
     many: 'commands',
-    icon: html`<swc-icon-code size="s" aria-hidden="true"></swc-icon-code>`,
   },
   {
     id: 'edit',
     match: /^(edit|edit_file|write_file)$/,
     one: 'edit',
     many: 'edits',
-    icon: html`<swc-icon-edit size="s" aria-hidden="true"></swc-icon-edit>`,
   },
   {
     id: 'read',
     match: /^(read|read_file|ls)$/,
     one: 'read',
     many: 'reads',
-    icon: html`<swc-icon-file-text size="s" aria-hidden="true"></swc-icon-file-text>`,
   },
   {
     id: 'search',
     match: /^(grep|glob|find|web_search)$/,
     one: 'search',
     many: 'searches',
-    icon: html`<swc-icon-search size="s" aria-hidden="true"></swc-icon-search>`,
   },
   {
     id: 'fetch',
     match: /^web_fetch$/,
     one: 'fetch',
     many: 'fetches',
-    icon: html`<swc-icon-globe-grid size="s" aria-hidden="true"></swc-icon-globe-grid>`,
   },
   {
     id: 'browser',
     match: /^browser/,
     one: 'browser step',
     many: 'browser steps',
-    icon: html`<swc-icon-web-page size="s" aria-hidden="true"></swc-icon-web-page>`,
   },
   {
     id: 'agent',
     match: /scoop|^send_message$/,
     one: 'agent step',
     many: 'agent steps',
-    icon: html`<swc-icon-user-group size="s" aria-hidden="true"></swc-icon-user-group>`,
   },
   {
     id: 'memory',
     match: /memory/,
     one: 'memory update',
     many: 'memory updates',
-    icon: html`<swc-icon-data size="s" aria-hidden="true"></swc-icon-data>`,
   },
 ];
 
@@ -206,14 +183,13 @@ const otherKind: ToolKind = {
   id: 'other',
   one: 'other tool',
   many: 'other tools',
-  icon: html`<swc-icon-tools size="s" aria-hidden="true"></swc-icon-tools>`,
 };
 
 export function toolKind(name: string): ToolKind {
   return toolKinds.find((kind) => kind.match.test(name)) ?? otherKind;
 }
 
-export function toolSummary(calls: ToolCall[]): string {
+export function toolSummary(calls: readonly ToolCall[]): string {
   const counts = new Map<ToolKind, number>();
   for (const call of calls) {
     const kind = toolKind(call.name);
@@ -223,102 +199,6 @@ export function toolSummary(calls: ToolCall[]): string {
     .sort((a, b) => b[1] - a[1])
     .map(([kind, count]) => `${count} ${count === 1 ? kind.one : kind.many}`)
     .join(', ');
-}
-
-export function statusLabel(status: ToolStatus): string {
-  return toolStates[status];
-}
-
-export function overall(calls: readonly ToolCall[]): [ToolStatus, string] {
-  const count = (status: ToolStatus) => calls.filter((call) => call.status === status).length;
-  const [running, failed, cancelled] = [count('running'), count('error'), count('cancelled')];
-  const status: ToolStatus = running
-    ? 'running'
-    : failed
-      ? 'error'
-      : cancelled
-        ? 'cancelled'
-        : 'done';
-  const label = [
-    running ? 'Running' : '',
-    failed ? `${failed} failed` : '',
-    cancelled ? `${cancelled} cancelled` : '',
-  ]
-    .filter(Boolean)
-    .join(', ');
-  return [status, label || 'Done'];
-}
-
-const glyphs: Record<ToolStatus, TemplateResult> = {
-  running: html`<swc-icon-clock-pending size="xs"></swc-icon-clock-pending>`,
-  done: html`<swc-icon-checkmark size="xs"></swc-icon-checkmark>`,
-  error: html`<swc-icon-alert-diamond size="xs"></swc-icon-alert-diamond>`,
-  cancelled: html`<swc-icon-cancel size="xs"></swc-icon-cancel>`,
-};
-
-type Target = { type: 'site'; host: string } | { type: 'file'; path: string };
-
-const urlPattern = /\bhttps?:\/\/([a-z0-9.-]+)/i;
-const hostPattern =
-  /(?:^|[\s'"@=(])((?:[a-z0-9-]+\.)+(?:com|org|net|io|dev|app|ai|co|cloud|page|site|example|test|edu|gov)|localhost)(?=$|[\s'"/:)])/i;
-const filePattern =
-  /(?:^|[\s'"=(<>])((?:[\w.~-]*\/)*[\w-][\w.-]*\.[a-z][a-z0-9]{0,7})(?=$|[\s'"):,;<>|])/i;
-
-export function target(command: string): Target | null {
-  const site = urlPattern.exec(command)?.[1] ?? hostPattern.exec(command)?.[1];
-  if (site) return { type: 'site', host: site.toLowerCase() };
-  const path = filePattern.exec(command)?.[1];
-  return path ? { type: 'file', path } : null;
-}
-
-const fileIcons = createFileTreeIconResolver({ set: 'complete', colored: false });
-let sprite: Map<string, [string, string]> | undefined;
-
-function fileIcon(path: string): TemplateResult {
-  sprite ??= new Map(
-    [
-      ...getBuiltInSpriteSheet('complete').matchAll(
-        /<symbol id="([^"]+)" viewBox="([^"]+)">([\s\S]*?)<\/symbol>/g
-      ),
-    ].map((match) => [match[1], [match[2], match[3]]])
-  );
-  const [box, body] = sprite.get(fileIcons.resolveIcon('file-tree-icon-file', path).name) as [
-    string,
-    string,
-  ];
-  return html`<svg class="file-icon" viewBox=${box} aria-hidden="true">${svg`${unsafeSVG(body)}`}</svg>`;
-}
-
-function favicon(name: string, model: SliccModel | null): string | undefined {
-  return model?.browser
-    .list()
-    .find((tab) => tab.favicon?.startsWith('data:') && sameHost(tab.url, name))?.favicon;
-}
-
-function sameHost(url: string, name: string): boolean {
-  try {
-    return new URL(url).hostname === name;
-  } catch {
-    return false;
-  }
-}
-
-const globe = html`<swc-icon-globe-grid size="s" aria-hidden="true"></swc-icon-globe-grid>`;
-
-export function chip(call: ToolCall, model: SliccModel | null = null): TemplateResult {
-  const kind = toolKind(call.name);
-  const found = kind.id === 'command' ? target(call.input) : null;
-  let face = kind.icon;
-  let source = kind.id;
-  if (found?.type === 'site') {
-    const src = favicon(found.host, model);
-    face = src ? html`<img class="favicon" src=${src} alt="" />` : globe;
-    source = src ? 'favicon' : 'site';
-  } else if (found?.type === 'file') {
-    face = fileIcon(found.path);
-    source = 'file';
-  }
-  return html`<span class="chip" data-state=${call.status} data-icon=${source} data-target=${found ? (found.type === 'site' ? found.host : found.path) : nothing} aria-hidden="true"><span class="face">${face}</span><span class="glyph">${glyphs[call.status]}</span></span>`;
 }
 
 const actionLabels: Record<ErrorAction, string> = {
@@ -467,49 +347,84 @@ function notes(list: readonly ToolNote[]): TemplateResult {
   )}</ul>`;
 }
 
-export interface CardOptions {
-  open?: boolean;
-  run?: boolean;
-  owner?: Owner;
-  model?: SliccModel | null;
-  toggle?: (event: Event) => void;
+function described(call: ToolCall, owner: Owner | undefined): boolean {
+  return !!(
+    call.diff ||
+    call.input ||
+    call.output ||
+    call.notes?.length ||
+    call.image ||
+    call.meta ||
+    owner
+  );
 }
 
-export function tool(
-  call: ToolCall,
-  color: 'light' | 'dark' = 'light',
-  options: CardOptions = {}
-): TemplateResult {
+export function step(call: ToolCall, context: RunContext): TemplateResult {
   const kind = toolKind(call.name);
-  const label = `${call.title}, ${statusLabel(call.status)}`;
-  const content = html`<div class="call">
-      ${body(call, color)}
+  const owner = context.owners?.get(call.id);
+  const runs = context.runs;
+  const content = described(call, owner)
+    ? html`<div slot="description" class="call">
+      ${body(call, context.color)}
       ${call.output ? html`<pre class="output">${call.output}</pre>` : nothing}
       ${call.notes?.length ? notes(call.notes) : nothing}
       ${call.image ? html`<img class="shot" src=${call.image} alt=${call.title} />` : nothing}
       ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
-      ${options.owner ? html`<span class=${options.owner.stamp === false ? 'sr' : 'ran'}>Ran at ${when(options.owner.at)}</span>` : nothing}
-    </div>`;
-  if (!options.run) {
-    return html`<div class="tool" id=${`run-${call.id}`} role="region" aria-label=${label} data-id=${options.owner?.id ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id}>${content}</div>`;
-  }
-  return html`<details class="tool run" id=${`run-${call.id}`} data-id=${options.owner?.id ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id} ?open=${!!options.open} @toggle=${options.toggle ?? nothing}>
-    <summary class="strip" aria-label=${label}>
-      <span class="icons"><span class="run">${chip(call, options.model ?? null)}</span></span>
-      <span class="label">${call.title}</span>
-    </summary>
-    ${content}
-  </details>`;
+      ${owner ? html`<span class=${owner.stamp === false ? 'sr' : 'ran'}>Ran at ${when(owner.at)}</span>` : nothing}
+    </div>`
+    : nothing;
+  return html`<swc-response-status-step id=${`run-${call.id}`} status=${stepStates[call.status]} data-id=${owner?.id ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id} ?open=${runs?.has(call.id) ?? false} @swc-response-status-step-open-change=${(event: CustomEvent<{ open: boolean }>) => runs?.toggle(call.id, event.detail.open)}><span slot="label">${headline(call)}</span>${content}</swc-response-status-step>`;
 }
 
-export const clusterSize = 3;
+function headline(call: ToolCall): string {
+  return `${call.name} ${call.title}`.trim();
+}
 
-function runs(calls: ToolCall[], handlers: RunContext): TemplateResult[] {
-  const groups = calls.length >= clusterSize ? [calls] : calls.map((call) => [call]);
-  return groups.map(
-    (group) =>
-      html`<slicc-tool-runs .calls=${group} .agent=${handlers.agentId ?? ''} .model=${handlers.model} .owners=${handlers.owners ?? null} .color=${handlers.color}></slicc-tool-runs>`
-  );
+type Phase = 'active' | 'complete' | 'stopped';
+
+function phase(
+  status: AssistantMessage['status'],
+  calls: readonly ToolCall[],
+  live: boolean,
+  said = false
+): Phase | null {
+  if (status === 'stopped') return 'stopped';
+  if (!calls.length) return status === 'streaming' && !said ? 'active' : null;
+  if (status === 'streaming' || live || calls.some((call) => call.status === 'running'))
+    return 'active';
+  return 'complete';
+}
+
+function loader(calls: readonly ToolCall[]): string {
+  const running = calls.findLast((call) => call.status === 'running');
+  return running ? (toolLoaders[toolKind(running.name).id] ?? 'hourglass') : 'aiLogo';
+}
+
+function settled(calls: readonly ToolCall[]): string {
+  return calls.length > 1 ? toolSummary(calls) : headline(calls[0] as ToolCall);
+}
+
+function caption(state: Phase, calls: readonly ToolCall[]): string {
+  if (state === 'stopped') return '';
+  if (state === 'complete') return settled(calls);
+  const current = calls.findLast((call) => call.status === 'running') ?? calls.at(-1);
+  return current ? headline(current) : 'Generating response';
+}
+
+function status(
+  state: Phase | null,
+  key: string,
+  calls: ToolCall[],
+  context: RunContext
+): TemplateResult | typeof nothing {
+  if (!state) return nothing;
+  const text = caption(state, calls);
+  const runs = context.runs;
+  const open = `status:${calls[0]?.id ?? key}`;
+  return html`<swc-response-status slot="status" status=${state} loader=${loader(calls)} accessible-label="Tool calls" data-id=${key} ?open=${runs?.has(open) ?? false} @swc-response-status-toggle=${(event: CustomEvent<{ open: boolean }>) => runs?.toggle(open, event.detail.open)}>
+    <slicc-status-label slot="label" .text=${text} .state=${state} .calls=${calls} .agent=${context.agentId ?? ''} .model=${context.model}></slicc-status-label>
+    ${calls.map((call) => step(call, context))}
+  </swc-response-status>`;
 }
 
 function media(items: Media[]): TemplateResult {
@@ -666,25 +581,11 @@ function silent(entry: MessagePart, showThinking: boolean): boolean {
 export function parts(
   entries: MessagePart[],
   handlers: Handlers,
-  showThinking: boolean,
-  extra: ToolCall[] = []
-): Array<TemplateResult | typeof nothing> {
-  const out: Array<TemplateResult | typeof nothing> = [];
-  let run: ToolCall[] = [];
-  const flush = () => {
-    out.push(...runs(run, handlers));
-    run = [];
-  };
-  for (const entry of entries) {
-    if (entry.type === 'tool') run.push(entry.tool);
-    else if (!silent(entry, showThinking)) {
-      flush();
-      out.push(part(entry, handlers));
-    }
-  }
-  run.push(...extra);
-  flush();
-  return out;
+  showThinking: boolean
+): TemplateResult[] {
+  return entries.flatMap((entry) =>
+    entry.type === 'tool' || silent(entry, showThinking) ? [] : [part(entry, handlers)]
+  );
 }
 
 export function toolTail(message: Message, showThinking: boolean): boolean {
@@ -695,9 +596,11 @@ export function toolTail(message: Message, showThinking: boolean): boolean {
 
 export function toolOnly(message: Message, showThinking: boolean): ToolCall[] | null {
   if (message.role === 'tool') return [message.tool];
-  if (message.role !== 'assistant' || message.status !== 'done') return null;
+  if (message.role !== 'assistant' || (message.status !== 'done' && message.status !== 'streaming'))
+    return null;
   const shown = message.parts.filter((entry) => !silent(entry, showThinking));
-  if (!shown.length || shown.some((entry) => entry.type !== 'tool')) return null;
+  if (shown.some((entry) => entry.type !== 'tool')) return null;
+  if (!shown.length && message.status === 'done') return null;
   return shown.map((entry) => (entry as Extract<MessagePart, { type: 'tool' }>).tool);
 }
 
@@ -762,15 +665,6 @@ const toolLoaders: Record<string, string> = {
   browser: 'eye',
 };
 
-function statusLoader(message: AssistantMessage): string {
-  if (message.parts.at(-1)?.type !== 'tool') return 'aiLogo';
-  const running = message.parts.findLast(
-    (part) => part.type === 'tool' && part.tool.status === 'running'
-  );
-  if (running?.type !== 'tool') return 'aiLogo';
-  return toolLoaders[toolKind(running.tool.name).id] ?? 'hourglass';
-}
-
 const people = new Set(['follower', 'guest']);
 
 function byline(
@@ -783,17 +677,6 @@ function byline(
     ${who ? html`<span class="who">${who}</span>` : nothing}${stamp ? when(message.createdAt) : nothing}
     ${message.origin === 'agent' ? html`<swc-badge class="origin" size="s" variant="indigo">Agent</swc-badge>` : nothing}
   </div>`;
-}
-
-function status(message: AssistantMessage): TemplateResult | typeof nothing {
-  if (message.status === 'stopped') {
-    return html`<swc-response-status slot="status" status="stopped"></swc-response-status>`;
-  }
-  if (message.status !== 'streaming') return nothing;
-  const calls = message.parts.flatMap((entry) => (entry.type === 'tool' ? [entry.tool] : []));
-  return html`<swc-response-status slot="status" status="active" loader=${statusLoader(message)}>
-    ${calls.map((call) => html`<swc-response-status-step status=${stepStates[call.status]}><span slot="label">${call.name} ${call.title}</span></swc-response-status-step>`)}
-  </swc-response-status>`;
 }
 
 function sources(entries: MessagePart[]): TemplateResult | typeof nothing {
@@ -825,9 +708,13 @@ export function assistant(
   handlers: Handlers,
   showThinking: boolean,
   suggestion: string | null = null,
-  extra: ToolCall[] = [],
+  joined: Joined = alone,
   stamp = true
 ): TemplateResult {
+  const calls = [
+    ...message.parts.flatMap((entry) => (entry.type === 'tool' ? [entry.tool] : [])),
+    ...joined.calls,
+  ];
   const usage = message.usage
     ? `${message.usage.input.toLocaleString('en')} in · ${message.usage.output.toLocaleString('en')} out · $${message.usage.cost.toFixed(2)}`
     : '';
@@ -844,7 +731,17 @@ export function assistant(
           : nothing
       }${stamp ? nothing : unseen(message.createdAt)}
       <swc-system-message>
-        ${status(message)}
+        ${status(
+          phase(
+            message.status,
+            calls,
+            joined.live,
+            message.parts.some((entry) => entry.type !== 'tool' && !silent(entry, showThinking))
+          ),
+          message.id,
+          calls,
+          handlers
+        )}
         ${parts(
           message.parts,
           {
@@ -854,8 +751,7 @@ export function assistant(
             cancelLogin: (account) => handlers.cancelLogin?.(account, message.id),
             dropping: () => handlers.dropping(message.id),
           },
-          showThinking,
-          extra
+          showThinking
         )}
         ${sources(message.parts)}
         ${suggestions(suggestion, handlers)}
@@ -867,15 +763,15 @@ export function assistant(
 export function toolMessage(
   message: ToolMessage,
   context: RunContext & Partial<Pick<Handlers, 'suggest'>> = { color: 'light', model: null },
-  extra: ToolCall[] = [],
+  joined: Joined = alone,
   suggestion: string | null = null,
   stamp = true
 ): TemplateResult {
   const owners = new Map(context.owners);
   owners.set(message.tool.id, { at: message.createdAt, stamp });
-  const shown = runs([message.tool, ...extra], { ...context, owners });
+  const calls = [message.tool, ...joined.calls];
   return html`<swc-conversation-turn type="system" class="message tool-message" accessible-label=${`Tool ${message.tool.name}`} data-id=${message.id}>
-    ${suggestion && context.suggest ? html`<swc-system-message>${shown}${suggestions(suggestion, context as Pick<Handlers, 'suggest'>)}</swc-system-message>` : shown}
+    <swc-system-message>${status(phase('done', calls, joined.live), message.id, calls, { ...context, owners })}${suggestion && context.suggest ? suggestions(suggestion, context as Pick<Handlers, 'suggest'>) : nothing}</swc-system-message>
   </swc-conversation-turn>`;
 }
 
@@ -1140,9 +1036,6 @@ export const messageCss = css`
   swc-system-message > :not([slot]) + :not([slot]) {
     margin-block-start: var(--swc-spacing-100);
   }
-  swc-system-message > .tool + .tool {
-    margin-block-start: 0;
-  }
   .text > :is(p, ul, ol, blockquote, .heading),
   .thinking,
   .plan,
@@ -1315,10 +1208,14 @@ export const messageCss = css`
     border-inline-start: var(--swc-border-width-200) solid var(--swc-gray-300);
     padding-inline-start: var(--swc-spacing-200);
   }
-  details.tool,
-  .runs {
-    font-size: var(--swc-font-size-100);
-    border-radius: var(--swc-corner-radius-100);
+  swc-response-status {
+    --_swc-response-status-label-line-size: var(--swc-line-height-font-size-100);
+    --swc-response-status-label-max-lines: 1;
+    --swc-response-status-step-detail-max-block-size: none;
+    line-height: 0;
+  }
+  swc-response-status-step {
+    line-height: var(--swc-line-height-200);
   }
   .lick {
     border: var(--swc-border-width-100) solid var(--swc-gray-200);
@@ -1342,10 +1239,6 @@ export const messageCss = css`
   summary::-webkit-details-marker {
     display: none;
   }
-  details.tool > summary:hover,
-  .runs button:hover {
-    background: var(--swc-gray-100);
-  }
   summary:focus-visible,
   .diff-head:focus-visible,
   input.input:focus-visible {
@@ -1360,173 +1253,12 @@ export const messageCss = css`
   details[open] > summary .chevron {
     transform: rotate(90deg);
   }
-  .lick .text,
-  .runs .label {
+  .lick .text {
+    flex: 1;
     min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .lick .text {
-    flex: 1;
-  }
-  swc-system-message > slicc-tool-runs + slicc-tool-runs {
-    margin-block-start: var(--swc-spacing-75);
-  }
-  slicc-tool-runs {
-    display: block;
-    container-type: inline-size;
-  }
-  .runs {
-    --run-size: var(--swc-spacing-500);
-    --run-gap: var(--swc-spacing-25);
-    --run-icons: calc(5 * var(--run-size) + 4 * var(--run-gap));
-    display: flex;
-    flex-direction: column;
-    min-inline-size: 0;
-    margin-inline: var(--swc-spacing-700);
-  }
-  .strip {
-    display: grid;
-    grid-template-columns: var(--run-icons) minmax(0, 1fr);
-    align-items: center;
-    gap: var(--swc-spacing-50) var(--swc-spacing-200);
-    min-block-size: 0;
-    padding: var(--swc-spacing-50);
-    border: var(--swc-border-width-100) solid var(--swc-gray-200);
-    border-radius: var(--swc-corner-radius-500);
-    background: var(--swc-background-layer-1-color);
-    box-sizing: border-box;
-  }
-  details.run[open] > summary {
-    margin-block-end: var(--swc-spacing-75);
-  }
-  .icons {
-    display: flex;
-    gap: var(--run-gap);
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .icons > .run {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    inline-size: var(--run-size);
-    block-size: var(--run-size);
-  }
-  .runs .label {
-    block-size: var(--run-size);
-    padding-inline: var(--swc-spacing-100);
-    line-height: var(--run-size);
-    text-align: end;
-    font-weight: var(--swc-medium-font-weight);
-  }
-  .runs button {
-    margin: 0;
-    padding: 0;
-    border: 0;
-    border-radius: var(--swc-corner-radius-100);
-    background: none;
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
-  }
-  .runs button:focus-visible {
-    outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
-    outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
-  }
-  button.run[aria-expanded='true'] {
-    background: var(--swc-accent-subtle-background-color-default);
-  }
-  @container (inline-size < 480px) {
-    .runs {
-      margin-inline: var(--swc-spacing-300);
-    }
-    .strip {
-      grid-template-columns: minmax(0, 1fr);
-    }
-    .icons {
-      inline-size: calc(
-        round(down, 100% + var(--run-gap), var(--run-size) + var(--run-gap)) - var(--run-gap)
-      );
-    }
-  }
-  .cards {
-    margin-block-start: var(--swc-spacing-75);
-  }
-  .cards[hidden],
-  .cards > [hidden] {
-    display: none;
-  }
-  .chip {
-    position: relative;
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    inline-size: var(--swc-spacing-400);
-    block-size: var(--swc-spacing-400);
-    border-radius: var(--swc-corner-radius-100);
-    background: var(--swc-neutral-subtle-background-color-default);
-    color: var(--swc-neutral-subdued-content-color-default);
-  }
-  .chip .face {
-    display: inline-flex;
-  }
-  .chip :is(.file-icon, .favicon) {
-    inline-size: var(--swc-workflow-icon-small);
-    block-size: var(--swc-workflow-icon-small);
-    fill: currentColor;
-  }
-  .chip[data-state='done'] .favicon,
-  .chip[data-state='cancelled'] .favicon {
-    filter: grayscale(1);
-    opacity: 0.6;
-  }
-  .chip .glyph {
-    position: absolute;
-    inset-inline-end: calc(-1 * var(--swc-spacing-75));
-    inset-block-end: calc(-1 * var(--swc-spacing-75));
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: var(--swc-spacing-300);
-    block-size: var(--swc-spacing-300);
-    border-radius: var(--swc-corner-radius-1000);
-    background: var(--swc-background-layer-2-color);
-  }
-  .chip .glyph > * {
-    --swc-icon-inline-size: calc(var(--swc-spacing-100) + var(--swc-spacing-50));
-    --swc-icon-block-size: calc(var(--swc-spacing-100) + var(--swc-spacing-50));
-  }
-  .chip[data-state='running'] {
-    background: var(--swc-accent-subtle-background-color-default);
-    color: var(--swc-neutral-content-color-default);
-  }
-  .chip[data-state='running'] .face {
-    animation: run-pulse var(--swc-animation-duration-2000) var(--swc-animation-ease-in-out) infinite;
-  }
-  .chip[data-state='error'] {
-    background: var(--swc-negative-subtle-background-color-default);
-    color: var(--swc-negative-content-color-default);
-  }
-  .chip[data-state='error'] .glyph {
-    color: var(--swc-negative-content-color-default);
-  }
-  @keyframes run-pulse {
-    50% {
-      opacity: 0.35;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .chip[data-state='running'] .face {
-      animation: none;
-    }
-    .chip[data-state='running'] {
-      outline: var(--swc-border-width-100) dashed var(--swc-neutral-content-color-default);
-      outline-offset: calc(-1 * var(--swc-border-width-100));
-    }
   }
   .call {
     display: flex;

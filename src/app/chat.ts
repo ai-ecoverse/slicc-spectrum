@@ -14,7 +14,6 @@ import type {
   Seat,
   SliccModel,
   Thinking,
-  ToolCall,
   UserMessage,
 } from '../model/types.ts';
 import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
@@ -22,10 +21,12 @@ import type { SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
 import { following, onWatch, watchOnly } from './follow.ts';
 import {
+  alone,
   assistant,
   day,
   flatPile,
   type Handlers,
+  type Joined,
   type Login,
   lick,
   messageCss,
@@ -45,6 +46,40 @@ import {
 import { settleModels } from './models.ts';
 import { connecting } from './tabs.ts';
 import { ViewSet } from './view-state.ts';
+
+function joins(
+  messages: readonly Message[],
+  showThinking: boolean,
+  stamped: ReadonlySet<string>,
+  busy: boolean
+): { joined: Map<string, Joined>; owners: Map<string, Owner>; into: Map<string, string> } {
+  const joined = new Map<string, Joined>();
+  const owners = new Map<string, Owner>();
+  const into = new Map<string, string>();
+  let anchor: Message | null = null;
+  for (const message of messages) {
+    const calls = toolOnly(message, showThinking);
+    if (anchor && calls && day(message.createdAt) === day(anchor.createdAt)) {
+      const before = joined.get(anchor.id);
+      joined.set(anchor.id, {
+        calls: [...(before?.calls ?? []), ...calls],
+        live: !!before?.live || (message.role === 'assistant' && message.status === 'streaming'),
+      });
+      for (const call of calls)
+        owners.set(call.id, {
+          id: message.id,
+          at: message.createdAt,
+          stamp: stamped.has(message.id),
+        });
+      into.set(message.id, anchor.id);
+      continue;
+    }
+    anchor = toolTail(message, showThinking) ? message : null;
+  }
+  if (anchor && busy)
+    joined.set(anchor.id, { calls: joined.get(anchor.id)?.calls ?? [], live: true });
+  return { joined, owners, into };
+}
 
 const navigation = new Set([
   'ArrowUp',
@@ -301,8 +336,10 @@ export class SliccChat extends ThemedElement {
   ];
 
   #licks = new ViewSet(this, 'chat:licks');
+  #runs = new ViewSet(this, 'chat:runs');
   #handlers: Handlers = {
     licks: this.#licks,
+    runs: this.#runs,
     color: 'light',
     model: null,
     readOnly: false,
@@ -703,7 +740,7 @@ export class SliccChat extends ThemedElement {
     agent: Agent,
     suggestion: string | null,
     changed: boolean,
-    extra: ToolCall[],
+    joined: Joined,
     owners: ReadonlyMap<string, Owner>,
     stamp: boolean,
     pile: Pile
@@ -723,14 +760,14 @@ export class SliccChat extends ThemedElement {
           handlers,
           model.settings.get().showThinking,
           suggestion,
-          extra,
+          joined,
           stamp
         );
       }
       case 'user':
         return user(message, stamp, model.seat);
       case 'tool':
-        return toolMessage(message, handlers, extra, suggestion, stamp);
+        return toolMessage(message, handlers, joined, suggestion, stamp);
       case 'system':
         return system(message, this.#handlers);
       default:
@@ -753,26 +790,14 @@ export class SliccChat extends ThemedElement {
         ? model.agent.suggestion(agent.id)
         : null;
     const showThinking = model.settings.get().showThinking;
-    const extra = new Map<string, ToolCall[]>();
-    const owners = new Map<string, Owner>();
-    const into = new Map<string, string>();
     const stamped = stamps(messages);
     const piles = pendingPiles(messages);
-    let anchor: Message | null = null;
-    for (const message of messages) {
-      const calls = toolOnly(message, showThinking);
-      if (anchor && calls && day(message.createdAt) === day(anchor.createdAt)) {
-        extra.set(anchor.id, [...(extra.get(anchor.id) ?? []), ...calls]);
-        owners.set(calls[0].id, {
-          id: message.id,
-          at: message.createdAt,
-          stamp: stamped.has(message.id),
-        });
-        into.set(message.id, anchor.id);
-        continue;
-      }
-      anchor = toolTail(message, showThinking) ? message : null;
-    }
+    const { joined, owners, into } = joins(
+      messages,
+      showThinking,
+      stamped,
+      model.agent.busy(agent.id)
+    );
     const target = last && (into.get(last.id) ?? last.id);
     for (const message of messages) {
       if (into.has(message.id)) continue;
@@ -796,7 +821,7 @@ export class SliccChat extends ThemedElement {
           agent,
           message.id === target ? suggestion : null,
           changed,
-          extra.get(message.id) ?? [],
+          joined.get(message.id) ?? alone,
           owners,
           stamped.has(message.id),
           piles.get(message.id) ?? flatPile

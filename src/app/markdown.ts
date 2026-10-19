@@ -121,7 +121,9 @@ function block(lines: string[], i: number): [Block | null, number] {
   if (/^---\s*$/.test(line)) return [{ type: 'rule' }, i + 1];
   if (line.trim().startsWith('|')) {
     const end = run(lines, i, (l) => l.trim().startsWith('|'));
-    const rows = lines.slice(i, end).filter((l) => !/^\s*\|[\s|:-]+\|\s*$/.test(l));
+    const rows = lines
+      .slice(i, end)
+      .filter((l, at) => !(at === 1 ? /^\s*\|[\s|:-]*$/ : /^\s*\|[\s|:-]+\|\s*$/).test(l));
     return [{ type: 'table', rows: rows.map(cells) }, end];
   }
   if (/^>\s?/.test(line)) {

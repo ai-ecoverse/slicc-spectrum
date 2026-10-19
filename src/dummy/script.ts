@@ -7,6 +7,7 @@ export interface Effects {
 }
 
 export type Step =
+  | { type: 'turn' }
   | { type: 'part'; part: MessagePart }
   | { type: 'thinking'; text: string }
   | { type: 'text'; text: string }
@@ -18,6 +19,7 @@ export type Step =
       output: string;
       paths: string[];
       ticks: number;
+      streamed?: boolean;
       effect?: (effects: Effects) => Promise<unknown> | unknown;
     };
 
@@ -215,12 +217,166 @@ function investigate(): Step[] {
   ];
 }
 
+const repro = '/tmp/harbor-repro';
+const cities = ['Porto', 'Lisbon', 'Faro', 'Braga', 'Coimbra', 'Evora', 'Aveiro', 'Leiria'];
+
+function heredoc(name: string, body: unknown): string {
+  return `cat > ${name} <<'EOF' ${JSON.stringify(body)} EOF`;
+}
+
+function fixtures(dir: string): string {
+  const days = cities.map((city, index) => ({
+    city,
+    unit: index % 2 ? 'F' : 'C',
+    highs: [18 + index, 21 + index, 19 + index],
+    cached: index % 3 === 0,
+  }));
+  return [
+    `mkdir -p ${dir} && cd ${dir}`,
+    heredoc('forecast-all.json', { schema: 2, provider: 'upstream', days }),
+    heredoc('forecast-celsius.json', { schema: 2, days: days.filter((day) => day.unit === 'C') }),
+    heredoc('cache-keys.json', { keys: cities.map((city) => ({ key: city, ttl: 3600 })) }),
+    `jq -n --slurpfile all forecast-all.json --slurpfile keys cache-keys.json '$all[0].days | map({city, unit, key: ($keys[0].keys[] | select(.key == .city) | .key)})' > expected.json && wc -c *.json`,
+  ].join(' && ');
+}
+
+function entries(): string {
+  return cities
+    .map(
+      (city) =>
+        `export const ${city.toLowerCase()} = { city: '${city}', key: cacheKey('${city}', 'C'), ttl: 3600 };`
+    )
+    .join('\n');
+}
+
+function check(dir: string, city: string): string {
+  return `cd ${dir} && jq -n --slurpfile all forecast-all.json '$all[0].days[] | select(.city == "${city}") | {city, unit, cached, high: (.highs | max)}' && grep -c "cacheKey('${city}'" ${repro}/cache-keys.ts`;
+}
+
+export const replayLabel = 'Rebuild the cache-key fixtures for every city';
+
+function replay(): Step[] {
+  const round = `${repro}/round2`;
+  return [
+    {
+      type: 'thinking',
+      text: 'The user wants long tool calls to reproduce a layout problem. Keep everything in a scratch folder so nothing real changes. First write a module with one cache entry per city, then a long command that writes fixtures and checks them with jq. After that, a long edit, a short check and a summary. Then a second round of separate calls, each waiting on the one before.',
+    },
+    {
+      type: 'text',
+      text: `Sure. I’ll keep everything in \`${repro}\` so nothing real changes. The fixtures cover the cache key bug from the forecast worker, which gives long, realistic arguments.`,
+    },
+    {
+      type: 'tool',
+      name: 'write_file',
+      title: `${repro}/cache-keys.ts`,
+      input: entries(),
+      output: `Wrote ${repro}/cache-keys.ts`,
+      paths: [`${repro}/cache-keys.ts`],
+      ticks: 30,
+    },
+    {
+      type: 'tool',
+      name: 'bash',
+      title: fixtures(`${repro}/fixtures`),
+      input: fixtures(`${repro}/fixtures`),
+      output:
+        '  412 cache-keys.json\n 1288 forecast-all.json\n  655 forecast-celsius.json\n  731 expected.json',
+      paths: [],
+      ticks: 20,
+      streamed: true,
+    },
+    { type: 'turn' },
+    {
+      type: 'text',
+      text: 'Now a long edit: the cache key gets the unit, and every city entry follows.',
+    },
+    {
+      type: 'tool',
+      name: 'edit_file',
+      title: `${repro}/cache-keys.ts`,
+      input: entries().replaceAll("'C')", 'unit)'),
+      output: 'Replaced 8 blocks',
+      paths: [`${repro}/cache-keys.ts`],
+      ticks: 25,
+    },
+    { type: 'turn' },
+    {
+      type: 'tool',
+      name: 'bash',
+      title: `cd ${repro} && wc -lc cache-keys.ts fixtures/*.json && grep -c "cacheKey(" cache-keys.ts`,
+      input: `cd ${repro} && wc -lc cache-keys.ts fixtures/*.json && grep -c "cacheKey(" cache-keys.ts`,
+      output: '  8  611 cache-keys.ts\n  1 1288 fixtures/forecast-all.json\n8',
+      paths: [],
+      ticks: 15,
+      streamed: true,
+    },
+    { type: 'turn' },
+    {
+      type: 'thinking',
+      text: 'All four calls worked. Summarize them in a table, then say how to clean up.',
+    },
+    {
+      type: 'text',
+      text: `That was a thinking pass and four tool calls with long arguments. Everything is in \`${repro}\`.\n\n| Step | Tool | Argument |\n| --- | --- | --- |\n| 1 | write | a module with one cache entry per city |\n| 2 | bash | one long command with three heredocs and a jq check |\n| 3 | edit | the cache key gets the unit |\n| 4 | bash | a short check of sizes and keys |\n\nWhen you’re done, \`rm -r ${repro}\` removes everything.`,
+    },
+    { type: 'turn' },
+    {
+      type: 'text',
+      text: `Round two: more calls, each one waiting on the last, all in \`${round}\`.`,
+    },
+    {
+      type: 'tool',
+      name: 'bash',
+      title: fixtures(`${round}/fixtures`),
+      input: fixtures(`${round}/fixtures`),
+      output: '  412 cache-keys.json\n 1288 forecast-all.json',
+      paths: [],
+      ticks: 15,
+      streamed: true,
+    },
+    ...cities.slice(0, 3).flatMap((city): Step[] => [
+      { type: 'turn' },
+      {
+        type: 'tool',
+        name: 'bash',
+        title: check(`${round}/fixtures`, city),
+        input: check(`${round}/fixtures`, city),
+        output: `{ "city": "${city}", "unit": "C", "cached": true, "high": 23 }\n1`,
+        paths: [],
+        ticks: 12,
+        streamed: true,
+      },
+    ]),
+    { type: 'turn' },
+    {
+      type: 'tool',
+      name: 'write_file',
+      title: `${round}/NOTES.md`,
+      input: `# Round two\n\n${cities.map((city) => `- ${city}: key includes the unit`).join('\n')}`,
+      output: `Wrote ${round}/NOTES.md`,
+      paths: [`${round}/NOTES.md`],
+      ticks: 12,
+    },
+    { type: 'turn' },
+    {
+      type: 'thinking',
+      text: 'Round two is done. Short summary.',
+    },
+    {
+      type: 'text',
+      text: `Round two is done: five calls, each one waiting on the last. The notes are in \`${round}/NOTES.md\`.`,
+    },
+  ];
+}
+
 const labels: Record<string, string> = {
   'Read the error log': 'Find why Celsius requests get Fahrenheit',
   'Search for the cache expiry': 'Find and fix the stale cache entry',
   'Count the routes': 'Walk through every kind of tool',
   'Ask the API for Lisbon': 'Compare the docs with the live API',
   'Switch the page to Celsius': 'Move the forecast docs to Celsius, then build and test the site',
+  [fixtures(`${repro}/round2/fixtures`)]: replayLabel,
 };
 
 export function label(title: string): string | null {
@@ -306,6 +462,7 @@ export function script(
   const suggestion = suggestions.find(([pattern]) => pattern.test(text))?.[1] ?? 'Run the tests';
   if (attachments.length > 0) return { steps: look(attachments), suggestion };
   if (/\bforbidden\b/.test(text)) return { steps: filtered(), suggestion };
+  if (/\breplay\b/.test(text)) return { steps: replay(), suggestion };
   if (/\b(ask|choose|decide)\b/.test(text)) return { steps: ask(), suggestion };
   if (/\b(debug|investigate)\b/.test(text)) return { steps: investigate(), suggestion };
   if (/\b(search|grep)\b/.test(text)) return { steps: search(), suggestion };

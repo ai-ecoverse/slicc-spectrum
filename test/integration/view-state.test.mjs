@@ -221,15 +221,20 @@ const panels = [
     name: 'an open tool run in the chat',
     id: 'chat:cone-kitchen',
     before: () => window.model.agent.select('cone-kitchen'),
-    ready: '[data-action=open-run][data-target=k-r7]',
+    ready: '#run-k-r7',
     act: () => {
-      window.part('chat:cone-kitchen', '[data-action=open-run][data-target=k-r7]').click();
+      const step = window.part('chat:cone-kitchen', '#run-k-r7');
+      step
+        .closest('swc-response-status')
+        .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
+        .click();
+      step.shadowRoot.querySelector('.swc-ResponseStatusStep-toggle').click();
       return true;
     },
-    held: () =>
-      window
-        .part('chat:cone-kitchen', '[data-action=open-run][data-target=k-r7]')
-        ?.getAttribute('aria-expanded') === 'true',
+    held: () => {
+      const step = window.part('chat:cone-kitchen', '#run-k-r7');
+      return step?.open === true && step.closest('swc-response-status').open === true;
+    },
   },
   {
     name: 'an expanded address in Browser',
