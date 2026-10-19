@@ -304,14 +304,14 @@ export class SliccMemory extends ModelElement {
         -webkit-line-clamp: 2;
         overflow: hidden;
       }
-      .body > :first-child {
+      .body.markdown :is(p, ul, ol, .table, pre, blockquote) {
+        margin-block: var(--swc-spacing-100);
+      }
+      .body.markdown > :first-child {
         margin-block-start: 0;
       }
-      .body > :last-child {
+      .body.markdown > :last-child {
         margin-block-end: 0;
-      }
-      .body p {
-        margin: 0 0 var(--swc-spacing-75);
       }
       .actions {
         display: flex;
