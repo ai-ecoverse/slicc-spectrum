@@ -887,3 +887,78 @@ test('hostile release notes render as text and https links only, load no image a
   assert.deepEqual(seen.images, []);
   assert.deepEqual(page.errors, []);
 });
+
+test('package rows link their release or npm page, show what’s new after the commands, and keep it open across layouts', async (t) => {
+  const page = await chrome.page(t);
+  await page.goto('/ui/?updates=restart&packages=user&color=light&delay=20');
+  await page.until(() => window.ready && window.app.dock.api.panels.length > 0);
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await page.evaluate(() => {
+    window.inUpdates = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-updates', selector);
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() => Boolean(window.inUpdates('li[data-id=uv] [data-action=whats-new]')));
+  const rows = await page.evaluate(() => {
+    const link = (selector) => {
+      const node = window.inUpdates(selector);
+      return node && [node.textContent, node.getAttribute('aria-label'), node.href, node.target];
+    };
+    const uv = window.inUpdates('li[data-id=uv]');
+    const children = [...uv.children];
+    return {
+      biome: link('li[data-id=biome] .meta a[data-action=npm-page]'),
+      python: link('li[data-id=python] .meta a[data-action=release-notes]'),
+      uvLink: Boolean(uv.querySelector('.meta a')),
+      order:
+        children.indexOf(uv.querySelector(':scope > .commands')) <
+        children.indexOf(uv.querySelector(':scope > details[data-releases]')),
+      versions: [...uv.querySelectorAll('.release')].map((release) => release.dataset.version),
+      pins: [...window.inUpdates('section[data-section=user-packages]').querySelectorAll('a')]
+        .length,
+      focused: (() => {
+        const updates = window.$('slicc-app', 'slicc-dock', 'slicc-updates');
+        updates.focus();
+        return updates.shadowRoot.activeElement?.dataset.action ?? null;
+      })(),
+    };
+  });
+  assert.deepEqual(rows.biome, [
+    'npm page',
+    'npm page for Biome 2.2.4',
+    'https://www.npmjs.com/package/@harbor/biome-wasm/v/2.2.4',
+    '_blank',
+  ]);
+  assert.deepEqual(rows.python, [
+    'Release notes',
+    'Python 3.13.1 release notes',
+    'https://github.com/harbor-demo/python-wasm/releases/tag/v3.13.1',
+    '_blank',
+  ]);
+  assert.equal(rows.uvLink, false);
+  assert.equal(rows.order, true);
+  assert.deepEqual(rows.versions, ['0.9.2', '0.9.0']);
+  assert.equal(rows.pins, 0);
+  assert.equal(rows.focused, 'reload');
+  await page.evaluate(() => {
+    window.inUpdates('li[data-id=uv] [data-action=whats-new]').click();
+    return true;
+  });
+  await page.until(() => window.inUpdates('li[data-id=uv] details[data-releases]').open);
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 420,
+    height: 860,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await page.until(() => window.app.screen === 'phone');
+  await page.evaluate(() => {
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() => {
+    const details = window.inUpdates('li[data-id=uv] details[data-releases]');
+    return details?.open === true && details.getBoundingClientRect().right <= innerWidth;
+  });
+  assert.deepEqual(page.errors, []);
+});

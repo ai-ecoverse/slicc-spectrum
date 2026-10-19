@@ -121,19 +121,35 @@ const packageBusy = (item: PackageItem): boolean =>
   packageRunning.has(item.state) || item.progress !== null;
 
 const parts = (version: string): [string, string | null] => {
-  const [core, ...pre] = version.replace(/^v/, '').split('+')[0].split('-');
-  return [core, pre.length ? pre.join('-') : null];
+  const main = version.replace(/^v/, '').split('+')[0];
+  const dash = main.indexOf('-');
+  return dash < 0 ? [main, null] : [main.slice(0, dash), main.slice(dash + 1)];
 };
 
-const natural = (a: string, b: string): number => a.localeCompare(b, 'en', { numeric: true });
+const identifier = (a: string, b: string): number => {
+  const numeric = [/^\d+$/.test(a), /^\d+$/.test(b)];
+  if (numeric[0] && numeric[1]) return Math.sign(Number(a) - Number(b));
+  if (numeric[0] !== numeric[1]) return numeric[0] ? -1 : 1;
+  return a < b ? -1 : a > b ? 1 : 0;
+};
+
+const dotted = (a: string, b: string): number => {
+  const left = a.split('.');
+  const right = b.split('.');
+  for (let index = 0; index < Math.min(left.length, right.length); index++) {
+    const order = identifier(left[index], right[index]);
+    if (order) return order;
+  }
+  return Math.sign(left.length - right.length);
+};
 
 const newer = (a: string, b: string): number => {
   const [coreA, preA] = parts(a);
   const [coreB, preB] = parts(b);
-  const core = natural(coreA, coreB);
+  const core = dotted(coreA, coreB);
   if (core || preA === preB) return core;
   if (preA === null) return 1;
-  return preB === null ? -1 : natural(preA, preB);
+  return preB === null ? -1 : dotted(preA, preB);
 };
 
 const certBlock = /<!--\s*cert-verify\s*-->([\s\S]*?)<!--\s*\/cert-verify\s*-->/g;
@@ -147,7 +163,11 @@ interface Notes {
   cut: boolean;
 }
 
+const noted = new WeakMap<UpdateRelease, Notes>();
+
 export function releaseNotes(release: UpdateRelease): Notes {
+  const known = noted.get(release);
+  if (known) return known;
   const text = release.notes ?? '';
   const certified = [...text.matchAll(certBlock)].some(([, inner]) =>
     /^certified\b/.test(inner.trim())
@@ -161,7 +181,9 @@ export function releaseNotes(release: UpdateRelease): Notes {
     .trim();
   const cut = full.length > notesLimit;
   const body = cut ? `${full.slice(0, notesLimit).trimEnd()}…` : full;
-  return { release, body, certified, cut };
+  const notes = { release, body, certified, cut };
+  noted.set(release, notes);
+  return notes;
 }
 
 export function whatsNew(
@@ -478,6 +500,9 @@ export class SliccUpdates extends ModelElement {
       .swc-Link {
         font-size: inherit;
       }
+      .title .swc-Link {
+        font-weight: inherit;
+      }
       .installed {
         display: flex;
         flex-wrap: wrap;
@@ -570,7 +595,7 @@ export class SliccUpdates extends ModelElement {
   }
 
   focus(): void {
-    this.focusOn('article swc-button', 'swc-button, summary', '.page');
+    this.focusOn('swc-button, summary', '.page');
   }
 
   async act(id: string, action: UpdateAction): Promise<void> {
@@ -714,7 +739,7 @@ export class SliccUpdates extends ModelElement {
         }) => html`<div class="release" data-version=${release.version}>
           <p class="title" role="heading" aria-level=${level}>${secure(release.url) ? html`<a class="swc-Link" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${release.version} release notes`}>${release.version}</a>` : release.version}${certified ? html`<swc-badge size="s" variant="positive" subtle data-certified>Certified</swc-badge>` : nothing}</p>
           ${body ? html`<div class="markdown">${markdown(body, { strict: true })}</div>` : nothing}
-          ${cut && secure(release.url) ? html`<p class="cut" data-cut><a class="swc-Link" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${release.version} full release notes`}>Read the full notes</a></p>` : nothing}
+          ${cut && secure(release.url) ? html`<p class="cut" data-cut><a class="swc-Link" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`Read the full notes for ${label} ${release.version}`}>Read the full notes</a></p>` : nothing}
         </div>`
       )}</div>
     </details>`;
@@ -731,7 +756,7 @@ export class SliccUpdates extends ModelElement {
       return html`<a class="swc-Link" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${version} release notes`}>Release notes</a>`;
     }
     if (!npm) return nothing;
-    return html`<a class="swc-Link" href=${`https://www.npmjs.com/package/${npm}/v/${version}`} target="_blank" rel="noopener noreferrer" data-action="npm-page" aria-label=${`${label} ${version} on npm`}>npm page</a>`;
+    return html`<a class="swc-Link" href=${`https://www.npmjs.com/package/${npm}/v/${version}`} target="_blank" rel="noopener noreferrer" data-action="npm-page" aria-label=${`npm page for ${label} ${version}`}>npm page</a>`;
   }
 
   #version(item: UpdateItem): TemplateResult {
@@ -757,7 +782,6 @@ export class SliccUpdates extends ModelElement {
         ${this.#version(item)}
         ${item.state === 'starting' ? nothing : this.#checked(item.checkedAt)}
       </div>
-      ${this.#whatsNew(`releases:item:${item.id}`, item.label, whatsNew(item.releases, item.from, item.to), 3)}
       ${this.#progress(item)}
       ${
         error
@@ -768,6 +792,7 @@ export class SliccUpdates extends ModelElement {
           : nothing
       }
       ${this.#actions(item)}
+      ${this.#whatsNew(`releases:item:${item.id}`, item.label, whatsNew(item.releases, item.from, item.to), 3)}
       ${item.log ? html`<details ?open=${this.#logs.has(`item:${item.id}`)} @toggle=${this.#logs.details(`item:${item.id}`)}><summary>${chevron}Install log</summary><pre>${item.log}</pre></details>` : nothing}
     </article>`;
   }
