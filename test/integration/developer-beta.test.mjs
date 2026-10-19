@@ -225,8 +225,22 @@ test('Install / Update shows every npm row state with its text and buttons', asy
         '6.13.5',
         '6.13.5 Bug Fixes tools: a tide table with a blank row no longer stops the import',
       ],
-      ['6.10.0', '6.10.0 Features chat: answers can quote a buoy reading with its time and place'],
+      ['6.10.0', '6.10.0'],
     ]
+  );
+  await page.evaluate(() =>
+    window.agentRow().querySelector('.release[data-version="6.10.0"] > summary').click()
+  );
+  await page.until(() => window.agentRow().querySelector('.release[data-version="6.10.0"]').open);
+  assert.equal(
+    await page.evaluate(() =>
+      window
+        .agentRow()
+        .querySelector('.release[data-version="6.10.0"]')
+        .innerText.replace(/\s+/g, ' ')
+        .trim()
+    ),
+    '6.10.0 Features chat: answers can quote a buoy reading with its time and place'
   );
   assert.equal(
     await page.evaluate(() =>
