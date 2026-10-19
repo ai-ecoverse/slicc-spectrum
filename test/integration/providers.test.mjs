@@ -595,6 +595,25 @@ test('a blocked provider stays listed but can’t be picked, and Set up opens Ge
     ),
     [['cloudflare', 'true', 'Needs the SLICC extension or CLI', true]]
   );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const color = (node) => getComputedStyle(node).color;
+      const option = (id, part) =>
+        color(window.picker().querySelector(`.option[data-provider=${id}] ${part}`));
+      const row = window.settingsPart('.notes [data-notice=cors-free-transport]');
+      return {
+        name:
+          option('cloudflare', '.name') !== option('groq', '.name') &&
+          option('cloudflare', '.name') !== option('anthropic', '.name'),
+        description: option('cloudflare', '.description') !== option('groq', '.description'),
+        hint: option('cloudflare', '[data-notice] span') === color(row.querySelector('span')),
+        setup:
+          option('cloudflare', '[data-action=setup-network]') ===
+          color(row.querySelector('[data-action=setup-network]')),
+      };
+    }),
+    { name: true, description: true, hint: true, setup: true }
+  );
   await page.evaluate(() => {
     window.picker().querySelector('.option[data-provider=cloudflare] .name').scrollIntoView();
     const box = window

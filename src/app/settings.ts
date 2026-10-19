@@ -367,6 +367,10 @@ export class SliccSettings extends ThemedElement {
       .option[aria-disabled='true'] .name {
         color: var(--swc-neutral-subdued-content-color-default);
       }
+      .option[data-blocked] .name,
+      .option[data-blocked] .description {
+        color: var(--swc-disabled-content-color);
+      }
       .option .tag {
         justify-self: end;
         color: var(--swc-neutral-subdued-content-color-default);
