@@ -77,7 +77,7 @@ test('chat markdown spaces loose lists, aligns table columns and keeps quote par
     window
       .post(
         'md-blocks',
-        'Setext\n===\n\n- one\n\n  more\n- [x] two\n\n| left | mid | right |\n| --- | :-: | --: |\n| a | b | c |\n\n> said\n>\n> twice\n\n###### deep'
+        'Setext\n===\n\n- one\n\n  more\n- [x] two\n\n| left | mid | right |\n| --- | :-: | --: |\n| a | b | c |\n\n> said\n>\n> twice\n\n1. step\n   - sub\n\n###### deep'
       )
       .then(() => true)
   );
@@ -95,6 +95,8 @@ test('chat markdown spaces loose lists, aligns table columns and keeps quote par
           (item) => item.querySelectorAll(':scope > p').length
         ),
         task: text.querySelector('li > p:first-child > .task')?.dataset.done,
+        nested:
+          Number.parseFloat(getComputedStyle(text.querySelector('ol ul')).marginBlockStart) > 0,
         bullet: getComputedStyle(text.querySelectorAll('li')[1]).listStyleType,
         align: [...text.querySelectorAll('th')].map((cell) => cell.dataset.align ?? null),
         textAlign: cells.map((cell) => getComputedStyle(cell).textAlign),
@@ -106,8 +108,9 @@ test('chat markdown spaces loose lists, aligns table columns and keeps quote par
         ['Setext', '3'],
         ['deep', '6'],
       ],
-      items: [2, 1],
+      items: [2, 1, 0, 0],
       task: 'true',
+      nested: true,
       bullet: 'none',
       align: [null, 'center', 'right'],
       textAlign: ['start', 'center', 'right'],
@@ -153,7 +156,7 @@ test('a streaming reply renders like the finished text and keeps the DOM of its 
   const page = await open(t);
   const result = await page.evaluate(async () => {
     const text =
-      '# Plan\n\nFirst **bold `code`** line\nwith a soft break.\n\n- one\n- two\n\n  loose\n\n| a | b |\n| - | -: |\n| 1 | 2 |\n\n```ts\nconst a = 1;\n```\n\n> quote\nlazy\n\nSetext\n---\n\n1. x\n2. y\n\nSee [the docs][d].\n\n[d]: https://example.com/docs\n\ndone';
+      '# Plan\n\nFirst **bold `code`** line\nwith a soft break.\n\nintro\n\n  - a\n\n      b\n\n\t- tabbed\n\n\t  more\n\n- one\n- two\n\n  loose\n\n| a | b |\n| - | -: |\n| 1 | 2 |\n\n```ts\nconst a = 1;\n```\n\n> quote\nlazy\n\nSetext\n---\n\n1. x\n2. y\n\nSee [the docs][d].\n\n[d]: https://example.com/docs\n\ndone';
     const clean = (element) => element.innerHTML.replace(/<!--[^>]*-->/g, '');
     const stream = await window.post('md-stream', '', 'streaming');
     const reference = await window.post('md-reference', '');
@@ -202,7 +205,7 @@ test('memory entries render the same markdown as the chat', async (t) => {
       scope: 'global',
       section: 'Tools',
       title: 'Fetching inside a tab',
-      body: 'Use **`curlwright`** for a fetch inside the tab.\n\n| tool | when |\n| --- | --: |\n| `curlwright` | logged in |',
+      body: 'Use **`curlwright`** for a fetch inside the tab.\n\n- Open the site first\n- Then fetch\n\n| tool | when |\n| --- | --: |\n| `curlwright` | logged in |',
       tag: null,
     });
     window.$('slicc-app', '.rail.left [data-surface=memory]').click();
@@ -236,12 +239,32 @@ test('memory entries render the same markdown as the chat', async (t) => {
         .$('slicc-app', 'slicc-dock')
         .content('memory')
         .shadowRoot.querySelector('[data-id=md-memory] .body');
+      const list = body.querySelector('ul');
+      const cells = [...body.querySelectorAll('td')].map((cell) => getComputedStyle(cell));
       return {
         code: body.querySelector('strong > code')?.textContent,
+        bullets: [
+          getComputedStyle(list).listStyleType,
+          getComputedStyle(list.querySelector('li')).display,
+        ],
+        borders: cells.map((cell) => [
+          cell.borderTopStyle,
+          Number.parseFloat(cell.borderTopWidth) > 0,
+        ]),
         align: [...body.querySelectorAll('td')].map((cell) => cell.dataset.align ?? null),
+        textAlign: cells.map((cell) => cell.textAlign),
       };
     }),
-    { code: 'curlwright', align: [null, 'right'] }
+    {
+      code: 'curlwright',
+      bullets: ['disc', 'list-item'],
+      borders: [
+        ['solid', true],
+        ['solid', true],
+      ],
+      align: [null, 'right'],
+      textAlign: ['start', 'right'],
+    }
   );
   assert.deepEqual(page.errors, []);
 });

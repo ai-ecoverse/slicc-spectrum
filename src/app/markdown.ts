@@ -1,4 +1,4 @@
-import { html, nothing, type TemplateResult } from 'lit';
+import { css, html, nothing, type TemplateResult } from 'lit';
 import type {
   AlignType,
   Definition,
@@ -70,7 +70,9 @@ function parse(text: string): Parsed {
   const parsed: Parsed = {
     text,
     blocks: [...base.blocks.slice(0, -1), ...tree.children],
-    tail: base.tail + (last ? last.position!.start.offset! : 0),
+    tail: last
+      ? text.lastIndexOf('\n', base.tail + last.position!.start.offset! - 1) + 1
+      : base.tail,
     definitions: collect(tree.children, new Map()),
   };
   cache.delete(base.text);
@@ -208,3 +210,124 @@ export function markdown(text: string): TemplateResult {
   const { blocks, definitions } = parse(text);
   return html`${blocks.map((node) => block(node, definitions))}`;
 }
+
+export const markdownCss = css`
+  .markdown :is(p, ul, ol, .table, pre, blockquote) {
+    margin: var(--swc-spacing-200) 0;
+  }
+  .markdown :is(ul, ol) {
+    display: block;
+    padding-inline-start: var(--swc-spacing-400);
+  }
+  .markdown ul {
+    list-style-type: disc;
+  }
+  .markdown ol {
+    list-style-type: decimal;
+  }
+  .markdown li ul {
+    list-style-type: circle;
+  }
+  .markdown li + li,
+  .markdown li > :is(ul, ol) {
+    margin-block-start: var(--swc-spacing-75);
+  }
+  .markdown li > :is(ul, ol) {
+    margin-block-end: 0;
+  }
+  .markdown .heading {
+    font-weight: 700;
+    line-height: var(--swc-line-height-100);
+    margin: var(--swc-spacing-400) 0 var(--swc-spacing-100);
+  }
+  .markdown .heading[aria-level='3'] {
+    font-size: var(--swc-font-size-400);
+  }
+  .markdown .heading[aria-level='4'] {
+    font-size: var(--swc-font-size-300);
+  }
+  .markdown .heading[aria-level='5'] {
+    font-size: var(--swc-font-size-200);
+  }
+  .markdown .heading[aria-level='6'] {
+    color: var(--swc-neutral-subdued-content-color-default);
+  }
+  .markdown > :first-child,
+  .markdown blockquote > :first-child,
+  .markdown li > p:first-child {
+    margin-block-start: 0;
+  }
+  .markdown > :last-child,
+  .markdown :is(blockquote, li) > :last-child {
+    margin-block-end: 0;
+  }
+  .markdown img {
+    max-inline-size: 100%;
+    border-radius: var(--swc-corner-radius-100);
+  }
+  .markdown blockquote {
+    border-inline-start: var(--swc-border-width-200) solid var(--swc-gray-300);
+    padding-inline-start: var(--swc-spacing-200);
+    color: var(--swc-neutral-subdued-content-color-default);
+  }
+  .markdown hr {
+    border: 0;
+    border-block-start: var(--swc-border-width-100) solid var(--swc-gray-200);
+  }
+  .markdown li:has(> .task, > p:first-child > .task:first-child) {
+    list-style: none;
+    margin-inline-start: calc(-1 * var(--swc-spacing-400));
+  }
+  .markdown .task {
+    color: var(--swc-neutral-subdued-content-color-default);
+  }
+  .markdown .task[data-done='true'] {
+    color: var(--swc-positive-color-1000);
+  }
+  .markdown :is(code, pre) {
+    font-family: var(--swc-code-font-family-stack);
+    font-size: var(--swc-font-size-100);
+  }
+  .markdown :not(pre) > code {
+    background: var(--swc-gray-100);
+    border-radius: var(--swc-corner-radius-75);
+    padding: 0 var(--swc-spacing-50);
+    overflow-wrap: anywhere;
+  }
+  .markdown pre {
+    background: var(--swc-background-layer-1-color);
+    border: var(--swc-border-width-100) solid var(--swc-gray-200);
+    border-radius: var(--swc-corner-radius-100);
+    padding: var(--swc-spacing-200) var(--swc-spacing-300);
+    line-height: var(--swc-line-height-200);
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .markdown .table {
+    overflow-x: auto;
+  }
+  .markdown table {
+    border-collapse: collapse;
+    font-size: var(--swc-font-size-100);
+  }
+  .markdown :is(th, td) {
+    border: var(--swc-border-width-100) solid var(--swc-gray-200);
+    padding: var(--swc-spacing-75) var(--swc-spacing-200);
+    text-align: start;
+  }
+  .markdown :is(th, td)[data-align='left'] {
+    text-align: left;
+  }
+  .markdown :is(th, td)[data-align='center'] {
+    text-align: center;
+  }
+  .markdown :is(th, td)[data-align='right'] {
+    text-align: right;
+  }
+  .markdown th {
+    background: var(--swc-background-layer-1-color);
+  }
+  .markdown a {
+    color: var(--swc-accent-content-color-default);
+  }
+`;

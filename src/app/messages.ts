@@ -622,7 +622,7 @@ function delegation(
 function part(entry: Exclude<MessagePart, { type: 'tool' }>, handlers: Handlers): TemplateResult {
   switch (entry.type) {
     case 'text':
-      return html`<div class="text">${markdown(entry.text)}</div>`;
+      return html`<div class="text markdown">${markdown(entry.text)}</div>`;
     case 'thinking':
       return html`<div class="thinking">${entry.text}</div>`;
     case 'media':
@@ -1208,69 +1208,8 @@ export const messageCss = css`
   .attachment[data-error] .size {
     color: var(--swc-negative-content-color-default);
   }
-  .text p,
-  .text ul,
-  .text ol,
-  .text .table,
-  .text pre,
-  .text blockquote {
-    margin: var(--swc-spacing-200) 0;
-  }
-  .text ul,
-  .text ol,
   .plan ol {
     padding-inline-start: var(--swc-spacing-400);
-  }
-  .text li + li,
-  .text li > :is(ul, ol) {
-    margin-block-start: var(--swc-spacing-75);
-  }
-  .text li > :is(ul, ol) {
-    margin-block-end: 0;
-  }
-  .text .heading {
-    font-weight: 700;
-    line-height: var(--swc-line-height-100);
-    margin: var(--swc-spacing-400) 0 var(--swc-spacing-100);
-  }
-  .text .heading[aria-level='3'] {
-    font-size: var(--swc-font-size-400);
-  }
-  .text .heading[aria-level='4'] {
-    font-size: var(--swc-font-size-300);
-  }
-  .text > :first-child {
-    margin-block-start: 0;
-  }
-  .text > :last-child,
-  .text :is(blockquote, li) > :last-child {
-    margin-block-end: 0;
-  }
-  .text :is(blockquote, li) > :first-child {
-    margin-block-start: 0;
-  }
-  .text img {
-    max-inline-size: 100%;
-    border-radius: var(--swc-corner-radius-100);
-  }
-  blockquote {
-    border-inline-start: var(--swc-border-width-200) solid var(--swc-gray-300);
-    padding-inline-start: var(--swc-spacing-200);
-    color: var(--swc-neutral-subdued-content-color-default);
-  }
-  hr {
-    border: 0;
-    border-block-start: var(--swc-border-width-100) solid var(--swc-gray-200);
-  }
-  li:has(> .task, > p:first-child > .task:first-child) {
-    list-style: none;
-    margin-inline-start: calc(-1 * var(--swc-spacing-400));
-  }
-  .task {
-    color: var(--swc-neutral-subdued-content-color-default);
-  }
-  .task[data-done='true'] {
-    color: var(--swc-positive-color-1000);
   }
   code,
   pre {
@@ -1291,28 +1230,6 @@ export const messageCss = css`
     line-height: var(--swc-line-height-200);
     overflow-x: auto;
     white-space: pre;
-  }
-  .table {
-    overflow-x: auto;
-  }
-  table {
-    border-collapse: collapse;
-    font-size: var(--swc-font-size-100);
-  }
-  th,
-  td {
-    border: var(--swc-border-width-100) solid var(--swc-gray-200);
-    padding: var(--swc-spacing-75) var(--swc-spacing-200);
-    text-align: start;
-  }
-  :is(th, td)[data-align='center'] {
-    text-align: center;
-  }
-  :is(th, td)[data-align='right'] {
-    text-align: right;
-  }
-  th {
-    background: var(--swc-background-layer-1-color);
   }
   a {
     color: var(--swc-accent-content-color-default);
