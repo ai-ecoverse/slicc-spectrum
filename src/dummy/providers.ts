@@ -81,6 +81,7 @@ const options: ProviderOption[] = [
         name: 'endpoint',
         label: 'Endpoint',
         required: true,
+        customBase: true,
         placeholder: 'https://harbor.openai.azure.example',
         help: 'The resource’s endpoint, from Keys and endpoint.',
       },

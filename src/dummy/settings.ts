@@ -138,8 +138,8 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
       );
     if ([secret, ...Object.values(fields ?? {})].some((value) => value?.startsWith('bad')))
       throw new Error(`${account?.provider} didn’t accept that key.`);
-    if (fields?.endpoint && !fields.endpoint.startsWith('https://'))
-      throw new Error('The endpoint must start with https://.');
+    if (fields?.endpoint?.includes('://') && !fields.endpoint.startsWith('https://'))
+      throw new Error('The endpoint must use https://.');
     const identity =
       account?.group === 'mcp'
         ? account.identity

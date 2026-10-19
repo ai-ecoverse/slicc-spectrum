@@ -247,7 +247,7 @@ test('a fields provider waits for its required fields, shows a rejection inline 
     window.settingsPart('dialog.picker input[data-account-field=endpoint]').focus();
     return true;
   });
-  await page.type('harbor.example');
+  await page.type('http://harbor.example');
   assert.equal(await page.evaluate(() => window.save().disabled), true);
   assert.equal(
     await page.evaluate(() => window.settingsPart('dialog.picker #help-endpoint').textContent),
@@ -262,16 +262,114 @@ test('a fields provider waits for its required fields, shows a rejection inline 
   await click(page, 'dialog.picker [data-action=save]');
   await page.until(
     () =>
-      window.settingsPart('dialog.picker .failure')?.textContent.trim() ===
-      'The endpoint must start with https://.'
+      window.settingsPart('dialog.picker #key-problem')?.textContent.trim() ===
+      'The endpoint must use https://.'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const endpoint = window.settingsPart('dialog.picker input[data-account-field=endpoint]');
+      return {
+        open: window.picker().dataset.picker,
+        endpoint: endpoint.value,
+        invalid: endpoint.getAttribute('aria-invalid'),
+        failure: !!window.settingsPart('dialog.picker .failure'),
+        added: !!window.model.settings.accounts().find((a) => a.id === 'azure-openai'),
+      };
+    }),
+    {
+      open: 'connect',
+      endpoint: 'http://harbor.example',
+      invalid: 'true',
+      failure: false,
+      added: false,
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+async function azure(page, endpoint) {
+  await choose(page, 'azure-openai');
+  await page.until(() => !!window.settingsPart('dialog.picker input[data-field=value]'));
+  for (const [selector, value] of [
+    ['input[data-field=value]', 'az-key-0123456789'],
+    ['input[data-account-field=endpoint]', endpoint],
+    ['input[data-account-field=deployment]', 'harbor-gpt'],
+  ]) {
+    await page.evaluate((selector) => {
+      window.settingsPart(`dialog.picker ${selector}`).focus();
+      return true;
+    }, selector);
+    await page.type(value);
+  }
+  await page.until(() => !window.save().disabled);
+  await page.evaluate(() => {
+    window.order = [];
+    const { vault, settings } = window.model;
+    const endpoints = vault.endpoints.bind(vault);
+    vault.endpoints = (change) => {
+      window.order.push(['endpoints', change]);
+      return endpoints(change);
+    };
+    const connect = settings.connect.bind(settings);
+    settings.connect = (...args) => {
+      window.order.push(['connect', args[0]]);
+      return connect(...args);
+    };
+    return true;
+  });
+  await click(page, 'dialog.picker [data-action=save]');
+}
+
+const base = 'https://harbor.openai.azure.example';
+
+test('an https endpoint is registered with the vault before connect, and Remove takes it back', async (t) => {
+  const page = await open(t, { vault: 'secrets' });
+  await azure(page, base);
+  await page.until(() => window.account('azure-openai')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.order), [
+    ['endpoints', { add: [{ provider: 'azure-openai', url: base }] }],
+    ['connect', 'azure-openai'],
+  ]);
+  await click(page, '.account[data-id=azure-openai] [data-action=remove-account]');
+  await page.until(() => !!window.deep('slicc-confirm'));
+  await page.evaluate(() => {
+    window.deep('slicc-confirm').shadowRoot.querySelector('[data-action]').click();
+    return true;
+  });
+  await page.until(() => !window.account('azure-openai'));
+  await page.until(() => window.model.vault.endpointChanges.length === 2);
+  assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges.at(-1)), {
+    remove: [{ provider: 'azure-openai', url: base }],
+  });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a bare resource name is not registered as an endpoint', async (t) => {
+  const page = await open(t, { vault: 'secrets' });
+  await azure(page, 'harbor');
+  await page.until(() => window.account('azure-openai')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.order), [['connect', 'azure-openai']]);
+  assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges), []);
+  assert.deepEqual(page.errors, []);
+});
+
+test('when the vault refuses the endpoint, the field says why and connect never runs', async (t) => {
+  const page = await open(t, { vault: 'endpoints-fail' });
+  await azure(page, base);
+  await page.until(
+    () =>
+      window.settingsPart('dialog.picker #key-problem')?.textContent.trim() ===
+      'The vault refused that endpoint. Check the address and try again.'
   );
   assert.deepEqual(
     await page.evaluate(() => ({
-      open: window.picker().dataset.picker,
-      endpoint: window.settingsPart('dialog.picker input[data-account-field=endpoint]').value,
-      added: !!window.model.settings.accounts().find((a) => a.id === 'azure-openai'),
+      order: window.order.map(([kind]) => kind),
+      invalid: window
+        .settingsPart('dialog.picker input[data-account-field=endpoint]')
+        .getAttribute('aria-invalid'),
+      added: !!window.account('azure-openai'),
     })),
-    { open: 'connect', endpoint: 'harbor.example', added: false }
+    { order: ['endpoints'], invalid: 'true', added: false }
   );
   assert.deepEqual(page.errors, []);
 });
@@ -470,8 +568,14 @@ test('Accounts and the picker fit 420 px without scrolling sideways', async (t) 
     return true;
   });
   await page.until(() => {
+    const host = window.$('slicc-app', 'slicc-dock', 'slicc-settings');
     const add = window.settingsPart('[data-action=add-provider]');
-    return add && add.getBoundingClientRect().right <= innerWidth;
+    return (
+      add &&
+      host.getBoundingClientRect().right <= innerWidth &&
+      document.getAnimations().length === 0 &&
+      add.getBoundingClientRect().right <= innerWidth
+    );
   });
   const overflow = () => {
     const host = window.$('slicc-app', 'slicc-dock', 'slicc-settings');

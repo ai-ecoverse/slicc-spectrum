@@ -519,6 +519,18 @@ export interface AccountField {
   required?: boolean;
   placeholder?: string;
   help?: string;
+  customBase?: true;
+  value?: string;
+}
+
+export interface VaultEndpoint {
+  provider: string;
+  url: string;
+}
+
+export interface VaultEndpointChange {
+  add?: VaultEndpoint[];
+  remove?: VaultEndpoint[];
 }
 
 export type ProviderAuth = 'api-key' | 'oauth' | 'fields' | 'local';
@@ -1443,6 +1455,7 @@ export interface VaultPort extends Subscribable<VaultEvents> {
   export?(passphrase: string): Promise<Uint8Array>;
   lock?(): Promise<void>;
   dismissBackupReminder?(): Promise<void>;
+  endpoints?(change: VaultEndpointChange): Promise<void>;
   button(): VaultButton;
 }
 

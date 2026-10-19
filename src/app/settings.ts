@@ -12,6 +12,7 @@ import { css, html, type LitElement, nothing, type TemplateResult, unsafeCSS } f
 import { repeat } from 'lit/directives/repeat.js';
 import type {
   Account,
+  AccountField,
   AccountStatus,
   ProviderAuth,
   ProviderOption,
@@ -91,6 +92,12 @@ export function matchProviders(
   });
 }
 
+interface BaseChange {
+  field: string;
+  url: string | undefined;
+  old: string | undefined;
+}
+
 const popup = (account: Account) => account.group === 'mcp' && account.auth === 'oauth';
 
 const secretNames = { 'api-key': 'API key', token: 'token' } as const;
@@ -132,6 +139,7 @@ export class SliccSettings extends ThemedElement {
   declare filled: ReadonlySet<string>;
   #waits = new SignInWaits(() => this.requestUpdate());
   #landing: string | null = null;
+  #bases = new Map<string, string>();
   #scroll = new ViewScroll(this, 'settings:scroll', { scroller: () => this, rows: '[data-id]' });
 
   constructor() {
@@ -555,7 +563,106 @@ export class SliccSettings extends ThemedElement {
       this.#busy(id, false);
       return;
     }
-    await this.connect(id, undefined, fields);
+    await this.#connectBases(account, undefined, fields);
+  }
+
+  #baseOf(value: string | undefined): string | undefined {
+    const trimmed = value?.trim() ?? '';
+    try {
+      return new URL(trimmed).protocol === 'https:' ? trimmed : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  #oldBase(account: Account, field: AccountField): string | undefined {
+    return this.#baseOf(field.value) ?? this.#bases.get(`${account.id} ${field.name}`);
+  }
+
+  #baseChanges(account: Account, fields: Record<string, string> | undefined): BaseChange[] {
+    return (account.fields ?? [])
+      .filter((field) => field.customBase)
+      .map((field) => ({
+        field: field.name,
+        url: this.#baseOf(fields?.[field.name]),
+        old: this.#oldBase(account, field),
+      }))
+      .filter((change) => change.url !== change.old);
+  }
+
+  async #endpoints(
+    vault: VaultPort,
+    id: string,
+    kind: 'add' | 'remove',
+    urls: Array<string | undefined>
+  ): Promise<void> {
+    for (const url of urls) if (url) await vault.endpoints?.({ [kind]: [{ provider: id, url }] });
+  }
+
+  async #connectBases(
+    account: Account,
+    secret: string | undefined,
+    fields: Record<string, string> | undefined
+  ): Promise<void> {
+    const model = this.model as SliccModel;
+    const vault = model.vault?.endpoints ? model.vault : null;
+    const { id } = account;
+    const changes = this.#baseChanges(account, fields);
+    const added = vault ? changes.filter((change) => change.url) : [];
+    for (const change of added) {
+      this.#busy(id, true);
+      try {
+        await this.#endpoints(vault as VaultPort, id, 'add', [change.url]);
+      } catch (error) {
+        if (this.model === model) this.#refuse(id, change.field, failureText(error));
+        return;
+      } finally {
+        this.#busy(id, false);
+      }
+    }
+    if (this.model !== model) return;
+    await this.connect(id, secret, fields);
+    if (this.failure?.id === id) {
+      this.#placeFailure(account, fields);
+      if (vault)
+        await this.#endpoints(
+          vault,
+          id,
+          'remove',
+          added.map((change) => change.url)
+        ).catch(() => {});
+      return;
+    }
+    for (const change of changes) {
+      const key = `${id} ${change.field}`;
+      if (change.url) this.#bases.set(key, change.url);
+      else this.#bases.delete(key);
+    }
+    if (!vault) return;
+    await this.#endpoints(
+      vault,
+      id,
+      'remove',
+      changes.map((change) => change.old)
+    ).catch((error) => {
+      if (this.model === model) this.failure = { id, message: failureText(error) };
+    });
+  }
+
+  #placeFailure(account: Account, fields: Record<string, string> | undefined): void {
+    const message = (this.failure as { message: string }).message;
+    const lower = message.toLowerCase();
+    const field = (account.fields ?? []).find(
+      (candidate) =>
+        candidate.customBase &&
+        !!fields?.[candidate.name] &&
+        [candidate.name, candidate.label, 'https', 'url', 'port', 'userinfo'].some((word) =>
+          lower.includes(word.toLowerCase())
+        )
+    );
+    if (!field) return;
+    this.failure = null;
+    this.#refuse(account.id, field.name, message);
   }
 
   #refuse(id: string, field: string, message: string): void {
@@ -629,7 +736,7 @@ export class SliccSettings extends ThemedElement {
     const secret = field.value.trim();
     field.value = '';
     const fields = this.#fields(form, account);
-    if (secret && fields !== null) void this.connect(account.id, secret, fields);
+    if (secret && fields !== null) void this.#connectBases(account, secret, fields);
   }
 
   #submitOnEnter(event: KeyboardEvent): void {
@@ -750,9 +857,9 @@ export class SliccSettings extends ThemedElement {
           aria-describedby=${this.#described(account, 'value')}
         /></label>
         ${this.#problem(account, 'value')}
+        ${locked ? this.#unlock(vault) : html`<p class="hint">Saved in the vault</p>`}
         ${this.#getKey(account)}
         ${this.#extra(account)}
-        ${locked ? this.#unlock(vault) : html`<p class="hint">Saved in the vault</p>`}
         <div class="buttons">
           <swc-button size="m" variant="accent" data-action="save" ?pending=${busy} ?disabled=${locked || (!busy && !this.#ready(account))} @click=${(event: Event) => this.#send(event)}>${this.#saveLabel(account)}</swc-button>
           ${this.#leave(account)}
@@ -970,6 +1077,13 @@ export class SliccSettings extends ThemedElement {
       this.#busy(account.id, false);
     }
     this.focusOn('[data-action=add-provider]');
+    if (!vault?.endpoints) return;
+    const olds = (account.fields ?? [])
+      .filter((field) => field.customBase)
+      .map((field) => this.#oldBase(account, field));
+    await this.#endpoints(vault, account.id, 'remove', olds).catch((error) => {
+      if (this.model === model) this.failure = { id: account.id, message: failureText(error) };
+    });
   }
 
   #notice(
@@ -1218,6 +1332,13 @@ export class SliccSettings extends ThemedElement {
     </dialog>`;
   }
 
+  #orphan(accounts: readonly Account[]): TemplateResult | typeof nothing {
+    const failure = this.failure;
+    if (!failure || failure.id === this.adding?.id) return nothing;
+    if (accounts.some((account) => account.id === failure.id)) return nothing;
+    return html`<div class="failure orphan" role="alert"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure.message}</span></div>`;
+  }
+
   #providerList(accounts: readonly Account[]): TemplateResult {
     const offered = this.#offered();
     if (!offered)
@@ -1228,6 +1349,7 @@ export class SliccSettings extends ThemedElement {
       (account) => account.id,
       (account) => this.#account(account)
     )}</div>
+      ${this.#orphan(sorted)}
       <div class="add">
         <swc-action-button size="m" quiet data-action="add-provider" @click=${() => this.#openPicker()}>
           <swc-icon-add slot="icon"></swc-icon-add>Add a provider
