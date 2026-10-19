@@ -288,3 +288,152 @@ test('a reload while the agent starts leaves the next normal load with the agent
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('queued rows survive a reload, a file named as not kept, and flush on arrival', async (t) => {
+  const page = await open(t);
+  await say(page, 'Check the harbor tides');
+  await page.evaluate(() => {
+    const composer = window.chat().querySelector('slicc-composer');
+    composer.attachments = [
+      { id: 'n1', name: 'tides.csv', kind: 'text', mimeType: 'text/csv', size: 3, text: 'a,b' },
+    ];
+    composer.value = 'Then list the moorings';
+    composer.send();
+    return true;
+  });
+  await page.until(() => window.rows().length === 2);
+  await page.reload();
+  await page.until(() => window.ready === true && window.app.dock.has('chat'));
+  await page.evaluate(() => {
+    window.chat = () =>
+      window.app.dock.content('chat:cone-sliccy')?.shadowRoot ??
+      window.app.dock.content('chat')?.shadowRoot ??
+      null;
+    window.composer = () => window.chat()?.querySelector('slicc-composer')?.shadowRoot ?? null;
+    return true;
+  });
+  await page.until(
+    () => window.composer()?.querySelectorAll('li.queued[data-mode=starting]').length === 2
+  );
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.composer().querySelectorAll('li.queued[data-mode=starting]')].map((row) => [
+        row.querySelector('.text').textContent.trim(),
+        row.querySelector('[data-lost]')?.textContent.trim() ?? null,
+      ])
+    ),
+    [
+      ['Queued: Check the harbor tides', null],
+      ['Queued: Then list the moorings', ', Not kept after reload: tides.csv'],
+    ]
+  );
+  await page.evaluate(() => {
+    window.model.agent.arrive();
+    return true;
+  });
+  await page.until(() => {
+    const id = window.model.agent.active();
+    const sent = window.model.agent
+      .messages(id)
+      .filter((message) => message.role === 'user')
+      .map((message) => message.text);
+    return sent.length === 3 && sent[2] === 'Then list the moorings';
+  });
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('slicc-spectrum.starting')), null);
+  assert.deepEqual(page.errors, []);
+});
+
+async function reopen(page) {
+  await page.reload();
+  await page.until(() => window.ready === true && window.app.dock.has('chat'));
+  await page.evaluate(() => {
+    window.chat = () =>
+      window.app.dock.content('chat:cone-sliccy')?.shadowRoot ??
+      window.app.dock.content('chat')?.shadowRoot ??
+      null;
+    window.composer = () => window.chat()?.querySelector('slicc-composer')?.shadowRoot ?? null;
+    return true;
+  });
+  await page.until(() => !!window.composer()?.querySelector('swc-prompt-field'));
+}
+
+test('a file-only row reloads as not sent, is not sent on arrival, and goes when dropped', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const composer = window.chat().querySelector('slicc-composer');
+    composer.attachments = [
+      { id: 'n2', name: 'radar.png', kind: 'text', mimeType: 'text/plain', size: 3, text: 'abc' },
+    ];
+    composer.send();
+    return true;
+  });
+  await page.until(() => window.rows().length === 1);
+  await reopen(page);
+  await page.until(
+    () => window.composer().querySelectorAll('li.queued[data-mode=starting]').length === 1
+  );
+  const row = () => {
+    const node = window.composer().querySelector('li.queued[data-mode=starting]');
+    return (
+      node && [
+        node.querySelector('.text').textContent.trim(),
+        node.querySelector('.next:last-of-type').textContent,
+      ]
+    );
+  };
+  assert.deepEqual(await page.evaluate(row), [
+    'Queued: radar.png',
+    'Not sent. Attach the files again.',
+  ]);
+  await page.evaluate(() => {
+    window.model.agent.arrive();
+    return true;
+  });
+  await page.until(
+    () =>
+      window.app.dock.has('chat:cone-sliccy') &&
+      !!window.composer()?.querySelector('li.queued[data-mode=starting]')
+  );
+  assert.deepEqual(
+    await page.evaluate(() =>
+      window.model.agent
+        .messages(window.model.agent.active())
+        .filter((message) => message.role === 'user')
+        .map((message) => message.text)
+    ),
+    ['What is on my plate today?']
+  );
+  await page.evaluate(() => {
+    window.composer().querySelector('li.queued [data-action=unqueue]').click();
+    return true;
+  });
+  await page.until(() => sessionStorage.getItem('slicc-spectrum.starting') === null);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a dropped row does not come back after a reload', async (t) => {
+  const page = await open(t);
+  await say(page, 'Check the harbor tides');
+  await say(page, 'Then list the moorings');
+  await page.evaluate(() => {
+    window
+      .composer()
+      .querySelector('li.queued[data-mode=starting]:first-child [data-action=unqueue]')
+      .click();
+    return true;
+  });
+  await page.until(() => window.rows().length === 1);
+  await reopen(page);
+  await page.until(
+    () => window.composer().querySelectorAll('li.queued[data-mode=starting]').length === 1
+  );
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.composer().querySelectorAll('li.queued[data-mode=starting] .text')].map((node) =>
+        node.textContent.trim()
+      )
+    ),
+    ['Queued: Then list the moorings']
+  );
+  assert.deepEqual(page.errors, []);
+});
