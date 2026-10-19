@@ -357,8 +357,7 @@ for (const [name, color, browser] of [
 }
 
 test('an install fills one bar from download through linking and never goes back', async (t) => {
-  const page = await browser(t);
-  await page.until(() => window.$('slicc-app', 'slicc-dock', 'slicc-updates', 'li[data-id=git]'));
+  const page = await installing(t);
   const phases = [
     ['checking', null],
     ['downloading', { phase: 'download', done: 10, total: 20 }],
@@ -432,15 +431,71 @@ test('an install fills one bar from download through linking and never goes back
     );
   }
   assert.deepEqual(page.errors, []);
-
-  async function browser(context) {
-    const opened = await chrome.page(context);
-    await opened.goto('/ui/?updates=current&packages=mixed&color=light&delay=20');
-    await opened.until(() => window.ready && window.app.dock.api.panels.length > 0);
-    await opened.evaluate(() => window.app.show('updates'));
-    return opened;
-  }
 });
+
+test('a row that settles while Install / Update is a background tab starts its next install at 0', async (t) => {
+  const page = await installing(t);
+  const bars = await page.evaluate(async () => {
+    const port = window.model.updates;
+    const api = window.app.dock.api;
+    const element = window.$('slicc-app', 'slicc-dock', 'slicc-updates');
+    const set = (list, event, id, patch) => {
+      const items = port[list]().map((item) => (item.id === id ? { ...item, ...patch } : item));
+      port[list] = () => items;
+      port.emit(event, items);
+    };
+    const both = (patch, pkg) => {
+      set('list', 'items', 'agent', patch);
+      set('packages', 'packages', 'git', pkg ?? patch);
+    };
+    const read = async () => {
+      await element.updateComplete;
+      return ['article[data-id=agent]', 'li[data-id=git]'].map((selector) => {
+        const bar = element.shadowRoot.querySelector(`${selector} swc-progress-bar`);
+        if (!bar) return 'none';
+        return bar.hasAttribute('indeterminate') ? 'indeterminate' : bar.getAttribute('value');
+      });
+    };
+    both(
+      { state: 'linking', progress: { phase: 'link', done: 40, total: 40 } },
+      {
+        state: 'updating',
+        progress: { phase: 'link', done: 40, total: 40 },
+      }
+    );
+    const full = await read();
+    api.getPanel('chat:cone-sliccy').api.setActive();
+    const hidden = element.isConnected;
+    both({ state: 'current', progress: null }, { state: 'installed', progress: null });
+    both({ state: 'checking', progress: null }, { state: 'updating', progress: null });
+    api.getPanel('updates').api.setActive();
+    const checking = await read();
+    both(
+      { state: 'downloading', progress: { phase: 'download', done: 1, total: 10 } },
+      {
+        state: 'updating',
+        progress: { phase: 'download', done: 1, total: 10 },
+      }
+    );
+    return { full, hidden, checking, again: await read() };
+  });
+  assert.deepEqual(bars, {
+    full: ['100', '100'],
+    hidden: false,
+    checking: ['indeterminate', 'indeterminate'],
+    again: ['5', '5'],
+  });
+  assert.deepEqual(page.errors, []);
+});
+
+async function installing(context) {
+  const page = await chrome.page(context);
+  await page.goto('/ui/?updates=current&packages=mixed&color=light&delay=20');
+  await page.until(() => window.ready && window.app.dock.api.panels.length > 0);
+  await page.evaluate(() => window.app.show('updates'));
+  await page.until(() => window.$('slicc-app', 'slicc-dock', 'slicc-updates', 'li[data-id=git]'));
+  return page;
+}
 
 for (const [name, browser] of [
   ['wide', chrome],

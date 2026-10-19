@@ -99,6 +99,12 @@ type Progress = NonNullable<UpdateItem['progress']>;
 const phased = ({ phase, done, total }: Progress): number =>
   Math.round(((phase === 'link' ? 1 : 0) + (total ? Math.min(done / total, 1) : 0)) * 50);
 
+const itemBusy = (item: UpdateItem): boolean =>
+  running.has(item.state) || item.state === 'starting' || item.progress !== null;
+
+const packageBusy = (item: PackageItem): boolean =>
+  packageRunning.has(item.state) || item.progress !== null;
+
 type Failures = ReadonlyMap<string, string>;
 type Snapshot = ReadonlyMap<string, { state: string; error: string | null }>;
 
@@ -417,6 +423,7 @@ export class SliccUpdates extends ModelElement {
     this.failures = new Map();
     this.busy = new Map();
     this.problems = new Map();
+    this.#reached.clear();
     const port = model.updates;
     if (!port) return [];
     let previous = snapshot(port.list());
@@ -425,6 +432,7 @@ export class SliccUpdates extends ModelElement {
         const next = snapshot(items);
         this.failures = settled(this.failures, previous, next);
         previous = next;
+        this.#prune('item', items, itemBusy);
         this.requestUpdate();
       }),
     ];
@@ -436,6 +444,7 @@ export class SliccUpdates extends ModelElement {
         const next = snapshot(items);
         this.problems = settled(this.problems, packages, next);
         packages = next;
+        this.#prune('package', items, packageBusy);
         this.requestUpdate();
       }),
     ];
@@ -493,6 +502,17 @@ export class SliccUpdates extends ModelElement {
     }
   }
 
+  #prune<T extends { id: string }>(
+    kind: string,
+    items: readonly T[],
+    busy: (item: T) => boolean
+  ): void {
+    const live = new Set(items.filter(busy).map((item) => `${kind}:${item.id}`));
+    for (const key of this.#reached.keys()) {
+      if (key.startsWith(`${kind}:`) && !live.has(key)) this.#reached.delete(key);
+    }
+  }
+
   #bar(
     key: string,
     busy: boolean,
@@ -527,7 +547,7 @@ export class SliccUpdates extends ModelElement {
     const phase = progress ? (progress.phase === 'download' ? 'downloading' : 'linking') : null;
     return this.#bar(
       `item:${item.id}`,
-      running.has(item.state) || item.state === 'starting' || progress !== null,
+      itemBusy(item),
       progress,
       progress ? `${progress.done} of ${progress.total}` : '',
       `${item.label}: ${phase ?? states[item.state][1].toLowerCase()}`
@@ -615,7 +635,7 @@ export class SliccUpdates extends ModelElement {
     const phase = progress ? (progress.phase === 'download' ? 'downloading' : 'linking') : null;
     return this.#bar(
       `package:${item.id}`,
-      packageRunning.has(item.state) || progress !== null,
+      packageBusy(item),
       progress,
       progress ? `${progress.done} of ${progress.total} packages` : '',
       `${item.label}: ${phase ?? packageLight(item)?.[1].toLowerCase()}`
