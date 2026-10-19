@@ -451,6 +451,11 @@ export class SliccComposer extends ThemedElement {
         font-size: var(--swc-font-size-75);
         color: var(--swc-neutral-subdued-content-color-default);
       }
+      .queued [data-files] {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--swc-spacing-50);
+      }
       .queued .text {
         flex: 1;
         min-width: 0;
@@ -1438,7 +1443,7 @@ export class SliccComposer extends ThemedElement {
         (message) => html`<li class="queued" data-id=${message.id} data-mode="starting">
           <swc-icon-clock size="s" aria-hidden="true"></swc-icon-clock>
           <span class="text"><span class="sr">Queued: </span>${message.text || message.attachments.map((attachment) => attachment.name).join(', ')}</span>
-          ${message.text && message.attachments.length ? html`<span class="next" data-files><span class="sr">, </span>${message.attachments.length === 1 ? '1 file' : `${message.attachments.length} files`}</span>` : nothing}
+          ${message.text && message.attachments.length ? html`<span class="next" data-files><swc-icon-file size="s" aria-hidden="true"></swc-icon-file><span class="sr">, </span>${message.attachments.length === 1 ? '1 file' : `${message.attachments.length} files`}</span>` : nothing}
           <span class="next">Sent when the agent starts</span>
           <swc-close-button size="s" data-action="unqueue" accessible-label="Remove from queue" @click=${() => this.#unwait(message.id)}></swc-close-button>
         </li>`

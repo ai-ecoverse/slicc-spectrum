@@ -983,7 +983,7 @@ The SLICC you follow runs a newer version.
 Update this one to send prompts.", and shows a warning notice without a close button (`[data-notice="readonly"]`) in place of any other notices.
 `model.agent.setReadOnly(text)` changes it, and `null` ends it.
 
-`createDummyModel({ agent: 'starting' | 'waiting' })` (`?agent=` on `/ui/`, default `ready`) starts with no agents while `starting()` returns "Seven is installing its agent.", and shows an info notice without a close button (`[data-notice="starting"]`) that goes with the line; `show('chat')` opens the chat with no agent (`<slicc-app>` closes that tab once an agent is active).
+`createDummyModel({ agent: 'starting' | 'waiting' })` (`?agent=` on `/ui/`, default `ready`) starts with no agents while `starting()` returns "Seven is installing its agent.", and shows an info notice without a close button (`[data-notice="starting"]`) that goes with the line; `show('chat')` opens the chat with no agent (`<slicc-app>` closes that tab once an agent is active, and if focus was in it, focuses the agent's chat instead).
 With `starting`, after 100 ticks of the dummy clock (3 s at the default delay) the usual cones arrive and the line clears; `waiting` waits for `model.agent.arrive()`, which does the same.
 `model.agent.setStarting(line)` changes the line (and `null` clears it with no agent), and either one cancels the scheduled arrival.
 

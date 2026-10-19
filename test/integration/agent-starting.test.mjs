@@ -231,6 +231,13 @@ test('text typed but not sent while the agent starts is still in the field once 
   });
   await page.until(() => !!window.app.dock.content('chat:cone-sliccy'));
   await page.until(() => window.field()?.value === 'half typed');
+  await page.until(
+    () =>
+      window.composer().querySelector('swc-prompt-field').shadowRoot.activeElement ===
+      window.field()
+  );
+  await page.type(' more');
+  await page.until(() => window.field().value === 'half typed more');
   assert.deepEqual(page.errors, []);
 });
 
