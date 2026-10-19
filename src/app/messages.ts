@@ -1425,7 +1425,6 @@ export const messageCss = css`
   }
   .lick .report .heading {
     font-size: inherit;
-    margin-block: var(--swc-spacing-300) var(--swc-spacing-75);
   }
   .lick .report > .text {
     align-self: stretch;
