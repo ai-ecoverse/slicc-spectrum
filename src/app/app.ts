@@ -17,6 +17,7 @@ import { networkHealth, networkIcon, networkLabel, networkStatus, remoteLight } 
 import { Panels } from './panel-command.ts';
 import {
   chatAgent,
+  chatId,
   chats,
   create,
   type DocumentKind,
@@ -620,6 +621,8 @@ export class SliccApp extends ThemedElement {
     }
     this.#started = this.screen;
     this.#prune();
+    if (!(this.#active() || chats(dock).length || dock.has('chat')) && model.agent.starting?.())
+      this.#open('chat', false);
     this.#saving = true;
     this.#save();
   }
@@ -662,7 +665,18 @@ export class SliccApp extends ThemedElement {
       for (const id of chats(dock)) {
         if (!known.has(chatAgent(id) as string)) dock.close(id);
       }
-      if (agent && dock.has('chat')) dock.close('chat');
+      if (agent && dock.has('chat')) {
+        if (this.#offers('chat') && !dock.has(chatId(agent.id)))
+          dock.open({
+            id: chatId(agent.id),
+            component: 'chat',
+            title: agent.name,
+            params: { agent: agent.id },
+            inactive: true,
+            position: { referencePanel: 'chat', direction: 'within' },
+          });
+        dock.close('chat');
+      }
       if (this.model && this.#offers('terminal'))
         this.terminalPanels.sync(dock, this.model.terminals, this.screen);
     });

@@ -253,3 +253,38 @@ test('text typed but not sent while the agent starts survives a model swap', asy
   await page.until(() => window.field()?.value === 'half typed');
   assert.deepEqual(page.errors, []);
 });
+
+test('a fresh load while the agent starts shows the agentless chat, and the agent chat takes its slot', async (t) => {
+  const page = await chrome.page(t);
+  await page.goto(`/ui/?${new URLSearchParams({ delay: '5', color: 'light', agent: 'waiting' })}`);
+  await page.until(() => window.ready === true && window.app.dock?.has('chat'));
+  await page.evaluate(() => {
+    window.model.agent.arrive();
+    return true;
+  });
+  await page.until(() => !window.app.dock.has('chat') && window.app.dock.has('chat:cone-sliccy'));
+  await page.until(
+    () => window.app.dock.content('chat:cone-sliccy').getBoundingClientRect().width > 0
+  );
+  const widths = await page.evaluate(() =>
+    ['agents', 'chat:cone-sliccy'].map(
+      (id) => window.app.dock.content(id).getBoundingClientRect().width
+    )
+  );
+  assert.ok(widths[1] > widths[0] * 2, JSON.stringify(widths));
+  assert.deepEqual(page.errors, []);
+});
+
+test('a reload while the agent starts leaves the next normal load with the agent chat', async (t) => {
+  const page = await open(t);
+  await page.goto(`/ui/?${new URLSearchParams({ delay: '5', color: 'light' })}`);
+  await page.until(() => window.ready === true && window.app.dock.api.panels.length > 0);
+  await page.until(() => window.app.dock.has('chat:cone-sliccy'));
+  assert.deepEqual(
+    await page.evaluate(() =>
+      window.app.dock.api.panels.map((panel) => panel.id).filter((id) => id.startsWith('chat'))
+    ),
+    ['chat:cone-sliccy']
+  );
+  assert.deepEqual(page.errors, []);
+});
