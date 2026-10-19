@@ -36,7 +36,68 @@ import { away, clearValues, failureText, fieldOf, type PopupDetail, take } from 
 
 export const limit = 25 * 1024 * 1024;
 
-type Waiting = { id: string; text: string; attachments: Attachment[] };
+type Kept = Pick<Attachment, 'name' | 'mimeType' | 'size'>;
+type Waiting = {
+  id: string;
+  text: string;
+  mode: SendMode;
+  attachments: Attachment[];
+  lost?: Kept[];
+};
+
+export const startingKey = 'slicc-spectrum.starting';
+
+function session(): Storage | null {
+  try {
+    return globalThis.sessionStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const claimed = new Set<string>();
+
+function restore(): Waiting[] {
+  try {
+    const rows = JSON.parse(session()?.getItem(startingKey) ?? '[]') as Array<
+      Omit<Waiting, 'attachments'> & { attachments: Kept[] }
+    >;
+    const fresh = rows.filter((row) => !claimed.has(row.id));
+    for (const row of fresh) claimed.add(row.id);
+    return fresh.map(({ id, text, mode, attachments, lost = [] }) => ({
+      id,
+      text,
+      mode,
+      attachments: [],
+      lost: [...lost, ...attachments],
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function keep(rows: readonly Waiting[]): void {
+  const meta = ({ name, mimeType, size }: Kept): Kept => ({ name, mimeType, size });
+  for (const row of rows) claimed.add(row.id);
+  try {
+    if (!rows.length) session()?.removeItem(startingKey);
+    else
+      session()?.setItem(
+        startingKey,
+        JSON.stringify(
+          rows.map((row) => ({
+            id: row.id,
+            text: row.text,
+            mode: row.mode,
+            attachments: row.attachments.map(meta),
+            lost: (row.lost ?? []).map(meta),
+          }))
+        )
+      );
+  } catch {
+    return;
+  }
+}
 type Draft = { value: string; attachments: Attachment[] };
 
 const pages = new WeakMap<
@@ -69,7 +130,11 @@ class PageQueue implements ReactiveController {
   #page() {
     this.#owner ??= this.#host.isConnected ? owner(this.#host) : null;
     const page = this.#owner ?? this.#host.ownerDocument;
-    const found = pages.get(page) ?? { rows: [], draft: null, hosts: new Set() };
+    const found = pages.get(page) ?? {
+      rows: restore(),
+      draft: null,
+      hosts: new Set(),
+    };
     pages.set(page, found);
     return found;
   }
@@ -81,6 +146,7 @@ class PageQueue implements ReactiveController {
   set value(rows: readonly Waiting[]) {
     const page = this.#page();
     page.rows = rows;
+    keep(rows);
     for (const host of [...page.hosts]) host.requestUpdate();
   }
 
@@ -452,6 +518,13 @@ export class SliccComposer extends ThemedElement {
         font-size: var(--swc-font-size-75);
         color: var(--swc-neutral-subdued-content-color-default);
       }
+      .queued [data-lost] {
+        flex: 0 1 auto;
+        min-inline-size: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
       .queued [data-files] {
         display: inline-flex;
         align-items: center;
@@ -723,7 +796,8 @@ export class SliccComposer extends ThemedElement {
     const active = model.agent.active();
     const id = agents.some((agent) => agent.id === active) ? active : agents[0].id;
     this.#waiting.value = [];
-    const [first, ...rest] = waiting;
+    const [first, ...rest] = waiting.filter((row) => row.text || row.attachments.length);
+    if (!first) return;
     this.#deliver(model, id, first, 'queue');
     for (const { text, attachments } of rest)
       this.#post(model, id, { text, attachments, mode: 'queue' });
@@ -794,7 +868,7 @@ export class SliccComposer extends ThemedElement {
     this.popup = null;
     this.#history = -1;
     if (this.#starting()) {
-      this.#waiting.value = [...this.#waiting.value, { id: this.#id(), text, attachments }];
+      this.#waiting.value = [...this.#waiting.value, { id: this.#id(), text, mode, attachments }];
       return;
     }
     if (known) {
@@ -1445,6 +1519,7 @@ export class SliccComposer extends ThemedElement {
           <swc-icon-clock size="s" aria-hidden="true"></swc-icon-clock>
           ${message.text ? nothing : html`<swc-icon-file size="xs" aria-hidden="true"></swc-icon-file>`}
           <span class="text"><span class="sr">Queued: </span>${message.text || message.attachments.map((attachment) => attachment.name).join(', ')}</span>
+          ${message.lost?.length ? html`<span class="next" data-lost><span class="sr">, </span>${message.lost.map((attachment) => attachment.name).join(', ')} (not kept after reload)</span>` : nothing}
           ${message.text && message.attachments.length ? html`<span class="next" data-files><swc-icon-file size="xs" aria-hidden="true"></swc-icon-file><span class="sr">, </span>${message.attachments.length === 1 ? '1 file' : `${message.attachments.length} files`}</span>` : nothing}
           <span class="next">Sent when the agent starts</span>
           <swc-close-button size="s" data-action="unqueue" accessible-label="Remove from queue" @click=${() => this.#unwait(message.id)}></swc-close-button>

@@ -288,3 +288,57 @@ test('a reload while the agent starts leaves the next normal load with the agent
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('queued rows survive a reload, a file named as not kept, and flush on arrival', async (t) => {
+  const page = await open(t);
+  await say(page, 'Check the harbor tides');
+  await page.evaluate(() => {
+    const composer = window.chat().querySelector('slicc-composer');
+    composer.attachments = [
+      { id: 'n1', name: 'tides.csv', kind: 'text', mimeType: 'text/csv', size: 3, text: 'a,b' },
+    ];
+    composer.value = 'Then list the moorings';
+    composer.send();
+    return true;
+  });
+  await page.until(() => window.rows().length === 2);
+  await page.reload();
+  await page.until(() => window.ready === true && window.app.dock.has('chat'));
+  await page.evaluate(() => {
+    window.chat = () =>
+      window.app.dock.content('chat:cone-sliccy')?.shadowRoot ??
+      window.app.dock.content('chat')?.shadowRoot ??
+      null;
+    window.composer = () => window.chat()?.querySelector('slicc-composer')?.shadowRoot ?? null;
+    return true;
+  });
+  await page.until(
+    () => window.composer()?.querySelectorAll('li.queued[data-mode=starting]').length === 2
+  );
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.composer().querySelectorAll('li.queued[data-mode=starting]')].map((row) => [
+        row.querySelector('.text').textContent.trim(),
+        row.querySelector('[data-lost]')?.textContent.trim() ?? null,
+      ])
+    ),
+    [
+      ['Queued: Check the harbor tides', null],
+      ['Queued: Then list the moorings', ', tides.csv (not kept after reload)'],
+    ]
+  );
+  await page.evaluate(() => {
+    window.model.agent.arrive();
+    return true;
+  });
+  await page.until(() => {
+    const id = window.model.agent.active();
+    const sent = window.model.agent
+      .messages(id)
+      .filter((message) => message.role === 'user')
+      .map((message) => message.text);
+    return sent.length === 3 && sent[2] === 'Then list the moorings';
+  });
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('slicc-spectrum.starting')), null);
+  assert.deepEqual(page.errors, []);
+});
