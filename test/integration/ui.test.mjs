@@ -3828,7 +3828,10 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
   );
   await page.until(
     () =>
-      !!window.$('slicc-app', 'slicc-dock').content('memory').shadowRoot.querySelector('.row .body')
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('memory')
+        .shadowRoot.querySelector('.row[data-open] .actions')
   );
   await shot(page, 'memory-light');
 

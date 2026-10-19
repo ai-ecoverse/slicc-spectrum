@@ -2,12 +2,14 @@ import { Emitter } from '../model/emitter.ts';
 import type { Notice, NoticesPort } from '../model/types.ts';
 import type { Clock } from './clock.ts';
 
-export type NoticeScenario = 'storage' | 'mixed' | 'fail' | 'readonly';
+export type NoticeScenario = 'storage' | 'mixed' | 'fail' | 'readonly' | 'starting';
 
 export const readOnlyText =
   'Watch only. The SLICC you follow runs a newer version. Update this one to send prompts.';
 
-export const noticeFixtures: Record<'storage' | 'welcome' | 'readonly', Notice> = {
+export const startingText = 'Seven is installing its agent.';
+
+export const noticeFixtures: Record<'storage' | 'welcome' | 'readonly' | 'starting', Notice> = {
   storage: {
     id: 'storage',
     tone: 'warning',
@@ -30,6 +32,14 @@ export const noticeFixtures: Record<'storage' | 'welcome' | 'readonly', Notice> 
     actions: [],
     dismissible: false,
   },
+  starting: {
+    id: 'starting',
+    tone: 'info',
+    title: 'Seven is installing its agent',
+    body: 'The chat starts once the agent is installed. Messages you send now wait for it.',
+    actions: [],
+    dismissible: false,
+  },
 };
 
 export class DummyNotices extends Emitter<{ notices: readonly Notice[] }> implements NoticesPort {
@@ -44,8 +54,8 @@ export class DummyNotices extends Emitter<{ notices: readonly Notice[] }> implem
     this.#notices =
       scenario === 'mixed'
         ? [noticeFixtures.storage, noticeFixtures.welcome]
-        : scenario === 'readonly'
-          ? [noticeFixtures.readonly]
+        : scenario === 'readonly' || scenario === 'starting'
+          ? [noticeFixtures[scenario]]
           : [noticeFixtures.storage];
   }
 
@@ -66,13 +76,21 @@ export class DummyNotices extends Emitter<{ notices: readonly Notice[] }> implem
   }
 
   readOnly(on: boolean): void {
-    const shown = this.#notices.some((notice) => notice.id === 'readonly');
+    this.#toggle('readonly', on);
+  }
+
+  starting(on: boolean): void {
+    this.#toggle('starting', on);
+  }
+
+  #toggle(id: 'readonly' | 'starting', on: boolean): void {
+    const shown = this.#notices.some((notice) => notice.id === id);
     if (on === shown) return;
     if (on) {
-      this.#notices = [noticeFixtures.readonly, ...this.#notices];
+      this.#notices = [noticeFixtures[id], ...this.#notices];
       this.emit('notices', this.#notices);
     } else {
-      this.#remove('readonly');
+      this.#remove(id);
     }
   }
 

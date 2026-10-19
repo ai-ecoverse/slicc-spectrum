@@ -56,6 +56,9 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   #frozen: FrozenCone[] = [];
   #hold: AgentHold | null = null;
   #readOnly: string | null = null;
+  #starting: string | null = null;
+  #absent: Agent[] = [];
+  #arrival = 0;
   #ice = new Map<string, Array<{ agent: Agent; messages: Message[] }>>();
   #suggestions = new Map<string, string>();
   #runs = new Map<string, Run>();
@@ -613,6 +616,38 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   setReadOnly(text: string | null): void {
     this.#readOnly = text || null;
     this.emit('readOnly', this.#readOnly);
+  }
+
+  starting(): string | null {
+    return this.#starting;
+  }
+
+  setStarting(line: string | null): void {
+    this.#arrival++;
+    this.#starting = line || null;
+    this.emit('starting', this.#starting);
+  }
+
+  withhold(line: string, ticks?: number): void {
+    this.#absent = [...this.#absent, ...this.#agents];
+    this.#agents = [];
+    this.#active = '';
+    this.#changed();
+    this.setStarting(line);
+    if (ticks === undefined) return;
+    const arrival = this.#arrival;
+    void this.#clock.sleep(ticks).then(() => {
+      if (arrival === this.#arrival) this.arrive();
+    });
+  }
+
+  arrive(): void {
+    this.#agents = [...this.#agents, ...this.#absent];
+    this.#absent = [];
+    this.#active = this.#agents[0]?.id ?? '';
+    this.#changed();
+    this.emit('active', this.#active);
+    this.setStarting(null);
   }
 
   frozen(): readonly FrozenCone[] {

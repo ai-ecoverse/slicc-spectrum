@@ -19,7 +19,7 @@ import {
   type NetworkScenario,
   type TailnetScenario,
 } from './network.ts';
-import { DummyNotices, type NoticeScenario, readOnlyText } from './notices.ts';
+import { DummyNotices, type NoticeScenario, readOnlyText, startingText } from './notices.ts';
 import { providerAccounts, providerFixtures } from './providers.ts';
 import { DummySettings, type DummyTransport } from './settings.ts';
 import { DummySprinkles } from './sprinkles.ts';
@@ -58,6 +58,7 @@ export interface DummyOptions {
   transport?: DummyTransport;
   hold?: AgentHold['reason'] | 'off';
   readonly?: 'version' | 'off';
+  agent?: 'ready' | 'starting' | 'waiting';
   browser?: BrowserScenario;
   sprinkles?: 'builtin' | 'cones';
   monitor?: 'dummy' | 'agent';
@@ -131,6 +132,22 @@ function importPort(scenario: ImportScenario | 'off', agent: DummyAgent, time: C
   agent.importing = port.importing.bind(port);
 }
 
+function noticesPort(
+  agent: DummyAgent,
+  time: Clock,
+  notices: NoticeScenario | 'off',
+  readonly: 'version' | 'off',
+  arrival: 'ready' | 'starting' | 'waiting'
+): DummyNotices | null {
+  if (readonly !== 'off') agent.setReadOnly(readOnlyText);
+  if (arrival !== 'ready') agent.withhold(startingText, arrival === 'starting' ? 100 : undefined);
+  const notice = readonly !== 'off' ? 'readonly' : arrival !== 'ready' ? 'starting' : notices;
+  const port = notice === 'off' ? null : new DummyNotices(notice, time);
+  if (port && readonly !== 'off') agent.on('readOnly', (text) => port.readOnly(Boolean(text)));
+  if (port && arrival !== 'ready') agent.on('starting', (line) => port.starting(Boolean(line)));
+  return port;
+}
+
 export function createDummyModel({
   delay = 30,
   storage = null,
@@ -155,6 +172,7 @@ export function createDummyModel({
   transport,
   hold = 'off',
   readonly = 'off',
+  agent: arrival = 'ready',
   browser: scenario = 'idle',
   sprinkles = 'builtin',
   monitor = 'dummy',
@@ -187,12 +205,7 @@ export function createDummyModel({
   };
   importPort(imports, agent, time);
   if (hold !== 'off') agent.setHold({ reason: hold, held: 2 });
-  if (readonly !== 'off') agent.setReadOnly(readOnlyText);
-  const notice = readonly !== 'off' ? 'readonly' : notices;
-  const noticePort = notice === 'off' ? null : new DummyNotices(notice, time);
-  if (noticePort && readonly !== 'off') {
-    agent.on('readOnly', (text) => noticePort.readOnly(Boolean(text)));
-  }
+  const noticePort = noticesPort(agent, time, notices, readonly, arrival);
   if (scenario === 'driving') void browser.run(drive);
   const base = {
     agent,
