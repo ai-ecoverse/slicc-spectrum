@@ -19,6 +19,7 @@ import type {
   ProviderAuth,
   ProviderOption,
   RecordKind,
+  SecretView,
   Settings,
   SliccModel,
   VaultEndpointChange,
@@ -609,6 +610,7 @@ export class SliccSettings extends ThemedElement {
     this.#busy(id, true);
     this.failure = null;
     const url = this.#mcpUrl(account);
+    const before = keyed ? undefined : this.#record(account)?.settings;
     try {
       if (keyed) await vault.put?.(recordName(account), value, undefined, options);
       else if (settings) await vault.settings?.(recordName(account), 'model', settings);
@@ -631,6 +633,9 @@ export class SliccSettings extends ThemedElement {
       return;
     }
     await this.#connectBases(account, undefined, fields, vault);
+    const failed = [this.failure, this.problem].some((issue) => issue?.id === id);
+    if (failed && settings && !keyed)
+      await vault.settings?.(recordName(account), 'model', before ?? {}).catch(() => {});
   }
 
   #settingsOf(
@@ -648,14 +653,21 @@ export class SliccSettings extends ThemedElement {
     );
   }
 
-  #keyOptional(account: Account): boolean {
-    if (!account.fields?.some((field) => field.vaultSetting || field.customBase)) return false;
+  #record(account: Account): SecretView | undefined {
     const name = recordName(account);
-    return !!this.model?.vault
+    return this.model?.vault
       ?.list()
-      ?.secrets.some(
+      ?.secrets.find(
         (secret) => secret.name === name && secret.kind === 'model' && secret.state !== 'removed'
       );
+  }
+
+  #keyOptional(account: Account): boolean {
+    const vault = this.#vault(account);
+    const fields = account.fields ?? [];
+    if (!vault || !fields.some((field) => field.vaultSetting || field.customBase)) return false;
+    if (fields.some((field) => field.vaultSetting) && !vault.settings) return false;
+    return !!this.#record(account);
   }
 
   #refused(account: Account, message: string, keyed: boolean): void {

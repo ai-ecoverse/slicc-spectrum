@@ -5,10 +5,10 @@ import { launch } from './chrome.mjs';
 const chrome = await launch();
 after(() => chrome.close());
 
-async function open(t) {
+async function open(t, vault = 'secrets') {
   const page = await chrome.page(t);
   await page.goto(
-    `/ui/?${new URLSearchParams({ delay: '5', color: 'light', providers: 'all', vault: 'secrets' })}`
+    `/ui/?${new URLSearchParams({ delay: '5', color: 'light', providers: 'all', vault })}`
   );
   await page.until(() => window.ready === true && window.app.dock.api.panels.length > 0);
   await page.evaluate(() => {
@@ -73,7 +73,14 @@ async function add(page, id, values) {
   await click(page, 'dialog.picker [data-action=save]');
 }
 
+const idle = (page, id) =>
+  page.until((id) => {
+    const settings = window.$('slicc-app', 'slicc-dock', 'slicc-settings');
+    return !settings.pending.has(id) && settings.entering === null && !settings.picking;
+  }, id);
+
 async function edit(page, id, values) {
+  await idle(page, id);
   await page.evaluate((id) => {
     window.model.settings.disconnect(id);
     window.order = [];
@@ -188,5 +195,75 @@ test('a refused setting shows on its field and connect never runs', async (t) =>
     })),
     { order: ['put'], invalid: 'true' }
   );
+  assert.deepEqual(page.errors, []);
+});
+
+test('without a settings op on the vault, a field edit still asks for the key', async (t) => {
+  const page = await open(t);
+  await add(page, 'cloudflare', [
+    ['input[data-field=value]', key],
+    ['input[data-account-field=account]', 'acct-1'],
+  ]);
+  await page.until(() => window.account('cloudflare')?.status === 'connected');
+  await idle(page, 'cloudflare');
+  await page.evaluate(() => {
+    window.model.vault.settings = undefined;
+    window.model.settings.disconnect('cloudflare');
+    return true;
+  });
+  await click(page, '.account[data-id=cloudflare] [data-action=connect]');
+  await page.until(() => !!window.settingsPart('form.key[data-id=cloudflare]'));
+  await fill(page, 'form.key[data-id=cloudflare]', [
+    ['input[data-account-field=account]', 'acct-2'],
+  ]);
+  const save = () =>
+    window.settingsPart('form.key[data-id=cloudflare] [data-action=save]').disabled;
+  assert.equal(await page.evaluate(save), true);
+  await fill(page, 'form.key[data-id=cloudflare]', [['input[data-field=value]', key]]);
+  await page.until(
+    () => !window.settingsPart('form.key[data-id=cloudflare] [data-action=save]').disabled
+  );
+  await click(page, 'form.key[data-id=cloudflare] [data-action=save]');
+  await page.until(() => window.account('cloudflare')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.model.vault.puts.at(-1).options.settings), {
+    CLOUDFLARE_ACCOUNT_ID: 'acct-2',
+  });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a keyless edit that fails after the settings call puts the old settings back', async (t) => {
+  const page = await open(t, 'endpoints-fail');
+  await add(page, 'azure-openai', [
+    ['input[data-field=value]', 'az-key-0123456789'],
+    ['input[data-account-field=endpoint]', 'harbor'],
+    ['input[data-account-field=deployment]', 'harbor-gpt'],
+  ]);
+  await page.until(() => window.account('azure-openai')?.status === 'connected');
+  await idle(page, 'azure-openai');
+  await page.evaluate(() => {
+    window.model.settings.disconnect('azure-openai');
+    return true;
+  });
+  await click(page, '.account[data-id=azure-openai] [data-action=connect]');
+  await page.until(() => !!window.settingsPart('form.key[data-id=azure-openai]'));
+  await fill(page, 'form.key[data-id=azure-openai]', [
+    ['input[data-account-field=endpoint]', 'https://harbor.openai.azure.example'],
+    ['input[data-account-field=deployment]', 'harbor-gpt'],
+  ]);
+  await click(page, 'form.key[data-id=azure-openai] [data-action=save]');
+  await page.until(() => window.model.vault.settingsCalls.length === 2);
+  assert.deepEqual(
+    await page.evaluate(() => window.model.vault.settingsCalls.map((call) => call.settings)),
+    [{}, { AZURE_OPENAI_RESOURCE_NAME: 'harbor' }]
+  );
+  assert.deepEqual(
+    await page.evaluate(
+      () =>
+        window.model.vault.list().secrets.find((secret) => secret.name === 'AZURE_OPENAI_API_KEY')
+          .settings
+    ),
+    { AZURE_OPENAI_RESOURCE_NAME: 'harbor' }
+  );
+  assert.equal(await page.evaluate(() => window.account('azure-openai').status), 'disconnected');
   assert.deepEqual(page.errors, []);
 });
