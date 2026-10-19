@@ -2465,6 +2465,11 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
   const page = await open(t);
   await page.evaluate(() => window.model.agent.select('cone-kitchen'));
   await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.lick'));
+  await page.evaluate(() => {
+    window.chatPart('[data-action=show-waiting]').click();
+    return true;
+  });
+  await page.until(() => !!window.chatPart('.asks[data-open]'));
   const kinds = await page.evaluate(() => {
     const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot;
     const count = (selector) => root.querySelectorAll(selector).length;
