@@ -148,7 +148,7 @@ export const memories: Memory[] = [
     scope: 'cone-harbor',
     section: 'Conventions',
     title: 'Cache keys',
-    body: 'Cache keys are `city:UTC-date`. Never key on local time.',
+    body: 'Cache keys are `city:UTC-date`. Never key on local time.\n\nThe warmer fills the next day’s keys at 23:00 UTC, so a key built from local time misses it and every request goes upstream until midnight. `npm run cache:check` lists the keys that don’t match.',
     tag: 'project',
     updatedAt: now - 2 * day,
   },
