@@ -646,8 +646,14 @@ export class SliccComposer extends ThemedElement {
         color: var(--swc-neutral-subdued-content-color-default);
         text-align: center;
       }
+      .reattach {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: var(--swc-spacing-75);
+      }
       .reattach swc-icon-attach {
-        vertical-align: middle;
+        flex: none;
       }
       .popup {
         position: absolute;
