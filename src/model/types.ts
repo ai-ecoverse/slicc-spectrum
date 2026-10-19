@@ -810,6 +810,13 @@ export interface PackagePin {
   project: string;
 }
 
+export interface PackageInstall {
+  version: string;
+  where: string;
+  user?: string;
+  manager?: 'pnpm' | 'panel';
+}
+
 export interface PackageItem {
   id: string;
   package: string;
@@ -829,6 +836,7 @@ export interface PackageItem {
   log?: string;
   origin?: 'catalog' | 'user';
   pin?: PackagePin;
+  installs?: readonly PackageInstall[];
 }
 
 export interface UpdatesEvents {

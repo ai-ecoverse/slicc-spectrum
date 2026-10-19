@@ -11,7 +11,7 @@ import type {
 import type { Clock } from './clock.ts';
 
 export type UpdateScenario = 'current' | 'boot' | 'starting' | 'available' | 'restart' | 'failure';
-export type PackageScenario = 'mixed' | 'empty' | 'fail' | 'user';
+export type PackageScenario = 'mixed' | 'empty' | 'fail' | 'user' | 'elsewhere';
 export type PackageConfirm = (options: {
   title: string;
   body: string;
@@ -231,6 +231,24 @@ export function packageFixtures(scenario: PackageScenario): readonly PackageItem
     actions: ['retry'],
     log: 'Packages: +1\nERR_PNPM_FETCH_TIMEOUT Request timed out after 30000ms',
   });
+  if (scenario === 'elsewhere') {
+    const cone = (version: string) => [
+      { version, where: '/home/cone/.local/share/pnpm', user: 'cone', manager: 'pnpm' as const },
+    ];
+    patch('git', { state: 'installed', version: '2.47.1', actions: [], installs: cone('2.47.1') });
+    patch('tsc', {
+      state: 'outdated',
+      version: '5.8.2',
+      actions: ['update'],
+      installs: cone('5.8.2'),
+    });
+    patch('biome', {
+      installs: [
+        { version: '2.2.4', where: '/usr/local/share/pnpm', manager: 'panel' },
+        ...cone('2.2.4'),
+      ],
+    });
+  }
   return scenario === 'user' ? [...items, ...userPackages()] : items;
 }
 
@@ -308,6 +326,16 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
       }
       this.#patchPackage(id, { state: 'removing', error: null, actions: [] });
       await this.#clock.sleep(2);
+      const kept = item.installs?.filter((install) => install.manager !== 'panel') ?? [];
+      if (kept.length) {
+        this.#patchPackage(id, {
+          state: 'installed',
+          version: kept[0].version,
+          installs: kept,
+          log: undefined,
+        });
+        return;
+      }
       this.#patchPackage(id, {
         state: 'available',
         version: null,
@@ -357,7 +385,15 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
       state: 'installed',
       version: item.offered,
       progress: null,
-      actions: ['remove'],
+      actions: item.installs ? [] : ['remove'],
+      ...(item.installs
+        ? {
+            installs: item.installs.map((install) => ({
+              ...install,
+              version: item.offered as string,
+            })),
+          }
+        : {}),
       log: `${log}\nProgress: resolved 1, downloaded 1, added 1\nDone in 3.8s`,
     });
   }

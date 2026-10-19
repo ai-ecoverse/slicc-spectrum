@@ -8,6 +8,7 @@ import { repeat } from 'lit/directives/repeat.js';
 import type {
   InstallProgress,
   PackageAction,
+  PackageInstall,
   PackageItem,
   PackagePin,
   PackageState,
@@ -74,6 +75,42 @@ function pinVersion(item: PackageItem, pin: PackagePin): readonly string[] {
   const version = item.version ?? pin.range;
   if (pin.base === null) return [pin.range === version ? version : `${pin.range} → ${version}`];
   return [version, pin.base === version ? 'the version seven ships' : `seven ships ${pin.base}`];
+}
+
+function placed(item: PackageItem): PackageItem {
+  const installs = item.installs ?? [];
+  if (!installs.length) return item;
+  const version = item.version ?? installs[0].version;
+  const newer = item.offered !== null && item.offered !== version;
+  const state = item.state === 'available' ? (newer ? 'outdated' : 'installed') : item.state;
+  const owned = installs.some((install) => install.manager === 'panel');
+  const hidden = new Set<PackageAction>(owned ? ['install'] : ['install', 'remove']);
+  return { ...item, version, state, actions: item.actions.filter((action) => !hidden.has(action)) };
+}
+
+const elsewhere = (item: PackageItem): readonly PackageInstall[] =>
+  (item.installs ?? []).filter((install) => install.manager !== 'panel');
+
+function installText(install: PackageInstall, version: string | null): string {
+  const place = install.user ? `for ${install.user}` : `in ${install.where}`;
+  const via = install.manager === 'pnpm' ? ', via pnpm' : '';
+  return `${install.version === version ? '' : `${install.version} `}${place}${via}`;
+}
+
+function managedText(item: PackageItem): TemplateResult | string | null {
+  const others = elsewhere(item);
+  if (!others.length || others.length !== item.installs?.length) return null;
+  return others.every((install) => install.manager === 'pnpm')
+    ? html`Managed by pnpm. Remove it with <code>pnpm remove -g ${item.package}</code>.`
+    : 'Installed outside this panel. Remove it where it was installed.';
+}
+
+const shared = (item: PackageItem): boolean =>
+  elsewhere(item).length > 0 && elsewhere(item).length !== item.installs?.length;
+
+function actionLabel(item: PackageItem, action: PackageAction): string {
+  if (action === 'remove' && shared(item)) return `Remove the panel’s copy of ${item.label}`;
+  return `${packageActions[action]} ${item.label}`;
 }
 
 const packageRunning: ReadonlySet<PackageState> = new Set(['installing', 'updating', 'removing']);
@@ -369,6 +406,10 @@ export class SliccUpdates extends ModelElement {
         line-height: var(--swc-line-height-200);
         overflow-wrap: anywhere;
       }
+      [data-managed] code {
+        display: inline-block;
+        max-width: 100%;
+      }
       .warnings {
         display: flex;
         flex-direction: column;
@@ -636,6 +677,8 @@ export class SliccUpdates extends ModelElement {
     const requires = requiresText(item, all);
     return html`<p class="meta">
       ${version ? html`<span class="version">${version}</span>` : nothing}
+      ${shared(item) ? html`<span data-install="panel">the panel’s copy</span>` : nothing}
+      ${elsewhere(item).map((install) => html`<span data-install>${installText(install, item.version)}</span>`)}
       ${download ? html`<span>${size(item.size as number)}</span>` : nothing}
       ${requires ? html`<span data-requires>${requires}</span>` : nothing}
     </p>`;
@@ -658,6 +701,7 @@ export class SliccUpdates extends ModelElement {
     const busy = this.busy.get(item.id);
     const shown = busy ? [busy] : act ? item.actions : [];
     const error = this.problems.get(item.id) ?? item.error;
+    const managed = managedText(item);
     return html`<li data-id=${item.id} data-state=${item.state}>
       <div class="name">
         <h3 title=${item.package}>${item.label}</h3>
@@ -669,14 +713,14 @@ export class SliccUpdates extends ModelElement {
             size="s"
             variant="secondary"
             data-action=${action}
-            accessible-label=${`${packageActions[action]} ${item.label}`}
+            accessible-label=${actionLabel(item, action)}
             ?pending=${busy === action}
             @click=${() => void this.actPackage(item.id, action)}
           >${packageActions[action]}</swc-button>`
       )}</div>
       <p class="description">${item.description}</p>
       ${this.#packageMeta(item, all)}
-      ${item.notes?.length ? html`<p class="notes" data-notes>${item.notes.map((note) => html`<span>${note}</span>`)}</p>` : nothing}
+      ${item.notes?.length || managed ? html`<p class="notes" data-notes>${(item.notes ?? []).map((note) => html`<span>${note}</span>`)}${managed ? html`<span data-managed>${managed}</span>` : nothing}</p>` : nothing}
       ${
         item.warnings?.length
           ? html`<p class="warnings" data-warnings>${item.warnings.map(
@@ -719,7 +763,7 @@ export class SliccUpdates extends ModelElement {
 
   #packages(port: UpdatesPort | undefined): TemplateResult | typeof nothing {
     if (!port?.packages) return nothing;
-    const all = port.packages();
+    const all = port.packages().map(placed);
     const offered = all.filter((item) => item.origin !== 'user');
     const yours = all.filter((item) => item.origin === 'user');
     return html`<section data-section="packages" aria-labelledby="packages">
