@@ -1294,11 +1294,9 @@ export class SliccSecrets extends ThemedElement {
 
   #provider(id: string): string {
     const settings = this.model?.settings;
-    return (
-      settings?.providers?.().find((option) => option.id === id)?.name ??
-      settings?.accounts().find((account) => account.id === id)?.provider ??
-      id
-    );
+    const option = settings?.providers?.().find((item) => item.id === id);
+    const account = settings?.accounts().find((item) => item.id === id);
+    return option?.name ?? account?.provider ?? id;
   }
 
   #unpin(
