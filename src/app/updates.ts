@@ -1,9 +1,11 @@
+import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/divider/swc-divider.js';
 import '@adobe/spectrum-wc/components/progress-bar/swc-progress-bar.js';
 import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
-import { css, html, nothing, type TemplateResult } from 'lit';
+import link from '@adobe/spectrum-wc/link.css';
+import { css, html, nothing, type TemplateResult, unsafeCSS } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import type {
   InstallProgress,
@@ -14,11 +16,13 @@ import type {
   SliccModel,
   UpdateAction,
   UpdateItem,
+  UpdateRelease,
   UpdateState,
   UpdatesPort,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
 import { chevron, disclosureStyles } from './disclosure.ts';
+import { markdown, markdownCss } from './markdown.ts';
 import { size } from './messages.ts';
 import { ViewSet } from './view-state.ts';
 
@@ -116,6 +120,48 @@ const itemBusy = (item: UpdateItem): boolean =>
 const packageBusy = (item: PackageItem): boolean =>
   packageRunning.has(item.state) || item.progress !== null;
 
+const newer = (a: string, b: string): number =>
+  a.replace(/^v/, '').localeCompare(b.replace(/^v/, ''), 'en', { numeric: true });
+
+const certBlock = /<!--\s*cert-verify\s*-->([\s\S]*?)<!--\s*\/cert-verify\s*-->/g;
+
+interface Notes {
+  release: UpdateRelease;
+  body: string;
+  certified: boolean;
+}
+
+export function releaseNotes(release: UpdateRelease): Notes {
+  const text = release.notes ?? '';
+  const certified = [...text.matchAll(certBlock)].some(([, inner]) =>
+    /^certified\b/.test(inner.trim())
+  );
+  const lines = text.replace(certBlock, '').trim().split('\n');
+  const heading =
+    /^#{1,6}\s/.test(lines[0]) && lines[0].includes(release.version.replace(/^v/, ''));
+  const body = lines
+    .slice(heading ? 1 : 0)
+    .join('\n')
+    .trim();
+  return { release, body, certified };
+}
+
+export function whatsNew(
+  releases: readonly UpdateRelease[] | undefined,
+  from: string | null,
+  to: string | null
+): readonly Notes[] {
+  if (!releases || from === null || to === null || to === from) return [];
+  const range = releases
+    .filter((release) => newer(release.version, from) > 0 && newer(release.version, to) <= 0)
+    .sort((a, b) => newer(b.version, a.version))
+    .map(releaseNotes);
+  return range.some((entry) => entry.body) ? range : [];
+}
+
+const installed = (releases: readonly UpdateRelease[] | undefined, version: string) =>
+  releases?.find((release) => newer(release.version, version) === 0);
+
 type Failures = ReadonlyMap<string, string>;
 type Snapshot = ReadonlyMap<string, { state: string; error: string | null }>;
 
@@ -210,7 +256,9 @@ export class SliccUpdates extends ModelElement {
   }
 
   static styles = [
+    unsafeCSS(link),
     disclosureStyles,
+    markdownCss,
     css`
       :host {
         display: block;
@@ -308,12 +356,12 @@ export class SliccUpdates extends ModelElement {
       section > .hint {
         margin-block-end: var(--swc-spacing-100);
       }
-      ul {
+      .rows {
         margin: 0;
         padding: 0;
         list-style: none;
       }
-      li {
+      .rows > li {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         grid-template-areas: 'name buttons' 'description buttons';
@@ -322,7 +370,7 @@ export class SliccUpdates extends ModelElement {
         padding: var(--swc-spacing-200) 0;
         border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
       }
-      li > :not(.name, .buttons, .description) {
+      .rows > li > :not(.name, .buttons, .description) {
         grid-column: 1 / -1;
         margin: 0;
       }
@@ -353,11 +401,11 @@ export class SliccUpdates extends ModelElement {
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      li .meta {
+      .rows > li > .meta {
         justify-content: flex-start;
         gap: 0;
       }
-      li .meta > * + *::before {
+      .rows > li > .meta > * + *::before {
         content: '·';
         margin-inline: var(--swc-spacing-100);
       }
@@ -407,6 +455,43 @@ export class SliccUpdates extends ModelElement {
       .package {
         color: var(--swc-neutral-subdued-content-color-default);
       }
+      .swc-Link {
+        font-size: inherit;
+      }
+      .installed {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: var(--swc-spacing-200);
+      }
+      .releases {
+        display: grid;
+        gap: var(--swc-spacing-300);
+        margin-block-start: var(--swc-spacing-200);
+        padding: var(--swc-spacing-300);
+        max-height: calc(var(--swc-spacing-1000) * 4);
+        overflow: auto;
+        background: var(--swc-background-layer-1-color);
+        border-radius: var(--swc-corner-radius-medium-default);
+        overflow-wrap: anywhere;
+      }
+      .title {
+        margin: 0;
+        font-weight: var(--swc-bold-font-weight);
+        color: var(--swc-heading-color);
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--swc-spacing-100);
+      }
+      .release > .markdown {
+        margin-block-start: var(--swc-spacing-100);
+        line-height: var(--swc-line-height-200);
+      }
+      .release .markdown .heading[aria-level] {
+        font-size: var(--swc-font-size-100);
+        margin-block: var(--swc-spacing-200) var(--swc-spacing-75);
+      }
       @container (max-width: 480px) {
         .page {
           padding: var(--swc-spacing-300);
@@ -416,7 +501,7 @@ export class SliccUpdates extends ModelElement {
           flex-direction: column;
           gap: var(--swc-spacing-50);
         }
-        li {
+        .rows > li {
           grid-template-areas: 'name buttons' 'description description';
         }
         .description {
@@ -462,7 +547,7 @@ export class SliccUpdates extends ModelElement {
   }
 
   focus(): void {
-    this.focusOn('swc-button, summary', '.page');
+    this.focusOn('article swc-button', 'swc-button, summary', '.page');
   }
 
   async act(id: string, action: UpdateAction): Promise<void> {
@@ -588,6 +673,47 @@ export class SliccUpdates extends ModelElement {
     return html`<span>Checked <time datetime=${date.toISOString()}>${shown}</time></span>`;
   }
 
+  #whatsNew(
+    key: string,
+    label: string,
+    entries: readonly Notes[],
+    level: number
+  ): TemplateResult | typeof nothing {
+    if (!entries.length) return nothing;
+    return html`<details data-releases ?open=${this.#logs.has(key)} @toggle=${this.#logs.details(key)}>
+      <summary data-action="whats-new">${chevron}What’s new</summary>
+      <div class="releases">${entries.map(
+        ({ release, body, certified }) => html`<div class="release" data-version=${release.version}>
+          <p class="title" role="heading" aria-level=${level}><a class="swc-Link" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${release.version} release notes`}>${release.version}</a>${certified ? html`<swc-badge size="s" variant="positive" subtle data-certified>Certified</swc-badge>` : nothing}</p>
+          ${body ? html`<div class="markdown">${markdown(body)}</div>` : nothing}
+        </div>`
+      )}</div>
+    </details>`;
+  }
+
+  #releaseLink(
+    label: string,
+    version: string,
+    releases: readonly UpdateRelease[] | undefined,
+    npm?: string
+  ): TemplateResult | typeof nothing {
+    const release = installed(releases, version);
+    if (release) {
+      return html`<a class="swc-Link" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${version} release notes`}>Release notes</a>`;
+    }
+    if (!npm) return nothing;
+    return html`<a class="swc-Link" href=${`https://www.npmjs.com/package/${npm}/v/${version}`} target="_blank" rel="noopener noreferrer" data-action="npm-page" aria-label=${`${label} ${version} on npm`}>npm page</a>`;
+  }
+
+  #version(item: UpdateItem): TemplateResult {
+    const text = html`<span class="version">${item.from ?? 'Not installed'}${item.to && item.to !== item.from ? html` → ${item.to}` : nothing}</span>`;
+    const link =
+      item.from !== null && (item.to === null || item.to === item.from)
+        ? this.#releaseLink(item.label, item.from, item.releases)
+        : nothing;
+    return link === nothing ? text : html`<span class="installed">${text}${link}</span>`;
+  }
+
   #item(item: UpdateItem): TemplateResult {
     const [variant, state] = states[item.state];
     const label = item.state === 'failed' && item.from !== null ? 'Update failed' : state;
@@ -599,9 +725,10 @@ export class SliccUpdates extends ModelElement {
         <swc-status-light variant=${variant}>${label}</swc-status-light>
       </div>
       <div class="meta">
-        <span class="version">${item.from ?? 'Not installed'}${item.to && item.to !== item.from ? html` → ${item.to}` : nothing}</span>
+        ${this.#version(item)}
         ${item.state === 'starting' ? nothing : this.#checked(item.checkedAt)}
       </div>
+      ${this.#whatsNew(`releases:item:${item.id}`, item.label, whatsNew(item.releases, item.from, item.to), 3)}
       ${this.#progress(item)}
       ${
         error
@@ -638,7 +765,14 @@ export class SliccUpdates extends ModelElement {
       ${version ? html`<span class="version">${version}</span>` : nothing}
       ${download ? html`<span>${size(item.size as number)}</span>` : nothing}
       ${requires ? html`<span data-requires>${requires}</span>` : nothing}
+      ${this.#packageLink(item)}
     </p>`;
+  }
+
+  #packageLink(item: PackageItem): TemplateResult | typeof nothing {
+    if (item.version === null || (item.offered !== null && item.offered !== item.version))
+      return nothing;
+    return html`<span>${this.#releaseLink(item.label, item.version, item.releases, item.package)}</span>`;
   }
 
   #packageProgress(item: PackageItem): TemplateResult | typeof nothing {
@@ -676,6 +810,7 @@ export class SliccUpdates extends ModelElement {
       )}</div>
       <p class="description">${item.description}</p>
       ${this.#packageMeta(item, all)}
+      ${this.#whatsNew(`releases:package:${item.id}`, item.label, whatsNew(item.releases, item.version, item.offered), 4)}
       ${item.notes?.length ? html`<p class="notes" data-notes>${item.notes.map((note) => html`<span>${note}</span>`)}</p>` : nothing}
       ${
         item.warnings?.length
@@ -710,7 +845,7 @@ export class SliccUpdates extends ModelElement {
     all: readonly PackageItem[],
     port: UpdatesPort
   ): TemplateResult {
-    return html`<ul>${repeat(
+    return html`<ul class="rows">${repeat(
       items,
       (item) => item.id,
       (item) => this.#package(item, all, Boolean(port.actPackage))

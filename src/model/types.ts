@@ -776,6 +776,12 @@ export interface InstallProgress {
   bytes?: { done: number; total: number };
 }
 
+export interface UpdateRelease {
+  version: string;
+  url: string;
+  notes?: string;
+}
+
 export interface UpdateItem {
   id: string;
   label: string;
@@ -788,6 +794,7 @@ export interface UpdateItem {
   error: string | null;
   actions: readonly UpdateAction[];
   log?: string;
+  releases?: readonly UpdateRelease[];
 }
 
 export type PackageState =
@@ -826,6 +833,7 @@ export interface PackageItem {
   log?: string;
   origin?: 'catalog' | 'user';
   pin?: PackagePin;
+  releases?: readonly UpdateRelease[];
 }
 
 export interface UpdatesEvents {

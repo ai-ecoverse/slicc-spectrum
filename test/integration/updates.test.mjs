@@ -726,3 +726,70 @@ test('your packages say where they live, and that updates keep them until you re
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('a ready update shows what’s new for its whole range, and rows without notes show none', async (t) => {
+  const page = await open(t, 'restart');
+  await page.evaluate(() => {
+    window.inUpdates = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-updates', selector);
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() => Boolean(window.inUpdates('[data-id=kernel] details[data-releases]')));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const details = window.inUpdates('[data-id=kernel] details[data-releases]');
+      return [details.open, details.querySelector('summary').textContent.trim()];
+    }),
+    [false, 'What’s new']
+  );
+  await page.evaluate(() => {
+    window.inUpdates('[data-id=kernel] [data-action=whats-new]').click();
+    return true;
+  });
+  await page.until(() => window.inUpdates('[data-id=kernel] details[data-releases]').open);
+  const kernel = await page.evaluate(() => {
+    const details = window.inUpdates('[data-id=kernel] details[data-releases]');
+    const releases = [...details.querySelectorAll('.release')];
+    return {
+      versions: releases.map((release) => release.dataset.version),
+      visible: releases.every((release) => release.getBoundingClientRect().height > 0),
+      certified: releases.map((release) => Boolean(release.querySelector('[data-certified]'))),
+      links: releases.map((release) => {
+        const link = release.querySelector('a[data-action=release-notes]');
+        return [link.getAttribute('aria-label'), link.target, link.href];
+      }),
+      text: details.innerText,
+    };
+  });
+  assert.deepEqual(kernel.versions, ['1.13.0', '1.12.2', '1.12.1']);
+  assert.equal(kernel.visible, true);
+  assert.deepEqual(kernel.certified, [true, true, false]);
+  assert.deepEqual(kernel.links[0], [
+    'Kernel 1.13.0 release notes',
+    '_blank',
+    'https://github.com/harbor-demo/harbor-kernel/releases/tag/v1.13.0',
+  ]);
+  assert.match(kernel.text, /Features[\s\S]*wait -n[\s\S]*Bug Fixes[\s\S]*slow DNS[\s\S]*mid-line/);
+  assert.doesNotMatch(kernel.text, /cert-verify|sha256|certified @harbor/);
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.inUpdates('[data-id=agent]').querySelectorAll('[data-releases] .release').length,
+      Boolean(window.inUpdates('[data-id=grammars] details')),
+      window
+        .inUpdates('[data-id=grammars] a[data-action=release-notes]')
+        ?.getAttribute('aria-label'),
+      Boolean(window.inUpdates('[data-id=skills] details, [data-id=skills] a')),
+    ]),
+    [1, false, 'Syntax grammars 4.5.0 release notes', false]
+  );
+  await page.evaluate(() => {
+    window.model.updates.setScenario('failure');
+    return true;
+  });
+  await page.until(() => Boolean(window.inUpdates('[data-id=global][data-state=failed]')));
+  assert.equal(
+    await page.evaluate(() => Boolean(window.inUpdates('[data-id=global] details[data-releases]'))),
+    false
+  );
+  assert.deepEqual(page.errors, []);
+});
