@@ -1242,8 +1242,12 @@ export const messageCss = css`
   .text > :first-child {
     margin-block-start: 0;
   }
-  .text > :last-child {
+  .text > :last-child,
+  .text :is(blockquote, li) > :last-child {
     margin-block-end: 0;
+  }
+  .text :is(blockquote, li) > :first-child {
+    margin-block-start: 0;
   }
   .text img {
     max-inline-size: 100%;
@@ -1258,7 +1262,7 @@ export const messageCss = css`
     border: 0;
     border-block-start: var(--swc-border-width-100) solid var(--swc-gray-200);
   }
-  li:has(> .task) {
+  li:has(> .task, > p:first-child > .task:first-child) {
     list-style: none;
     margin-inline-start: calc(-1 * var(--swc-spacing-400));
   }
@@ -1300,6 +1304,12 @@ export const messageCss = css`
     border: var(--swc-border-width-100) solid var(--swc-gray-200);
     padding: var(--swc-spacing-75) var(--swc-spacing-200);
     text-align: start;
+  }
+  :is(th, td)[data-align='center'] {
+    text-align: center;
+  }
+  :is(th, td)[data-align='right'] {
+    text-align: right;
   }
   th {
     background: var(--swc-background-layer-1-color);
