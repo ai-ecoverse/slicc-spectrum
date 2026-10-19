@@ -371,7 +371,7 @@ for (const width of [1280, 420]) {
         return !!row && row.getBoundingClientRect().right <= innerWidth;
       });
     }
-    const cut = await page.evaluate(() =>
+    const cut = () =>
       window.parts('.row:not([data-open])').flatMap((row) => {
         const box = row.querySelector('.content').getBoundingClientRect();
         const walker = document.createTreeWalker(row.querySelector('.body'), NodeFilter.SHOW_TEXT);
@@ -384,9 +384,7 @@ for (const width of [1280, 420]) {
               lines.push([row.dataset.id, node.textContent.slice(0, 20), rect.top, box.bottom]);
         }
         return lines;
-      })
-    );
-    assert.deepEqual(cut, []);
+      });
     const lines = () => {
       const row = window.part('.row[data-id=mem-6]');
       const box = row.querySelector('.content').getBoundingClientRect();
@@ -403,15 +401,37 @@ for (const width of [1280, 420]) {
         .sort((a, b) => a - b)
         .filter((top, index, all) => index === 0 || top - all[index - 1] > 4);
     };
-    const before = await page.evaluate(lines);
-    assert.equal(before.length, 2, JSON.stringify(before));
-    await page.evaluate(() => {
-      window.part('.row[data-id=mem-6] .head').click();
-      return true;
-    });
-    await page.until(() => !!window.part('.row[data-id=mem-6][data-open]'));
-    await page.until(settled, 'mem-6');
-    assert.deepEqual((await page.evaluate(lines)).slice(0, 2), before);
+    for (const body of [null, 'Short one.\n\nSecond short.\n\nThird.']) {
+      if (body) {
+        await page.evaluate((body) => {
+          const memory = window.model.memory.list().find((item) => item.id === 'mem-6');
+          window.model.memory.save({ ...memory, body });
+          return true;
+        }, body);
+        await page.until(
+          (body) =>
+            window.part('.row[data-id=mem-6] .body')?.textContent.startsWith(body.slice(0, 9)),
+          body
+        );
+        await page.until(settled, 'mem-6');
+      }
+      assert.deepEqual(await page.evaluate(cut), []);
+      const before = await page.evaluate(lines);
+      assert.equal(before.length, 2, JSON.stringify(before));
+      await page.evaluate(() => {
+        window.part('.row[data-id=mem-6] .head').click();
+        return true;
+      });
+      await page.until(() => !!window.part('.row[data-id=mem-6][data-open]'));
+      await page.until(settled, 'mem-6');
+      assert.deepEqual((await page.evaluate(lines)).slice(0, 2), before, body ?? 'mem-6');
+      await page.evaluate(() => {
+        window.part('.row[data-id=mem-6] .head').click();
+        return true;
+      });
+      await page.until(() => !window.part('.row[data-id=mem-6][data-open]'));
+      await page.until(settled, 'mem-6');
+    }
     assert.deepEqual(page.errors, []);
   });
 }
