@@ -550,11 +550,6 @@ export class SliccComposer extends ThemedElement {
         flex: none;
         --swc-icon-color: var(--swc-notice-visual-color);
       }
-      .queued [data-lost] swc-icon-alert-triangle {
-        vertical-align: middle;
-        margin-inline-end: var(--swc-spacing-50);
-        --swc-icon-color: var(--swc-notice-visual-color);
-      }
       .queued [data-lost] {
         overflow: hidden;
         text-overflow: ellipsis;
@@ -832,13 +827,20 @@ export class SliccComposer extends ThemedElement {
     if (!(model && waiting.length && agents.length) || this.#starting()) return;
     const active = model.agent.active();
     const id = agents.some((agent) => agent.id === active) ? active : agents[0].id;
-    const sendable = (row: Waiting) => !!(row.text || row.attachments.length);
+    const sendable = (row: Waiting) => !!(row.text || row.attachments.length) && !row.lost?.length;
     const [first, ...rest] = waiting.filter(sendable);
     if (!first) return;
     this.#waiting.value = waiting.filter((row) => !sendable(row));
     this.#deliver(model, id, first, 'queue');
     for (const { text, attachments } of rest)
       this.#post(model, id, { text, attachments, mode: 'queue' });
+  }
+
+  #putBack(row: Waiting): void {
+    this.value = this.value.trim() ? `${this.value}\n${row.text}` : row.text;
+    this.#history = -1;
+    this.#unwait(row.id);
+    this.focus();
   }
 
   #unwait(id: string): void {
@@ -1552,20 +1554,29 @@ export class SliccComposer extends ThemedElement {
     const waiting = this.#waiting.value;
     if (waiting.length === 0) return nothing;
     const names = (files: readonly Kept[]) => files.map((file) => file.name).join(', ');
+    const notKept = (files: readonly Kept[]) =>
+      files.length === 1
+        ? `Not sent: ${files[0].name} wasn’t kept after reload.`
+        : `Not sent: ${files.length} files weren’t kept after reload.`;
     return html`<ul class="queue" aria-label="Waiting for the agent">
       ${waiting.map((message) => {
         const lost = message.lost ?? [];
         const empty = !(message.text || message.attachments.length);
-        return html`<li class="queued" data-id=${message.id} data-mode="starting" ?data-unsent=${empty}>
-          ${empty ? html`<swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>` : html`<swc-icon-clock size="s" aria-hidden="true"></swc-icon-clock>`}
+        const held = !empty && lost.length > 0;
+        return html`<li class="queued" data-id=${message.id} data-mode="starting" ?data-unsent=${empty} ?data-held=${held}>
+          ${empty || held ? html`<swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>` : html`<swc-icon-clock size="s" aria-hidden="true"></swc-icon-clock>`}
           ${message.text ? nothing : html`<swc-icon-file size="xs" aria-hidden="true"></swc-icon-file>`}
           <span class="body">
-            <span class="text"><span class="sr">Queued: </span>${message.text || names(message.attachments) || names(lost)}</span>
-            ${lost.length ? html`<span class="lost" data-lost><swc-icon-alert-triangle size="xs" aria-hidden="true"></swc-icon-alert-triangle><span class="sr">, </span>Not kept after reload${message.text ? `: ${names(lost)}` : ''}</span>` : nothing}
+            <span class="text"><span class="sr">${held ? 'Held: ' : 'Queued: '}</span>${message.text || names(message.attachments) || names(lost)}</span>
+            ${lost.length ? html`<span class="lost" data-lost><span class="sr">, </span>${held ? notKept(lost) : 'Not kept after reload'}</span>` : nothing}
           </span>
           ${message.text && message.attachments.length ? html`<span class="next" data-files><swc-icon-file size="xs" aria-hidden="true"></swc-icon-file><span class="sr">, </span>${message.attachments.length === 1 ? '1 file' : `${message.attachments.length} files`}</span>` : nothing}
-          <span class="next">${empty ? 'Not sent. Attach the files again.' : 'Sent when the agent starts'}</span>
-          <swc-close-button size="s" data-action="unqueue" accessible-label=${empty ? 'Dismiss' : 'Remove from queue'} @click=${() => this.#unwait(message.id)}></swc-close-button>
+          ${
+            held
+              ? html`<swc-action-button size="s" quiet data-action="restore-starting" @click=${() => this.#putBack(message)}>Put back</swc-action-button>`
+              : html`<span class="next">${empty ? 'Not sent. Attach the files again.' : 'Sent when the agent starts'}</span>`
+          }
+          <swc-close-button size="s" data-action="unqueue" accessible-label=${empty || held ? 'Dismiss' : 'Remove from queue'} @click=${() => this.#unwait(message.id)}></swc-close-button>
         </li>`;
       })}
     </ul>`;
