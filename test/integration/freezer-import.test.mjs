@@ -793,3 +793,36 @@ test('freezer import: a dropped or picked file that isn’t a zip shows an inlin
   await page.until(() => window.stage() === 'preview');
   assert.equal((await error()).text, '');
 });
+
+test('freezer import: the not-zip error doesn’t come back after the page turns watch-only and back', async (t) => {
+  const page = await open(t, { import: 'v6' });
+  await page.evaluate(() => {
+    const data = new DataTransfer();
+    data.items.add(new File(['x'], 'notes.txt', { type: 'text/plain' }));
+    window.inFreezer('.list').dispatchEvent(
+      new DragEvent('drop', {
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+        dataTransfer: data,
+      })
+    );
+    return true;
+  });
+  await page.until(() => !!window.inFreezer('[data-error=not-zip] span'));
+  await page.evaluate(() => {
+    window.model.agent.setReadOnly('Watch only.');
+    return true;
+  });
+  await page.until(() => !window.inFreezer('[data-action=import-v6]'));
+  await page.evaluate(() => {
+    window.model.agent.setReadOnly(null);
+    return true;
+  });
+  await page.until(() => !!window.inFreezer('[data-action=import-v6]'));
+  await page.evaluate(() => window.freezer().updateComplete);
+  assert.equal(
+    await page.evaluate(() => window.inFreezer('[data-error=not-zip]').textContent.trim()),
+    ''
+  );
+});

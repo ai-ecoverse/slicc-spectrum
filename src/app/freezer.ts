@@ -6,7 +6,7 @@ import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-close.js';
 import '@adobe/spectrum-wc-icons/swc-icon-import.js';
-import { css, html, nothing, type TemplateResult } from 'lit';
+import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import type { Agent, FrozenCone, FrozenKind, SliccModel } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
 import { carriesFiles } from './chat.ts';
@@ -102,9 +102,6 @@ export class SliccFreezer extends ModelElement {
       .bar [data-action='import-v6'] {
         margin-inline-start: auto;
       }
-      .error {
-        align-items: center;
-      }
       .error span {
         flex: 1;
         min-width: 0;
@@ -193,6 +190,11 @@ export class SliccFreezer extends ModelElement {
       model.agent.on('agents', update),
       ...onWatch(model, update),
     ];
+  }
+
+  protected willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed);
+    if (!this.importable) this.refused = false;
   }
 
   focus(): void {
