@@ -66,6 +66,9 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   #cones = 1;
   #chats = 1;
   #thaws = 1;
+  declare importProfile?: AgentPort['importProfile'];
+  declare importCancel?: AgentPort['importCancel'];
+  declare importing?: AgentPort['importing'];
 
   constructor(
     agents: readonly Agent[],
@@ -84,24 +87,31 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
       this.#queues.set(agent.id, structuredClone([...(queues[agent.id] ?? [])]));
     }
     this.#active = this.#agents[0]?.id ?? '';
-    for (const { cone, messages } of frozen) {
-      this.#frozen.push({ ...cone });
-      this.#ice.set(cone.id, [
-        {
-          agent: {
-            id: cone.id,
-            name: cone.name,
-            kind: 'cone',
-            parentId: null,
-            status: 'idle',
-            model: cone.model,
-            contextFill: 0.2,
-            unread: 0,
-          },
-          messages: structuredClone([...messages]),
+    for (const { cone, messages } of frozen) this.#store(cone, messages);
+  }
+
+  #store(cone: FrozenCone, messages: readonly Message[]): void {
+    this.#frozen.push({ ...cone });
+    this.#ice.set(cone.id, [
+      {
+        agent: {
+          id: cone.id,
+          name: cone.name,
+          kind: 'cone',
+          parentId: null,
+          status: 'idle',
+          model: cone.model,
+          contextFill: 0.2,
+          unread: 0,
         },
-      ]);
-    }
+        messages: structuredClone([...messages]),
+      },
+    ]);
+  }
+
+  addFrozen(rows: ReadonlyArray<{ cone: FrozenCone; messages: readonly Message[] }>): void {
+    for (const { cone, messages } of rows) this.#store(cone, messages);
+    this.emit('frozen', this.frozen());
   }
 
   list(): readonly Agent[] {

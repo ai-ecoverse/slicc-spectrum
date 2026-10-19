@@ -29,6 +29,17 @@ export {
   guestsRefused,
   guestsUnavailable,
 } from './dummy/guests.ts';
+export type { ImportScenario } from './dummy/import.ts';
+export {
+  DummyImport,
+  importBefore,
+  importCancelled,
+  importCones,
+  importNotV6,
+  importPreview,
+  importReport,
+  importTotal,
+} from './dummy/import.ts';
 export type { DummyModel, DummyOptions } from './dummy/index.ts';
 export { createDummyModel } from './dummy/index.ts';
 export type { LeadersScenario, NetworkScenario, TailnetScenario } from './dummy/network.ts';

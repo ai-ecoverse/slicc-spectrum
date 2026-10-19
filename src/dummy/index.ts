@@ -9,6 +9,7 @@ import { DummyFiles, type MountScenario } from './files.ts';
 import * as fixtures from './fixtures.ts';
 import { DummyFollow, type FollowScenario } from './follow.ts';
 import { DummyGuests, type GuestsScenario } from './guests.ts';
+import { DummyImport, type ImportScenario } from './import.ts';
 import { DummyMemory } from './memory.ts';
 import { agentSections, DummyMonitor } from './monitor.ts';
 import {
@@ -57,6 +58,7 @@ export interface DummyOptions {
   browser?: BrowserScenario;
   sprinkles?: 'builtin' | 'cones';
   monitor?: 'dummy' | 'agent';
+  import?: ImportScenario | 'off';
   login?: 'ok' | 'fail';
 }
 
@@ -84,6 +86,14 @@ function guestsPort(guests: GuestsScenario | 'off', time: Clock): { guests?: Dum
   return guests === 'off' ? {} : { guests: new DummyGuests(guests, time) };
 }
 
+function importPort(scenario: ImportScenario | 'off', agent: DummyAgent, time: Clock): void {
+  if (scenario === 'off') return;
+  const port = new DummyImport(scenario, agent, time);
+  agent.importProfile = port.importProfile.bind(port);
+  agent.importCancel = port.importCancel.bind(port);
+  agent.importing = port.importing.bind(port);
+}
+
 export function createDummyModel({
   delay = 30,
   storage = null,
@@ -109,6 +119,7 @@ export function createDummyModel({
   browser: scenario = 'idle',
   sprinkles = 'builtin',
   monitor = 'dummy',
+  import: imports = 'off',
   login,
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
@@ -135,6 +146,7 @@ export function createDummyModel({
     stop(agentId);
     browser.release(agentId);
   };
+  importPort(imports, agent, time);
   if (hold !== 'off') agent.setHold({ reason: hold, held: 2 });
   if (readonly !== 'off') agent.setReadOnly(readOnlyText);
   const notice = readonly !== 'off' ? 'readonly' : notices;
