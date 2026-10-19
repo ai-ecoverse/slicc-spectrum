@@ -21,7 +21,7 @@ import {
 } from './network.ts';
 import { DummyNotices, type NoticeScenario, readOnlyText } from './notices.ts';
 import { providerAccounts, providerFixtures } from './providers.ts';
-import { DummySettings } from './settings.ts';
+import { DummySettings, type DummyTransport } from './settings.ts';
 import { DummySprinkles } from './sprinkles.ts';
 import { DummyTabs, type TabsScenario } from './tabs.ts';
 import { DummyTerminals } from './terminals.ts';
@@ -54,6 +54,7 @@ export interface DummyOptions {
   guests?: GuestsScenario | 'off';
   accounts?: 'settings' | 'vault';
   providers?: 'connected' | 'none' | 'all';
+  transport?: DummyTransport;
   hold?: AgentHold['reason'] | 'off';
   readonly?: 'version' | 'off';
   browser?: BrowserScenario;
@@ -64,6 +65,7 @@ export interface DummyOptions {
 }
 
 export interface DummyModel extends SliccModel {
+  settings: DummySettings;
   browser: DummyBrowser;
   updates: DummyUpdates;
   network?: DummyNetwork;
@@ -85,10 +87,11 @@ export function vaultAccounts(accounts: readonly Account[]): Account[] {
 
 function settingsAccounts(
   accounts: 'settings' | 'vault',
-  providers: 'connected' | 'none' | 'all'
+  providers: 'connected' | 'none' | 'all',
+  transport?: DummyTransport
 ): Account[] {
   const all = accounts === 'vault' ? vaultAccounts(fixtures.accounts) : fixtures.accounts;
-  if (providers === 'all') return providerAccounts(all);
+  if (providers === 'all') return providerAccounts(all, transport === 'none' ? 'none' : undefined);
   return all.map((account) =>
     providers === 'none' && account.group !== 'mcp'
       ? { ...account, status: 'disconnected' as const, identity: '' }
@@ -128,6 +131,7 @@ export function createDummyModel({
   guests = 'off',
   accounts = 'settings',
   providers = 'connected',
+  transport,
   hold = 'off',
   readonly = 'off',
   browser: scenario = 'idle',
@@ -177,13 +181,14 @@ export function createDummyModel({
     settings: new DummySettings(
       fixtures.defaults,
       providers === 'none' ? [...fixtures.models, ...fixtures.laterModels] : fixtures.models,
-      settingsAccounts(accounts, providers),
+      settingsAccounts(accounts, providers, transport),
       storage,
       time,
       undefined,
       providers === 'none',
       login,
-      providers === 'all' ? providerFixtures : undefined
+      providers === 'all' ? providerFixtures : undefined,
+      transport
     ),
     memory: new DummyMemory(extras.memories, () => [
       { id: 'global', label: 'Everyone' },

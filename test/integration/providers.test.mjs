@@ -575,70 +575,283 @@ test('when the vault refuses to delete the key, Remove stops and says why', asyn
   assert.deepEqual(page.errors, []);
 });
 
-test('a provider that needs a CORS-free transport says so in the picker and on its account', async (t) => {
-  const page = await open(t);
-  assert.equal(
-    await page.evaluate(
-      () =>
-        window.settingsPart('.notes [data-notice=cors-free-transport]')?.textContent ===
-        'Needs the SLICC extension or CLI, because the browser blocks direct requests to it.'
-    ),
-    true
-  );
+const blockedText =
+  'Needs the SLICC extension or CLI, because the browser blocks direct requests to it.';
+
+test('a blocked provider stays listed but can’t be picked, and Set up opens Get the whole web', async (t) => {
+  const page = await open(t, { transport: 'none' });
   await picker(page);
   assert.deepEqual(
     await page.evaluate(() =>
-      [...window.picker().querySelectorAll('.option [data-notice=cors-free-transport]')].map(
-        (node) => [node.closest('.option').dataset.provider, node.textContent]
-      )
+      [...window.picker().querySelectorAll('.option[data-blocked]')].map((node) => [
+        node.dataset.provider,
+        node.getAttribute('aria-disabled'),
+        node
+          .querySelector('[data-notice=cors-free-transport] span')
+          .textContent.replace('Set up', '')
+          .trim(),
+        !!node.querySelector('[data-action=setup-network]'),
+      ])
     ),
-    [
-      ['amazon-bedrock', 'Needs the SLICC extension or CLI'],
-      ['cloudflare', 'Needs the SLICC extension or CLI'],
-    ]
+    [['cloudflare', 'true', 'Needs the SLICC extension or CLI', true]]
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const color = (node) => getComputedStyle(node).color;
+      const option = (id, part) =>
+        color(window.picker().querySelector(`.option[data-provider=${id}] ${part}`));
+      const row = window.settingsPart('.notes [data-notice=cors-free-transport]');
+      return {
+        name:
+          option('cloudflare', '.name') !== option('groq', '.name') &&
+          option('cloudflare', '.name') !== option('anthropic', '.name'),
+        description: option('cloudflare', '.description') !== option('groq', '.description'),
+        hint: option('cloudflare', '[data-notice] span') === color(row.querySelector('span')),
+        setup:
+          option('cloudflare', '[data-action=setup-network]') ===
+          color(row.querySelector('[data-action=setup-network]')),
+      };
+    }),
+    { name: true, description: true, hint: true, setup: true }
+  );
+  await page.evaluate(() => {
+    window.picker().querySelector('.option[data-provider=cloudflare] .name').scrollIntoView();
+    const box = window
+      .picker()
+      .querySelector('.option[data-provider=cloudflare] .name')
+      .getBoundingClientRect();
+    window.point = { x: box.left + 2, y: box.top + box.height / 2 };
+    return true;
+  });
+  const { x, y } = await page.evaluate(() => window.point);
+  for (const type of ['mousePressed', 'mouseReleased'])
+    await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  await page.until(() => window.active()?.dataset.provider === 'cloudflare');
+  assert.equal(await page.evaluate(() => window.picker().dataset.picker), 'pick');
+  await page.press('Enter');
+  await page.press(' ');
+  assert.equal(await page.evaluate(() => window.picker().dataset.picker), 'pick');
+  await page.press('ArrowUp');
+  await page.until(() => window.active()?.dataset.provider === 'cerebras');
+  await page.press('ArrowDown');
+  await page.until(() => window.active()?.dataset.provider === 'cloudflare');
+  await page.press('Enter');
+  assert.equal(await page.evaluate(() => window.picker().dataset.picker), 'pick');
+  await page.type('cloud');
+  await page.until(() => window.options().join() === 'cloudflare');
+  await page.press('Enter');
+  assert.equal(await page.evaluate(() => window.picker().dataset.picker), 'pick');
+  await click(page, '.option[data-provider=cloudflare] [data-action=setup-network]');
+  await page.until(() => !window.picker());
+  await page.until(() => window.$('slicc-app', 'slicc-dock').api.activePanel?.id === 'network');
+  await page.until(() => {
+    const section = window
+      .$('slicc-app', 'slicc-dock')
+      .content('network')
+      ?.shadowRoot?.querySelector('section[aria-labelledby=whole]');
+    if (!section) return false;
+    const box = section.getBoundingClientRect();
+    return box.height > 0 && box.top >= 0 && box.top < innerHeight;
+  });
+  assert.equal(
+    await page.evaluate(() =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('network')
+        .shadowRoot.querySelector('#whole')
+        .textContent.trim()
+    ),
+    'Get the whole web'
   );
   assert.deepEqual(page.errors, []);
 });
 
-test('Accounts and the picker fit 420 px without scrolling sideways', async (t) => {
+test('a provider that becomes blocked while its connect step is open disables Connect until the route is back', async (t) => {
   const page = await open(t);
-  await page.send('Emulation.setDeviceMetricsOverride', {
-    width: 420,
-    height: 860,
-    deviceScaleFactor: 1,
-    mobile: false,
-  });
-  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
-  await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+  await choose(page, 'cloudflare');
+  await page.until(() => window.active()?.localName === 'sp-textfield');
+  await page.type('cf-key');
   await page.evaluate(() => {
-    window.app.show('settings');
+    const input = window.picker().querySelector('[data-account-field=account]');
+    input.value = '3f2a9c';
+    input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
     return true;
   });
-  await page.until(() => {
-    const host = window.$('slicc-app', 'slicc-dock', 'slicc-settings');
-    const add = window.settingsPart('[data-action=add-provider]');
-    return (
-      add &&
-      host.getBoundingClientRect().right <= innerWidth &&
-      document.getAnimations().length === 0 &&
-      add.getBoundingClientRect().right <= innerWidth
-    );
+  await page.until(() => !window.save().disabled);
+  const state = () => ({
+    save: window.save().disabled,
+    notice: !!window.picker().querySelector('[data-step] [data-notice][data-blocked]'),
   });
-  const overflow = () => {
-    const host = window.$('slicc-app', 'slicc-dock', 'slicc-settings');
-    const wide = [...window.inner().querySelectorAll('.account, .notes, .option, dialog')].filter(
-      (node) => node.getBoundingClientRect().right > innerWidth + 0.5
-    );
-    return {
-      scroll: host.scrollWidth - host.clientWidth,
-      wide: wide.map((node) => node.className),
-    };
-  };
-  assert.deepEqual(await page.evaluate(overflow), { scroll: 0, wide: [] });
-  await picker(page);
-  assert.deepEqual(await page.evaluate(overflow), { scroll: 0, wide: [] });
-  await click(page, '.option[data-provider=azure-openai]');
-  await page.until(() => window.picker().dataset.picker === 'connect');
-  assert.deepEqual(await page.evaluate(overflow), { scroll: 0, wide: [] });
+  assert.deepEqual(await page.evaluate(state), { save: false, notice: false });
+  await page.evaluate(() => {
+    window.model.settings.setTransport('none');
+    return true;
+  });
+  await page.until(() => window.save().disabled);
+  assert.deepEqual(await page.evaluate(state), { save: true, notice: true });
+  await page.evaluate(() => {
+    window.model.settings.setTransport('extension');
+    return true;
+  });
+  await page.until(() => !window.save().disabled);
+  assert.deepEqual(await page.evaluate(state), { save: false, notice: false });
   assert.deepEqual(page.errors, []);
 });
+
+test('a blocked account can’t connect and says why, with Set up', async (t) => {
+  const page = await open(t, { transport: 'none' });
+  await page.evaluate(() => {
+    window.model.settings.disconnect('cloudflare');
+    return true;
+  });
+  await page.until(
+    () => !!window.settingsPart('.account[data-id=cloudflare] [data-action=connect]')
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const row = window.settingsPart('.account[data-id=cloudflare]');
+      const notice = row.nextElementSibling.querySelector('[data-notice=cors-free-transport]');
+      return {
+        connect: row.querySelector('[data-action=connect]').disabled,
+        status: row.querySelector('swc-status-light').textContent.trim(),
+        notice: notice.querySelector('span').textContent.replace('Set up', '').trim(),
+        setup: notice.querySelector('[data-action=setup-network]').textContent.trim(),
+      };
+    }),
+    { connect: true, status: 'Not connected', notice: blockedText, setup: 'Set up' }
+  );
+  await click(page, '.notes [data-action=setup-network]');
+  await page.until(() => window.$('slicc-app', 'slicc-dock').api.activePanel?.id === 'network');
+  assert.deepEqual(page.errors, []);
+});
+
+test('a connected provider that loses its route reads Unreachable and keeps Disconnect and Remove', async (t) => {
+  const page = await open(t, { transport: 'none' });
+  await page.until(() => !!window.settingsPart('.account[data-id=cloudflare]'));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const row = window.settingsPart('.account[data-id=cloudflare]');
+      const light = row.querySelector('swc-status-light');
+      return {
+        status: [light.getAttribute('variant'), light.textContent.trim()],
+        identity: row.querySelector('.identity').textContent.trim(),
+        disconnect: row.querySelector('[data-action=disconnect]').disabled,
+        remove: row.querySelector('[data-action=remove-account]').disabled,
+        notice: !!row.nextElementSibling.querySelector(
+          '[data-blocked] [data-action=setup-network]'
+        ),
+      };
+    }),
+    {
+      status: ['notice', 'Unreachable'],
+      identity: 'API key',
+      disconnect: false,
+      remove: false,
+      notice: true,
+    }
+  );
+  await click(page, '.account[data-id=cloudflare] [data-action=disconnect]');
+  await page.until(() => !!window.deep('slicc-confirm'));
+  await page.evaluate(() => {
+    window.deep('slicc-confirm').shadowRoot.querySelector('[data-action]').click();
+    return true;
+  });
+  await page.until(() => window.account('cloudflare')?.status === 'disconnected');
+  await click(page, '.account[data-id=cloudflare] [data-action=remove-account]');
+  await page.until(() => !!window.deep('slicc-confirm'));
+  await page.evaluate(() => {
+    window.deep('slicc-confirm').shadowRoot.querySelector('[data-action]').click();
+    return true;
+  });
+  await page.until(() => !window.rows().includes('cloudflare'));
+  assert.deepEqual(page.errors, []);
+});
+
+test('when a CORS-free route appears, blocked providers enable and their hints go', async (t) => {
+  const page = await open(t, { transport: 'none' });
+  await page.until(() => !!window.settingsPart('[data-blocked]'));
+  await page.evaluate(() => {
+    window.model.settings.setTransport('extension');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.settingsPart('.account[data-id=cloudflare] swc-status-light')?.textContent.trim() ===
+      'Connected'
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window
+          .inner()
+          .querySelectorAll('[data-notice=cors-free-transport], [data-action=setup-network]').length
+    ),
+    0
+  );
+  await click(page, '.account[data-id=cloudflare] [data-action=remove-account]');
+  await page.until(() => !!window.deep('slicc-confirm'));
+  await page.evaluate(() => {
+    window.deep('slicc-confirm').shadowRoot.querySelector('[data-action]').click();
+    return true;
+  });
+  await page.until(() => !window.rows().includes('cloudflare'));
+  await picker(page);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const option = window.picker().querySelector('.option[data-provider=cloudflare]');
+      return [
+        option.getAttribute('aria-disabled'),
+        option.hasAttribute('data-blocked'),
+        !!option.querySelector('[data-notice]'),
+      ];
+    }),
+    ['false', false, false]
+  );
+  await click(page, '.option[data-provider=cloudflare]');
+  await page.until(() => window.picker().dataset.picker === 'connect');
+  assert.deepEqual(page.errors, []);
+});
+
+for (const transport of ['extension', 'none'])
+  test(`Accounts and the picker fit 420 px without scrolling sideways (${transport})`, async (t) => {
+    const page = await open(t, { transport });
+    await page.send('Emulation.setDeviceMetricsOverride', {
+      width: 420,
+      height: 860,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+    await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+    await page.evaluate(() => {
+      window.app.show('settings');
+      return true;
+    });
+    await page.until(() => {
+      const host = window.$('slicc-app', 'slicc-dock', 'slicc-settings');
+      const add = window.settingsPart('[data-action=add-provider]');
+      return (
+        add &&
+        host.getBoundingClientRect().right <= innerWidth &&
+        document.getAnimations().length === 0 &&
+        add.getBoundingClientRect().right <= innerWidth
+      );
+    });
+    const overflow = () => {
+      const host = window.$('slicc-app', 'slicc-dock', 'slicc-settings');
+      const wide = [...window.inner().querySelectorAll('.account, .notes, .option, dialog')].filter(
+        (node) => node.getBoundingClientRect().right > innerWidth + 0.5
+      );
+      return {
+        scroll: host.scrollWidth - host.clientWidth,
+        wide: wide.map((node) => node.className),
+      };
+    };
+    assert.deepEqual(await page.evaluate(overflow), { scroll: 0, wide: [] });
+    await picker(page);
+    assert.deepEqual(await page.evaluate(overflow), { scroll: 0, wide: [] });
+    await click(page, '.option[data-provider=azure-openai]');
+    await page.until(() => window.picker().dataset.picker === 'connect');
+    assert.deepEqual(await page.evaluate(overflow), { scroll: 0, wide: [] });
+    assert.deepEqual(page.errors, []);
+  });
