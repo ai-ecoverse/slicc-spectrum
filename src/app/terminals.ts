@@ -4,6 +4,7 @@ import type { TerminalBackend, TerminalSession, TerminalSink, TerminalSize } fro
 import type { IDockviewPanel, SliccDock } from '../components/dock.ts';
 import type { SliccModel, TerminalInfo, TerminalPort } from '../model/types.ts';
 import type { SliccTerminal } from '../slicc-terminal.ts';
+import { terminalPalette } from './ansi.ts';
 import { ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import { agentName } from './files.ts';
@@ -236,22 +237,7 @@ export class SliccTerminalPanel extends ThemedElement {
         --slicc-terminal-font-size: var(--swc-font-size-100);
       }
       :host([color='light']) {
-        --slicc-terminal-color-0: var(--swc-gray-800);
-        --slicc-terminal-color-1: var(--swc-negative-color-900);
-        --slicc-terminal-color-2: var(--swc-positive-color-900);
-        --slicc-terminal-color-3: var(--swc-notice-color-1000);
-        --slicc-terminal-color-4: var(--swc-informative-color-900);
-        --slicc-terminal-color-5: var(--swc-purple-900);
-        --slicc-terminal-color-6: var(--swc-cyan-1000);
-        --slicc-terminal-color-7: var(--swc-gray-600);
-        --slicc-terminal-color-8: var(--swc-gray-700);
-        --slicc-terminal-color-9: var(--swc-negative-color-1000);
-        --slicc-terminal-color-10: var(--swc-positive-color-1000);
-        --slicc-terminal-color-11: var(--swc-notice-color-1100);
-        --slicc-terminal-color-12: var(--swc-informative-color-1000);
-        --slicc-terminal-color-13: var(--swc-purple-1000);
-        --slicc-terminal-color-14: var(--swc-cyan-1100);
-        --slicc-terminal-color-15: var(--swc-gray-800);
+        ${terminalPalette}
       }
     `,
   ];
