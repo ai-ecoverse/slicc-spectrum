@@ -17,6 +17,7 @@ import type {
   SliccModel,
   UpdateAction,
   UpdateItem,
+  UpdateNpm,
   UpdateRelease,
   UpdateState,
   UpdatesPort,
@@ -45,7 +46,73 @@ const actions: Record<UpdateAction, string> = {
   reload: 'Reload',
   'update-now': 'Update now',
   retry: 'Retry',
+  'install-beta': 'Install beta',
+  'back-to-certified': 'Back to certified',
 };
+
+const resting: ReadonlySet<UpdateState> = new Set(['current', 'installed']);
+
+const betaLight = ['notice', 'Beta installed'] as const;
+
+const betaActions: ReadonlySet<UpdateAction> = new Set(['install-beta', 'back-to-certified']);
+
+const folder = (label: string): string | null => /\((\/[^)]+)\)$/.exec(label)?.[1] ?? null;
+
+const component = (label: string): string => label.replace(/\s*\(\/[^)]+\)$/, '');
+
+export function betaText(items: readonly UpdateItem[]): string | null {
+  const item = items.find((candidate) => candidate.beta);
+  if (!item?.beta) return null;
+  return `${component(item.label)} runs beta ${item.beta.version}, not certified`;
+}
+
+const release = (npm: UpdateNpm): string =>
+  npm.latest ? `${npm.latest} on npm` : 'a newer release on npm';
+
+const refused = (npm: UpdateNpm): string =>
+  npm.reason ? `not offered: ${npm.reason}` : 'not offered';
+
+const sentence = (text: string): string => text[0].toUpperCase() + text.slice(1);
+
+export function npmMeta(item: UpdateItem): string | null {
+  const npm = item.npm;
+  const tried = item.to === npm?.latest && (!item.beta || item.state === 'failed');
+  const target = item.to && item.to !== item.from && !tried ? ` → ${item.to}` : '';
+  if (item.beta) return `${item.beta.version} beta · certified ${item.beta.certified}${target}`;
+  const pinned = item.from ? `${item.from} (certified)${target}` : 'Not installed';
+  if (npm?.state === 'offered') return `${pinned} · ${release(npm)}, not certified`;
+  if (npm?.state === 'not-offered') return `${pinned} · ${release(npm)}, ${refused(npm)}`;
+  return null;
+}
+
+function changed(item: UpdateItem, npm: UpdateNpm): string | null {
+  const where = folder(item.label);
+  const changes = npm.changes;
+  const gated = changes?.gated ?? [];
+  const count = changes
+    ? `${changes.count} ${changes.count === 1 ? 'package changes' : 'packages change'}${where ? ` in ${where}` : ''}.`
+    : '';
+  const text = [
+    item.beta ? `${sentence(release(npm))}, not certified.` : '',
+    count,
+    gated.length === 1 ? `${gated[0]} stays at its certified version.` : '',
+    gated.length > 1 ? `${list(gated)} stay at their certified versions.` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return text || null;
+}
+
+export function npmNote(item: UpdateItem): string | null {
+  const npm = item.npm;
+  if (npm?.state === 'current') return 'npm: no newer release';
+  if (npm?.state === 'checking') return 'Checking npm…';
+  if (npm?.state === 'failed') return npm.reason ?? 'Couldn’t check npm';
+  if (npm?.state === 'offered') return changed(item, npm);
+  if (npm?.state === 'not-offered' && item.beta)
+    return `${sentence(release(npm))}, ${refused(npm)}`;
+  return null;
+}
 
 const running: ReadonlySet<UpdateState> = new Set(['checking', 'downloading', 'linking']);
 
@@ -392,6 +459,20 @@ export class SliccUpdates extends ModelElement {
       }
       swc-status-light {
         align-self: center;
+      }
+      .title {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--swc-spacing-100);
+        min-width: 0;
+      }
+      .npm {
+        margin: calc(-1 * var(--swc-spacing-100)) 0 0;
+        color: var(--swc-neutral-subdued-content-color-default);
+        font-size: var(--swc-font-size-75);
+        line-height: var(--swc-line-height-200);
+        overflow-wrap: anywhere;
       }
       .version {
         font-family: var(--swc-code-font-family-stack);
@@ -748,9 +829,15 @@ export class SliccUpdates extends ModelElement {
   }
 
   #actions(item: UpdateItem): TemplateResult | typeof nothing {
-    if (!item.actions.length) return nothing;
+    const developer = typeof this.model?.updates?.setDeveloper === 'function';
+    const shown = item.actions.filter(
+      (action) =>
+        !betaActions.has(action) ||
+        (developer && (action !== 'install-beta' || item.npm?.state === 'offered'))
+    );
+    if (!shown.length) return nothing;
     const busy = this.pending.has(item.id);
-    return html`<div class="actions">${item.actions.map(
+    return html`<div class="actions">${shown.map(
       (action) =>
         html`<swc-button
           size="m"
@@ -808,8 +895,10 @@ export class SliccUpdates extends ModelElement {
     return html`<a class="swc-Link swc-Link--standalone" href=${`https://www.npmjs.com/package/${npm}/v/${version}`} target="_blank" rel="noopener noreferrer" data-action="npm-page" aria-label=${`npm page for ${label} ${version}`}>npm page</a>`;
   }
 
-  #version(item: UpdateItem): TemplateResult {
-    const text = html`<span class="version">${item.from ?? 'Not installed'}${item.to && item.to !== item.from ? html` → ${item.to}` : nothing}</span>`;
+  #version(item: UpdateItem, meta: string | null): TemplateResult {
+    const text = meta
+      ? html`<span data-npm-meta>${meta}</span>`
+      : html`<span class="version">${item.from ?? 'Not installed'}${item.to && item.to !== item.from ? html` → ${item.to}` : nothing}</span>`;
     const link =
       item.from !== null && (item.to === null || item.to === item.from)
         ? this.#releaseLink(item.label, item.from, item.releases)
@@ -818,19 +907,28 @@ export class SliccUpdates extends ModelElement {
   }
 
   #item(item: UpdateItem): TemplateResult {
-    const [variant, state] = states[item.state];
+    const [variant, state] = item.beta && resting.has(item.state) ? betaLight : states[item.state];
     const label = item.state === 'failed' && item.from !== null ? 'Update failed' : state;
     const error = this.failures.get(item.id) ?? item.error;
+    const developer = typeof this.model?.updates?.setDeveloper === 'function';
+    const shown = developer ? item : { ...item, npm: null };
+    const meta = npmMeta(shown);
+    const note = npmNote(shown);
+    const ahead = shown.npm?.state === 'offered' ? (shown.npm.latest ?? null) : null;
     return html`<swc-divider size="s"></swc-divider>
-    <article data-id=${item.id} data-state=${item.state} aria-label=${item.label}>
+    <article data-id=${item.id} data-state=${item.state} data-npm=${item.npm?.state ?? nothing} aria-label=${item.label}>
       <div class="head">
-        <h2>${item.label}</h2>
+        <div class="title">
+          <h2>${item.label}</h2>
+          ${item.beta ? html`<swc-badge size="s" variant="notice" subtle data-beta>Beta</swc-badge>` : nothing}
+        </div>
         <swc-status-light variant=${variant}>${label}</swc-status-light>
       </div>
       <div class="meta">
-        ${this.#version(item)}
+        ${this.#version(item, meta)}
         ${item.state === 'starting' ? nothing : this.#checked(item.checkedAt)}
       </div>
+      ${note ? html`<p class="npm" data-npm-note>${note}</p>` : nothing}
       ${this.#progress(item)}
       ${
         error
@@ -841,7 +939,7 @@ export class SliccUpdates extends ModelElement {
           : nothing
       }
       ${this.#actions(item)}
-      ${this.#whatsNew(`releases:item:${item.id}`, item.label, whatsNew(item.releases, item.from, item.to), 3)}
+      ${this.#whatsNew(`releases:item:${item.id}`, item.label, whatsNew(item.releases, item.from, ahead ?? item.to), 3)}
       ${item.log ? html`<details ?open=${this.#logs.has(`item:${item.id}`)} @toggle=${this.#logs.details(`item:${item.id}`)}><summary>${chevron}Install log</summary><pre>${item.log}</pre></details>` : nothing}
     </article>`;
   }
