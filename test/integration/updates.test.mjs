@@ -810,6 +810,10 @@ test('hostile release notes render as text and https links only, load no image a
       '',
       '<iframe src="https://example.com/frame"></iframe>',
       '',
+      '```',
+      `wide ${'w'.repeat(400)}`,
+      '```',
+      '',
       'x'.repeat(10 * 1024 * 1024),
     ].join('\n');
     const items = port.list().map((item) =>
@@ -838,7 +842,7 @@ test('hostile release notes render as text and https links only, load no image a
     await new Promise((resolve) => setTimeout(resolve, 300));
     const details = window.inUpdates('[data-id=kernel] details[data-releases]');
     const notes = details.querySelector('.release[data-version="1.13.0"] .markdown');
-    const allowed = new Set(['P', 'UL', 'LI', 'A', 'CODE', 'STRONG', 'EM']);
+    const allowed = new Set(['P', 'UL', 'LI', 'A', 'CODE', 'PRE', 'STRONG', 'EM']);
     return {
       pwned: window.pwned ?? null,
       tags: [...new Set([...notes.querySelectorAll('*')].map((node) => node.tagName))].filter(
@@ -858,6 +862,13 @@ test('hostile release notes render as text and https links only, load no image a
       plainTitle: details
         .querySelector('.release[data-version="1.12.2"] .title')
         .textContent.trim(),
+      fits: (() => {
+        const panel = window.inUpdates('.page').closest('.page');
+        const host = window.$('slicc-app', 'slicc-dock', 'slicc-updates');
+        return (
+          host.scrollWidth <= host.clientWidth && panel.getBoundingClientRect().right <= innerWidth
+        );
+      })(),
       images: performance
         .getEntriesByType('resource')
         .filter((entry) => /hostile|\/x$|\/frame$/.test(entry.name))
@@ -887,6 +898,7 @@ test('hostile release notes render as text and https links only, load no image a
   assert.equal(seen.cut, 'https://example.com/v1.13.0');
   assert.equal(seen.plainTitle, '1.12.2');
   assert.deepEqual(seen.images, []);
+  assert.equal(seen.fits, true);
   assert.deepEqual(page.errors, []);
 });
 

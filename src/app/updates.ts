@@ -554,6 +554,7 @@ export class SliccUpdates extends ModelElement {
       }
       .releases {
         display: grid;
+        grid-template-columns: minmax(0, 1fr);
         gap: var(--swc-spacing-400);
         margin-block-start: var(--swc-spacing-200);
         padding: var(--swc-spacing-300);
@@ -561,6 +562,9 @@ export class SliccUpdates extends ModelElement {
         background: var(--swc-background-layer-1-color);
         border-radius: var(--swc-corner-radius-medium-default);
         overflow-wrap: anywhere;
+      }
+      .release {
+        min-width: 0;
       }
       .title {
         margin: 0;
@@ -580,8 +584,8 @@ export class SliccUpdates extends ModelElement {
         line-height: var(--swc-line-height-200);
       }
       .release .markdown .heading[aria-level] {
-        font-size: var(--swc-font-size-75);
-        font-weight: var(--swc-medium-font-weight);
+        font-size: var(--swc-font-size-100);
+        font-weight: var(--swc-bold-font-weight);
         color: var(--swc-neutral-subdued-content-color-default);
         margin-block: var(--swc-spacing-200) var(--swc-spacing-75);
       }
