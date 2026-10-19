@@ -882,9 +882,11 @@ test('what’s new expands only the newest release, the older ones are headers t
   const center = await page.evaluate(() => {
     const summary = window.inUpdates('[data-id=kernel] .release[data-version="1.12.1"] > summary');
     summary.scrollIntoView({ block: 'center' });
-    const box = summary.querySelector('.chevron').getBoundingClientRect();
-    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    const box = summary.getBoundingClientRect();
+    const link = summary.querySelector('a').getBoundingClientRect();
+    return { x: box.right - 8, y: box.y + box.height / 2, wide: box.right - 8 > link.right + 24 };
   });
+  assert.equal(center.wide, true);
   for (const type of ['mousePressed', 'mouseReleased']) {
     await page.send('Input.dispatchMouseEvent', {
       type,

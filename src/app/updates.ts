@@ -571,7 +571,14 @@ export class SliccUpdates extends ModelElement {
         grid-template-columns: minmax(0, 1fr);
         gap: var(--swc-spacing-200);
       }
-      .older-releases > .older {
+      .older-releases > details > summary {
+        width: 100%;
+      }
+      .older-releases > details[open]:not(:last-child) {
+        margin-block-end: var(--swc-spacing-200);
+      }
+      .older-releases > .older,
+      .older-releases > details > :not(summary) {
         padding-inline-start: calc(var(--swc-workflow-icon-small) + var(--swc-spacing-75));
       }
       .title {
@@ -794,7 +801,7 @@ export class SliccUpdates extends ModelElement {
     }
     const id = `${key}:${version}`;
     return html`<details class="release" data-version=${version} ?open=${this.#logs.has(id)} @toggle=${this.#logs.details(id)}>
-      <summary data-action="release">${chevron}<span class="title" role="heading" aria-level=${level}>${this.#title(entry, label)}</span></summary>
+      <summary data-action="release" aria-label=${`${label} ${version} notes${entry.certified ? ', certified' : ''}`}>${chevron}<span class="title" role="heading" aria-level=${level}>${this.#title(entry, label)}</span></summary>
       ${this.#notes(entry, label, level)}
     </details>`;
   }
