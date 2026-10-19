@@ -18,7 +18,7 @@ import type {
   UserMessage,
 } from '../model/types.ts';
 import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
-import type { SliccComposer } from './composer.ts';
+import { fade, type SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
 import { following, onWatch, watchOnly } from './follow.ts';
 import { markdownCss } from './markdown.ts';
@@ -227,6 +227,7 @@ export class SliccChat extends ThemedElement {
 
   static styles = [
     shared,
+    fade,
     markdownCss,
     messageCss,
     css`
@@ -301,8 +302,8 @@ export class SliccChat extends ThemedElement {
         min-height: 0;
         overflow-y: auto;
         container-type: inline-size;
-        padding: var(--swc-spacing-400) var(--swc-spacing-300) calc(var(--composer-height, 0px) + var(--swc-spacing-500));
-        scroll-padding-block-end: calc(var(--composer-height, 0px) + var(--swc-spacing-200));
+        padding: var(--swc-spacing-400) var(--swc-spacing-300) calc(var(--composer-height, 0px) + var(--composer-fade) + 1lh);
+        scroll-padding-block-end: calc(var(--composer-height, 0px) + var(--composer-fade) + var(--swc-spacing-200));
         font-size: var(--swc-font-size-200);
         scroll-padding-block-start: var(--pile, 0px);
       }
@@ -473,7 +474,7 @@ export class SliccChat extends ThemedElement {
     if (!this.#stuck && log.scrollHeight <= log.clientHeight) this.#follow();
     else this.#pin();
   });
-  #fitted: Element | null = null;
+  #fitted: Element | null | undefined;
   #fit = new ResizeObserver(([entry]) => {
     this.style.setProperty('--composer-height', `${(entry.target as HTMLElement).offsetHeight}px`);
     this.#pin();
@@ -581,6 +582,7 @@ export class SliccChat extends ThemedElement {
     if (composer === this.#fitted) return;
     this.#fit.disconnect();
     this.#fitted = composer;
+    this.style.setProperty('--composer-fade', composer ? '' : '0px');
     if (composer) this.#fit.observe(composer);
     else this.style.setProperty('--composer-height', '0px');
   }
@@ -598,7 +600,7 @@ export class SliccChat extends ThemedElement {
     globalThis.removeEventListener('pointercancel', this.#release, true);
     this.#resize.disconnect();
     this.#fit.disconnect();
-    this.#fitted = null;
+    this.#fitted = undefined;
     clearInterval(this.#tick);
     this.#tick = undefined;
   }
