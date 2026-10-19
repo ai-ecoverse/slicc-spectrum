@@ -352,6 +352,19 @@ test('after a reload a row whose file was lost is held, Put back fills the field
     'Then list the moorings',
   ]);
   assert.equal(await page.evaluate(() => sessionStorage.getItem('slicc-spectrum.starting')), null);
+  assert.equal(
+    await page.evaluate(() =>
+      window.composer().querySelector('[data-reattach]')?.textContent.trim()
+    ),
+    'Attach tides.csv again.'
+  );
+  await page.evaluate(() => {
+    window.chat().querySelector('slicc-composer').attachments = [
+      { id: 'n9', name: 'tides.csv', kind: 'text', mimeType: 'text/csv', size: 3, text: 'a,b' },
+    ];
+    return true;
+  });
+  await page.until(() => !window.composer().querySelector('[data-reattach]'));
   assert.deepEqual(page.errors, []);
 });
 
