@@ -566,6 +566,14 @@ export class SliccUpdates extends ModelElement {
       .release {
         min-width: 0;
       }
+      .older-releases {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--swc-spacing-200);
+      }
+      .older-releases > .older {
+        padding-inline-start: calc(var(--swc-workflow-icon-small) + var(--swc-spacing-75));
+      }
       .title {
         margin: 0;
         font-size: var(--swc-font-size-100);
@@ -770,6 +778,27 @@ export class SliccUpdates extends ModelElement {
     return html`<span>Checked <time datetime=${date.toISOString()}>${shown}</time></span>`;
   }
 
+  #title({ release, certified }: Notes, label: string): TemplateResult {
+    return html`${secure(release.url) ? html`<a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${release.version} release notes`}>${release.version}</a>` : release.version}${certified ? html`<swc-badge size="s" variant="positive" subtle data-certified>Certified</swc-badge>` : nothing}`;
+  }
+
+  #notes({ release, body, cut }: Notes, label: string, level: number): TemplateResult {
+    return html`${body ? html`<div class="markdown">${markdown(body, { strict: true, level })}</div>` : nothing}
+      ${cut && secure(release.url) ? html`<p class="cut" data-cut><a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`Read the full notes for ${label} ${release.version}`}>Read the full notes</a></p>` : nothing}`;
+  }
+
+  #older(key: string, entry: Notes, label: string, level: number): TemplateResult {
+    const version = entry.release.version;
+    if (!entry.body) {
+      return html`<div class="release older" data-version=${version}><p class="title" role="heading" aria-level=${level}>${this.#title(entry, label)}</p></div>`;
+    }
+    const id = `${key}:${version}`;
+    return html`<details class="release" data-version=${version} ?open=${this.#logs.has(id)} @toggle=${this.#logs.details(id)}>
+      <summary data-action="release">${chevron}<span class="title" role="heading" aria-level=${level}>${this.#title(entry, label)}</span></summary>
+      ${this.#notes(entry, label, level)}
+    </details>`;
+  }
+
   #whatsNew(
     key: string,
     label: string,
@@ -777,20 +806,16 @@ export class SliccUpdates extends ModelElement {
     level: number
   ): TemplateResult | typeof nothing {
     if (!entries.length) return nothing;
+    const [newest, ...older] = entries;
     return html`<details data-releases ?open=${this.#logs.has(key)} @toggle=${this.#logs.details(key)}>
       <summary data-action="whats-new">${chevron}What’s new</summary>
-      <div class="releases">${entries.map(
-        ({
-          release,
-          body,
-          certified,
-          cut,
-        }) => html`<div class="release" data-version=${release.version}>
-          <p class="title" role="heading" aria-level=${level}>${secure(release.url) ? html`<a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${release.version} release notes`}>${release.version}</a>` : release.version}${certified ? html`<swc-badge size="s" variant="positive" subtle data-certified>Certified</swc-badge>` : nothing}</p>
-          ${body ? html`<div class="markdown">${markdown(body, { strict: true, level })}</div>` : nothing}
-          ${cut && secure(release.url) ? html`<p class="cut" data-cut><a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`Read the full notes for ${label} ${release.version}`}>Read the full notes</a></p>` : nothing}
-        </div>`
-      )}</div>
+      <div class="releases">
+        <div class="release" data-version=${newest.release.version} data-newest>
+          <p class="title" role="heading" aria-level=${level}>${this.#title(newest, label)}</p>
+          ${this.#notes(newest, label, level)}
+        </div>
+        ${older.length ? html`<div class="older-releases">${older.map((entry) => this.#older(key, entry, label, level))}</div>` : nothing}
+      </div>
     </details>`;
   }
 
