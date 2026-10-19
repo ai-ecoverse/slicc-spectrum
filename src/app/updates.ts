@@ -895,8 +895,10 @@ export class SliccUpdates extends ModelElement {
     return html`<a class="swc-Link swc-Link--standalone" href=${`https://www.npmjs.com/package/${npm}/v/${version}`} target="_blank" rel="noopener noreferrer" data-action="npm-page" aria-label=${`npm page for ${label} ${version}`}>npm page</a>`;
   }
 
-  #version(item: UpdateItem): TemplateResult {
-    const text = html`<span class="version">${item.from ?? 'Not installed'}${item.to && item.to !== item.from ? html` → ${item.to}` : nothing}</span>`;
+  #version(item: UpdateItem, meta: string | null): TemplateResult {
+    const text = meta
+      ? html`<span data-npm-meta>${meta}</span>`
+      : html`<span class="version">${item.from ?? 'Not installed'}${item.to && item.to !== item.from ? html` → ${item.to}` : nothing}</span>`;
     const link =
       item.from !== null && (item.to === null || item.to === item.from)
         ? this.#releaseLink(item.label, item.from, item.releases)
@@ -923,7 +925,7 @@ export class SliccUpdates extends ModelElement {
         <swc-status-light variant=${variant}>${label}</swc-status-light>
       </div>
       <div class="meta">
-        ${meta ? html`<span data-npm-meta>${meta}</span>` : this.#version(item)}
+        ${this.#version(item, meta)}
         ${item.state === 'starting' ? nothing : this.#checked(item.checkedAt)}
       </div>
       ${note ? html`<p class="npm" data-npm-note>${note}</p>` : nothing}

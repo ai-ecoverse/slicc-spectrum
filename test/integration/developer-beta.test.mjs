@@ -202,6 +202,15 @@ test('Install / Update shows every npm row state with its text and buttons', asy
     error: null,
     buttons: ['install-beta'],
   });
+  assert.equal(
+    await page.evaluate(() =>
+      window
+        .agentRow()
+        .querySelector('.meta a[data-action=release-notes]')
+        ?.getAttribute('aria-label')
+    ),
+    'Agent (/opt/agent) 6.6.0 release notes'
+  );
   await page.evaluate(() => window.agentRow().querySelector('[data-action=whats-new]').click());
   await page.until(() => window.agentRow().querySelector('[data-releases]').open);
   assert.deepEqual(
@@ -416,6 +425,15 @@ test('Install / Update shows every npm row state with its text and buttons', asy
       window.agentRow().querySelector('swc-status-light').getAttribute('variant')
     ),
     'notice'
+  );
+  assert.equal(
+    await installed.evaluate(() =>
+      window
+        .agentRow()
+        .querySelector('.meta a[data-action=release-notes]')
+        ?.getAttribute('aria-label')
+    ),
+    'Agent (/opt/agent) 6.13.5 release notes'
   );
   assert.deepEqual(
     await installed.evaluate(() => {
