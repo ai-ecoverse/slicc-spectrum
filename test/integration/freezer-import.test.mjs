@@ -59,7 +59,7 @@ test('freezer import: pick, preview, import with progress, then done with badged
   );
   assert.equal(
     await page.evaluate(() => window.inFreezer('input[type=file]').accept),
-    '.zip,application/zip'
+    '.zip,application/zip,application/x-zip-compressed'
   );
   await page.evaluate(() => {
     window.seen = [];
@@ -732,3 +732,64 @@ for (const color of ['light', 'dark']) {
     assert.notEqual(look.model.border, look.outline);
   });
 }
+
+test('freezer import: a dropped or picked file that isn’t a zip shows an inline error until the next drop, pick or dismiss', async (t) => {
+  const page = await open(t, { import: 'v6' });
+  const copy = 'That’s not a SLICC 6 export. Drop the .zip from Export for SLICC 7.';
+  const drop = (name, type) =>
+    page.evaluate(
+      ([name, type]) => {
+        const data = new DataTransfer();
+        data.items.add(new File(['PK'], name, { type }));
+        const event = new DragEvent('drop', {
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+          dataTransfer: data,
+        });
+        window.inFreezer('.list').dispatchEvent(event);
+        return event.defaultPrevented;
+      },
+      [name, type]
+    );
+  const error = () =>
+    page.evaluate(() => {
+      const box = window.inFreezer('[data-error=not-zip]');
+      return {
+        role: box.getAttribute('role'),
+        text: box.textContent.trim(),
+        icon: !!box.querySelector('swc-icon-alert-diamond[aria-hidden=true]'),
+        dismiss: !!box.querySelector('[data-action=dismiss-not-zip]'),
+      };
+    });
+  assert.deepEqual(await error(), { role: 'status', text: '', icon: false, dismiss: false });
+  assert.equal(await drop('notes.txt', 'text/plain'), true);
+  await page.until(() => !!window.inFreezer('[data-error=not-zip] span'));
+  assert.deepEqual(await error(), { role: 'status', text: copy, icon: true, dismiss: true });
+  assert.equal(await page.evaluate(() => !!window.importer()), false);
+  await drop('archive.gz', 'application/gzip');
+  assert.equal((await error()).text, copy);
+  await drop('profile', 'application/x-zip-compressed');
+  await page.until(() => window.stage() === 'preview');
+  assert.equal((await error()).text, '');
+  await page.evaluate(() => window.press('import-cancel'));
+  await page.until(() => !window.importer());
+  await page.evaluate(() => {
+    const data = new DataTransfer();
+    data.items.add(new File(['%PDF'], 'notes.pdf', { type: 'application/pdf' }));
+    const input = window.inFreezer('input[type=file]');
+    input.files = data.files;
+    input.dispatchEvent(new Event('change'));
+    return true;
+  });
+  await page.until(() => !!window.inFreezer('[data-error=not-zip] span'));
+  assert.equal((await error()).text, copy);
+  await page.evaluate(() => window.inFreezer('[data-action=dismiss-not-zip]').click());
+  await page.until(() => !window.inFreezer('[data-error=not-zip] span'));
+  await page.until(() => window.freezer().shadowRoot.activeElement?.dataset.action === 'import-v6');
+  await drop('notes.txt', 'text/plain');
+  await page.until(() => !!window.inFreezer('[data-error=not-zip] span'));
+  await page.evaluate(() => window.pick());
+  await page.until(() => window.stage() === 'preview');
+  assert.equal((await error()).text, '');
+});

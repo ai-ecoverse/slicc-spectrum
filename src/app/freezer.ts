@@ -3,13 +3,15 @@ import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/dropzone/swc-dropzone.js';
 import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
+import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
+import '@adobe/spectrum-wc-icons/swc-icon-close.js';
 import '@adobe/spectrum-wc-icons/swc-icon-import.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { Agent, FrozenCone, FrozenKind, SliccModel } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
 import { carriesFiles } from './chat.ts';
 import { confirm } from './confirm.ts';
-import { panelCss } from './files.ts';
+import { errorCss, panelCss } from './files.ts';
 import { onWatch, watchOnly } from './follow.ts';
 import { importProfile } from './freezer-import.ts';
 import { coneLabel, twinned, withTitle } from './names.ts';
@@ -46,8 +48,12 @@ export const frozenKinds: Record<FrozenKind, readonly ['indigo' | 'seafoam' | 'p
   agent: ['purple', 'Agent run'],
 };
 
+export const zipTypes = ['application/zip', 'application/x-zip-compressed'];
+
+export const notZip = 'That’s not a SLICC 6 export. Drop the .zip from Export for SLICC 7.';
+
 export function isZip(file: File): boolean {
-  return /\.zip$/i.test(file.name) || /zip/.test(file.type);
+  return /\.zip$/i.test(file.name) || zipTypes.includes(file.type);
 }
 
 export function freezerOrder(rows: readonly FrozenCone[]): FrozenCone[] {
@@ -55,8 +61,13 @@ export function freezerOrder(rows: readonly FrozenCone[]): FrozenCone[] {
 }
 
 export class SliccFreezer extends ModelElement {
-  static properties = { ...ModelElement.properties, dropping: { state: true } };
+  static properties = {
+    ...ModelElement.properties,
+    dropping: { state: true },
+    refused: { state: true },
+  };
   declare dropping: boolean;
+  declare refused: boolean;
   #scroll = new ViewScroll(this, 'freezer:scroll', {
     scroller: () => this.renderRoot.querySelector<HTMLElement>('.list'),
     rows: '.card[data-id]',
@@ -64,6 +75,7 @@ export class SliccFreezer extends ModelElement {
   constructor() {
     super();
     this.dropping = false;
+    this.refused = false;
     this.addEventListener('dragenter', this.#over);
     this.addEventListener('dragover', this.#over);
     this.addEventListener('dragleave', this.#leave);
@@ -73,6 +85,7 @@ export class SliccFreezer extends ModelElement {
   static styles = [
     shared,
     panelCss,
+    errorCss,
     css`
       :host {
         position: relative;
@@ -88,6 +101,13 @@ export class SliccFreezer extends ModelElement {
       }
       .bar [data-action='import-v6'] {
         margin-inline-start: auto;
+      }
+      .error {
+        align-items: center;
+      }
+      .error span {
+        flex: 1;
+        min-width: 0;
       }
       swc-dropzone {
         position: absolute;
@@ -213,9 +233,22 @@ export class SliccFreezer extends ModelElement {
     this.#clear();
     if (!(carriesFiles(event) && this.importable)) return;
     event.preventDefault();
-    const file = [...(event.dataTransfer as DataTransfer).files].find(isZip);
-    if (file) void this.#import(file, this);
+    const files = [...(event.dataTransfer as DataTransfer).files];
+    this.#take(files.find(isZip) ?? files[0], this);
   };
+
+  #take(file: File | undefined, trigger: HTMLElement | null): void {
+    if (!file) return;
+    this.refused = !isZip(file);
+    if (!this.refused) void this.#import(file, trigger);
+  }
+
+  #dismiss(): void {
+    this.refused = false;
+    void this.updateComplete.then(() =>
+      this.renderRoot.querySelector<HTMLElement>('[data-action=import-v6]')?.focus()
+    );
+  }
 
   #pick(): void {
     this.renderRoot.querySelector<HTMLInputElement>('input[type=file]')?.click();
@@ -225,8 +258,7 @@ export class SliccFreezer extends ModelElement {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     input.value = '';
-    const trigger = this.renderRoot.querySelector<HTMLElement>('[data-action=import-v6]');
-    if (file) void this.#import(file, trigger);
+    this.#take(file, this.renderRoot.querySelector<HTMLElement>('[data-action=import-v6]'));
   }
 
   async #import(file: File, trigger: HTMLElement | null): Promise<void> {
@@ -308,10 +340,15 @@ export class SliccFreezer extends ModelElement {
         <span>${rows.length} ${rows.length === 1 ? 'conversation' : 'conversations'}</span>
         ${
           this.importable
-            ? html`<swc-action-button id="import-v6" size="s" quiet data-action="import-v6" accessible-label="Import from SLICC 6" @click=${() => this.#pick()}><swc-icon-import slot="icon"></swc-icon-import>Import</swc-action-button><swc-tooltip for="import-v6" placement="bottom">Import from SLICC 6</swc-tooltip><input type="file" accept=".zip,application/zip" hidden data-action="import-file" @change=${this.#picked} />`
+            ? html`<swc-action-button id="import-v6" size="s" quiet data-action="import-v6" accessible-label="Import from SLICC 6" @click=${() => this.#pick()}><swc-icon-import slot="icon"></swc-icon-import>Import</swc-action-button><swc-tooltip for="import-v6" placement="bottom">Import from SLICC 6</swc-tooltip><input type="file" accept=${['.zip', ...zipTypes].join(',')} hidden data-action="import-file" @change=${this.#picked} />`
             : nothing
         }
       </div>
+      <div class="error" role="status" aria-live="polite" data-error="not-zip">${
+        this.refused && this.importable
+          ? html`<swc-icon-alert-diamond size="s" aria-hidden="true"></swc-icon-alert-diamond><span>${notZip}</span><swc-action-button size="s" quiet data-action="dismiss-not-zip" accessible-label="Dismiss" @click=${() => this.#dismiss()}><swc-icon-close slot="icon"></swc-icon-close></swc-action-button>`
+          : nothing
+      }</div>
       <div class="list">
         ${rows.length ? rows.map((cone) => this.#card(cone)) : html`<div class="note">No conversations yet. A new conversation or a deleted cone leaves the old one here.</div>`}
       </div>
