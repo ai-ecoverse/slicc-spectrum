@@ -403,7 +403,7 @@ export class SliccChat extends ThemedElement {
   #last = 0;
   #height = 0;
   #input = Number.NEGATIVE_INFINITY;
-  #settle: ReturnType<typeof setTimeout> | undefined;
+  #up = Number.NEGATIVE_INFINITY;
   #tick: ReturnType<typeof setInterval> | undefined;
   #tail = '';
   #held = '';
@@ -431,7 +431,8 @@ export class SliccChat extends ThemedElement {
   }
 
   #resize = new ResizeObserver(() => {
-    if (!this.#stuck && this.#settle === undefined && this.#bottom()) this.#follow();
+    const log = this.#log();
+    if (!this.#stuck && log.scrollHeight <= log.clientHeight) this.#follow();
     else this.#pin();
   });
   #fitted: Element | null = null;
@@ -480,12 +481,10 @@ export class SliccChat extends ThemedElement {
     const log = this.#log();
     const top = log.scrollTop;
     const before = this.#height - top - log.clientHeight;
+    const down = top - this.#last;
     if (this.#bottom()) {
-      if (!this.#stuck && (this.#settle === undefined || top > this.#last)) {
-        clearTimeout(this.#settle);
-        this.#settle = undefined;
+      if (!this.#stuck && down > 1 && (performance.now() - this.#up > 1000 || down > this.#slack()))
         this.#follow();
-      }
     } else if (
       top < this.#last &&
       (performance.now() - this.#input < 1000 || before > 2 * this.#slack())
@@ -505,13 +504,8 @@ export class SliccChat extends ThemedElement {
           ? event.deltaY < 0 && !event.ctrlKey
           : event instanceof KeyboardEvent &&
             (upward.has(event.key) || (event.key === ' ' && event.shiftKey));
-      if (!up || this.#log().scrollTop <= 0) return;
-      this.#stuck = false;
-      clearTimeout(this.#settle);
-      this.#settle = setTimeout(() => {
-        this.#settle = undefined;
-        if (this.#bottom()) this.#follow();
-      }, 400);
+      this.#up = up ? this.#input : Number.NEGATIVE_INFINITY;
+      if (up && this.#log().scrollTop > 0) this.#stuck = false;
     },
   };
 
@@ -563,7 +557,6 @@ export class SliccChat extends ThemedElement {
     this.#resize.disconnect();
     this.#fit.disconnect();
     this.#fitted = null;
-    clearTimeout(this.#settle);
     clearInterval(this.#tick);
     this.#tick = undefined;
   }
