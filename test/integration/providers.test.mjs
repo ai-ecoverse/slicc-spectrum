@@ -666,6 +666,38 @@ test('a blocked provider stays listed but can’t be picked, and Set up opens Ge
   assert.deepEqual(page.errors, []);
 });
 
+test('a provider that becomes blocked while its connect step is open disables Connect until the route is back', async (t) => {
+  const page = await open(t);
+  await choose(page, 'cloudflare');
+  await page.until(() => window.active()?.localName === 'sp-textfield');
+  await page.type('cf-key');
+  await page.evaluate(() => {
+    const input = window.picker().querySelector('[data-account-field=account]');
+    input.value = '3f2a9c';
+    input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    return true;
+  });
+  await page.until(() => !window.save().disabled);
+  const state = () => ({
+    save: window.save().disabled,
+    notice: !!window.picker().querySelector('[data-step] [data-notice][data-blocked]'),
+  });
+  assert.deepEqual(await page.evaluate(state), { save: false, notice: false });
+  await page.evaluate(() => {
+    window.model.settings.setTransport('none');
+    return true;
+  });
+  await page.until(() => window.save().disabled);
+  assert.deepEqual(await page.evaluate(state), { save: true, notice: true });
+  await page.evaluate(() => {
+    window.model.settings.setTransport('extension');
+    return true;
+  });
+  await page.until(() => !window.save().disabled);
+  assert.deepEqual(await page.evaluate(state), { save: false, notice: false });
+  assert.deepEqual(page.errors, []);
+});
+
 test('a blocked account can’t connect and says why, with Set up', async (t) => {
   const page = await open(t, { transport: 'none' });
   await page.evaluate(() => {

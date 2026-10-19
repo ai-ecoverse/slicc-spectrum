@@ -1322,7 +1322,8 @@ export class SliccSettings extends ThemedElement {
   }
 
   #optionKey(event: KeyboardEvent, option: ProviderOption): void {
-    if (event.target !== event.currentTarget) return;
+    const inner = event.target !== event.currentTarget;
+    if (inner && (event.key === 'Enter' || event.key === ' ')) return;
     const options = this.#options();
     const at = options.indexOf(event.currentTarget as HTMLElement);
     const moves: Record<string, number> = {
