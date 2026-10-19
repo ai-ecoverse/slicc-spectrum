@@ -281,7 +281,7 @@ export class SliccMemory extends ModelElement {
       }
       .content {
         overflow: hidden;
-        max-height: 2lh;
+        max-height: calc(2lh + var(--swc-spacing-100));
         margin: 0 var(--swc-spacing-100) var(--swc-spacing-100) var(--indent);
         line-height: var(--swc-line-height-100);
         color: var(--swc-neutral-subdued-content-color-default);
@@ -295,7 +295,7 @@ export class SliccMemory extends ModelElement {
       @supports (height: calc-size(auto, size)) {
         .content {
           max-height: none;
-          height: calc-size(auto, min(size, 2lh));
+          height: calc-size(auto, min(size, 2lh + var(--swc-spacing-100)));
           transition: height var(--swc-animation-duration-100) var(--swc-animation-ease-in-out);
         }
         .row[data-open] .content {
@@ -322,10 +322,6 @@ export class SliccMemory extends ModelElement {
       }
       .body.markdown > :last-child {
         margin-block-end: 0;
-      }
-      .row:not([data-open]) .body.markdown * {
-        margin-block: 0;
-        padding-block: 0;
       }
       .actions {
         display: flex;

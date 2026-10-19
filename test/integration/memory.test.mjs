@@ -351,7 +351,7 @@ for (const width of [1280, 420]) {
 }
 
 for (const width of [1280, 420]) {
-  test(`a closed memory shows whole lines only, nothing half-cut under its two-line clamp, at ${width}`, async (t) => {
+  test(`a closed memory shows two whole lines, nothing half-cut under the clamp, and they stay put when it opens, at ${width}`, async (t) => {
     const page = await open(t);
     if (width === 420) {
       t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
@@ -387,12 +387,31 @@ for (const width of [1280, 420]) {
       })
     );
     assert.deepEqual(cut, []);
-    const tall = await page.evaluate(() => {
+    const lines = () => {
       const row = window.part('.row[data-id=mem-6]');
-      const line = parseFloat(getComputedStyle(row.querySelector('.content')).lineHeight);
-      return Math.round(row.querySelector('.content').getBoundingClientRect().height / line);
+      const box = row.querySelector('.content').getBoundingClientRect();
+      const walker = document.createTreeWalker(row.querySelector('.body'), NodeFilter.SHOW_TEXT);
+      const seen = [];
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        for (const rect of range.getClientRects())
+          if (rect.height && rect.bottom <= box.bottom + 0.5)
+            seen.push(Math.round(rect.top * 2) / 2);
+      }
+      return seen
+        .sort((a, b) => a - b)
+        .filter((top, index, all) => index === 0 || top - all[index - 1] > 4);
+    };
+    const before = await page.evaluate(lines);
+    assert.equal(before.length, 2, JSON.stringify(before));
+    await page.evaluate(() => {
+      window.part('.row[data-id=mem-6] .head').click();
+      return true;
     });
-    assert.equal(tall, 2);
+    await page.until(() => !!window.part('.row[data-id=mem-6][data-open]'));
+    await page.until(settled, 'mem-6');
+    assert.deepEqual((await page.evaluate(lines)).slice(0, 2), before);
     assert.deepEqual(page.errors, []);
   });
 }
