@@ -176,6 +176,7 @@ export const fieldStyles = css`
     color: inherit;
   }
   .field input:focus-visible,
+  .field select:focus-visible,
   input[type='checkbox']:focus-visible {
     outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
     outline-offset: var(--swc-focus-ring-gap);

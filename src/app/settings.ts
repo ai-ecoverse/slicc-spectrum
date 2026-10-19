@@ -448,10 +448,11 @@ export class SliccSettings extends ThemedElement {
   }
 
   #control(account: Account, field: AccountField): TemplateResult {
-    if (field.options?.length) {
-      const chosen = field.value ?? field.options[0].value;
+    if (field.options) {
+      const chosen = field.value ?? field.options[0]?.value;
       return html`<select
           data-account-field=${field.name}
+          ?disabled=${!field.options.length}
           aria-required=${field.required ? 'true' : nothing}
           aria-invalid=${this.#invalid(account, field.name)}
           aria-describedby=${this.#described(account, field.name)}
