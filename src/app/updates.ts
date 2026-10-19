@@ -97,12 +97,20 @@ function installText(install: PackageInstall, version: string | null): string {
   return `${install.version === version ? '' : `${install.version} `}${place}${via}`;
 }
 
-function managedText(item: PackageItem): string | null {
+function managedText(item: PackageItem): TemplateResult | string | null {
   const others = elsewhere(item);
   if (!others.length || others.length !== item.installs?.length) return null;
   return others.every((install) => install.manager === 'pnpm')
-    ? `Managed by pnpm. Remove it with pnpm remove -g ${item.package}.`
+    ? html`Managed by pnpm. Remove it with <code>pnpm remove -g ${item.package}</code>.`
     : 'Installed outside this panel. Remove it where it was installed.';
+}
+
+const shared = (item: PackageItem): boolean =>
+  elsewhere(item).length > 0 && elsewhere(item).length !== item.installs?.length;
+
+function actionLabel(item: PackageItem, action: PackageAction): string {
+  if (action === 'remove' && shared(item)) return `Remove the panel’s copy of ${item.label}`;
+  return `${packageActions[action]} ${item.label}`;
 }
 
 const packageRunning: ReadonlySet<PackageState> = new Set(['installing', 'updating', 'removing']);
@@ -665,6 +673,7 @@ export class SliccUpdates extends ModelElement {
     const requires = requiresText(item, all);
     return html`<p class="meta">
       ${version ? html`<span class="version">${version}</span>` : nothing}
+      ${shared(item) ? html`<span data-install="panel">the panel’s copy</span>` : nothing}
       ${elsewhere(item).map((install) => html`<span data-install>${installText(install, item.version)}</span>`)}
       ${download ? html`<span>${size(item.size as number)}</span>` : nothing}
       ${requires ? html`<span data-requires>${requires}</span>` : nothing}
@@ -700,7 +709,7 @@ export class SliccUpdates extends ModelElement {
             size="s"
             variant="secondary"
             data-action=${action}
-            accessible-label=${`${packageActions[action]} ${item.label}`}
+            accessible-label=${actionLabel(item, action)}
             ?pending=${busy === action}
             @click=${() => void this.actPackage(item.id, action)}
           >${packageActions[action]}</swc-button>`

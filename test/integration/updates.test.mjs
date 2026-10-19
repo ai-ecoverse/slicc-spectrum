@@ -799,5 +799,38 @@ test('a package installed elsewhere shows as installed where it lives, never off
     ]),
     ['5.9.3', 'for cone, via pnpm', 0]
   );
+  assert.equal(
+    await page.evaluate(() => window.pkg('git', '[data-managed] code')?.textContent),
+    'pnpm remove -g @harbor/git-wasm'
+  );
+  const biome = () => ({
+    state: window.pkg('biome').dataset.state,
+    light: window.pkg('biome', 'swc-status-light').textContent.trim(),
+    where: [...window.pkg('biome').querySelectorAll('[data-install]')].map((s) => s.textContent),
+    actions: [...window.pkg('biome').querySelectorAll('swc-button')].map(
+      (b) => `${b.dataset.action}: ${b.getAttribute('accessible-label')}`
+    ),
+    managed: window.pkg('biome', '[data-managed]')?.textContent ?? null,
+  });
+  assert.deepEqual(await page.evaluate(biome), {
+    state: 'installed',
+    light: 'Installed',
+    where: ['the panel’s copy', 'for cone, via pnpm'],
+    actions: ['remove: Remove the panel’s copy of Biome'],
+    managed: null,
+  });
+  await page.evaluate(() => window.pkg('biome', '[data-action=remove]').click());
+  await page.until(
+    () =>
+      window.pkg('biome')?.dataset.state === 'installed' &&
+      !window.pkg('biome', '[data-install=panel]')
+  );
+  assert.deepEqual(await page.evaluate(biome), {
+    state: 'installed',
+    light: 'Installed',
+    where: ['for cone, via pnpm'],
+    actions: [],
+    managed: 'Managed by pnpm. Remove it with pnpm remove -g @harbor/biome-wasm.',
+  });
   assert.deepEqual(page.errors, []);
 });

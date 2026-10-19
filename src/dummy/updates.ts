@@ -242,6 +242,12 @@ export function packageFixtures(scenario: PackageScenario): readonly PackageItem
       actions: ['update'],
       installs: cone('5.8.2'),
     });
+    patch('biome', {
+      installs: [
+        { version: '2.2.4', where: '/usr/local/share/pnpm', manager: 'panel' },
+        ...cone('2.2.4'),
+      ],
+    });
   }
   return scenario === 'user' ? [...items, ...userPackages()] : items;
 }
@@ -320,6 +326,16 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
       }
       this.#patchPackage(id, { state: 'removing', error: null, actions: [] });
       await this.#clock.sleep(2);
+      const kept = item.installs?.filter((install) => install.manager !== 'panel') ?? [];
+      if (kept.length) {
+        this.#patchPackage(id, {
+          state: 'installed',
+          version: kept[0].version,
+          installs: kept,
+          log: undefined,
+        });
+        return;
+      }
       this.#patchPackage(id, {
         state: 'available',
         version: null,
