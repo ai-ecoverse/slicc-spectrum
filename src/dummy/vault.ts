@@ -6,6 +6,7 @@ import type {
   ButtonConfig,
   ButtonEvent,
   ButtonMessage,
+  EndpointSet,
   ErrorCode,
   ImportCandidate,
   ImportKind,
@@ -141,7 +142,7 @@ export function vaultSecrets(now = Date.now()): SecretView[] {
   ];
 }
 
-export function accountRecords(now = Date.now()): SecretView[] {
+export function accountRecords(now = Date.now(), pin?: string): SecretView[] {
   return [
     {
       name: 'MCP_DOCS_TOKEN',
@@ -151,6 +152,7 @@ export function accountRecords(now = Date.now()): SecretView[] {
       source: 'settings',
       sourceDevice: null,
       server: 'docs',
+      ...(pin ? { url: pin, pinned: true as const } : {}),
       domains: ['docs.example'],
       rules: [{ domain: 'docs.example', header: 'Authorization', methods: [], paths: [] }],
       exec: false,
@@ -592,12 +594,29 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
 
   async endpoints(change: VaultEndpointChange): Promise<void> {
     await this.#time.sleep(5);
+    const server = change.add?.mcp?.[0]?.url;
+    if (this.#refuses && server)
+      throw vaultFailure(
+        'EINVAL',
+        `The vault refused ${server} for this token. Check the server's address, then try again.`
+      );
     if (this.#refuses)
       throw vaultFailure(
         'EINVAL',
         'The vault refused that endpoint. Check the address and try again.'
       );
     this.endpointChanges.push(change);
+    const overrides = (secret: SecretView, list: EndpointSet | undefined) =>
+      secret.pinned && list?.mcp?.some((entry) => entry.server === secret.server);
+    this.#list = {
+      ...this.#list,
+      secrets: this.#list.secrets.map((secret) => {
+        if (!overrides(secret, change.add)) return secret;
+        const { url: _, pinned: __, ...rest } = secret;
+        return rest;
+      }),
+    };
+    this.emit('list', this.#list);
   }
 
   status(): VaultStatus | null {

@@ -512,6 +512,7 @@ export interface Account {
   keyUrl?: string;
   description?: string;
   vaultName?: string;
+  url?: string;
 }
 
 export interface AccountField {
@@ -1200,6 +1201,8 @@ export interface SecretView {
   provider?: string;
   account?: string;
   server?: string;
+  url?: string;
+  pinned?: true;
   settings?: Record<string, string>;
   domains: string[];
   rules: Rule[];

@@ -8620,6 +8620,11 @@ test('Accounts keeps a vault-backed key in the vault and never shows it', async 
     window.settingsPart('form.key[data-id="mcp:tickets"] swc-button[data-action=save]').click();
     return true;
   });
+  await page.until(() => !!window.deep('slicc-confirm'));
+  await page.evaluate(() => {
+    window.deep('slicc-confirm').shadowRoot.querySelector('[data-action]').click();
+    return true;
+  });
   await page.until(() =>
     window
       .settingsPart('.account[data-id="mcp:tickets"] .identity')

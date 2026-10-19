@@ -1,4 +1,4 @@
-import type { Account, AgentHold, SliccModel } from '../model/types.ts';
+import type { Account, AgentHold, SecretView, SliccModel } from '../model/types.ts';
 import { DummyAgent } from './agent.ts';
 import { type ApprovalScenario, DummyApprovals } from './approvals.ts';
 import { type BrowserScenario, browserHistory, DummyBrowser, drive } from './browser.ts';
@@ -54,6 +54,7 @@ export interface DummyOptions {
   guests?: GuestsScenario | 'off';
   accounts?: 'settings' | 'vault';
   providers?: 'connected' | 'none' | 'all';
+  mcp?: 'moved';
   transport?: DummyTransport;
   hold?: AgentHold['reason'] | 'off';
   readonly?: 'version' | 'off';
@@ -85,7 +86,21 @@ export function vaultAccounts(accounts: readonly Account[]): Account[] {
   );
 }
 
+export const docsUrl = 'https://docs.example/mcp';
+export const movedDocs = 'https://docs.eu.example/mcp';
+
 function settingsAccounts(
+  accounts: 'settings' | 'vault',
+  providers: 'connected' | 'none' | 'all',
+  transport?: DummyTransport,
+  mcp?: 'moved'
+): Account[] {
+  return listedAccounts(accounts, providers, transport).map((account) =>
+    mcp === 'moved' && account.id === 'mcp:docs' ? { ...account, url: movedDocs } : account
+  );
+}
+
+function listedAccounts(
   accounts: 'settings' | 'vault',
   providers: 'connected' | 'none' | 'all',
   transport?: DummyTransport
@@ -97,6 +112,11 @@ function settingsAccounts(
       ? { ...account, status: 'disconnected' as const, identity: '' }
       : account
   );
+}
+
+function vaultRecords(accounts: 'settings' | 'vault', mcp?: 'moved'): SecretView[] {
+  if (accounts !== 'vault') return [];
+  return accountRecords(Date.now(), mcp === 'moved' ? docsUrl : undefined);
 }
 
 function guestsPort(guests: GuestsScenario | 'off', time: Clock): { guests?: DummyGuests } {
@@ -131,6 +151,7 @@ export function createDummyModel({
   guests = 'off',
   accounts = 'settings',
   providers = 'connected',
+  mcp,
   transport,
   hold = 'off',
   readonly = 'off',
@@ -181,7 +202,7 @@ export function createDummyModel({
     settings: new DummySettings(
       fixtures.defaults,
       providers === 'none' ? [...fixtures.models, ...fixtures.laterModels] : fixtures.models,
-      settingsAccounts(accounts, providers, transport),
+      settingsAccounts(accounts, providers, transport, mcp),
       storage,
       time,
       undefined,
@@ -219,7 +240,7 @@ export function createDummyModel({
     ...(vault === 'off'
       ? {}
       : {
-          vault: new DummyVault(vault, time, accounts === 'vault' ? accountRecords() : []),
+          vault: new DummyVault(vault, time, vaultRecords(accounts, mcp)),
         }),
     ...guestsPort(guests, time),
   };
