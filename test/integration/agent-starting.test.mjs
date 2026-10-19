@@ -364,6 +364,13 @@ async function reopen(page) {
       window.app.dock.content('chat')?.shadowRoot ??
       null;
     window.composer = () => window.chat()?.querySelector('slicc-composer')?.shadowRoot ?? null;
+    window.field = () =>
+      window.composer()?.querySelector('swc-prompt-field')?.shadowRoot?.querySelector('textarea');
+    window.users = () =>
+      window.model.agent
+        .messages(window.model.agent.active())
+        .filter((message) => message.role === 'user')
+        .map((message) => message.text);
     return true;
   });
   await page.until(() => !!window.composer()?.querySelector('swc-prompt-field'));
