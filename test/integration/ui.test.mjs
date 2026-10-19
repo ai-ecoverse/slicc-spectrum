@@ -6396,22 +6396,9 @@ test('chat lets the reader scroll up by wheel or keyboard while content streams 
     log.scrollTop = log.scrollHeight;
   });
   await page.until(() => window.chatGap() <= 21);
-  await page.evaluate(() => {
-    window.trace = [];
-    const log = window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log');
-    log.focus();
-    return true;
-  });
+  await page.evaluate(() => window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log').focus());
   await page.press('PageUp');
-  try {
-    await page.until(() => window.chatGap() > 200);
-  } catch (error) {
-    console.log(
-      'TRACE',
-      JSON.stringify(await page.evaluate(() => [window.focused(), ...window.trace.slice(0, 40)]))
-    );
-    throw error;
-  }
+  await page.until(() => window.chatGap() > 200);
   const key = await held();
   await page.evaluate(() => clearInterval(window.streaming));
   for (const result of [wheel, key]) {
