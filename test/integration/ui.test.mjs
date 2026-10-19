@@ -8788,3 +8788,25 @@ test('a panel that takes focus without the keyboard shows no focus ring, and sho
   assert.equal(await page.evaluate(() => window.log().matches(':focus-visible')), true);
   assert.deepEqual(page.errors, []);
 });
+
+test('a vault endpoints purge reads as automatic in the activity log, with each provider and URL', async (t) => {
+  const page = await secretsPage(t, { vault: 'purged' });
+  await page.until(
+    () => !!window.settingsPart('slicc-secrets', 'ol.audit li[data-type=endpoints]')
+  );
+  const row = await page.evaluate(() => {
+    const li = window.settingsPart('slicc-secrets', 'ol.audit li[data-type=endpoints]');
+    return {
+      text: li.querySelector('.what').textContent.replace(/\s+/g, ' ').trim(),
+      by: !!li.querySelector('.by'),
+      codes: [...li.querySelectorAll('code')].map((code) => code.textContent),
+    };
+  });
+  assert.deepEqual(row, {
+    text: 'Removed custom model URLs an agent set, automatically: openai https://models.harbor.example/v1, anthropic https://relay.harbor.example',
+    by: false,
+    codes: ['https://models.harbor.example/v1', 'https://relay.harbor.example'],
+  });
+  await clean(page);
+  assert.deepEqual(page.errors, []);
+});

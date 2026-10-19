@@ -76,6 +76,7 @@ export {
   vaultNotice,
   vaultOlder,
   vaultPolicy,
+  vaultPurged,
   vaultRefused,
   vaultSecrets,
 } from './dummy/vault.ts';
