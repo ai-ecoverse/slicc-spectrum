@@ -2,8 +2,10 @@ import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/dropzone/swc-dropzone.js';
+import '@adobe/spectrum-wc/components/illustrated-message/swc-illustrated-message.js';
 import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc/patterns/ai-toolkit/conversation-thread/swc-conversation-thread.js';
+import '@adobe/spectrum-wc-icons/swc-icon-attach.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chevron-down.js';
 import '@adobe/spectrum-wc-icons/swc-icon-new.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
@@ -19,7 +21,7 @@ import type {
   UserMessage,
 } from '../model/types.ts';
 import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
-import { fade, type SliccComposer } from './composer.ts';
+import { fade, folders, limit, type SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
 import { following, onWatch, watchOnly } from './follow.ts';
 import { markdownCss } from './markdown.ts';
@@ -136,6 +138,7 @@ export class SliccChat extends ThemedElement {
     compact: { state: true },
     behind: { state: true },
   };
+  static leaveAfter = 100;
   declare agent: string;
   declare dropping: boolean;
   declare compact: boolean;
@@ -157,18 +160,33 @@ export class SliccChat extends ThemedElement {
     return this.renderRoot.querySelector<SliccComposer>('slicc-composer');
   }
 
+  #accepts(event: DragEvent): boolean {
+    return carriesFiles(event) && !this.model?.seat && !!this.#composer()?.attachable();
+  }
+
   #over = (event: DragEvent): void => {
-    if (!(carriesFiles(event) && this.#composer()) || this.model?.seat) return;
+    if (!carriesFiles(event)) return;
     event.preventDefault();
-    (event.dataTransfer as DataTransfer).dropEffect = 'copy';
+    const transfer = event.dataTransfer as DataTransfer;
+    if (!this.#accepts(event)) {
+      transfer.dropEffect = 'none';
+      if (this.dropping) this.#clear();
+      return;
+    }
+    transfer.dropEffect = 'copy';
+    clearTimeout(this.#leaving);
     if (this.dropping) return;
     this.dropping = true;
     globalThis.addEventListener('keydown', this.#escape, true);
   };
 
+  #leaving: ReturnType<typeof setTimeout> | undefined;
+
   #leave = (event: DragEvent): void => {
     const to = event.relatedTarget;
-    if (!(to instanceof Node && this.contains(to))) this.#clear();
+    if (to instanceof Node && this.contains(to)) return;
+    clearTimeout(this.#leaving);
+    this.#leaving = setTimeout(() => this.#clear(), SliccChat.leaveAfter);
   };
 
   #escape = (event: KeyboardEvent): void => {
@@ -176,18 +194,20 @@ export class SliccChat extends ThemedElement {
   };
 
   #clear(): void {
+    clearTimeout(this.#leaving);
     this.dropping = false;
     globalThis.removeEventListener('keydown', this.#escape, true);
   }
 
   #drop = (event: DragEvent): void => {
     this.#clear();
-    const composer = this.#composer();
-    if (!(carriesFiles(event) && composer)) return;
+    if (!carriesFiles(event)) return;
+    event.preventDefault();
+    if (!this.#accepts(event)) return;
     if (event.composedPath().some((node) => (node as Element).localName === 'swc-prompt-field'))
       return;
-    event.preventDefault();
-    void composer.addFiles([...(event.dataTransfer as DataTransfer).files]);
+    const transfer = event.dataTransfer as DataTransfer;
+    void (this.#composer() as SliccComposer).addFiles([...transfer.files], folders(transfer));
   };
 
   static styles = [
@@ -291,20 +311,13 @@ export class SliccChat extends ThemedElement {
         z-index: 3;
         display: grid;
         pointer-events: none;
-        --swc-dropzone-background-color: color-mix(
-          in srgb,
-          var(--swc-accent-visual-color) 14%,
-          color-mix(in srgb, var(--swc-background-layer-2-color) 82%, transparent)
-        );
       }
-      swc-dropzone p {
-        padding: var(--swc-spacing-100) var(--swc-spacing-300);
-        border-radius: var(--swc-corner-radius-1000);
-        background: var(--swc-background-elevated-color);
-        box-shadow: var(--swc-drop-shadow-elevated);
-        font-size: var(--swc-font-size-300);
-        font-weight: var(--swc-bold-font-weight);
-        color: var(--swc-accent-content-color-default);
+      swc-dropzone swc-illustrated-message {
+        --swc-illustrated-message-illustration-size: var(--swc-spacing-700);
+      }
+      swc-dropzone swc-icon-attach {
+        --swc-icon-inline-size: 100%;
+        --swc-icon-block-size: 100%;
       }
       .jump {
         position: absolute;
@@ -978,9 +991,16 @@ export class SliccChat extends ThemedElement {
       </div>
       ${
         this.dropping
-          ? html`<swc-dropzone dragged size="l" aria-label="Attach files" dragged-message="Drop to attach"><p>Drop to attach</p></swc-dropzone>`
+          ? html`<swc-dropzone dragged size="l" aria-label="Attach files" dragged-message="" data-surface="drop">
+              <swc-illustrated-message>
+                <swc-icon-attach></swc-icon-attach>
+                <h2 slot="heading">Drop files to attach</h2>
+                <span slot="description">Images, text and other files up to ${limit / 1024 / 1024} MB each join your next message. Folders can’t be attached.</span>
+              </swc-illustrated-message>
+            </swc-dropzone>`
           : nothing
       }
+      <p class="sr" role="status" data-announce="drop">${this.dropping ? 'Drop to attach files to your message' : ''}</p>
       ${
         watch
           ? watch === following(this.model)?.refused

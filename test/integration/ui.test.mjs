@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { launch } from './chrome.mjs';
 
@@ -3584,6 +3587,253 @@ for (const [color, width] of [['dark'], ['light', 420]]) {
     assert.deepEqual(page.errors, []);
   });
 }
+
+async function dragOverChat(page) {
+  return page.evaluate(() => {
+    window.zoneRemovals = 0;
+    new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.removedNodes)
+          if (node.localName === 'swc-dropzone') window.zoneRemovals++;
+    }).observe(window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot, {
+      childList: true,
+      subtree: true,
+    });
+    window.chatDrag = (type, init = {}) => {
+      const data = new DataTransfer();
+      data.items.add(new File(['tide tables\n'], 'tides.txt', { type: 'text/plain' }));
+      window.lastTransfer = data;
+      return window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log').dispatchEvent(
+        new DragEvent(type, {
+          dataTransfer: data,
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+          ...init,
+        })
+      );
+    };
+    return !window.chatDrag('dragenter') && !window.chatDrag('dragover');
+  });
+}
+
+test('the drop zone over the chat says what it takes on an opaque surface, and holds while the drag moves', async (t) => {
+  const page = await open(t, { delay: '0' });
+  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer'));
+  assert.equal(await dragOverChat(page), true);
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone[dragged]')
+  );
+  const zone = await page.evaluate(() => {
+    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    const dropzone = chat.shadowRoot.querySelector('swc-dropzone');
+    const alpha = (color) => {
+      const context = document.createElement('canvas').getContext('2d');
+      context.fillStyle = color;
+      context.fillRect(0, 0, 1, 1);
+      return context.getImageData(0, 0, 1, 1).data[3] / 255;
+    };
+    return {
+      surface: dropzone.dataset.surface,
+      heading: dropzone.querySelector('h2[slot=heading]')?.textContent.trim(),
+      description: dropzone.querySelector('[slot=description]')?.textContent.trim(),
+      icon: !!dropzone.querySelector('swc-illustrated-message swc-icon-attach'),
+      alpha: alpha(
+        getComputedStyle(dropzone.shadowRoot.querySelector('.swc-Dropzone')).backgroundColor
+      ),
+      status: chat.shadowRoot.querySelector('[data-announce=drop]').textContent.trim(),
+    };
+  });
+  assert.deepEqual(zone, {
+    surface: 'drop',
+    heading: 'Drop files to attach',
+    description:
+      'Images, text and other files up to 25 MB each join your next message. Folders can’t be attached.',
+    icon: true,
+    alpha: 1,
+    status: 'Drop to attach files to your message',
+  });
+
+  assert.equal(
+    await page.evaluate(() => {
+      window.chatDrag('dragleave', { relatedTarget: null });
+      return !window.chatDrag('dragover');
+    }),
+    true
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      removals: window.zoneRemovals,
+      shown: !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone[dragged]'),
+    })),
+    { removals: 0, shown: true }
+  );
+
+  await page.evaluate(() => window.chatDrag('dragleave', { relatedTarget: null }));
+  await page.until(
+    () =>
+      !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone') &&
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', '[data-announce=drop]').textContent === ''
+  );
+
+  await dragOverChat(page);
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone[dragged]')
+  );
+  await page.evaluate(() => window.chatDrag('drop'));
+  await page.until(() => {
+    const attachments = window.$(
+      'slicc-app',
+      'slicc-dock',
+      'slicc-chat',
+      'slicc-composer'
+    ).attachments;
+    return (
+      !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone') &&
+      attachments.length === 1 &&
+      attachments[0].kind === 'text' &&
+      attachments[0].text === 'tide tables\n'
+    );
+  });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a folder dragged onto the chat is refused with a chip that says so, next to the files that came with it', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'slicc-drop-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, 'charts'));
+  writeFileSync(join(dir, 'charts', 'ebb.txt'), 'ebb\n');
+  writeFileSync(join(dir, 'tides.txt'), 'tide tables\n');
+  const page = await open(t, { delay: '0' });
+  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer'));
+  const [x, y] = await page.evaluate(() => {
+    const box = window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log').getBoundingClientRect();
+    return [Math.round(box.left + box.width / 2), Math.round(box.top + box.height / 3)];
+  });
+  const data = {
+    items: [],
+    files: [join(dir, 'charts'), join(dir, 'tides.txt')],
+    dragOperationsMask: 1,
+  };
+  for (const type of ['dragEnter', 'dragOver', 'drop'])
+    await page.send('Input.dispatchDragEvent', { type, x, y, data });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').attachments.length === 2
+  );
+  const chips = await page.evaluate(() =>
+    [
+      ...window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer')
+        .shadowRoot.querySelectorAll('swc-upload-attachment'),
+    ].map((chip) => ({
+      name: chip.querySelector('[slot=title]').textContent,
+      detail: chip.querySelector('[slot=subtitle]').textContent,
+      error: chip.hasAttribute('data-error'),
+      kind: chip.dataset.kind,
+    }))
+  );
+  assert.deepEqual(chips, [
+    { name: 'charts', detail: 'Folders can’t be attached', error: true, kind: 'file' },
+    { name: 'tides.txt', detail: '12 B', error: false, kind: 'text' },
+  ]);
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').focus();
+    return true;
+  });
+  await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
+  await page.insert('Charts and tides');
+  await page.press('Enter');
+  await page.until(() =>
+    window.model.agent
+      .messages('cone-sliccy')
+      .some((message) => message.role === 'user' && message.text === 'Charts and tides')
+  );
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      sent: window.model.agent
+        .messages('cone-sliccy')
+        .find((message) => message.role === 'user' && message.text === 'Charts and tides')
+        .attachments.map((attachment) => [attachment.name, attachment.kind, !!attachment.error]),
+      left: window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').attachments.length,
+      chips: window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer')
+        .shadowRoot.querySelectorAll('swc-upload-attachment').length,
+    })),
+    { sent: [['tides.txt', 'text', false]], left: 0, chips: 0 }
+  );
+
+  const [fx, fy] = await page.evaluate(() => {
+    const box = window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field', 'textarea')
+      .getBoundingClientRect();
+    return [Math.round(box.left + box.width / 2), Math.round(box.top + box.height / 2)];
+  });
+  const onField = { ...data, files: [join(dir, 'charts')] };
+  for (const type of ['dragEnter', 'dragOver', 'drop'])
+    await page.send('Input.dispatchDragEvent', { type, x: fx, y: fy, data: onField });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').attachments[0]?.error ===
+      'Folders can’t be attached'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('while the composer waits to reconnect, the chat takes no drop and shows no drop zone', async (t) => {
+  const page = await open(t, { delay: '0', follow: 'reconnecting' });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
+        ?.disabled === true
+  );
+  assert.equal(await dragOverChat(page), true);
+  assert.equal(await page.evaluate(() => window.lastTransfer.dropEffect), 'none');
+  assert.equal(await page.evaluate(() => !window.chatDrag('drop')), true);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await page.evaluate(() => window.chatDrag('drop'));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      zone: !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone'),
+      attachments: window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').attachments
+        .length,
+    })),
+    { zone: false, attachments: 0 }
+  );
+
+  await page.evaluate(() => {
+    window.model.follow.setScenario('full');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
+        ?.disabled === false
+  );
+  assert.equal(await dragOverChat(page), true);
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone[dragged]')
+  );
+  await page.evaluate(() => {
+    window.model.follow.setScenario('reconnecting');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
+        ?.disabled === true
+  );
+  assert.equal(await page.evaluate(() => !window.chatDrag('dragover')), true);
+  assert.equal(await page.evaluate(() => window.lastTransfer.dropEffect), 'none');
+  await page.until(
+    () =>
+      !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone') &&
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', '[data-announce=drop]').textContent === ''
+  );
+  assert.deepEqual(page.errors, []);
+});
 
 test('the slash popup offers the agent’s prompts and skills and sends them as messages', async (t) => {
   const page = await open(t, { delay: '0' });
