@@ -120,8 +120,21 @@ const itemBusy = (item: UpdateItem): boolean =>
 const packageBusy = (item: PackageItem): boolean =>
   packageRunning.has(item.state) || item.progress !== null;
 
-const newer = (a: string, b: string): number =>
-  a.replace(/^v/, '').localeCompare(b.replace(/^v/, ''), 'en', { numeric: true });
+const parts = (version: string): [string, string | null] => {
+  const [core, ...pre] = version.replace(/^v/, '').split('+')[0].split('-');
+  return [core, pre.length ? pre.join('-') : null];
+};
+
+const natural = (a: string, b: string): number => a.localeCompare(b, 'en', { numeric: true });
+
+const newer = (a: string, b: string): number => {
+  const [coreA, preA] = parts(a);
+  const [coreB, preB] = parts(b);
+  const core = natural(coreA, coreB);
+  if (core || preA === preB) return core;
+  if (preA === null) return 1;
+  return preB === null ? -1 : natural(preA, preB);
+};
 
 const certBlock = /<!--\s*cert-verify\s*-->([\s\S]*?)<!--\s*\/cert-verify\s*-->/g;
 
