@@ -2782,6 +2782,7 @@ test('scoop-notify licks read in plain language, expand to the report and open i
           .map((node) => node.textContent)
           .join(''),
         pill: turn(id).querySelector('.reaction').textContent,
+        time: !!turn(id).querySelector('.meta time.when'),
         named: turn(id).querySelector('.reaction').title,
         label: turn(id).getAttribute('accessible-label'),
         wraps: getComputedStyle(lick.querySelector('.lick-head .text')).whiteSpace !== 'nowrap',
@@ -2791,6 +2792,7 @@ test('scoop-notify licks read in plain language, expand to the report and open i
   assert.deepEqual(seen, [
     {
       who: 'amber-heron (scout)',
+      time: true,
       line: 'The upstream allows 60 requests a minute, so a one-minute cache keeps harbor under it.',
       bracket: false,
       severity: null,
@@ -2803,6 +2805,7 @@ test('scoop-notify licks read in plain language, expand to the report and open i
     },
     {
       who: 'grey-tern (worker)',
+      time: true,
       line: 'Scoop grey-tern failed',
       bracket: false,
       severity: 'error',
@@ -2815,6 +2818,7 @@ test('scoop-notify licks read in plain language, expand to the report and open i
     },
     {
       who: 'salt-gull (scout)',
+      time: true,
       line: 'Scoop salt-gull finished',
       bracket: false,
       severity: null,
@@ -2851,6 +2855,12 @@ test('scoop-notify licks read in plain language, expand to the report and open i
     failed: '120 s',
     buttons: ['Open the report', null],
   });
+  const reportHeading = await page.evaluate(
+    () =>
+      getComputedStyle(
+        window.chatPart('details.lick[data-id=m-h5] .report .heading[aria-level="3"]')
+      ).fontSize
+  );
   await page.evaluate(() => {
     window.opened = [];
     window
@@ -2868,6 +2878,13 @@ test('scoop-notify licks read in plain language, expand to the report and open i
         .$('slicc-app', 'slicc-dock')
         .api.getPanel('file:/shared/scoop-notifications/amber-heron.md')
   );
+  await page.evaluate(() => window.model.agent.select('cone-release'));
+  await page.until(() => !!window.chatPart('[data-id=m-r2] .text .heading[aria-level="6"]'));
+  const chatHeading = await page.evaluate(
+    () =>
+      getComputedStyle(window.chatPart('[data-id=m-r2] .text .heading[aria-level="6"]')).fontSize
+  );
+  assert.equal(reportHeading, chatHeading);
   assert.deepEqual(page.errors, []);
 });
 

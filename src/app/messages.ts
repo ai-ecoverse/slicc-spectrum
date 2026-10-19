@@ -1423,6 +1423,10 @@ export const messageCss = css`
     padding: var(--swc-spacing-75) var(--swc-spacing-200) var(--swc-spacing-200);
     overflow-wrap: anywhere;
   }
+  .lick .report .heading {
+    font-size: inherit;
+    margin-block: var(--swc-spacing-300) var(--swc-spacing-75);
+  }
   .lick .report > .text {
     align-self: stretch;
     max-block-size: calc(var(--swc-spacing-1000) * 4);

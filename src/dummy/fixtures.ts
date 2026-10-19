@@ -680,7 +680,7 @@ export const conversations: Record<string, Message[]> = {
       title: 'grey-tern (worker)',
       text: '[scoop grey-tern (worker) failed]',
       body: '[scoop grey-tern (worker) failed]\nThe deploy preview timed out after **120 s**. Nothing was pushed.',
-      createdAt: at(12),
+      createdAt: at(13),
     },
     {
       id: 'm-h7',
@@ -688,7 +688,7 @@ export const conversations: Record<string, Message[]> = {
       channel: 'scoop-notify',
       title: 'salt-gull (scout)',
       text: '[scoop salt-gull (scout) completed]',
-      createdAt: at(13),
+      createdAt: at(15),
     },
   ],
   'scoop-otter': [
@@ -786,7 +786,7 @@ export const conversations: Record<string, Message[]> = {
         },
         {
           type: 'text',
-          text: '## harbor 1.9.0\n\n**Features**\n- Added a `/health` endpoint.\n\n**Fixes**\n- Requests without a city now get a 400 instead of a 500.\n\n**Chores**\n- Updated wrangler to 4.40.0.',
+          text: '## harbor 1.9.0\n\n#### Features\n- Added a `/health` endpoint.\n\n#### Fixes\n- Requests without a city now get a 400 instead of a 500.\n\n#### Chores\n- Updated wrangler to 4.40.0.',
         },
       ],
     },
