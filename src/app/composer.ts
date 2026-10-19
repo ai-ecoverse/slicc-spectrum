@@ -1576,12 +1576,12 @@ export class SliccComposer extends ThemedElement {
       ${message.text ? nothing : html`<swc-icon-file size="xs" aria-hidden="true"></swc-icon-file>`}
       <span class="body">
         <span class="text"><span class="sr">${held ? 'Held: ' : 'Queued: '}</span>${message.text || names(message.attachments) || names(lost)}</span>
-        ${lost.length ? html`<span class="lost" data-lost><span class="sr">, </span>${held ? notKept(lost) : 'Not kept after reload'}</span>` : nothing}
+        ${lost.length ? html`<span class="lost" data-lost title=${names(lost)}><span class="sr">, </span>${held ? notKept(lost) : 'Not kept after reload'}${lost.length > 1 ? html`<span class="sr"> (${names(lost)})</span>` : nothing}</span>` : nothing}
       </span>
       ${message.text && files ? html`<span class="next" data-files><swc-icon-file size="xs" aria-hidden="true"></swc-icon-file><span class="sr">, </span>${files === 1 ? '1 file' : `${files} files`}</span>` : nothing}
       ${
         held
-          ? html`<swc-action-button size="s" quiet data-action="restore-starting" @click=${() => this.#putBack(message)}>Put back</swc-action-button>`
+          ? html`<swc-action-button size="s" quiet data-action="restore-starting" accessible-label=${`Put back: ${message.text}`} @click=${() => this.#putBack(message)}>Put back</swc-action-button>`
           : html`<span class="next">${empty ? 'Not sent. Attach the files again.' : 'Sent when the agent starts'}</span>`
       }
       <swc-close-button size="s" data-action="unqueue" accessible-label=${alert ? 'Dismiss' : 'Remove from queue'} @click=${() => this.#unwait(message.id)}></swc-close-button>
