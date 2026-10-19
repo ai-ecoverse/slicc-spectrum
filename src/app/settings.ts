@@ -2,7 +2,14 @@ import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
-import type { Account, RecordKind, Settings, SliccModel, VaultPort } from '../model/types.ts';
+import type {
+  Account,
+  AccountField,
+  RecordKind,
+  Settings,
+  SliccModel,
+  VaultPort,
+} from '../model/types.ts';
 import { isVaultFailure, valueProblem } from '../model/values.ts';
 import { chatModels, speech, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
@@ -337,7 +344,7 @@ export class SliccSettings extends ThemedElement {
         .querySelector<HTMLElement>(
           field === 'value'
             ? '.key input[data-field=value]'
-            : `.key input[data-account-field="${field}"]`
+            : `.key [data-account-field="${field}"]`
         )
         ?.focus()
     );
@@ -347,12 +354,12 @@ export class SliccSettings extends ThemedElement {
     if (!account.fields?.length) return undefined;
     const values: Record<string, string> = {};
     for (const field of account.fields) {
-      const input = form.querySelector(
-        `input[data-account-field="${field.name}"]`
-      ) as HTMLInputElement;
+      const input = form.querySelector(`[data-account-field="${field.name}"]`) as
+        | HTMLInputElement
+        | HTMLSelectElement;
       const value = input.value.trim();
       if (value) values[field.name] = value;
-      else if (field.required) {
+      else if (field.required && field.options?.length !== 0) {
         this.#refuse(account.id, field.name, `${field.label} can’t be empty`);
         return null;
       }
@@ -433,7 +440,27 @@ export class SliccSettings extends ThemedElement {
 
   #extra(account: Account): TemplateResult[] {
     return (account.fields ?? []).map(
-      (field) => html`<label class="field"><span>${field.label}</span><input
+      (field) => html`<label class="field">
+          <span>${field.label}</span>${this.#control(account, field)}
+        </label>
+        ${this.#problem(account, field.name)}`
+    );
+  }
+
+  #control(account: Account, field: AccountField): TemplateResult {
+    if (field.options) {
+      const chosen = field.value ?? field.options[0]?.value;
+      return html`<select
+          data-account-field=${field.name}
+          ?disabled=${!field.options.length}
+          aria-required=${field.required ? 'true' : nothing}
+          aria-invalid=${this.#invalid(account, field.name)}
+          aria-describedby=${this.#described(account, field.name)}
+        >
+          ${field.options.map((option) => html`<option value=${option.value} ?selected=${option.value === chosen}>${option.label}</option>`)}
+        </select>`;
+    }
+    return html`<input
           type="text"
           autocomplete="off"
           spellcheck="false"
@@ -441,9 +468,7 @@ export class SliccSettings extends ThemedElement {
           aria-required=${field.required ? 'true' : nothing}
           aria-invalid=${this.#invalid(account, field.name)}
           aria-describedby=${this.#described(account, field.name)}
-        /></label>
-        ${this.#problem(account, field.name)}`
-    );
+        />`;
   }
 
   #unlock(vault: VaultPort): TemplateResult {

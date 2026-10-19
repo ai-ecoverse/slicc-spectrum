@@ -375,6 +375,27 @@ export const accounts: Account[] = [
   },
   { id: 'openai', provider: 'OpenAI', identity: '', status: 'disconnected', auth: 'api-key' },
   {
+    id: 'amazon-bedrock',
+    provider: 'Amazon Bedrock',
+    identity: '',
+    status: 'disconnected',
+    auth: 'api-key',
+    fields: [
+      {
+        name: 'region',
+        label: 'Region',
+        required: true,
+        options: [
+          { value: 'us-east-1', label: 'US East (N. Virginia)' },
+          { value: 'us-west-2', label: 'US West (Oregon)' },
+          { value: 'eu-central-1', label: 'Europe (Frankfurt)' },
+          { value: 'ap-northeast-1', label: 'Asia Pacific (Tokyo)' },
+        ],
+        value: 'us-west-2',
+      },
+    ],
+  },
+  {
     id: 'mcp:docs',
     provider: 'docs',
     identity: 'docs.example',
