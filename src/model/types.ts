@@ -508,12 +508,18 @@ export interface Account {
   secret?: 'api-key' | 'token';
   store?: 'vault';
   fields?: AccountField[];
+  keyUrl?: string;
+  description?: string;
+  vaultName?: string;
 }
 
 export interface AccountField {
   name: string;
   label: string;
   required?: boolean;
+  placeholder?: string;
+  help?: string;
+  customBase?: true;
   options?: readonly AccountFieldOption[];
   value?: string;
 }
@@ -521,6 +527,39 @@ export interface AccountField {
 export interface AccountFieldOption {
   value: string;
   label: string;
+}
+
+export interface ModelEndpoint {
+  name: string;
+  url: string;
+}
+
+export interface McpEndpoint {
+  server: string;
+  url: string;
+}
+
+export interface EndpointSet {
+  model?: ModelEndpoint[];
+  mcp?: McpEndpoint[];
+}
+
+export interface VaultEndpointChange {
+  add?: EndpointSet;
+  remove?: EndpointSet;
+}
+
+export type ProviderAuth = 'api-key' | 'oauth' | 'fields' | 'local';
+
+export interface ProviderOption {
+  id: string;
+  name: string;
+  description?: string;
+  auth: ProviderAuth;
+  fields?: AccountField[];
+  keyUrl?: string;
+  needs?: 'cors-free-transport';
+  vaultName?: string;
 }
 
 export interface ModelOption {
@@ -537,6 +576,7 @@ export interface ModelOption {
 export interface SettingsEvents {
   settings: Settings;
   accounts: readonly Account[];
+  providers?: readonly ProviderOption[];
 }
 
 export interface SettingsPort extends Subscribable<SettingsEvents> {
@@ -547,6 +587,8 @@ export interface SettingsPort extends Subscribable<SettingsEvents> {
   connect(id: string, secret?: string, fields?: Record<string, string>): Promise<void>;
   disconnect(id: string): void;
   cancel?(id: string): void;
+  providers?(): readonly ProviderOption[];
+  remove?(id: string): Promise<void>;
 }
 
 export type MemoryTag = 'user' | 'feedback' | 'project';
@@ -1457,6 +1499,7 @@ export interface VaultPort extends Subscribable<VaultEvents> {
   export?(passphrase: string): Promise<Uint8Array>;
   lock?(): Promise<void>;
   dismissBackupReminder?(): Promise<void>;
+  endpoints?(change: VaultEndpointChange): Promise<void>;
   button(): VaultButton;
 }
 

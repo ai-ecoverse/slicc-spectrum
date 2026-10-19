@@ -21,6 +21,7 @@ import type {
   SealResult,
   SecretView,
   VaultButton,
+  VaultEndpointChange,
   VaultEvents,
   VaultList,
   VaultPort,
@@ -38,7 +39,8 @@ export type VaultScenario =
   | 'request'
   | 'backup'
   | 'waiting'
-  | 'purged';
+  | 'purged'
+  | 'endpoints-fail';
 
 const minute = 60_000;
 const hour = 60 * minute;
@@ -571,6 +573,8 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
   #serial = 0;
   buttons: DummyVaultButton[] = [];
   puts: { name: string; request?: string; options?: PutOptions }[] = [];
+  endpointChanges: VaultEndpointChange[] = [];
+  #refuses: boolean;
   cancelled: string[] = [];
   imports: DummyImport[] = [];
   exported = 0;
@@ -583,6 +587,17 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
     this.#list = { ...list, secrets: [...list.secrets, ...records] };
     this.#time = time;
     this.#available = scenario === 'waiting' ? 'waiting' : 'ready';
+    this.#refuses = scenario === 'endpoints-fail';
+  }
+
+  async endpoints(change: VaultEndpointChange): Promise<void> {
+    await this.#time.sleep(5);
+    if (this.#refuses)
+      throw vaultFailure(
+        'EINVAL',
+        'The vault refused that endpoint. Check the address and try again.'
+      );
+    this.endpointChanges.push(change);
   }
 
   status(): VaultStatus | null {

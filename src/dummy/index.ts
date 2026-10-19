@@ -20,6 +20,7 @@ import {
   type TailnetScenario,
 } from './network.ts';
 import { DummyNotices, type NoticeScenario, readOnlyText } from './notices.ts';
+import { providerAccounts, providerFixtures } from './providers.ts';
 import { DummySettings } from './settings.ts';
 import { DummySprinkles } from './sprinkles.ts';
 import { DummyTabs, type TabsScenario } from './tabs.ts';
@@ -52,7 +53,7 @@ export interface DummyOptions {
   vault?: VaultScenario | 'off';
   guests?: GuestsScenario | 'off';
   accounts?: 'settings' | 'vault';
-  providers?: 'connected' | 'none';
+  providers?: 'connected' | 'none' | 'all';
   hold?: AgentHold['reason'] | 'off';
   readonly?: 'version' | 'off';
   browser?: BrowserScenario;
@@ -78,6 +79,19 @@ export function vaultAccounts(accounts: readonly Account[]): Account[] {
   return accounts.map((account) =>
     account.auth === 'api-key' || account.id === 'github'
       ? { ...account, store: 'vault' as const }
+      : account
+  );
+}
+
+function settingsAccounts(
+  accounts: 'settings' | 'vault',
+  providers: 'connected' | 'none' | 'all'
+): Account[] {
+  const all = accounts === 'vault' ? vaultAccounts(fixtures.accounts) : fixtures.accounts;
+  if (providers === 'all') return providerAccounts(all);
+  return all.map((account) =>
+    providers === 'none' && account.group !== 'mcp'
+      ? { ...account, status: 'disconnected' as const, identity: '' }
       : account
   );
 }
@@ -163,17 +177,13 @@ export function createDummyModel({
     settings: new DummySettings(
       fixtures.defaults,
       providers === 'none' ? [...fixtures.models, ...fixtures.laterModels] : fixtures.models,
-      (accounts === 'vault' ? vaultAccounts(fixtures.accounts) : fixtures.accounts).map(
-        (account) =>
-          providers === 'none' && account.group !== 'mcp'
-            ? { ...account, status: 'disconnected' as const, identity: '' }
-            : account
-      ),
+      settingsAccounts(accounts, providers),
       storage,
       time,
       undefined,
       providers === 'none',
-      login
+      login,
+      providers === 'all' ? providerFixtures : undefined
     ),
     memory: new DummyMemory(extras.memories, () => [
       { id: 'global', label: 'Everyone' },

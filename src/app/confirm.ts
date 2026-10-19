@@ -40,7 +40,7 @@ export function themeOf(node: Node | null): Element {
   );
 }
 
-export const dialogStyles = css`
+export const dialogFrame = css`
   dialog {
     box-sizing: border-box;
     max-inline-size: calc(100vw - 2 * var(--swc-spacing-300));
@@ -60,6 +60,14 @@ export const dialogStyles = css`
       color-mix(in srgb, var(--swc-overlay-color) calc(var(--swc-overlay-opacity-dark) * 100%), transparent)
     );
   }
+  @media (forced-colors: active) {
+    dialog {
+      outline: solid;
+    }
+  }
+`;
+
+const alertStyles = css`
   sp-alert-dialog {
     --mod-alert-dialog-min-width: min(
       var(--swc-alert-dialog-minimum-width),
@@ -81,9 +89,6 @@ export const dialogStyles = css`
     }
   }
   @media (forced-colors: active) {
-    dialog {
-      outline: solid;
-    }
     sp-alert-dialog {
       border: none;
     }
@@ -100,6 +105,8 @@ export const dialogStyles = css`
     margin-block-end: var(--swc-spacing-75);
   }
 `;
+
+export const dialogStyles = [dialogFrame, alertStyles];
 
 export class SliccConfirm extends LitElement {
   static properties = { heading: {}, body: {}, action: {}, variant: {}, cancel: {} };
