@@ -24,6 +24,15 @@ import { gfmTaskListItem } from 'micromark-extension-gfm-task-list-item';
 type Output = TemplateResult | string | typeof nothing;
 type Definitions = Map<string, Definition>;
 
+interface Context {
+  definitions: Definitions;
+  strict: boolean;
+}
+
+export interface MarkdownOptions {
+  strict?: boolean;
+}
+
 interface Parsed {
   text: string;
   blocks: RootContent[];
@@ -50,7 +59,10 @@ const options: Options = {
 const empty: Parsed = { text: '', blocks: [], starts: [], keep: 0, definitions: new Map() };
 const cache = new Map<string, Parsed>();
 const streams: Parsed[] = [];
-const rendered = new WeakMap<RootContent, Output>();
+const rendered = {
+  loose: new WeakMap<RootContent, Output>(),
+  strict: new WeakMap<RootContent, Output>(),
+};
 
 function collect(nodes: Nodes[], found: Definitions): Definitions {
   for (const node of nodes) {
@@ -96,7 +108,8 @@ function parse(text: string): Parsed {
   return parsed;
 }
 
-function safeUrl(url: string, images = false): boolean {
+function safeUrl(url: string, images = false, strict = false): boolean {
+  if (strict) return /^https:\/\//i.test(url);
   return (
     /^https?:\/\//.test(url) ||
     (!images && /^mailto:/.test(url)) ||
@@ -104,21 +117,32 @@ function safeUrl(url: string, images = false): boolean {
   );
 }
 
-function link(url: string, title: string | null | undefined, label: Output[]): Output {
-  return safeUrl(url)
+function link(
+  url: string,
+  title: string | null | undefined,
+  label: Output[] | string,
+  strict: boolean
+): Output {
+  return safeUrl(url, false, strict)
     ? html`<a href=${url} title=${title ?? nothing} target="_blank" rel="noopener noreferrer">${label}</a>`
     : html`${label}`;
 }
 
-function image(url: string, title: string | null | undefined, alt: string): Output {
+function image(
+  url: string,
+  title: string | null | undefined,
+  alt: string,
+  strict: boolean
+): Output {
+  if (strict) return link(url, title, alt || url, true);
   return safeUrl(url, true) ? html`<img src=${url} alt=${alt} title=${title ?? nothing} />` : alt;
 }
 
-function inline(node: { children: PhrasingContent[] }, definitions: Definitions): Output[] {
-  return node.children.map((child) => phrasing(child, definitions));
+function inline(node: { children: PhrasingContent[] }, context: Context): Output[] {
+  return node.children.map((child) => phrasing(child, context));
 }
 
-function phrasing(node: PhrasingContent, definitions: Definitions): Output {
+function phrasing(node: PhrasingContent, context: Context): Output {
   switch (node.type) {
     case 'text':
     case 'html':
@@ -126,81 +150,76 @@ function phrasing(node: PhrasingContent, definitions: Definitions): Output {
     case 'inlineCode':
       return html`<code>${node.value}</code>`;
     case 'strong':
-      return html`<strong>${inline(node, definitions)}</strong>`;
+      return html`<strong>${inline(node, context)}</strong>`;
     case 'emphasis':
-      return html`<em>${inline(node, definitions)}</em>`;
+      return html`<em>${inline(node, context)}</em>`;
     case 'delete':
-      return html`<s>${inline(node, definitions)}</s>`;
+      return html`<s>${inline(node, context)}</s>`;
     case 'break':
       return html`<br />`;
     case 'link':
-      return link(node.url, node.title, inline(node, definitions));
+      return link(node.url, node.title, inline(node, context), context.strict);
     case 'linkReference': {
-      const target = definitions.get(node.identifier)!;
-      return link(target.url, target.title, inline(node, definitions));
+      const target = context.definitions.get(node.identifier)!;
+      return link(target.url, target.title, inline(node, context), context.strict);
     }
     case 'image':
-      return image(node.url, node.title, node.alt!);
+      return image(node.url, node.title, node.alt!, context.strict);
     default: {
-      const target = definitions.get((node as ImageReference).identifier)!;
-      return image(target.url, target.title, (node as ImageReference).alt!);
+      const target = context.definitions.get((node as ImageReference).identifier)!;
+      return image(target.url, target.title, (node as ImageReference).alt!, context.strict);
     }
   }
 }
 
-function paragraph(
-  node: Paragraph,
-  definitions: Definitions,
-  tight: boolean,
-  lead: Output
-): Output {
-  const content = inline(node, definitions);
+function paragraph(node: Paragraph, context: Context, tight: boolean, lead: Output): Output {
+  const content = inline(node, context);
   return tight ? html`${lead}${content}` : html`<p>${lead}${content}</p>`;
 }
 
-function item(node: ListItem, definitions: Definitions, tight: boolean): TemplateResult {
+function item(node: ListItem, context: Context, tight: boolean): TemplateResult {
   const box =
     typeof node.checked === 'boolean'
       ? html`<span class="task" data-done=${node.checked ? 'true' : 'false'} aria-label=${node.checked ? 'done' : 'open'}>${node.checked ? '☑' : '☐'}</span> `
       : nothing;
   return html`<li>${node.children.map((child, index) =>
     child.type === 'paragraph'
-      ? paragraph(child, definitions, tight, index ? nothing : box)
-      : flow(child, definitions)
+      ? paragraph(child, context, tight, index ? nothing : box)
+      : flow(child, context)
   )}</li>`;
 }
 
-function list(node: List, definitions: Definitions): TemplateResult {
+function list(node: List, context: Context): TemplateResult {
   const tight = !node.spread && !node.children.some((entry) => entry.spread);
-  const items = node.children.map((entry) => item(entry, definitions, tight));
+  const items = node.children.map((entry) => item(entry, context, tight));
   return node.ordered
     ? html`<ol start=${node.start === 1 ? nothing : node.start!}>${items}</ol>`
     : html`<ul>${items}</ul>`;
 }
 
-function table(node: Table, definitions: Definitions): TemplateResult {
+function table(node: Table, context: Context): TemplateResult {
   const [head, ...body] = node.children;
   const align = (index: number) => (node.align as AlignType[])[index] ?? nothing;
   return html`<div class="table"><table>
-    <thead><tr>${head.children.map((cell, index) => html`<th data-align=${align(index)}>${inline(cell, definitions)}</th>`)}</tr></thead>
-    <tbody>${body.map((row) => html`<tr>${row.children.map((cell, index) => html`<td data-align=${align(index)}>${inline(cell, definitions)}</td>`)}</tr>`)}</tbody>
+    <thead><tr>${head.children.map((cell, index) => html`<th data-align=${align(index)}>${inline(cell, context)}</th>`)}</tr></thead>
+    <tbody>${body.map((row) => html`<tr>${row.children.map((cell, index) => html`<td data-align=${align(index)}>${inline(cell, context)}</td>`)}</tr>`)}</tbody>
   </table></div>`;
 }
 
-function flow(node: RootContent, definitions: Definitions): Output {
+function flow(node: RootContent, context: Context): Output {
   switch (node.type) {
     case 'paragraph':
-      return paragraph(node, definitions, false, nothing);
+      return paragraph(node, context, false, nothing);
     case 'heading':
-      return html`<p class="heading" role="heading" aria-level=${Math.min(node.depth + 2, 6)}>${inline(node, definitions)}</p>`;
+      return html`<p class="heading" role="heading" aria-level=${Math.min(node.depth + 2, 6)}>${inline(node, context)}</p>`;
     case 'code':
       return html`<pre class="code" data-lang=${node.lang || nothing}><code>${node.value}</code></pre>`;
     case 'list':
-      return list(node, definitions);
+      return list(node, context);
     case 'table':
-      return table(node, definitions);
+      return table(node, context);
     case 'blockquote':
-      return html`<blockquote>${node.children.map((child) => flow(child, definitions))}</blockquote>`;
+      return html`<blockquote>${node.children.map((child) => flow(child, context))}</blockquote>`;
     case 'thematicBreak':
       return html`<hr />`;
     case 'html':
@@ -210,18 +229,20 @@ function flow(node: RootContent, definitions: Definitions): Output {
   }
 }
 
-function block(node: RootContent, definitions: Definitions): Output {
-  let output = rendered.get(node);
+function block(node: RootContent, context: Context): Output {
+  const cache = context.strict ? rendered.strict : rendered.loose;
+  let output = cache.get(node);
   if (output === undefined) {
-    output = flow(node, definitions);
-    rendered.set(node, output);
+    output = flow(node, context);
+    cache.set(node, output);
   }
   return output;
 }
 
-export function markdown(text: string): TemplateResult {
+export function markdown(text: string, options: MarkdownOptions = {}): TemplateResult {
   const { blocks, definitions } = parse(text);
-  return html`${blocks.map((node) => block(node, definitions))}`;
+  const context = { definitions, strict: options.strict === true };
+  return html`${blocks.map((node) => block(node, context))}`;
 }
 
 export const markdownCss = css`

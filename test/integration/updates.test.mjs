@@ -793,3 +793,97 @@ test('a ready update shows what’s new for its whole range, and rows without no
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('hostile release notes render as text and https links only, load no image and are capped', async (t) => {
+  const page = await open(t, 'restart');
+  await page.evaluate(() => {
+    window.inUpdates = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-updates', selector);
+    const port = window.model.updates;
+    const hostile = [
+      '### Features',
+      '',
+      '<script>window.pwned = 1</script>',
+      '',
+      '* <img src=x onerror="window.pwned = 2"> inline',
+      '* [run](javascript:window.pwned=3) and [plain](http://127.0.0.1:1/plain) and [ok](https://example.com/ok)',
+      '* ![pixel](data:image/png;base64,iVBORw0KGgo=) ![tracker](http://127.0.0.1:1/hostile-tracker.png) ![remote](https://example.com/hostile-remote.png)',
+      '',
+      '<iframe src="https://example.com/frame"></iframe>',
+      '',
+      'x'.repeat(10 * 1024 * 1024),
+    ].join('\n');
+    const items = port.list().map((item) =>
+      item.id === 'kernel'
+        ? {
+            ...item,
+            releases: [
+              { version: '1.13.0', url: 'https://example.com/v1.13.0', notes: hostile },
+              { version: '1.12.2', url: 'javascript:window.pwned=4', notes: '* fine' },
+            ],
+          }
+        : item
+    );
+    port.list = () => items;
+    port.emit('items', items);
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() => Boolean(window.inUpdates('[data-id=kernel] [data-action=whats-new]')));
+  await page.evaluate(() => {
+    window.inUpdates('[data-id=kernel] [data-action=whats-new]').click();
+    return true;
+  });
+  await page.until(() => window.inUpdates('[data-id=kernel] details[data-releases]').open);
+  const seen = await page.evaluate(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const details = window.inUpdates('[data-id=kernel] details[data-releases]');
+    const notes = details.querySelector('.release[data-version="1.13.0"] .markdown');
+    const allowed = new Set(['P', 'UL', 'LI', 'A', 'CODE', 'STRONG', 'EM']);
+    return {
+      pwned: window.pwned ?? null,
+      tags: [...new Set([...notes.querySelectorAll('*')].map((node) => node.tagName))].filter(
+        (tag) => !allowed.has(tag)
+      ),
+      links: [...details.querySelectorAll('a')].map((link) => [
+        link.getAttribute('href'),
+        link.target,
+        link.rel,
+      ]),
+      hostileText: /<script>window\.pwned = 1<\/script>/.test(notes.textContent),
+      length: notes.textContent.length,
+      ellipsis: notes.textContent.trimEnd().endsWith('…'),
+      cut: details.querySelector('.release[data-version="1.13.0"] [data-cut] a')?.href ?? null,
+      plainTitle: details
+        .querySelector('.release[data-version="1.12.2"] .title')
+        .textContent.trim(),
+      images: performance
+        .getEntriesByType('resource')
+        .filter((entry) => /hostile|\/x$|\/frame$/.test(entry.name))
+        .map((entry) => entry.name),
+    };
+  });
+  assert.equal(seen.pwned, null);
+  assert.deepEqual(seen.tags, []);
+  for (const [href, target, rel] of seen.links) {
+    assert.match(href, /^https:\/\//);
+    assert.equal(target, '_blank');
+    assert.equal(rel, 'noopener noreferrer');
+  }
+  assert.deepEqual(
+    seen.links.map(([href]) => href),
+    [
+      'https://example.com/v1.13.0',
+      'https://example.com/ok',
+      'https://example.com/hostile-remote.png',
+      'https://example.com/v1.13.0',
+    ]
+  );
+  assert.equal(seen.hostileText, true);
+  assert.ok(seen.length <= 65_536 + 1, String(seen.length));
+  assert.ok(seen.length > 60_000, String(seen.length));
+  assert.equal(seen.ellipsis, true);
+  assert.equal(seen.cut, 'https://example.com/v1.13.0');
+  assert.equal(seen.plainTitle, '1.12.2');
+  assert.deepEqual(seen.images, []);
+  assert.deepEqual(page.errors, []);
+});

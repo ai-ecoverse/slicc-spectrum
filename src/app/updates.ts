@@ -138,10 +138,13 @@ const newer = (a: string, b: string): number => {
 
 const certBlock = /<!--\s*cert-verify\s*-->([\s\S]*?)<!--\s*\/cert-verify\s*-->/g;
 
+export const notesLimit = 65_536;
+
 interface Notes {
   release: UpdateRelease;
   body: string;
   certified: boolean;
+  cut: boolean;
 }
 
 export function releaseNotes(release: UpdateRelease): Notes {
@@ -152,11 +155,13 @@ export function releaseNotes(release: UpdateRelease): Notes {
   const lines = text.replace(certBlock, '').trim().split('\n');
   const heading =
     /^#{1,6}\s/.test(lines[0]) && lines[0].includes(release.version.replace(/^v/, ''));
-  const body = lines
+  const full = lines
     .slice(heading ? 1 : 0)
     .join('\n')
     .trim();
-  return { release, body, certified };
+  const cut = full.length > notesLimit;
+  const body = cut ? `${full.slice(0, notesLimit).trimEnd()}…` : full;
+  return { release, body, certified, cut };
 }
 
 export function whatsNew(
@@ -172,8 +177,10 @@ export function whatsNew(
   return range.some((entry) => entry.body) ? range : [];
 }
 
+const secure = (url: string) => /^https:\/\//i.test(url);
+
 const installed = (releases: readonly UpdateRelease[] | undefined, version: string) =>
-  releases?.find((release) => newer(release.version, version) === 0);
+  releases?.find((release) => newer(release.version, version) === 0 && secure(release.url));
 
 type Failures = ReadonlyMap<string, string>;
 type Snapshot = ReadonlyMap<string, { state: string; error: string | null }>;
@@ -497,6 +504,9 @@ export class SliccUpdates extends ModelElement {
         flex-wrap: wrap;
         gap: var(--swc-spacing-100);
       }
+      .cut {
+        margin: var(--swc-spacing-100) 0 0;
+      }
       .release > .markdown {
         margin-block-start: var(--swc-spacing-100);
         line-height: var(--swc-line-height-200);
@@ -696,9 +706,15 @@ export class SliccUpdates extends ModelElement {
     return html`<details data-releases ?open=${this.#logs.has(key)} @toggle=${this.#logs.details(key)}>
       <summary data-action="whats-new">${chevron}What’s new</summary>
       <div class="releases">${entries.map(
-        ({ release, body, certified }) => html`<div class="release" data-version=${release.version}>
-          <p class="title" role="heading" aria-level=${level}><a class="swc-Link" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${release.version} release notes`}>${release.version}</a>${certified ? html`<swc-badge size="s" variant="positive" subtle data-certified>Certified</swc-badge>` : nothing}</p>
-          ${body ? html`<div class="markdown">${markdown(body)}</div>` : nothing}
+        ({
+          release,
+          body,
+          certified,
+          cut,
+        }) => html`<div class="release" data-version=${release.version}>
+          <p class="title" role="heading" aria-level=${level}>${secure(release.url) ? html`<a class="swc-Link" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${release.version} release notes`}>${release.version}</a>` : release.version}${certified ? html`<swc-badge size="s" variant="positive" subtle data-certified>Certified</swc-badge>` : nothing}</p>
+          ${body ? html`<div class="markdown">${markdown(body, { strict: true })}</div>` : nothing}
+          ${cut && secure(release.url) ? html`<p class="cut" data-cut><a class="swc-Link" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${release.version} full release notes`}>Read the full notes</a></p>` : nothing}
         </div>`
       )}</div>
     </details>`;
@@ -823,7 +839,6 @@ export class SliccUpdates extends ModelElement {
       )}</div>
       <p class="description">${item.description}</p>
       ${this.#packageMeta(item, all)}
-      ${this.#whatsNew(`releases:package:${item.id}`, item.label, whatsNew(item.releases, item.version, item.offered), 4)}
       ${item.notes?.length ? html`<p class="notes" data-notes>${item.notes.map((note) => html`<span>${note}</span>`)}</p>` : nothing}
       ${
         item.warnings?.length
@@ -840,6 +855,7 @@ export class SliccUpdates extends ModelElement {
             )}</p>`
           : nothing
       }
+      ${this.#whatsNew(`releases:package:${item.id}`, item.label, whatsNew(item.releases, item.version, item.offered), 4)}
       ${this.#packageProgress(item)}
       ${
         error
