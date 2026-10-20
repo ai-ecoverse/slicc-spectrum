@@ -111,17 +111,25 @@ test('pairing runs from the link through confirm and linking to linked, then Don
   );
   assert.equal(await page.evaluate(live), 'Link SLICC on this computer? Code ab12…ef.');
   await page.evaluate(() => {
+    window.linking = null;
+    const seen = () => {
+      const circle = window.pairing()?.querySelector('swc-progress-circle');
+      if (window.linking || window.pairState() !== 'linking' || !circle) return;
+      window.linking = [
+        circle.getAttribute('label'),
+        !!window.pairing().querySelector('[data-action=cancel-pairing]'),
+      ];
+    };
+    new MutationObserver(seen).observe(window.net(), {
+      subtree: true,
+      childList: true,
+      attributes: true,
+    });
     window.net().querySelector('[data-action=confirm-pairing]').click();
     return true;
   });
-  await page.until(() => window.pairState() === 'linking');
-  assert.deepEqual(
-    await page.evaluate(() => [
-      window.pairing().querySelector('swc-progress-circle').getAttribute('label'),
-      !!window.pairing().querySelector('[data-action=cancel-pairing]'),
-    ]),
-    ['Linking', true]
-  );
+  await page.until(() => window.linking !== null);
+  assert.deepEqual(await page.evaluate(() => window.linking), ['Linking', true]);
   await page.until(() => window.pairState() === 'linked');
   assert.deepEqual(
     await page.evaluate(() => {
