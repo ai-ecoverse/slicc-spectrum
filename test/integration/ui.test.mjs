@@ -732,19 +732,37 @@ test('with a fine pointer, activating chat focuses the composer', async (t) => {
 test('after a tap, activating chat focuses neither its log nor its composer, until a key', async (t) => {
   const page = await pointer(t, true);
   await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
-  const point = await page.evaluate(() => {
-    const box = window.app.shadowRoot
-      .querySelector('.rail [data-surface="memory"]')
-      .getBoundingClientRect();
-    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-  });
-  await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
-  await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  const tap = async (id) => {
+    const point = await page.evaluate((id) => {
+      const box = window.app.shadowRoot
+        .querySelector(`.rail [data-surface="${id}"]`)
+        .getBoundingClientRect();
+      return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+    }, id);
+    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+    await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  await tap('memory');
   await page.until(() => window.dock().api.activePanel?.id === 'memory');
   await page.evaluate(() => void window.app.show('chat'));
   const touched = await chatSettled(page);
   assert.doesNotMatch(touched.deep, /slicc-chat/, touched.deep);
   assert.equal(touched.text, false, touched.deep);
+
+  await tap('memory');
+  await page.until(() => window.dock().api.activePanel?.id === 'memory');
+  await tap('chat');
+  const tapped = await chatSettled(page);
+  assert.match(tapped.deep, /swc-action-button/, tapped.deep);
+  assert.equal(tapped.text, false, tapped.deep);
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.app.shadowRoot.querySelectorAll('swc-tooltip')]
+        .filter((tip) => tip.matches(':popover-open'))
+        .map((tip) => tip.getAttribute('for'))
+    ),
+    []
+  );
 
   await page.press('Shift');
   await page.evaluate(() => void window.app.show('chat'));

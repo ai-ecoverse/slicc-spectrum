@@ -839,6 +839,16 @@ export class SliccApp extends ThemedElement {
     this.#detach(id, null, false);
   }
 
+  #railClick(event: PointerEvent, id: string): void {
+    if (event.pointerType === 'touch' || event.pointerType === 'pen')
+      (
+        this.renderRoot.querySelector(`swc-tooltip[for="rail-${id}"]`) as HTMLElement & {
+          open: boolean;
+        }
+      ).open = false;
+    this.show(id);
+  }
+
   #railButton(item: Surface, side: string): TemplateResult {
     const changes = item.id === 'changes' ? this.#changes() : 0;
     const driven =
@@ -847,7 +857,7 @@ export class SliccApp extends ThemedElement {
     const label = `${visible ? `${item.title}, shown` : `Open ${item.title}`}${
       changes ? `, ${changeCount(changes)}` : driven ? ', a tab is in use' : ''
     }`;
-    const button = staticHtml`<swc-action-button id=${`rail-${item.id}`} class=${visible ? 'selected' : ''} quiet size="m" accessible-label=${label} data-surface=${item.id} data-cone=${ifDefined(item.cone)} ?data-visible=${visible} @click=${() => this.show(item.id)}>${railIcon(item.icon)}</swc-action-button>`;
+    const button = staticHtml`<swc-action-button id=${`rail-${item.id}`} class=${visible ? 'selected' : ''} quiet size="m" accessible-label=${label} data-surface=${item.id} data-cone=${ifDefined(item.cone)} ?data-visible=${visible} @click=${(event: PointerEvent) => this.#railClick(event, item.id)}>${railIcon(item.icon)}</swc-action-button>`;
     const tooltip = html`<swc-tooltip for=${`rail-${item.id}`} placement=${{ left: 'end', right: 'start', bottom: 'top' }[side]}>${item.title}</swc-tooltip>`;
     return changes
       ? html`<span class="badged">${button}<swc-badge size="s" variant="neutral" aria-hidden="true">${changes}</swc-badge></span>${tooltip}`

@@ -199,6 +199,7 @@ Every surface has a home side, left, center or right.
 Every panel has an icon in the left or right rail (on a phone, in one bar at the bottom, with the rest in its More menu).
 The icon stays when its panel is open; while the panel is visible it shows selected (`.selected`, `data-visible`, labelled "{Title}, shown").
 One click puts a closed panel back on its side, next to its neighbours, or brings an open one to the front.
+A touch or pen tap on a rail button closes its tooltip: a Gen2 `swc-tooltip` ignores focus that comes in the same task as `pointerdown`, but a tap focuses the button a task later, so the tooltip opened and stayed while the button kept focus (after a tap on Chat, which leaves focus where it is).
 Each thread, a cone's or a scoop's conversation, opens in its own chat panel (`chat:<agent id>`), as a tab in the same group as the other chats.
 Selecting a thread opens or reveals its tab, activating a chat tab selects its thread, and a thread's chat closes when the thread goes away (frozen or deleted).
 
