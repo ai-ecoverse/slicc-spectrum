@@ -18,6 +18,7 @@ import type {
   AccountField,
   AccountFieldOption,
   AccountStatus,
+  ConnectOptions,
   ProviderAuth,
   ProviderOption,
   RecordKind,
@@ -34,7 +35,7 @@ import { confirm, dialogFrame } from './confirm.ts';
 import { forgetSwitch, modelSwitch, settleModels } from './models.ts';
 import { recordKind, recordName, serverOf, upper as upperName } from './records.ts';
 import { search, searchCss } from './search.ts';
-import { SignInWaits, signInText } from './sign-in.ts';
+import { SignInCopies, SignInWaits, signInCss, signInDetails, signInText } from './sign-in.ts';
 import { clearValues, failureText, fieldStyles, type PopupDetail, take } from './vault.ts';
 import { ViewScroll } from './view-state.ts';
 
@@ -132,6 +133,11 @@ function words(message: string, word: string): boolean {
 
 const popup = (account: Account) => account.group === 'mcp' && account.auth === 'oauth';
 
+const dual = (account: Account) => account.auth === 'oauth' && account.secret === 'api-key';
+
+const signInMethod = (account: Account): ConnectOptions | undefined =>
+  dual(account) ? { method: 'sign-in' } : undefined;
+
 const start = (options: readonly AccountFieldOption[], value?: string) =>
   options.some((option) => option.value === value) ? value : (options[0]?.value ?? '');
 
@@ -179,6 +185,7 @@ export class SliccSettings extends ThemedElement {
   declare developing: boolean;
   declare developerError: string | null;
   #waits = new SignInWaits(() => this.requestUpdate());
+  #copies = new SignInCopies(() => this.requestUpdate());
   #landing: string | null = null;
   #away = false;
   #bases = new Map<string, string>();
@@ -207,6 +214,7 @@ export class SliccSettings extends ThemedElement {
     dialogFrame,
     searchCss,
     unsafeCSS(link),
+    signInCss,
     css`
       :host {
         display: block;
@@ -321,6 +329,15 @@ export class SliccSettings extends ThemedElement {
         color: var(--swc-neutral-subdued-content-color-default);
         font-size: var(--swc-font-size-75);
       }
+      .sign-in .enter {
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .sign-in .enter,
+      .sign-in .unknown,
+      .sign-in .address,
+      .sign-in .swc-Link {
+        font-size: var(--swc-font-size-75);
+      }
       .switched {
         grid-column: 2;
       }
@@ -373,6 +390,20 @@ export class SliccSettings extends ThemedElement {
       .notice swc-icon-alert-triangle {
         flex: none;
         margin-block-start: var(--swc-spacing-50);
+      }
+      .other-way {
+        justify-self: start;
+        padding: 0;
+        border: 0;
+        background: none;
+        font-size: var(--swc-font-size-75);
+        cursor: pointer;
+      }
+      @media (forced-colors: active) {
+        .other-way {
+          color: LinkText;
+          text-decoration: underline;
+        }
       }
       .add {
         margin-block-start: var(--swc-spacing-200);
@@ -639,17 +670,24 @@ export class SliccSettings extends ThemedElement {
     this.pending = new Set(on ? [...rest, id] : rest);
   }
 
-  async connect(id: string, secret?: string, fields?: Record<string, string>): Promise<void> {
+  async connect(
+    id: string,
+    secret?: string,
+    fields?: Record<string, string>,
+    options?: ConnectOptions
+  ): Promise<void> {
     this.#busy(id, true);
     this.failure = null;
     this.#cancelled.delete(id);
     const settings = this.model?.settings;
     try {
-      await (fields
-        ? settings?.connect(id, secret, fields)
-        : secret === undefined
-          ? settings?.connect(id)
-          : settings?.connect(id, secret));
+      await (options
+        ? settings?.connect(id, secret, fields, options)
+        : fields
+          ? settings?.connect(id, secret, fields)
+          : secret === undefined
+            ? settings?.connect(id)
+            : settings?.connect(id, secret));
       if (this.entering === id) this.entering = null;
       if (this.adding?.id === id && this.#added(id)?.status === 'connected') this.#finish(id);
     } catch (error) {
@@ -662,7 +700,8 @@ export class SliccSettings extends ThemedElement {
 
   #vault(account: Account): VaultPort | null {
     const vault = this.model?.vault;
-    return account.auth === 'api-key' && account.store === 'vault' && vault?.put ? vault : null;
+    const keyed = account.auth === 'api-key' || dual(account);
+    return keyed && account.store === 'vault' && vault?.put ? vault : null;
   }
 
   async keep(account: Account, value: string, fields?: Record<string, string>): Promise<void> {
@@ -823,7 +862,7 @@ export class SliccSettings extends ThemedElement {
         return;
       }
     }
-    await this.connect(id, secret, fields);
+    await this.connect(id, secret, fields, dual(account) ? { method: 'key' } : undefined);
     if (this.failure?.id === id) {
       this.#placeFailure(account, fields);
       const back = forward ? this.#modelChange(name, changes, 'url', 'old') : null;
@@ -896,10 +935,38 @@ export class SliccSettings extends ThemedElement {
 
   #start(account: Account): void {
     if (account.auth !== 'api-key') {
-      void this.connect(account.id);
+      void this.connect(account.id, undefined, undefined, signInMethod(account));
       return;
     }
     this.#enter(account);
+  }
+
+  #useSignIn(account: Account): void {
+    this.#cancel();
+    void this.updateComplete.then(() =>
+      this.renderRoot
+        .querySelector<HTMLElement>(
+          `.account[data-id="${CSS.escape(account.id)}"] [data-action=connect]`
+        )
+        ?.focus()
+    );
+  }
+
+  #otherWay(account: Account): TemplateResult | typeof nothing {
+    if (
+      !dual(account) ||
+      account.status === 'connected' ||
+      this.#signingIn(account) ||
+      this.pending.has(account.id)
+    )
+      return nothing;
+    const entering = this.entering === account.id;
+    return html`<button
+      type="button"
+      class="swc-Link swc-Link--standalone swc-Link--quiet other-way"
+      data-action=${entering ? 'use-sign-in' : 'use-key'}
+      @click=${() => (entering ? this.#useSignIn(account) : this.#enter(account))}
+    >${entering ? 'Sign in instead' : 'Use an API key instead'}</button>`;
   }
 
   #enter(account: Account): void {
@@ -1118,8 +1185,9 @@ export class SliccSettings extends ThemedElement {
     return html`<a class="swc-Link get-key" href=${account.keyUrl} target="_blank" rel="noopener noreferrer" data-action="get-key">Get a key</a>`;
   }
 
-  #leave(account: Account): TemplateResult {
+  #leave(account: Account): TemplateResult | typeof nothing {
     const adding = this.adding?.id === account.id;
+    if (dual(account) && !adding) return nothing;
     return html`<swc-button size="m" variant="secondary" data-action=${adding ? 'back' : 'cancel'} @click=${() => (adding ? this.#back() : this.#cancel())}>${adding ? 'Back' : 'Cancel'}</swc-button>`;
   }
 
@@ -1224,7 +1292,8 @@ export class SliccSettings extends ThemedElement {
   }
 
   #records(account: Account, vault: VaultPort): Array<[string, RecordKind]> {
-    if (account.auth === 'api-key') return [[recordName(account), recordKind(account)]];
+    if (account.auth === 'api-key' || dual(account))
+      return [[recordName(account), recordKind(account)]];
     const server = serverOf(account);
     const names = (vault.list()?.secrets ?? [])
       .filter(
@@ -1239,7 +1308,7 @@ export class SliccSettings extends ThemedElement {
     const model = this.model;
     const vault = model?.vault;
     const vaulted = account.store === 'vault' && !!vault?.remove;
-    const key = vaulted && account.auth === 'api-key';
+    const key = vaulted && (account.auth === 'api-key' || dual(account));
     const signIn = vaulted && account.auth !== 'api-key' && account.group === 'mcp';
     const stored = key || signIn ? vault : undefined;
     const body = `Agents can’t use ${account.provider} until you connect it again.${key ? ' You can restore its key from Removed in Secrets for 30 days.' : ''}`;
@@ -1295,7 +1364,10 @@ export class SliccSettings extends ThemedElement {
   #signingIn(account: Account): boolean {
     return (
       account.status === 'signing-in' ||
-      (account.auth !== 'api-key' && account.status !== 'connected' && this.pending.has(account.id))
+      (account.auth !== 'api-key' &&
+        account.status !== 'connected' &&
+        this.entering !== account.id &&
+        this.pending.has(account.id))
     );
   }
 
@@ -1319,18 +1391,15 @@ export class SliccSettings extends ThemedElement {
         @click=${() => this.#disconnect(account)}
       >Disconnect</swc-button>`;
     }
-    const label = popup(account)
-      ? 'Sign in'
-      : account.status === 'expired'
-        ? 'Reconnect'
-        : 'Connect';
+    const signs = popup(account) || dual(account);
+    const label = signs ? 'Sign in' : account.status === 'expired' ? 'Reconnect' : 'Connect';
     const entering = this.entering === account.id;
     const busy = this.#signingIn(account) || (!entering && this.pending.has(account.id));
     return html`<swc-button
       size="m"
       variant="secondary"
       data-action="connect"
-      accessible-label=${popup(account) ? `Sign in to ${account.provider}` : `${label} ${account.provider}`}
+      accessible-label=${signs ? `Sign in to ${account.provider}` : `${label} ${account.provider}`}
       ?pending=${busy}
       ?disabled=${entering || !!account.blocked}
       @click=${() => this.#start(account)}
@@ -1367,9 +1436,15 @@ export class SliccSettings extends ThemedElement {
       <swc-status-light class="state" variant=${variant}>${label}</swc-status-light>
       ${this.#actions(account)}
     </div>
-    ${this.#offered() ? this.#rowNotes(account) : nothing}
+    ${this.#rowNotes(account)}
     ${this.#movedNote(account)}
-    ${this.adding?.id === account.id ? nothing : html`${this.#key(account)}${failure}`}`;
+    ${this.adding?.id === account.id ? nothing : html`${this.#key(account)}${this.#otherKey(account)}${failure}`}`;
+  }
+
+  #otherKey(account: Account): TemplateResult | typeof nothing {
+    if (this.entering !== account.id) return nothing;
+    const other = this.#otherWay(account);
+    return other === nothing ? nothing : html`<div class="notes">${other}</div>`;
   }
 
   #actions(account: Account): TemplateResult {
@@ -1427,7 +1502,8 @@ export class SliccSettings extends ThemedElement {
     clearValues(this.renderRoot);
     if (this.entering === account.id) this.entering = null;
     const vault = model.vault;
-    const keyed = account.store === 'vault' && account.auth === 'api-key' && !!vault?.remove;
+    const keyed =
+      account.store === 'vault' && (account.auth === 'api-key' || dual(account)) && !!vault?.remove;
     if (keyed && !(await this.#forget(account, vault as VaultPort))) return;
     if (this.model !== model) return;
     await this.#closeTip(`remove-${account.id}`);
@@ -1479,11 +1555,22 @@ export class SliccSettings extends ThemedElement {
     return html`<p class="hint" role="status" data-signing>${signInText(this.#waits.waited(key))}</p>`;
   }
 
+  #signInDetails(account: Account): TemplateResult | typeof nothing {
+    if (account.status !== 'signing-in') return nothing;
+    return signInDetails(account.id, account.signIn, this.#copies.state(account.id), (code) => {
+      void this.#copies.copy(account.id, code);
+    });
+  }
+
   #rowNotes(account: Account): TemplateResult | typeof nothing {
-    const notice = this.#notice(account);
-    const signing = this.adding?.id === account.id ? nothing : this.#signingNote(account);
-    if (notice === nothing && signing === nothing) return nothing;
-    return html`<div class="notes">${notice}${signing}</div>`;
+    const offered = !!this.#offered();
+    const adding = this.adding?.id === account.id;
+    const notice = offered ? this.#notice(account) : nothing;
+    const signing = offered && !adding ? this.#signingNote(account) : nothing;
+    const details = adding ? nothing : this.#signInDetails(account);
+    const other = this.entering === account.id ? nothing : this.#otherWay(account);
+    if ([notice, signing, details, other].every((part) => part === nothing)) return nothing;
+    return html`<div class="notes">${notice}${signing}${details}${other}</div>`;
   }
 
   #openPicker(): void {
@@ -1669,9 +1756,10 @@ export class SliccSettings extends ThemedElement {
             ? html`<swc-button size="m" variant="secondary" data-action="cancel-sign-in" @click=${() => this.#stopSigningIn(account)}>Cancel</swc-button>`
             : nothing
         }
-        <swc-button size="m" variant="accent" data-action="sign-in" ?pending=${signing} ?disabled=${!!account.blocked} @click=${() => this.connect(account.id)}>${signing ? 'Signing in…' : 'Sign in'}</swc-button>
+        <swc-button size="m" variant="accent" data-action="sign-in" ?pending=${signing} ?disabled=${!!account.blocked} @click=${() => this.connect(account.id, undefined, undefined, signInMethod(account))}>${signing ? 'Signing in…' : 'Sign in'}</swc-button>
         ${signing ? nothing : this.#leave(account)}
-      </div>`;
+      </div>
+      ${this.#signInDetails(account)}`;
   }
 
   #localStep(account: Account): TemplateResult {
