@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -55,4 +63,34 @@ test('test:unit reports src files no unit test ran as uncovered, even under a do
   const record = lcov.split('end_of_record').find((r) => r.includes('SF:src/model/emitter.ts'));
   assert.ok(record, lcov);
   assert.match(record, /\nLH:0\n/);
+});
+
+test('the pre-commit hook fails closed until slicc-shared-web hooks are installed', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'slicc-hooks-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const hookEnv = { ...env(), NO_COLOR: '1' };
+  for (const key of Object.keys(hookEnv)) {
+    if (key.startsWith('LEFTHOOK')) delete hookEnv[key];
+  }
+  assert.equal(
+    spawnSync('git', ['init', '-q'], { cwd: dir, env: hookEnv, timeout: 30_000 }).status,
+    0
+  );
+  cpSync(join(root, 'lefthook.yml'), join(dir, 'lefthook.yml'));
+  writeFileSync(join(dir, 'file.txt'), 'x\n');
+  const hook = () =>
+    spawnSync(
+      join(root, 'node_modules/.bin/lefthook'),
+      ['run', 'pre-commit', '--no-auto-install', '--file', 'file.txt'],
+      { cwd: dir, env: hookEnv, encoding: 'utf8', timeout: 30_000 }
+    );
+  const missing = hook();
+  assert.notEqual(missing.status, 0, missing.stdout + missing.stderr);
+  assert.match(missing.stdout + missing.stderr, /slicc-shared-web hooks missing, run npm install/);
+  const shared = join(dir, 'node_modules/@ai-ecoverse/slicc-shared-web');
+  mkdirSync(shared, { recursive: true });
+  writeFileSync(join(shared, 'lefthook.yml'), 'pre-commit:\n  jobs: []\n');
+  const present = hook();
+  assert.equal(present.status, 0, present.stdout + present.stderr);
+  assert.doesNotMatch(present.stdout + present.stderr, /hooks missing/);
 });
