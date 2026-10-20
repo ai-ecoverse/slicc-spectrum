@@ -820,10 +820,14 @@ const agentsNote = () =>
     ?.shadowRoot?.querySelector('[data-empty=starting]')
     ?.textContent.trim() ?? null;
 
-test('while the agent starts the Agents panel says it shows up there, and the line goes once it arrives', async (t) => {
+const newCone = () =>
+  !!window.app.dock.content('agents')?.shadowRoot?.querySelector('[data-action=new-cone]');
+
+test('while the agent starts the Agents panel says it shows up there with no New cone, and both change once it arrives', async (t) => {
   const page = await open(t);
   await page.until(() => !!window.app.dock.content('agents'));
   assert.equal(await page.evaluate(agentsNote), 'The agent shows up here once it starts.');
+  assert.equal(await page.evaluate(newCone), false);
   assert.equal(
     await page.evaluate(
       () =>
@@ -847,6 +851,7 @@ test('while the agent starts the Agents panel says it shows up there, and the li
     () => !!window.app.dock.content('agents').shadowRoot.querySelector('li[data-id=cone-sliccy]')
   );
   assert.equal(await page.evaluate(agentsNote), null);
+  assert.equal(await page.evaluate(newCone), true);
   assert.deepEqual(page.errors, []);
 });
 

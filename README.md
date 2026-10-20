@@ -259,7 +259,7 @@ Every row has up to two lines, aligned to the top under the name, starting with 
 A cone with scoops has a ribbon line below: one segment per scoop, coloured by status at 3:1 or more on every row background, then its scoops in words, naming only the busy ones, as in "2 scoops · 1 waiting" ("2 scoops" when all are idle).
 Its `aria-description` sums up every status, as in "2 scoops: 1 working, 1 idle".
 Rows without scoops or errors have no empty ribbon or error line.
-With no agents while the agent port's `starting()` returns a line, the panel says "The agent shows up here once it starts." (`[data-empty="starting"]`, subdued), and the line goes once an agent arrives or the line clears.
+With no agents while the agent port's `starting()` returns a line, the panel says "The agent shows up here once it starts." (`[data-empty="starting"]`, subdued) and has no **New cone**; the line goes, and New cone comes back, once an agent arrives or the line clears.
 The drop or delete button sits in its own column on the row's right edge, under the context fill, so the title ellipsizes before it and the focus ring stays whole; it shows on hover, on keyboard focus of the row, when <kbd>Tab</kbd> from the selected row reaches it, and always on touch, and it hides again once a pointer that clicked it leaves.
 The selected row has an accent bar on its inline-start edge.
 Under forced colors, the dots, segments, unread circle and selection bar keep `CanvasText`, `Highlight` and `HighlightText`.

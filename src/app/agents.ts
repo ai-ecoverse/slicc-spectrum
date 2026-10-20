@@ -644,7 +644,7 @@ export class SliccAgents extends ModelElement {
   render(): TemplateResult {
     const list = this.model?.agent.list() ?? [];
     if (!list.length && this.model?.agent.starting?.())
-      return html`<div class="list"><p class="note" data-empty="starting">The agent shows up here once it starts.</p></div>${this.#actions()}`;
+      return html`<div class="list"><p class="note" data-empty="starting">The agent shows up here once it starts.</p></div>`;
     const active = this.model?.agent.active() ?? '';
     const errors = Object.values(this.errors);
     const rows = ordered(list).filter(
