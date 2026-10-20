@@ -258,6 +258,7 @@ export class SliccChat extends ThemedElement {
   };
 
   #leaving: ReturnType<typeof setTimeout> | undefined;
+  #probed: string | null = null;
 
   #leave = (event: DragEvent): void => {
     const to = event.relatedTarget;
@@ -811,6 +812,7 @@ export class SliccChat extends ThemedElement {
 
   connectedCallback(): void {
     super.connectedCallback();
+    this.#probed = null;
     globalThis.addEventListener('pointerup', this.#release, true);
     globalThis.addEventListener('pointercancel', this.#release, true);
     if (this.hasUpdated) this.#observe();
@@ -1187,10 +1189,16 @@ export class SliccChat extends ThemedElement {
     this.#details.clear();
   }
 
+  #probe(): void {
+    if (this.#handlers.surface || this.#probed === this.color) return;
+    this.#probed = this.color;
+    this.#handlers.surface = readSurface(this.renderRoot);
+  }
+
   render(): TemplateResult {
     this.#handlers.color = this.color;
     this.#handlers.model = this.model ?? null;
-    this.#handlers.surface ??= readSurface(this.renderRoot);
+    this.#probe();
     const agent = this.#agent();
     this.#switched(agent);
     const watch = watchOnly(this.model);
