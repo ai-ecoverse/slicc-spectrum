@@ -1136,6 +1136,8 @@ export interface GuestToolApproval {
   agentName?: string;
   tool: string;
   summary: string;
+  args?: string;
+  argsTruncated?: boolean;
   createdAt: number;
   expiresAt: number;
   always: boolean;
