@@ -428,6 +428,7 @@ Without `signIn`, the signing-in view is unchanged, and the code and link go onc
 An account with `auth: 'oauth'` and `secret: 'api-key'` signs in or takes a key: its primary action signs in, calling `connect(id, undefined, undefined, { method: 'sign-in' })` within the click.
 Under it, a quiet **Use an API key instead** (`data-action="use-key"`) opens the account's key form and focuses its field, and **Sign in instead** (`data-action="use-sign-in"`) closes it and focuses the sign-in button again.
 Its key goes to `vault.put` as for any `store: 'vault'` account (or as the `secret` without one), then to `connect(id, undefined, fields, { method: 'key' })`, and it never reads “Signing in…” while that is pending.
+Disconnect removes its key record first, as for any vault-backed key.
 Every other account calls `connect` without `options`, as before.
 Accounts with `group: 'mcp'` (MCP servers) get their own **MCP servers** heading (`.accounts[data-group=mcp]`).
 An `api-key` account asks for its `secret`: “{provider} API key” by default, “{provider} token” for `secret: 'token'`; when it is `expired` it reads **API key rejected** or **Token rejected**.

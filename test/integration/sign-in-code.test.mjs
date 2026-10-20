@@ -367,6 +367,21 @@ test('a dual account takes a key: vault.put first, then connect with method key'
     { call: 'put', name: 'LUMEN_API_KEY' },
     { call: 'connect', args: 4, id: 'lumen', options: { method: 'key' }, active: true },
   ]);
+  const record = () =>
+    window.model.vault.list().secrets.find((secret) => secret.name === 'LUMEN_API_KEY')?.state;
+  assert.notEqual(await page.evaluate(record), 'removed');
+  await click(page, 'settings', '.account[data-id=lumen] [data-action=disconnect]');
+  await page.until(() => !!window.deep('slicc-confirm'));
+  await page.evaluate(() => {
+    window.deep('slicc-confirm').shadowRoot.querySelector('[data-action]').click();
+    return true;
+  });
+  await page.until(
+    () =>
+      window.settingsPart('.account[data-id=lumen] swc-status-light')?.textContent ===
+      'Not connected'
+  );
+  assert.equal(await page.evaluate(record), 'removed');
   assert.deepEqual(page.errors, []);
 });
 

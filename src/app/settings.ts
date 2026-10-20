@@ -1275,7 +1275,8 @@ export class SliccSettings extends ThemedElement {
   }
 
   #records(account: Account, vault: VaultPort): Array<[string, RecordKind]> {
-    if (account.auth === 'api-key') return [[recordName(account), recordKind(account)]];
+    if (account.auth === 'api-key' || dual(account))
+      return [[recordName(account), recordKind(account)]];
     const server = serverOf(account);
     const names = (vault.list()?.secrets ?? [])
       .filter(
@@ -1290,7 +1291,7 @@ export class SliccSettings extends ThemedElement {
     const model = this.model;
     const vault = model?.vault;
     const vaulted = account.store === 'vault' && !!vault?.remove;
-    const key = vaulted && account.auth === 'api-key';
+    const key = vaulted && (account.auth === 'api-key' || dual(account));
     const signIn = vaulted && account.auth !== 'api-key' && account.group === 'mcp';
     const stored = key || signIn ? vault : undefined;
     const body = `Agents can’t use ${account.provider} until you connect it again.${key ? ' You can restore its key from Removed in Secrets for 30 days.' : ''}`;
