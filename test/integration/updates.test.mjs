@@ -1495,10 +1495,11 @@ for (const [name, browser] of [
       await page.evaluate(() => [
         window.pkg('uv', '[data-action=npm-page]').href,
         window.pkg('uv').textContent.includes('Couldn’t reach npm'),
+        window.pkg('ruff', '.meta'),
         window.updates('[data-section=packages]').textContent.split('Couldn’t reach npm').length -
           1,
       ]),
-      ['https://www.npmjs.com/package/@harbor/uv-wasm', false, 1]
+      ['https://www.npmjs.com/package/@harbor/uv-wasm', false, null, 1]
     );
     assert.deepEqual(
       await page.evaluate(() => [
@@ -1531,13 +1532,22 @@ for (const [name, browser] of [
       button.focus();
       button.click();
     };
+    assert.deepEqual(
+      await page.evaluate(() => {
+        const live = window.updates('[data-still]');
+        return [live.getAttribute('role'), live.getAttribute('aria-live'), live.textContent];
+      }),
+      ['status', 'polite', '']
+    );
     await page.evaluate(retry);
     await page.until(() => window.row('git').registry === 'checking');
-    assert.equal(
-      await page.evaluate(() =>
-        window.updates('[data-action=retry-registry]').hasAttribute('pending')
-      ),
-      true
+    assert.deepEqual(
+      await page.evaluate(() => [
+        window.updates('[data-action=retry-registry]').hasAttribute('pending'),
+        window.updates('[data-section=packages] .registry .hint').textContent.trim(),
+        window.updates('[data-still]').textContent,
+      ]),
+      [true, 'Checking npm…', '']
     );
     assert.equal(
       await page.evaluate(
@@ -1547,6 +1557,13 @@ for (const [name, browser] of [
     );
     await page.until(() => window.row('git').registry === 'unreachable');
     await page.until(() => !window.updates('[data-action=retry-registry]').hasAttribute('pending'));
+    assert.deepEqual(
+      await page.evaluate(() => [
+        window.updates('[data-section=packages] .registry .hint').textContent.trim(),
+        window.updates('[data-still]').textContent,
+      ]),
+      ['Couldn’t reach npm, so versions and sizes aren’t shown.', 'Still couldn’t reach npm.']
+    );
     assert.equal(
       await page.evaluate(
         () => window.focused() === window.updates('[data-action=retry-registry]')

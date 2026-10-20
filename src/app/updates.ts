@@ -208,6 +208,16 @@ const entities: Readonly<Record<string, string>> = {
   quot: '"',
   apos: "'",
   nbsp: ' ',
+  copy: '©',
+  reg: '®',
+  trade: '™',
+  hellip: '…',
+  ndash: '–',
+  mdash: '—',
+  lsquo: '‘',
+  rsquo: '’',
+  ldquo: '“',
+  rdquo: '”',
 };
 
 const decoded = (text: string): string =>
@@ -220,24 +230,27 @@ const decoded = (text: string): string =>
 
 export function stripped(text: string): string {
   const target = String.raw`\(((?:[^()]|\([^()]*\))*)\)`;
-  return decoded(
-    text
-      .replace(/^[ \t]*(?:`{3,}|~{3,}).*$/gm, '')
-      .replace(/^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+[.)][ \t]+)+/gm, '')
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .replace(/<\/?[a-z][^>]*>/gi, '')
-      .replace(new RegExp(String.raw`!\[([^\]]*)\]${target}`, 'g'), '$1')
-      .replace(new RegExp(String.raw`\[([^\]]*)\]${target}`, 'g'), '$1')
-      .replace(/(`+)([^\n]+?)\1(?!`)/g, '$2')
-      .replace(/(\*\*|__)(?=\S)(.+?)\1/g, '$2')
-      .replace(/\*(?=\S)([^*\n]+?)\*/g, '$1')
-      .replace(/(^|[^\w])_(?=\S)([^_\n]+?)_(?![\w])/g, '$1$2')
-  );
+  return decoded(text)
+    .replace(/^[ \t]*(?:`{3,}|~{3,}).*$/gm, '')
+    .replace(/^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+[.)][ \t]+)+/gm, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<\/?[a-z][^>]*>/gi, '')
+    .replace(new RegExp(String.raw`!\[([^\]]*)\]${target}`, 'g'), '$1')
+    .replace(new RegExp(String.raw`\[([^\]]*)\]${target}`, 'g'), '$1')
+    .replace(/(`+)([^\n]+?)\1(?!`)/g, '$2')
+    .replace(/(\*\*|__)(?=\S)(.+?)\1/g, '$2')
+    .replace(/\*(?=\S)([^*\n]+?)\*/g, '$1')
+    .replace(/(^|[^\w])_(?=\S)([^_\n]+?)_(?![\w])/g, '$1$2');
 }
 
 export function plain(text: string, limit = plainLimit): string {
-  const flat = stripped(text).replace(/\s+/g, ' ').trim();
-  return flat.length > limit ? `${flat.slice(0, limit - 1).trimEnd()}…` : flat;
+  const flat = [...stripped(text).replace(/\s+/g, ' ').trim()];
+  return flat.length > limit
+    ? `${flat
+        .slice(0, limit - 1)
+        .join('')
+        .trimEnd()}…`
+    : flat.join('');
 }
 
 export function withheldText(reason: string, prefix = 'Not offered'): string {
@@ -487,14 +500,17 @@ export class SliccUpdates extends ModelElement {
     busy: { state: true },
     problems: { state: true },
     refreshing: { state: true },
+    still: { state: true },
   };
   #logs = new ViewSet(this, 'updates');
   #reached = new Map<string, { value: number; label: string }>();
+  #retryHeld = false;
   declare pending: ReadonlySet<string>;
   declare failures: Failures;
   declare busy: ReadonlyMap<string, PackageAction>;
   declare problems: Failures;
   declare refreshing: boolean;
+  declare still: boolean;
 
   constructor() {
     super();
@@ -841,6 +857,7 @@ export class SliccUpdates extends ModelElement {
     this.busy = new Map();
     this.problems = new Map();
     this.refreshing = false;
+    this.still = false;
     this.#reached.clear();
     const port = model.updates;
     if (!port) return [];
@@ -924,22 +941,28 @@ export class SliccUpdates extends ModelElement {
     const port = this.model?.updates;
     if (!port?.refreshPackages || this.refreshing) return;
     this.refreshing = true;
+    this.still = false;
     try {
       await port.refreshPackages();
     } catch {
     } finally {
       if (this.model?.updates === port) {
         this.refreshing = false;
-        await this.updateComplete;
-        const lost = !document.activeElement || document.activeElement === document.body;
-        if (lost && !this.renderRoot.querySelector('[data-action="retry-registry"]'))
-          this.renderRoot.querySelector<HTMLElement>('#packages')?.focus();
+        this.still = unreachable(port.packages?.() ?? []);
       }
     }
   }
 
+  protected willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed);
+    const active = this.shadowRoot?.activeElement as HTMLElement | null | undefined;
+    this.#retryHeld = active?.dataset.action === 'retry-registry';
+  }
+
   protected updated(changed: PropertyValues): void {
     super.updated(changed);
+    if (this.#retryHeld && !this.renderRoot.querySelector('[data-action="retry-registry"]'))
+      this.renderRoot.querySelector<HTMLElement>('#packages')?.focus();
     for (const row of this.renderRoot.querySelectorAll<HTMLElement>('li[data-id]')) {
       const description = row.querySelector('.description');
       for (const button of row.querySelectorAll<HTMLElement & { updateComplete: Promise<unknown> }>(
@@ -949,7 +972,9 @@ export class SliccUpdates extends ModelElement {
           const inner = button.shadowRoot?.querySelector('button') as
             | (HTMLButtonElement & { ariaDescribedByElements: Element[] })
             | null;
-          if (inner) inner.ariaDescribedByElements = description ? [description] : [];
+          if (inner)
+            inner.ariaDescribedByElements =
+              description && !row.dataset.registry ? [description] : [];
         });
     }
   }
@@ -1213,7 +1238,7 @@ export class SliccUpdates extends ModelElement {
       )}</div>
       ${item.registry === 'unreachable' ? nothing : html`<p class="description">${item.registry ? 'Checking npm…' : plain(item.description)}</p>`}
       ${item.withheld ? html`<p class="withheld" data-withheld>${withheldText(item.withheld)}</p>` : item.newer ? html`<p class="withheld" data-newer>${withheldText(item.newer.reason, `${item.newer.version} isn’t offered yet`)}</p>` : nothing}
-      ${this.#packageMeta(item, all)}
+      ${item.registry === 'unreachable' && item.version === null ? nothing : this.#packageMeta(item, all)}
       ${item.notes?.length || managed ? html`<p class="notes" data-notes>${(item.notes ?? []).map((note) => html`<span>${plain(note)}</span>`)}${managed ? html`<span data-managed>${managed}</span>` : nothing}</p>` : nothing}
       ${
         item.warnings?.length
@@ -1262,7 +1287,7 @@ export class SliccUpdates extends ModelElement {
         ${offered.length ? 'Tools for the agent and the terminal. Install the ones you need; you can remove them later.' : 'No optional packages are offered right now.'}
       </p>`;
     return html`<div class="registry" data-registry="unreachable">
-      <p class="hint">Couldn’t reach npm, so versions and sizes aren’t shown.</p>
+      <p class="hint">${this.refreshing ? 'Checking npm…' : 'Couldn’t reach npm, so versions and sizes aren’t shown.'}</p>
       ${
         port.refreshPackages
           ? html`<swc-button
@@ -1275,6 +1300,7 @@ export class SliccUpdates extends ModelElement {
             >Retry</swc-button>`
           : nothing
       }
+      <span class="hidden" role="status" aria-live="polite" data-still>${this.still ? 'Still couldn’t reach npm.' : ''}</span>
     </div>`;
   }
 
