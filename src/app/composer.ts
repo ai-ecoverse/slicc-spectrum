@@ -210,7 +210,10 @@ function arrived(page: Page, model: SliccModel): void {
 
 function watch(page: Page, model: SliccModel): () => void {
   const arrive = () => arrived(page, model);
-  queueMicrotask(arrive);
+  let live = true;
+  queueMicrotask(() => {
+    if (live) arrive();
+  });
   const known = page.watched.get(model);
   if (known) known.count++;
   else {
@@ -226,6 +229,7 @@ function watch(page: Page, model: SliccModel): () => void {
     });
   }
   return () => {
+    live = false;
     const entry = page.watched.get(model) as { count: number; off(): void };
     if (--entry.count) return;
     entry.off();

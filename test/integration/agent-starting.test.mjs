@@ -704,3 +704,71 @@ test('after a reload a held row stays held when the others go while the chat is 
   assert.equal((await page.evaluate(() => window.users())).length, 3);
   assert.deepEqual(page.errors, []);
 });
+
+test('composers outside the app send the rows once, and not after both are gone', async (t) => {
+  const page = await open(t, { agent: 'ready' });
+  await page.evaluate(() => {
+    window.loose = [0, 1].map(() => {
+      const node = document.createElement('slicc-composer');
+      node.model = window.model;
+      document.body.append(node);
+      return node;
+    });
+    window.counts = () =>
+      window.loose.map(
+        (node) => node.shadowRoot?.querySelectorAll('li.queued[data-mode=starting]').length ?? -1
+      );
+    window.sent = () =>
+      window.model.agent
+        .messages('cone-sliccy')
+        .filter((message) => message.role === 'user')
+        .map((message) => message.text);
+    window.queueLoose = (text) => {
+      window.loose[0].value = text;
+      window.loose[0].send();
+    };
+    window.model.agent.select('cone-sliccy');
+    window.model.agent.setStarting('Seven is updating its agent.');
+    return true;
+  });
+  await page.until(() => window.loose.every((node) => node.hasUpdated));
+  await page.evaluate(() => {
+    window.queueLoose('Check the harbor tides');
+    window.queueLoose('Then list the moorings');
+    return true;
+  });
+  await page.until(() => window.counts().every((count) => count === 2));
+  assert.deepEqual(await page.evaluate(() => window.rows()), []);
+  await page.evaluate(() => {
+    window.model.agent.setStarting(null);
+    return true;
+  });
+  await page.until(
+    () => window.counts().every((count) => count === 0) && window.sent().length === 3
+  );
+  await page.evaluate(() => {
+    window.model.agent.setStarting('Seven is updating its agent.');
+    window.queueLoose('Check the anchorage');
+    window.loose[0].remove();
+    return true;
+  });
+  await page.until(() => window.counts()[1] === 1);
+  await page.evaluate(() => {
+    window.loose[1].remove();
+    window.model.agent.setStarting(null);
+    return true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(await page.evaluate(() => window.sent()), [
+    'What is on my plate today?',
+    'Check the harbor tides',
+    'Then list the moorings',
+  ]);
+  await page.evaluate(() => {
+    document.body.append(window.loose[1]);
+    return true;
+  });
+  await page.until(() => window.sent().length === 4 && window.counts()[1] === 0);
+  assert.deepEqual(await page.evaluate(() => window.sent().slice(-1)), ['Check the anchorage']);
+  assert.deepEqual(page.errors, []);
+});
