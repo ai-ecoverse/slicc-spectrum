@@ -6,6 +6,7 @@ import type { PanelParams, SerializedDockview, SliccDock } from '../components/d
 import type { Agent, SliccModel, Sprinkle, UpdatesPort } from '../model/types.ts';
 import { creatable, createCone } from './agents.ts';
 import { changesOf, type DocumentHold, holdDocument, shared, ThemedElement } from './base.ts';
+import { flushStarting } from './composer.ts';
 import { Dips, dipType } from './dips.ts';
 import { followPage, terminalsAllowed, watchOnly } from './follow.ts';
 import { defaultFontBase, defaultVariableFont, installFonts } from './fonts.ts';
@@ -441,6 +442,7 @@ export class SliccApp extends ThemedElement {
             }),
           ]
         : []),
+      flushStarting(this, model),
     ];
   }
 
