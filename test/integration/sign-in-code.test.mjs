@@ -545,6 +545,10 @@ test('a dual account never reads Signing in while its key connect is pending', a
     }),
     ['Not connected', false, false, false, true]
   );
+  assert.equal(
+    await page.evaluate(() => !!window.settingsPart('[data-action=use-sign-in]')),
+    false
+  );
   await page.evaluate(() => {
     window.held();
     return true;
@@ -553,6 +557,34 @@ test('a dual account never reads Signing in while its key connect is pending', a
     () =>
       window.settingsPart('.account[data-id=lumen] swc-status-light')?.textContent === 'Connected'
   );
+  assert.deepEqual(page.errors, []);
+});
+
+test('removing a dual account removes its vault key first', async (t) => {
+  const page = await dualPage(t, { providers: 'all' });
+  await click(page, 'settings', '.account[data-id=lumen] + .notes [data-action=use-key]');
+  await page.until(
+    () =>
+      window.settingsPart('form.key[data-id=lumen] input[data-field=value]') ===
+      window.inner().activeElement
+  );
+  await page.type('lumen-sample-0042');
+  await page.press('Enter');
+  await page.until(
+    () =>
+      window.settingsPart('.account[data-id=lumen] swc-status-light')?.textContent === 'Connected'
+  );
+  const record = () =>
+    window.model.vault.list().secrets.find((secret) => secret.name === 'LUMEN_API_KEY')?.state;
+  assert.notEqual(await page.evaluate(record), 'removed');
+  await click(page, 'settings', '.account[data-id=lumen] [data-action=remove-account]');
+  await page.until(() => !!window.deep('slicc-confirm'));
+  await page.evaluate(() => {
+    window.deep('slicc-confirm').shadowRoot.querySelector('[data-action]').click();
+    return true;
+  });
+  await page.until(() => !window.settingsPart('.account[data-id=lumen]'));
+  assert.equal(await page.evaluate(record), 'removed');
   assert.deepEqual(page.errors, []);
 });
 

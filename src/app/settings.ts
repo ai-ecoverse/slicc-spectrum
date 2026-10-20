@@ -953,7 +953,12 @@ export class SliccSettings extends ThemedElement {
   }
 
   #otherWay(account: Account): TemplateResult | typeof nothing {
-    if (!dual(account) || account.status === 'connected' || this.#signingIn(account))
+    if (
+      !dual(account) ||
+      account.status === 'connected' ||
+      this.#signingIn(account) ||
+      this.pending.has(account.id)
+    )
       return nothing;
     const entering = this.entering === account.id;
     return html`<button
@@ -1497,7 +1502,8 @@ export class SliccSettings extends ThemedElement {
     clearValues(this.renderRoot);
     if (this.entering === account.id) this.entering = null;
     const vault = model.vault;
-    const keyed = account.store === 'vault' && account.auth === 'api-key' && !!vault?.remove;
+    const keyed =
+      account.store === 'vault' && (account.auth === 'api-key' || dual(account)) && !!vault?.remove;
     if (keyed && !(await this.#forget(account, vault as VaultPort))) return;
     if (this.model !== model) return;
     await this.#closeTip(`remove-${account.id}`);
