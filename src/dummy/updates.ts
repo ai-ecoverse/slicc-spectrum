@@ -24,9 +24,14 @@ export type PackageConfirm = (options: {
 
 const checkedAt = Date.UTC(2026, 9, 8, 8, 42);
 
-const tag = (repo: string, version: string, notes?: string): UpdateRelease => ({
+const tag = (
+  repo: string,
+  version: string,
+  notes?: string,
+  owner = 'ai-ecoverse'
+): UpdateRelease => ({
   version,
-  url: `https://github.com/harbor-demo/${repo}/releases/tag/v${version}`,
+  url: `https://github.com/${owner}/${repo}/releases/tag/v${version}`,
   ...(notes ? { notes } : {}),
 });
 
@@ -34,7 +39,7 @@ const certified = (name: string, version: string) =>
   `\n\n<!-- cert-verify -->\ncertified @harbor/${name}@${version} sha256=0f3c9a1e (covers ${version}; downstream: PASS)\n<!-- /cert-verify -->\n`;
 
 const notes = (repo: string, version: string, sections: string) =>
-  `# [${version}](https://github.com/harbor-demo/${repo}/compare/v${version}) (2026-10-07)\n\n${sections}`;
+  `# [${version}](https://github.com/ai-ecoverse/${repo}/compare/v${version}) (2026-10-07)\n\n${sections}`;
 
 const releaseFixtures: Readonly<Record<string, readonly UpdateRelease[]>> = {
   kernel: [
@@ -75,7 +80,8 @@ const releaseFixtures: Readonly<Record<string, readonly UpdateRelease[]>> = {
         'harbor-agent',
         '0.25.0',
         '### Features\n\n* **tools:** the agent can read a tide table from a CSV file\n\n### Bug Fixes\n\n* **chat:** a long answer keeps its code blocks intact when it is cut'
-      )
+      ) + certified('harbor-agent', '0.25.0'),
+      'some-fork'
     ),
     tag('harbor-agent', '0.24.0'),
   ],
