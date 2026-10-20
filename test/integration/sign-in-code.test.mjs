@@ -577,7 +577,12 @@ test('removing a dual account removes its vault key first', async (t) => {
   const record = () =>
     window.model.vault.list().secrets.find((secret) => secret.name === 'LUMEN_API_KEY')?.state;
   assert.notEqual(await page.evaluate(record), 'removed');
-  await click(page, 'settings', '.account[data-id=lumen] [data-action=remove-account]');
+  await page.until(() => {
+    const remove = window.settingsPart('.account[data-id=lumen] [data-action=remove-account]');
+    if (!remove || remove.disabled) return false;
+    remove.click();
+    return true;
+  });
   await page.until(() => !!window.deep('slicc-confirm'));
   await page.evaluate(() => {
     window.deep('slicc-confirm').shadowRoot.querySelector('[data-action]').click();
