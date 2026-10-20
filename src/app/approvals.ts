@@ -372,7 +372,7 @@ function rulesOf(approval: Approval): SecretRulesVerdict {
 
 export function waiting(model: SliccModel | null, now: number): Approval[] {
   return [...(model?.approvals?.list() ?? [])]
-    .filter((approval) => approval.expiresAt > now)
+    .filter((approval) => approval.expiresAt > now && Object.hasOwn(titles, approval.kind))
     .sort((a, b) => a.createdAt - b.createdAt);
 }
 

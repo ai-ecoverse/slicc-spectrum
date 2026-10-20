@@ -230,3 +230,51 @@ test('without decide, a tray request is a waiting notice in the chat', async (t)
   assert.equal(await page.evaluate(() => !!window.approvals().querySelector('dialog')), false);
   assert.deepEqual(page.errors, []);
 });
+
+test('an approval of a kind this build does not know is skipped, in the dialog and the notices', async (t) => {
+  const page = await open(t, 'none');
+  await page.evaluate(() => {
+    const now = Date.now();
+    const raise = (id, kind) =>
+      window.model.approvals.raise({
+        id,
+        kind,
+        op: 'url',
+        requester: { kind: 'agent', name: 'sliccy' },
+        createdAt: now,
+        expiresAt: now + 300_000,
+      });
+    raise('later-kind', 'constructor');
+    raise('tray-url', 'tray');
+    return true;
+  });
+  await ask(page, 'tray-url');
+  await click(page, 'deny');
+  await page.until(() => !window.approvals().querySelector('dialog'));
+  await page.evaluate(() => {
+    window.model.approvals.decide = undefined;
+    const now = Date.now();
+    window.model.approvals.raise({
+      id: 'nudge',
+      kind: 'future',
+      requester: { kind: 'agent', name: 'sliccy' },
+      createdAt: now,
+      expiresAt: now + 300_000,
+    });
+    return true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window
+          .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-notices')
+          ?.shadowRoot.querySelectorAll('[data-approval-notice]').length ?? 0
+    ),
+    0
+  );
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
+    ['tray-url', 'deny'],
+  ]);
+  assert.deepEqual(page.errors, []);
+});

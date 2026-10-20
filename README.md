@@ -955,6 +955,7 @@ It has no `always`: the dialog never offers Always allow for it, even when the i
 Its dialog reads "Share this seven’s join URL?" with "{name} wants this seven’s join URL. Anyone with it can ask to link to this seven.", "Make a new join URL?" with "{name} wants a new join URL. Linked devices move to it, and the old one stops working.", or "Unlink {device.name}?" with "{name} wants to unlink {device.name} from this seven." ("Unlink a device?" and "…unlink a device from this seven." without `device`), then the countdown, **Deny** and **Allow once**.
 Ended tray requests read "Answered in another tab" or "Tray request timed out", and a withdrawn one closes silently.
 Without `decide`, its notice reads "Waiting for tray approval" with the same sentence, then "It waits for the owner's approval. Denied automatically at {time}."
+An approval whose `kind` this build doesn't know shows neither a dialog nor a notice, so it waits until it ends and is never allowed from here.
 
 #### `vault` (optional)
 
