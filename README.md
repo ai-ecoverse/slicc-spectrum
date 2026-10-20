@@ -1153,17 +1153,15 @@ npm test
 ```
 
 `npm test` builds `dist/` and runs the integration tests in headless Chromium over raw CDP, through the [harness from slicc-shared-web](https://github.com/ai-ecoverse/slicc-shared-web#integration-test-harness), against a fake backend (`test/integration/page/fake-backend.js`).
-It writes CPU profiles, screenshots and console logs to `artifacts/`, and V8 coverage of `dist/` to `coverage/` only with `SLICC_COVERAGE=1` (CI leaves it off, since nothing reads it; the unit tests' diff coverage is separate).
+It writes CPU profiles, screenshots and console logs to `artifacts/`, and V8 coverage of `dist/` to `coverage/` only with `SLICC_COVERAGE=1` (CI leaves it off, since nothing reads it).
 The test page is served cross-origin isolated (COOP/COEP), as slicc-kernel requires.
 `test/integration/kernel.test.mjs` runs `bash -i` end to end on `@ai-ecoverse/slicc-kernel` (a pinned dev dependency), with `@ai-ecoverse/wasm-bash` and `@ai-ecoverse/wasm-coreutils` installed into OPFS by the page (`/kernel.html`).
 `npm start` serves the test page on port 8080, and the UI at `/ui/`.
 `test/integration/kernel-ui.test.mjs` boots `<slicc-app>` on the kernel model (`/kernel-ui/`): a command in the terminal, its file in the tree, an edit in a file tab read back in the terminal, a second terminal, and a reload.
 `test/integration/ui.test.mjs` covers the shell, the layout (moving, closing, floating, reopening and reloading), streaming a reply with a tool call, stopping it, switching themes and the keyboard, and saves screenshots to `artifacts/ui/`.
 
-The Biome, TypeScript, lefthook, Renovate and CI configuration comes from [slicc-shared-web](https://github.com/ai-ecoverse/slicc-shared-web), which also provides the `slicc-lint-comments`, `slicc-no-unit-tests` and `slicc-diff-cover` commands used by `npm run lint` and the pre-commit hook.
-
-Unit tests live in `test/unit/`, which is gitignored.
-The pre-commit hook runs them in Node against happy-dom under monocart and fails the commit unless the staged lines in `src/` are fully covered (`slicc-diff-cover`, which runs `diff-cover --fail-under 100` and needs [uv](https://docs.astral.sh/uv/)).
+The Biome, TypeScript, lefthook, Renovate and CI configuration comes from [slicc-shared-web](https://github.com/ai-ecoverse/slicc-shared-web), which also provides the `slicc-lint`, `slicc-lint-comments` and `slicc-agents-md` commands used by `npm run lint` and the pre-commit hook.
+This repo turns off shared-web's `no unit tests in git` and `diff coverage` pre-commit jobs in `lefthook.yml`: every change comes with committed tests, normally integration tests in `test/integration/`.
 
 ## Design review
 
