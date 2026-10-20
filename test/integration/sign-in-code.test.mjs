@@ -1,0 +1,265 @@
+import assert from 'node:assert/strict';
+import { after, test } from 'node:test';
+import { launch } from './chrome.mjs';
+
+const chrome = await launch();
+after(() => chrome.close());
+
+async function open(t, params = {}) {
+  const page = await chrome.page(t);
+  await page.goto(`/ui/?${new URLSearchParams({ delay: '40', color: 'light', ...params })}`);
+  await page.until(() => window.ready === true && window.app.dock.api.panels.length > 0);
+  await page.evaluate(() => {
+    window.copies = [];
+    Object.defineProperty(navigator.clipboard, 'writeText', {
+      configurable: true,
+      value: async (text) => {
+        window.copies.push(text);
+      },
+    });
+    window.part = (surface, selector) =>
+      surface === 'chat' ? window.chatPart(selector) : window.settingsPart(selector);
+    window.signIn = (surface, scope) => {
+      const root = window.part(surface, scope);
+      const block = root?.querySelector('[data-sign-in]');
+      const code = block?.querySelector('[data-id=sign-in-code]');
+      const copy = block?.querySelector('[data-action=copy-sign-in-code]');
+      const link = block?.querySelector('a[data-action=open-sign-in]');
+      return {
+        shown: !!block,
+        lead: block?.querySelector('.enter')?.textContent.trim() ?? null,
+        code: code?.textContent.trim() ?? null,
+        mono: code ? getComputedStyle(code).fontFamily.includes('Source Code Pro') : null,
+        select: code ? getComputedStyle(code).userSelect : null,
+        copy: copy?.getAttribute('accessible-label') ?? null,
+        copyText: copy?.textContent.trim() ?? null,
+        quiet: copy ? copy.hasAttribute('quiet') : null,
+        link: link ? { href: link.getAttribute('href'), target: link.target, rel: link.rel } : null,
+      };
+    };
+    return true;
+  });
+  return page;
+}
+
+async function click(page, surface, selector) {
+  await page.until(
+    ([surface, selector]) => {
+      const target = window.part(surface, selector);
+      if (!target || target.disabled) return false;
+      target.scrollIntoView({ block: 'center' });
+      const box = target.getBoundingClientRect();
+      window.point = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+      return box.width > 0;
+    },
+    [surface, selector]
+  );
+  const { x, y } = await page.evaluate(() => window.point);
+  for (const type of ['mousePressed', 'mouseReleased'])
+    await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+}
+
+async function settings(page) {
+  await page.evaluate(() => {
+    window.app.show('settings');
+    return true;
+  });
+  await page.until(() => !!window.settingsPart('.account[data-id=ai-adobe] [data-action=connect]'));
+}
+
+const row = '.accounts .account[data-id=ai-adobe] + .notes';
+
+test('a device code shows in the Settings row, monospace, with Copy and an https sign-in link', async (t) => {
+  const page = await open(t, { login: 'code' });
+  await settings(page);
+  await click(page, 'settings', '.account[data-id=ai-adobe] [data-action=connect]');
+  await page.until((row) => window.signIn('settings', row).shown, row);
+  assert.deepEqual(await page.evaluate((row) => window.signIn('settings', row), row), {
+    shown: true,
+    lead: 'Enter this code on the sign-in page:',
+    code: 'WDJB-MJHT',
+    mono: true,
+    select: 'all',
+    copy: 'Copy the code',
+    copyText: 'Copy',
+    quiet: true,
+    link: { href: 'https://example.com/device', target: '_blank', rel: 'noopener noreferrer' },
+  });
+  assert.equal(
+    await page.evaluate(
+      () => window.settingsPart('.account[data-id=ai-adobe] swc-status-light').textContent
+    ),
+    'Signing in…'
+  );
+  await click(page, 'settings', `${row} [data-action=copy-sign-in-code]`);
+  await page.until((row) => window.signIn('settings', row).copyText === 'Copied', row);
+  assert.deepEqual(await page.evaluate(() => window.copies), ['WDJB-MJHT']);
+  assert.deepEqual(
+    await page.evaluate(
+      (row) => [
+        window.signIn('settings', row).copy,
+        window.settingsPart(`${row} [data-sign-in] [role=status]`).textContent,
+      ],
+      row
+    ),
+    ['Copied', 'Copied']
+  );
+  await page.until(
+    () =>
+      window.settingsPart('.account[data-id=ai-adobe] swc-status-light')?.textContent ===
+      'Connected'
+  );
+  assert.equal(await page.evaluate(() => !!window.settingsPart('[data-sign-in]')), false);
+  assert.deepEqual(page.errors, []);
+});
+
+test('Cancel still stops a device-code sign-in and takes the code away', async (t) => {
+  const page = await open(t, { login: 'code', delay: '200' });
+  await settings(page);
+  await click(page, 'settings', '.account[data-id=ai-adobe] [data-action=connect]');
+  await page.until((row) => window.signIn('settings', row).code === 'WDJB-MJHT', row);
+  await click(page, 'settings', '.account[data-id=ai-adobe] [data-action=cancel-sign-in]');
+  await page.until(
+    () =>
+      window.settingsPart('.account[data-id=ai-adobe] swc-status-light')?.textContent === 'Expired'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => [
+      !!window.settingsPart('[data-sign-in]'),
+      window.model.settings.accounts().find((account) => account.id === 'ai-adobe').status,
+    ]),
+    [false, 'expired']
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a URL-only sign-in shows only the link, and a non-https URL shows no link', async (t) => {
+  const page = await open(t, { login: 'url', delay: '200' });
+  await settings(page);
+  await click(page, 'settings', '.account[data-id=ai-adobe] [data-action=connect]');
+  await page.until((row) => window.signIn('settings', row).shown, row);
+  assert.deepEqual(await page.evaluate((row) => window.signIn('settings', row), row), {
+    shown: true,
+    lead: null,
+    code: null,
+    mono: null,
+    select: null,
+    copy: null,
+    copyText: null,
+    quiet: null,
+    link: {
+      href: 'https://example.com/oauth/authorize?client_id=slicc-dummy&response_type=code&state=7f3a',
+      target: '_blank',
+      rel: 'noopener noreferrer',
+    },
+  });
+  await click(page, 'settings', '.account[data-id=ai-adobe] [data-action=cancel-sign-in]');
+  await page.until(() => !window.settingsPart('[data-sign-in]'));
+  await page.evaluate(() => {
+    const port = window.model.settings;
+    const accounts = port.accounts.bind(port);
+    port.accounts = () =>
+      accounts().map((account) =>
+        account.status === 'signing-in'
+          ? { ...account, signIn: { url: 'javascript:alert(1)', code: 'ZXCV-BNMQ' } }
+          : account
+      );
+    return true;
+  });
+  await click(page, 'settings', '.account[data-id=ai-adobe] [data-action=connect]');
+  await page.until((row) => window.signIn('settings', row).code === 'ZXCV-BNMQ', row);
+  assert.deepEqual(
+    await page.evaluate(
+      (row) => [
+        window.signIn('settings', row).link,
+        window.settingsPart(`${row} [data-sign-in]`).querySelectorAll('a').length,
+      ],
+      row
+    ),
+    [null, 0]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('without a signIn, a signing-in row shows no code and no link', async (t) => {
+  const page = await open(t, { delay: '200' });
+  await settings(page);
+  await click(page, 'settings', '.account[data-id=ai-adobe] [data-action=connect]');
+  await page.until(
+    () =>
+      window.settingsPart('.account[data-id=ai-adobe] swc-status-light')?.textContent ===
+      'Signing in…'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => [
+      !!window.settingsPart('[data-sign-in]'),
+      !!window.settingsPart(`.accounts .account[data-id=ai-adobe] + .notes`),
+    ]),
+    [false, false]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('adding a device-code provider shows its code in the picker until it is connected', async (t) => {
+  const page = await open(t, { providers: 'all' });
+  await settings(page);
+  await click(page, 'settings', '[data-action=add-provider]');
+  await page.until(() => window.settingsPart('dialog.picker')?.open);
+  await click(page, 'settings', '.option[data-provider="github-copilot"]');
+  await click(page, 'settings', 'dialog.picker [data-action=sign-in]');
+  await page.until(() => window.signIn('settings', 'dialog.picker .step').code === 'WDJB-MJHT');
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.settingsPart('dialog.picker [data-signing]').textContent,
+      window.signIn('settings', 'dialog.picker .step').link.href,
+      !!window.settingsPart('dialog.picker [data-action=cancel-sign-in]'),
+      !!window.settingsPart(`.accounts .account[data-id=github-copilot] + .notes [data-sign-in]`),
+    ]),
+    ['Continue in the sign-in window that opened.', 'https://example.com/device', true, false]
+  );
+  await click(page, 'settings', 'dialog.picker [data-action=copy-sign-in-code]');
+  await page.until(() => window.copies.length === 1);
+  assert.deepEqual(await page.evaluate(() => window.copies), ['WDJB-MJHT']);
+  await page.until(() => !window.settingsPart('dialog.picker'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.model.settings.accounts().find((account) => account.id === 'github-copilot').status,
+      !!window.settingsPart('[data-sign-in]'),
+    ]),
+    ['connected', false]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('the expired-session card shows the device code while signing in, and drops it once connected', async (t) => {
+  const page = await open(t, { login: 'code' });
+  const card = '.error-card[data-id="k-s3"]';
+  await page.evaluate(() => window.model.agent.select('cone-kitchen'));
+  await page.until((card) => !!window.chatPart(`${card} [data-action=login]`), card);
+  await click(page, 'chat', `${card} [data-action=login]`);
+  await page.until((card) => window.signIn('chat', card).shown, card);
+  assert.deepEqual(await page.evaluate((card) => window.signIn('chat', card), card), {
+    shown: true,
+    lead: 'Enter this code on the sign-in page:',
+    code: 'WDJB-MJHT',
+    mono: true,
+    select: 'all',
+    copy: 'Copy the code',
+    copyText: 'Copy',
+    quiet: true,
+    link: { href: 'https://example.com/device', target: '_blank', rel: 'noopener noreferrer' },
+  });
+  assert.equal(
+    await page.evaluate((card) => window.chatPart(`${card} .detail`).textContent, card),
+    'Continue in the sign-in window that opened.'
+  );
+  await click(page, 'chat', `${card} [data-action=copy-sign-in-code]`);
+  await page.until((card) => window.signIn('chat', card).copyText === 'Copied', card);
+  assert.deepEqual(await page.evaluate(() => window.copies), ['WDJB-MJHT']);
+  await page.until((card) => window.chatPart(card)?.dataset.login === 'connected', card);
+  assert.equal(
+    await page.evaluate((card) => !!window.chatPart(`${card} [data-sign-in]`), card),
+    false
+  );
+  assert.deepEqual(page.errors, []);
+});

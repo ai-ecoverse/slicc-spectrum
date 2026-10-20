@@ -8,7 +8,8 @@ import '@adobe/spectrum-wc/patterns/ai-toolkit/conversation-thread/swc-conversat
 import '@adobe/spectrum-wc-icons/swc-icon-attach.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chevron-down.js';
 import '@adobe/spectrum-wc-icons/swc-icon-new.js';
-import { css, html, nothing, type TemplateResult } from 'lit';
+import link from '@adobe/spectrum-wc/link.css';
+import { css, html, nothing, type TemplateResult, unsafeCSS } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import type {
   Agent,
@@ -46,7 +47,7 @@ import {
   waiting,
 } from './messages.ts';
 import { settleModels } from './models.ts';
-import { SignInWaits, signInWait } from './sign-in.ts';
+import { SignInCopies, SignInWaits, signInCss, signInWait } from './sign-in.ts';
 import { connecting } from './tabs.ts';
 import { ViewSet } from './view-state.ts';
 
@@ -248,6 +249,8 @@ export class SliccChat extends ThemedElement {
     fade,
     markdownCss,
     messageCss,
+    unsafeCSS(link),
+    signInCss,
     css`
       :host {
         position: relative;
@@ -506,6 +509,9 @@ export class SliccChat extends ThemedElement {
     action: (action, messageId, account) => this.#action(action, messageId, account),
     login: (account, messageId) => this.#loginState(account, messageId),
     cancelLogin: (account, messageId) => this.#cancelLogin(account, messageId),
+    copySignIn: (account, messageId, code) => {
+      void this.#copies.copy(`${messageId}:${account}`, code);
+    },
     dropping: (messageId) =>
       failedTurns((this.model as SliccModel).agent.messages(this.#id()), messageId).length,
     open: (path) =>
@@ -827,6 +833,7 @@ export class SliccChat extends ThemedElement {
 
   #logins = new Map<string, { pending: boolean; error?: string; cancelled?: boolean }>();
   #waits = new SignInWaits(() => this.requestUpdate());
+  #copies = new SignInCopies(() => this.requestUpdate());
 
   #loginState(accountId: string, messageId: string): Login {
     const settings = (this.model as SliccModel).settings;
@@ -836,7 +843,14 @@ export class SliccChat extends ThemedElement {
     const window = account?.auth === 'oauth';
     const key = `${messageId}:${accountId}`;
     if (account?.status === 'signing-in' || local?.pending)
-      return { state: 'signing-in', cancel, window, waited: window && this.#waits.waited(key) };
+      return {
+        state: 'signing-in',
+        cancel,
+        window,
+        waited: window && this.#waits.waited(key),
+        signIn: account?.status === 'signing-in' ? account.signIn : undefined,
+        copied: this.#copies.state(key),
+      };
     this.#waits.done(key);
     if (account?.status === 'connected') return { state: 'connected', provider: account.provider };
     return { state: 'idle', error: local?.error };

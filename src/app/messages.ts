@@ -34,6 +34,7 @@ import { createFileTreeIconResolver, getBuiltInSpriteSheet } from '@pierre/trees
 import { css, html, nothing, svg, type TemplateResult } from 'lit';
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js';
 import type {
+  AccountSignIn,
   ActionCard,
   AssistantMessage,
   Attachment,
@@ -58,7 +59,7 @@ import type {
 } from '../model/types.ts';
 import { ansi } from './ansi.ts';
 import { markdown } from './markdown.ts';
-import { signInText } from './sign-in.ts';
+import { type Copied, signInDetails, signInText } from './sign-in.ts';
 import type { ViewSet } from './view-state.ts';
 
 export interface Handlers {
@@ -70,6 +71,7 @@ export interface Handlers {
   action(action: ErrorAction, messageId?: string, account?: string): void;
   login?(account: string, messageId: string): Login | undefined;
   cancelLogin?(account: string, messageId: string): void;
+  copySignIn?(account: string, messageId: string, code: string): void;
   dropping(messageId: string): number;
   open(path: string): void;
   show(surfaceId: string): void;
@@ -88,6 +90,8 @@ export interface Login {
   window?: boolean;
   waited?: boolean;
   provider?: string;
+  signIn?: AccountSignIn;
+  copied?: Copied;
 }
 
 export interface Owner {
@@ -382,6 +386,7 @@ function errorCard(
     ${resolved ? nothing : html`<span class="sr">Error: </span>`}<span class="lead">${title}</span>
     ${text ? html`<span class="detail" role=${login ? 'status' : nothing}>${text}</span>` : nothing}
     ${fix ? html`<div class="fix" aria-live="off">${fixButton(fix, item, handlers, login)}</div>` : nothing}
+    ${signing ? signInDetails(login.signIn, login.copied, (code) => handlers.copySignIn?.(item.account as string, id, code)) : nothing}
     ${
       failure
         ? html`<div class="help" data-error="login"><sp-help-text size="s" variant="negative" icon>${failure}</sp-help-text><swc-action-button size="s" quiet data-action="settings" @click=${() => handlers.action('settings', item.id, item.account)}>Open settings</swc-action-button></div>`
@@ -853,6 +858,7 @@ export function assistant(
             action: (action, _id, account) => handlers.action(action, message.id, account),
             login: (account) => handlers.login?.(account, message.id),
             cancelLogin: (account) => handlers.cancelLogin?.(account, message.id),
+            copySignIn: (account, _id, code) => handlers.copySignIn?.(account, message.id, code),
             dropping: () => handlers.dropping(message.id),
           },
           showThinking,
@@ -1792,6 +1798,9 @@ export const messageCss = css`
   }
   .error-card swc-button {
     white-space: nowrap;
+  }
+  .error-card .sign-in {
+    grid-column: 2 / -1;
   }
   .error-card .help {
     grid-column: 2 / -1;

@@ -3,6 +3,7 @@ import type {
   Account,
   AccountField,
   AccountStatus,
+  ConnectOptions,
   ModelOption,
   ProviderOption,
   Settings,
@@ -10,12 +11,15 @@ import type {
   SettingsPort,
 } from '../model/types.ts';
 import type { Clock } from './clock.ts';
+import { deviceSignIn, pageSignIn, signIns } from './fixtures.ts';
 import { providerAccount } from './providers.ts';
 
 export const dummySettingsKey = 'slicc-ui.settings';
 export const signInClosed = 'The sign-in window was closed before it finished.';
 
 export type DummyTransport = 'none' | 'extension' | 'link';
+
+export type DummyLogin = 'ok' | 'fail' | 'code' | 'url';
 
 function chosen(
   fields: readonly AccountField[] | undefined,
@@ -47,12 +51,14 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   #signIns = new Map<string, { before: AccountStatus; stop: () => void }>();
   #gated: boolean;
   #fails: boolean;
+  #login: DummyLogin | undefined;
   #transport: DummyTransport | undefined;
   #options: readonly ProviderOption[] = [];
   readonly connects: Array<{
     id: string;
     gesture: boolean | null;
     fields?: Record<string, string>;
+    options?: ConnectOptions;
   }> = [];
   providers?: () => readonly ProviderOption[];
   remove?: (id: string) => Promise<void>;
@@ -65,7 +71,7 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
     clock: Clock,
     keys: readonly string[] = [dummySettingsKey],
     gated = false,
-    login?: 'ok' | 'fail',
+    login?: DummyLogin,
     providers?: readonly ProviderOption[],
     transport?: DummyTransport
   ) {
@@ -78,6 +84,7 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
       this.remove = async (id) => this.#drop(id);
     }
     this.#fails = login === 'fail';
+    this.#login = login;
     this.#gated = gated;
     this.#keys = keys;
     this.#storage = storage;
@@ -134,9 +141,12 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   }
 
   #set(id: string, patch: Partial<Account>): void {
-    this.#accounts = this.#accounts.map((account) =>
-      account.id === id ? { ...account, ...patch } : account
-    );
+    this.#accounts = this.#accounts.map((account) => {
+      if (account.id !== id) return account;
+      const next = { ...account, ...patch };
+      if (next.status !== 'signing-in') delete next.signIn;
+      return next;
+    });
     this.emit('accounts', this.accounts());
   }
 
@@ -154,26 +164,38 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
     return true;
   }
 
-  async connect(id: string, secret?: string, fields?: Record<string, string>): Promise<void> {
+  async connect(
+    id: string,
+    secret?: string,
+    fields?: Record<string, string>,
+    options?: ConnectOptions
+  ): Promise<void> {
     const activation = (globalThis.navigator as Navigator | undefined)?.userActivation;
     this.connects.push({
       id,
       gesture: activation ? activation.isActive : null,
       ...(fields ? { fields } : {}),
+      ...(options ? { options } : {}),
     });
     const fresh = this.#add(id);
     try {
-      if (!(await this.#connect(id, secret, fields)) && fresh) this.#drop(id);
+      if (!(await this.#connect(id, secret, fields, options?.method === 'key')) && fresh)
+        this.#drop(id);
     } catch (error) {
       if (fresh) this.#drop(id);
       throw error;
     }
   }
 
-  async #connect(id: string, secret?: string, fields?: Record<string, string>): Promise<boolean> {
+  async #connect(
+    id: string,
+    secret: string | undefined,
+    fields: Record<string, string> | undefined,
+    key: boolean
+  ): Promise<boolean> {
     const account = this.#accounts.find((candidate) => candidate.id === id);
     const local = account?.auth === 'local';
-    const window = !!account && account.auth !== 'api-key' && !local;
+    const window = !!account && account.auth !== 'api-key' && !local && !key;
     if (window && !(await this.#signIn(account))) return false;
     if (window && this.#fails) {
       this.#set(id, { status: account.status });
@@ -193,8 +215,8 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
         ? account.identity
         : local
           ? 'On this device'
-          : account?.auth === 'api-key'
-            ? ['API key', ...chosen(account.fields, fields)].join(' · ')
+          : account?.auth === 'api-key' || key
+            ? ['API key', ...chosen(account?.fields, fields)].join(' · ')
             : account?.identity || `${id}-user@example.com`;
     this.#set(id, { status: 'connected', identity, ...kept(account?.fields, fields) });
     return true;
@@ -203,7 +225,7 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   #signIn(account: Account): Promise<boolean> {
     const before = this.#signIns.get(account.id)?.before ?? account.status;
     this.#signIns.get(account.id)?.stop();
-    this.#set(account.id, { status: 'signing-in' });
+    this.#set(account.id, { status: 'signing-in', ...this.#hint(account.id) });
     return new Promise((resolve) => {
       const stop = () => {
         this.#signIns.delete(account.id);
@@ -217,6 +239,12 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
         resolve(true);
       });
     });
+  }
+
+  #hint(id: string): Pick<Account, 'signIn'> {
+    const signIn =
+      this.#login === 'code' ? deviceSignIn : this.#login === 'url' ? pageSignIn : signIns.get(id);
+    return signIn ? { signIn } : {};
   }
 
   cancel(id: string): void {

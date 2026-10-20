@@ -1,5 +1,6 @@
 import type {
   Account,
+  AccountSignIn,
   Agent,
   BrowserTab,
   Change,
@@ -428,6 +429,29 @@ export const accounts: Account[] = [
     group: 'mcp',
   },
 ];
+
+export const dualAccount: Account = {
+  id: 'lumen',
+  provider: 'Lumen AI',
+  identity: '',
+  status: 'disconnected',
+  auth: 'oauth',
+  secret: 'api-key',
+  store: 'vault',
+  keyUrl: 'https://console.lumen.example/keys',
+  vaultName: 'LUMEN_API_KEY',
+};
+
+export const deviceSignIn: AccountSignIn = { url: 'https://example.com/device', code: 'WDJB-MJHT' };
+
+export const pageSignIn: AccountSignIn = {
+  url: 'https://example.com/oauth/authorize?client_id=slicc-dummy&response_type=code&state=7f3a',
+};
+
+export const signIns: ReadonlyMap<string, AccountSignIn> = new Map([
+  ['github-copilot', deviceSignIn],
+  ['openai-codex', pageSignIn],
+]);
 
 export const agents: Agent[] = [
   {

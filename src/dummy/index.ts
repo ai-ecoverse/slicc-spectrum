@@ -21,7 +21,7 @@ import {
 } from './network.ts';
 import { DummyNotices, type NoticeScenario, readOnlyText, startingText } from './notices.ts';
 import { providerAccounts, providerFixtures } from './providers.ts';
-import { DummySettings, type DummyTransport } from './settings.ts';
+import { type DummyLogin, DummySettings, type DummyTransport } from './settings.ts';
 import { DummySprinkles } from './sprinkles.ts';
 import { DummyTabs, type TabsScenario } from './tabs.ts';
 import { DummyTerminals } from './terminals.ts';
@@ -54,7 +54,7 @@ export interface DummyOptions {
   follow?: FollowScenario | 'off';
   vault?: VaultScenario | 'off';
   guests?: GuestsScenario | 'off';
-  accounts?: 'settings' | 'vault';
+  accounts?: 'settings' | 'vault' | 'dual';
   providers?: 'connected' | 'none' | 'all';
   mcp?: 'moved';
   transport?: DummyTransport;
@@ -65,7 +65,7 @@ export interface DummyOptions {
   sprinkles?: 'builtin' | 'cones';
   monitor?: 'dummy' | 'agent';
   import?: ImportScenario | 'off';
-  login?: 'ok' | 'fail';
+  login?: DummyLogin;
 }
 
 export interface DummyModel extends SliccModel {
@@ -93,7 +93,7 @@ export const docsUrl = 'https://docs.example/mcp';
 export const movedDocs = 'https://docs.eu.example/mcp';
 
 function settingsAccounts(
-  accounts: 'settings' | 'vault',
+  accounts: 'settings' | 'vault' | 'dual',
   providers: 'connected' | 'none' | 'all',
   transport?: DummyTransport,
   mcp?: 'moved'
@@ -104,11 +104,17 @@ function settingsAccounts(
 }
 
 function listedAccounts(
-  accounts: 'settings' | 'vault',
+  accounts: 'settings' | 'vault' | 'dual',
   providers: 'connected' | 'none' | 'all',
   transport?: DummyTransport
 ): Account[] {
-  const all = accounts === 'vault' ? vaultAccounts(fixtures.accounts) : fixtures.accounts;
+  const all =
+    accounts === 'settings'
+      ? fixtures.accounts
+      : [
+          ...vaultAccounts(fixtures.accounts),
+          ...(accounts === 'dual' ? [fixtures.dualAccount] : []),
+        ];
   if (providers === 'all') return providerAccounts(all, transport === 'none' ? 'none' : undefined);
   return all.map((account) =>
     providers === 'none' && account.group !== 'mcp'
@@ -117,8 +123,8 @@ function listedAccounts(
   );
 }
 
-function vaultRecords(accounts: 'settings' | 'vault', mcp?: 'moved'): SecretView[] {
-  if (accounts !== 'vault') return [];
+function vaultRecords(accounts: 'settings' | 'vault' | 'dual', mcp?: 'moved'): SecretView[] {
+  if (accounts === 'settings') return [];
   return accountRecords(Date.now(), mcp === 'moved' ? docsUrl : undefined);
 }
 

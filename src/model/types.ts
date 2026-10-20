@@ -501,6 +501,15 @@ export interface Settings {
 
 export type AccountStatus = 'connected' | 'expired' | 'disconnected' | 'signing-in';
 
+export interface AccountSignIn {
+  url: string;
+  code?: string;
+}
+
+export interface ConnectOptions {
+  method: 'sign-in' | 'key';
+}
+
 export interface Account {
   id: string;
   provider: string;
@@ -517,6 +526,7 @@ export interface Account {
   description?: string;
   vaultName?: string;
   url?: string;
+  signIn?: AccountSignIn;
 }
 
 export interface AccountField {
@@ -592,7 +602,12 @@ export interface SettingsPort extends Subscribable<SettingsEvents> {
   update(patch: Partial<Settings>): void;
   models(): readonly ModelOption[];
   accounts(): readonly Account[];
-  connect(id: string, secret?: string, fields?: Record<string, string>): Promise<void>;
+  connect(
+    id: string,
+    secret?: string,
+    fields?: Record<string, string>,
+    options?: ConnectOptions
+  ): Promise<void>;
   disconnect(id: string): void;
   cancel?(id: string): void;
   providers?(): readonly ProviderOption[];
