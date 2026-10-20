@@ -140,15 +140,15 @@ function keep(owned: Set<string>, rows: readonly Waiting[]): void {
 }
 type Draft = { value: string; attachments: Attachment[]; reattach?: Kept[] | null };
 
-const pages = new WeakMap<
-  object,
-  {
-    rows: readonly Waiting[];
-    owned: Set<string>;
-    draft: Draft | null;
-    hosts: Set<HTMLElement & { requestUpdate(): void }>;
-  }
->();
+type Page = {
+  rows: readonly Waiting[];
+  owned: Set<string>;
+  draft: Draft | null;
+  hosts: Set<HTMLElement & { requestUpdate(): void }>;
+  watched: Map<SliccModel, { count: number; off(): void }>;
+};
+
+const pages = new WeakMap<object, Page>();
 
 function owner(node: Node): object {
   let at: Node | null = node;
@@ -157,6 +157,88 @@ function owner(node: Node): object {
     at = at.parentNode ?? (at instanceof ShadowRoot ? at.host : null);
   }
   return node.ownerDocument as Document;
+}
+
+function pageOf(key: object): Page {
+  const known = pages.get(key);
+  if (known) return known;
+  const owned = new Set<string>();
+  const found: Page = {
+    rows: restore(owned),
+    owned,
+    draft: null,
+    hosts: new Set(),
+    watched: new Map(),
+  };
+  pages.set(key, found);
+  return found;
+}
+
+function settle(page: Page, rows: readonly Waiting[]): void {
+  page.rows = rows;
+  keep(page.owned, rows);
+  for (const host of [...page.hosts]) host.requestUpdate();
+}
+
+function post(model: SliccModel, id: string, message: Outgoing): void {
+  const attachments = message.attachments ?? [];
+  const done = () => retire(model.agent, id, attachments);
+  model.agent.send(id, { ...message, attachments }).then(done, done);
+}
+
+function deliver(model: SliccModel, id: string, message: Outgoing, mode: SendMode): void {
+  const busy = model.agent.busy(id);
+  const resolved: SendMode =
+    mode === 'queue' ? (busy ? 'queue' : 'send') : busy || mode === 'steer' ? 'steer' : 'send';
+  post(model, id, { text: message.text, attachments: message.attachments, mode: resolved });
+}
+
+function arrived(page: Page, model: SliccModel): void {
+  const waiting = page.rows;
+  const agents = model.agent.list();
+  if (!(waiting.length && agents.length) || model.agent.starting?.()) return;
+  const active = model.agent.active();
+  const id = agents.some((agent) => agent.id === active) ? active : agents[0].id;
+  const sendable = (row: Waiting) => !!(row.text || row.attachments.length) && !row.lost?.length;
+  const [first, ...rest] = waiting.filter(sendable);
+  if (!first) return;
+  const held = waiting.filter((row) => !sendable(row));
+  settle(page, held);
+  deliver(model, id, first, 'queue');
+  for (const { text, attachments } of rest) post(model, id, { text, attachments, mode: 'queue' });
+}
+
+function watch(page: Page, model: SliccModel): () => void {
+  const arrive = () => arrived(page, model);
+  let live = true;
+  queueMicrotask(() => {
+    if (live) arrive();
+  });
+  const known = page.watched.get(model);
+  if (known) known.count++;
+  else {
+    const offs = [
+      model.agent.on('agents', arrive),
+      ...(model.agent.starting ? [model.agent.on('starting', arrive)] : []),
+    ];
+    page.watched.set(model, {
+      count: 1,
+      off: () => {
+        for (const off of offs) off();
+      },
+    });
+  }
+  return () => {
+    live = false;
+    const entry = page.watched.get(model) as { count: number; off(): void };
+    if (--entry.count) return;
+    entry.off();
+    page.watched.delete(model);
+  };
+}
+
+export function flushStarting(node: Node, model: SliccModel): () => void {
+  return watch(pageOf(owner(node)), model);
 }
 
 class PageQueue implements ReactiveController {
@@ -168,15 +250,9 @@ class PageQueue implements ReactiveController {
     host.addController(this);
   }
 
-  #page() {
+  #page(): Page {
     this.#owner ??= this.#host.isConnected ? owner(this.#host) : null;
-    const page = this.#owner ?? this.#host.ownerDocument;
-    const known = pages.get(page);
-    if (known) return known;
-    const owned = new Set<string>();
-    const found = { rows: restore(owned), owned, draft: null, hosts: new Set<SliccComposer>() };
-    pages.set(page, found);
-    return found;
+    return pageOf(this.#owner ?? this.#host.ownerDocument);
   }
 
   get value(): readonly Waiting[] {
@@ -184,10 +260,7 @@ class PageQueue implements ReactiveController {
   }
 
   set value(rows: readonly Waiting[]) {
-    const page = this.#page();
-    page.rows = rows;
-    keep(page.owned, rows);
-    for (const host of [...page.hosts]) host.requestUpdate();
+    settle(this.#page(), rows);
   }
 
   get draft(): Draft | null {
@@ -196,6 +269,10 @@ class PageQueue implements ReactiveController {
 
   set draft(draft: Draft | null) {
     this.#page().draft = draft;
+  }
+
+  watch(model: SliccModel): Array<() => void> {
+    return this.#owner === this.#host.ownerDocument ? [watch(this.#page(), model)] : [];
   }
 
   hostConnected(): void {
@@ -841,9 +918,9 @@ export class SliccComposer extends ThemedElement {
         this.#paths = entries.filter((entry) => entry.kind === 'file').map((entry) => entry.path);
       });
     const update = () => this.requestUpdate();
-    queueMicrotask(() => this.#arrived());
     return [
       ...super.subscribe(model),
+      ...this.#waiting.watch(model),
       model.agent.on('active', (id) => {
         if (!this.agent) this.#switch(id);
       }),
@@ -851,16 +928,12 @@ export class SliccComposer extends ThemedElement {
         if (hold?.reason !== 'locked') this.blocked = false;
         update();
       }),
-      model.agent.on('agents', () => {
-        this.#arrived();
-        update();
-      }),
+      model.agent.on('agents', update),
       ...(model.agent.starting
         ? [
             model.agent.on('starting', () => {
               if (this.#starting() && this.popup?.kind !== 'file' && this.popup?.kind !== 'secret')
                 this.popup = null;
-              this.#arrived();
               update();
             }),
           ]
@@ -881,22 +954,6 @@ export class SliccComposer extends ThemedElement {
 
   #starting(): string | null {
     return this.model?.agent.starting?.() ?? null;
-  }
-
-  #arrived(): void {
-    const model = this.model;
-    const waiting = this.#waiting.value;
-    const agents = model?.agent.list() ?? [];
-    if (!(model && waiting.length && agents.length) || this.#starting()) return;
-    const active = model.agent.active();
-    const id = agents.some((agent) => agent.id === active) ? active : agents[0].id;
-    const sendable = (row: Waiting) => !!(row.text || row.attachments.length) && !row.lost?.length;
-    const [first, ...rest] = waiting.filter(sendable);
-    if (!first) return;
-    this.#waiting.value = waiting.filter((row) => !sendable(row));
-    this.#deliver(model, id, first, 'queue');
-    for (const { text, attachments } of rest)
-      this.#post(model, id, { text, attachments, mode: 'queue' });
   }
 
   #putBack(row: Waiting): void {
@@ -989,20 +1046,7 @@ export class SliccComposer extends ThemedElement {
       known.run(model, this.#agent, (command[2] ?? '').trim());
       return;
     }
-    this.#deliver(model, this.#agent, { text, attachments }, mode);
-  }
-
-  #deliver(model: SliccModel, id: string, message: Outgoing, mode: SendMode): void {
-    const busy = model.agent.busy(id);
-    const resolved: SendMode =
-      mode === 'queue' ? (busy ? 'queue' : 'send') : busy || mode === 'steer' ? 'steer' : 'send';
-    this.#post(model, id, { text: message.text, attachments: message.attachments, mode: resolved });
-  }
-
-  #post(model: SliccModel, id: string, message: Outgoing): void {
-    const attachments = message.attachments ?? [];
-    const done = () => retire(model.agent, id, attachments);
-    model.agent.send(id, { ...message, attachments }).then(done, done);
+    deliver(model, this.#agent, { text, attachments }, mode);
   }
 
   #propose(model: SliccModel, text: string): void {

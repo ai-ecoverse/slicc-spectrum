@@ -529,3 +529,246 @@ test('after Put back the reattach line names four files, opens the file picker, 
   await page.until(() => !window.composer().querySelector('[data-reattach]'));
   assert.deepEqual(page.errors, []);
 });
+
+async function hideChat(page) {
+  await page.evaluate(() => {
+    const port = window.model.notices;
+    const list = port.list.bind(port);
+    port.list = () =>
+      list().map((notice) =>
+        notice.id === 'starting'
+          ? { ...notice, actions: [{ id: 'show-updates', label: 'Open Install / Update' }] }
+          : notice
+      );
+    port.act = async (id, action) => {
+      if (id === 'starting' && action === 'show-updates') window.app.show('updates');
+    };
+    port.emit('notices', port.list());
+    window.button = () =>
+      window
+        .chat()
+        ?.querySelector('slicc-notices')
+        ?.shadowRoot?.querySelector('[data-notice=starting] [data-action=show-updates]');
+    window.hidden = () =>
+      !window.held.isConnected &&
+      window.app.dock.api.getPanel('updates')?.api.isVisible === true &&
+      window.app.dock.api.panels
+        .filter((panel) => panel.id.startsWith('chat'))
+        .every((panel) => !panel.api.isVisible);
+    return true;
+  });
+  await page.until(() => !!window.button());
+  await page.evaluate(() => {
+    window.held = window.chat().querySelector('slicc-composer');
+    window.inChatGroup = window.app.dock.api.getPanel('chat').group;
+    window.button().click();
+    return true;
+  });
+  await page.until(() => window.hidden());
+  assert.equal(
+    await page.evaluate(() => window.app.dock.api.getPanel('updates').group === window.inChatGroup),
+    true
+  );
+}
+
+test('the rows go once, in order, while Install / Update hides the chat, and showing the chat sends nothing twice', async (t) => {
+  const page = await open(t);
+  await say(page, 'Check the harbor tides');
+  await say(page, 'Then list the moorings');
+  await hideChat(page);
+  await swap(page);
+  await page.until(() => window.users().length === 3);
+  assert.deepEqual(await page.evaluate(() => window.users()), [
+    'What is on my plate today?',
+    'Check the harbor tides',
+    'Then list the moorings',
+  ]);
+  assert.equal(await page.evaluate(() => window.hidden()), true);
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('slicc-spectrum.starting')), null);
+  await page.evaluate(() => {
+    window.app.show('chat');
+    return true;
+  });
+  await page.until(() => !!window.field());
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.rows(),
+      window.users(),
+      window.model.agent.queue(window.model.agent.active()).length,
+    ]),
+    [[], ['What is on my plate today?', 'Check the harbor tides', 'Then list the moorings'], 0]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('with two chats open the rows go once each', async (t) => {
+  const page = await open(t, { agent: 'ready' });
+  await page.until(() => !!window.app.dock.content('chat:cone-sliccy'));
+  await page.evaluate(() => {
+    window.app.dock.open({
+      id: 'chat:cone-harbor',
+      component: 'chat',
+      title: 'harbor',
+      params: { agent: 'cone-harbor' },
+      position: { referencePanel: 'chat:cone-sliccy', direction: 'right' },
+    });
+    window.composers = () =>
+      ['chat:cone-sliccy', 'chat:cone-harbor'].map((id) =>
+        window.app.dock.content(id)?.shadowRoot?.querySelector('slicc-composer')
+      );
+    window.shown = () =>
+      window
+        .composers()
+        .map((node) => node.shadowRoot.querySelectorAll('li.queued[data-mode=starting]').length);
+    window.sent = (id) =>
+      window.model.agent
+        .messages(id)
+        .filter((message) => message.role === 'user')
+        .map((message) => message.text);
+    window.before = window.sent('cone-harbor');
+    window.model.agent.select('cone-sliccy');
+    window.model.agent.setStarting('Seven is updating its agent.');
+    return true;
+  });
+  await page.until(() => window.composers().every((node) => node?.isConnected));
+  await say(page, 'Check the harbor tides');
+  await say(page, 'Then list the moorings');
+  await page.until(() => window.shown().every((count) => count === 2));
+  await page.evaluate(() => {
+    window.model.agent.setStarting(null);
+    return true;
+  });
+  await page.until(() => window.shown().every((count) => count === 0));
+  await page.until(() => window.sent('cone-sliccy').length === 3);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.sent('cone-sliccy'),
+      window.model.agent.queue('cone-sliccy').length,
+      window.sent('cone-harbor').length === window.before.length,
+    ]),
+    [['What is on my plate today?', 'Check the harbor tides', 'Then list the moorings'], 0, true]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('after a reload a held row stays held when the others go while the chat is hidden', async (t) => {
+  const page = await open(t);
+  await say(page, 'Check the harbor tides');
+  await page.evaluate(() => {
+    const composer = window.chat().querySelector('slicc-composer');
+    composer.attachments = [
+      { id: 'n1', name: 'tides.csv', kind: 'text', mimeType: 'text/csv', size: 3, text: 'a,b' },
+    ];
+    composer.value = 'Compare with the attached tides';
+    composer.send();
+    return true;
+  });
+  await say(page, 'Then list the moorings');
+  await reopen(page);
+  await page.until(
+    () => window.composer()?.querySelectorAll('li.queued[data-mode=starting]').length === 3
+  );
+  await hideChat(page);
+  await swap(page);
+  await page.until(() => window.users().length === 3);
+  assert.deepEqual(await page.evaluate(() => window.users()), [
+    'What is on my plate today?',
+    'Check the harbor tides',
+    'Then list the moorings',
+  ]);
+  assert.equal(await page.evaluate(() => window.hidden()), true);
+  assert.deepEqual(
+    await page.evaluate(() =>
+      JSON.parse(sessionStorage.getItem('slicc-spectrum.starting')).map((row) => [
+        row.text,
+        [...row.lost, ...row.attachments].map((file) => file.name),
+      ])
+    ),
+    [['Compare with the attached tides', ['tides.csv']]]
+  );
+  await page.evaluate(() => {
+    window.app.show('chat');
+    return true;
+  });
+  await page.until(() => !!window.composer()?.querySelector('[data-action=restore-starting]'));
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.composer().querySelectorAll('li.queued[data-mode=starting] .text')].map((node) =>
+        node.textContent.trim()
+      )
+    ),
+    ['Held: Compare with the attached tides']
+  );
+  assert.equal((await page.evaluate(() => window.users())).length, 3);
+  assert.deepEqual(page.errors, []);
+});
+
+test('composers outside the app send the rows once, and not after both are gone', async (t) => {
+  const page = await open(t, { agent: 'ready' });
+  await page.evaluate(() => {
+    window.loose = [0, 1].map(() => {
+      const node = document.createElement('slicc-composer');
+      node.model = window.model;
+      document.body.append(node);
+      return node;
+    });
+    window.counts = () =>
+      window.loose.map(
+        (node) => node.shadowRoot?.querySelectorAll('li.queued[data-mode=starting]').length ?? -1
+      );
+    window.sent = () =>
+      window.model.agent
+        .messages('cone-sliccy')
+        .filter((message) => message.role === 'user')
+        .map((message) => message.text);
+    window.queueLoose = (text) => {
+      window.loose[0].value = text;
+      window.loose[0].send();
+    };
+    window.model.agent.select('cone-sliccy');
+    window.model.agent.setStarting('Seven is updating its agent.');
+    return true;
+  });
+  await page.until(() => window.loose.every((node) => node.hasUpdated));
+  await page.evaluate(() => {
+    window.queueLoose('Check the harbor tides');
+    window.queueLoose('Then list the moorings');
+    return true;
+  });
+  await page.until(() => window.counts().every((count) => count === 2));
+  assert.deepEqual(await page.evaluate(() => window.rows()), []);
+  await page.evaluate(() => {
+    window.model.agent.setStarting(null);
+    return true;
+  });
+  await page.until(
+    () => window.counts().every((count) => count === 0) && window.sent().length === 3
+  );
+  await page.evaluate(() => {
+    window.model.agent.setStarting('Seven is updating its agent.');
+    window.queueLoose('Check the anchorage');
+    window.loose[0].remove();
+    return true;
+  });
+  await page.until(() => window.counts()[1] === 1);
+  await page.evaluate(() => {
+    window.loose[1].remove();
+    window.model.agent.setStarting(null);
+    return true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(await page.evaluate(() => window.sent()), [
+    'What is on my plate today?',
+    'Check the harbor tides',
+    'Then list the moorings',
+  ]);
+  await page.evaluate(() => {
+    document.body.append(window.loose[1]);
+    return true;
+  });
+  await page.until(() => window.sent().length === 4 && window.counts()[1] === 0);
+  assert.deepEqual(await page.evaluate(() => window.sent().slice(-1)), ['Check the anchorage']);
+  assert.deepEqual(page.errors, []);
+});
