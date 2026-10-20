@@ -1361,6 +1361,21 @@ export interface InjectionEntry extends AuditBase {
   exit: ExitName;
 }
 
+export type SessionProtocol = 'http1' | 'smtp' | 'pg';
+
+export interface SessionEntry extends AuditBase {
+  type: 'session';
+  session: string;
+  domain: string;
+  port: number;
+  protocol: SessionProtocol;
+  position: string;
+  rule: number;
+  verifiedBy?: 'roots' | 'anchored';
+  anchor?: string;
+  exit: ExitName;
+}
+
 export interface RevealEntry extends AuditBase {
   type: 'materialize';
   grant?: ExecGrant;
@@ -1433,6 +1448,7 @@ export interface PolicyEntry {
 
 export type AuditEntry =
   | InjectionEntry
+  | SessionEntry
   | McpEntry
   | RevealEntry
   | SealEntry

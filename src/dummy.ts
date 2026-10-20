@@ -88,4 +88,5 @@ export {
   vaultPurged,
   vaultRefused,
   vaultSecrets,
+  vaultSessions,
 } from './dummy/vault.ts';
