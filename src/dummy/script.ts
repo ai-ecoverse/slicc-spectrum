@@ -88,6 +88,28 @@ function colours(): Step[] {
   ];
 }
 
+const extendedOutput = [
+  'cube  \x1b[38;5;16m16\x1b[0m \x1b[38;5;21m21\x1b[0m \x1b[38;5;46m46\x1b[0m \x1b[38;5;196m196\x1b[0m \x1b[38;5;226m226\x1b[0m \x1b[38;5;231m231\x1b[0m \x1b[38;5;244m244\x1b[0m\n',
+  'rgb   \x1b[38;2;20;20;20mslate\x1b[0m \x1b[38;2;0;120;255mharbor\x1b[0m \x1b[38;2;255;140;0mbuoy\x1b[0m \x1b[38;2;240;240;240mfog\x1b[0m\n',
+  'tint  \x1b[48;5;231m 231 \x1b[0m \x1b[48;5;226m 226 \x1b[0m \x1b[48;5;16m 16 \x1b[0m \x1b[48;5;21m 21 \x1b[0m \x1b[48;2;255;255;0m beacon \x1b[0m \x1b[48;2;0;0;139m deep \x1b[0m\n',
+  'both  \x1b[38;5;226;48;5;231m flare \x1b[0m \x1b[38;2;20;20;20;48;2;255;255;0m pier \x1b[0m \x1b[7;38;5;196m alarm \x1b[0m\n',
+].join('');
+
+function extendedColours(): Step[] {
+  return [
+    {
+      type: 'tool',
+      name: 'bash',
+      title: 'Print 256 and truecolor',
+      input: './swatch --256 --truecolor',
+      output: extendedOutput,
+      paths: [],
+      ticks: 20,
+    },
+    { type: 'text', text: 'Printed the **256** and **truecolor** swatches.' },
+  ];
+}
+
 function edit(): Step[] {
   return [
     {
@@ -509,6 +531,7 @@ export function script(
   if (/\b(ask|choose|decide)\b/.test(text)) return { steps: ask(), suggestion };
   if (/\b(debug|investigate)\b/.test(text)) return { steps: investigate(), suggestion };
   if (/\b(search|grep)\b/.test(text)) return { steps: search(), suggestion };
+  if (/\b(256|truecolou?r)\b/.test(text)) return { steps: extendedColours(), suggestion };
   if (/\bcolou?rs?\b/.test(text)) return { steps: colours(), suggestion };
   if (/\btests?\b/.test(text)) return { steps: test(), suggestion };
   if (/\b(fix|edit|add|change)\b/.test(text)) return { steps: edit(), suggestion };
