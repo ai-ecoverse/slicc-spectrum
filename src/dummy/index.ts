@@ -1,4 +1,4 @@
-import type { Account, AgentHold, SecretView, SliccModel } from '../model/types.ts';
+import type { Account, AgentHold, Message, SecretView, SliccModel } from '../model/types.ts';
 import { DummyAgent } from './agent.ts';
 import { type ApprovalScenario, DummyApprovals } from './approvals.ts';
 import { type BrowserScenario, browserHistory, DummyBrowser, drive } from './browser.ts';
@@ -93,6 +93,29 @@ export function vaultAccounts(accounts: readonly Account[]): Account[] {
 
 export const docsUrl = 'https://docs.example/mcp';
 export const movedDocs = 'https://docs.eu.example/mcp';
+
+function hinted(login?: DummyLogin): boolean {
+  return login === 'code' || login === 'url' || login === 'lookalike';
+}
+
+function signInChat(
+  conversations: Record<string, Message[]>,
+  login?: DummyLogin
+): Record<string, Message[]> {
+  if (!hinted(login)) return conversations;
+  return {
+    ...conversations,
+    'cone-kitchen': conversations['cone-kitchen'].map((message) =>
+      message.id === 'k-s3'
+        ? {
+            ...message,
+            account: 'openai-codex',
+            text: 'The OpenAI Codex session expired. Log in again to continue.',
+          }
+        : message
+    ),
+  };
+}
 
 function settingsAccounts(
   accounts: 'settings' | 'vault' | 'dual',
@@ -202,14 +225,10 @@ export function createDummyModel({
     history: browserHistory(scenario),
     controlled: scenario === 'driving' ? ['tab-preview', 'tab-pull'] : [],
   });
+  const chats = signInChat(fixtures.conversations, login);
   const agent = new DummyAgent(
     fixtures.agents,
-    asks === 'long'
-      ? {
-          ...fixtures.conversations,
-          'cone-kitchen': [...fixtures.conversations['cone-kitchen'], longAsk()],
-        }
-      : fixtures.conversations,
+    asks === 'long' ? { ...chats, 'cone-kitchen': [...chats['cone-kitchen'], longAsk()] } : chats,
     { files, browser },
     time,
     fixtures.queues,
@@ -232,7 +251,10 @@ export function createDummyModel({
     settings: new DummySettings(
       fixtures.defaults,
       providers === 'none' ? [...fixtures.models, ...fixtures.laterModels] : fixtures.models,
-      settingsAccounts(accounts, providers, transport, mcp),
+      [
+        ...settingsAccounts(accounts, providers, transport, mcp),
+        ...(hinted(login) ? [fixtures.codexAccount] : []),
+      ],
       storage,
       time,
       undefined,

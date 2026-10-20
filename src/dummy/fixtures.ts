@@ -442,6 +442,14 @@ export const dualAccount: Account = {
   vaultName: 'LUMEN_API_KEY',
 };
 
+export const codexAccount: Account = {
+  id: 'openai-codex',
+  provider: 'OpenAI Codex',
+  identity: 'harbor-ops@example.com',
+  status: 'expired',
+  auth: 'oauth',
+};
+
 export const deviceSignIn: AccountSignIn = {
   url: 'https://auth.openai.com/codex/device',
   code: 'WDJB-MJHT',

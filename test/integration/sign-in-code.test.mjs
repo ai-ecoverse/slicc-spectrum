@@ -87,6 +87,14 @@ const known = {
 };
 const step = 'dialog.picker .step';
 
+const codex = '.accounts .account[data-id=openai-codex] + .notes';
+
+async function codexRow(page) {
+  await settings(page);
+  await click(page, 'settings', '.account[data-id=openai-codex] [data-action=connect]');
+  await page.until((codex) => window.signIn('settings', codex).shown, codex);
+}
+
 async function addCodex(page) {
   await settings(page);
   await click(page, 'settings', '[data-action=add-provider]');
@@ -163,9 +171,9 @@ test('Cancel still stops a device-code sign-in and takes the code away', async (
 });
 
 test('a URL-only sign-in on its known host shows only the link', async (t) => {
-  const page = await open(t, { providers: 'all', login: 'url', delay: '200' });
-  await addCodex(page);
-  assert.deepEqual(await page.evaluate((step) => window.signIn('settings', step), step), {
+  const page = await open(t, { login: 'url', delay: '200' });
+  await codexRow(page);
+  assert.deepEqual(await page.evaluate((codex) => window.signIn('settings', codex), codex), {
     shown: true,
     lead: null,
     code: null,
@@ -213,12 +221,12 @@ test('a failed copy reads Couldn’t copy, on the button and in the status', asy
 });
 
 test('a lookalike host shows no link: the warning and the full address as text, and the code stays', async (t) => {
-  const page = await open(t, { providers: 'all', login: 'lookalike', delay: '200' });
-  await addCodex(page);
+  const page = await open(t, { login: 'lookalike', delay: '200' });
+  await codexRow(page);
   assert.deepEqual(
-    await page.evaluate((step) => {
-      const parts = window.signIn('settings', step);
-      const block = window.settingsPart(`${step} [data-sign-in]`);
+    await page.evaluate((codex) => {
+      const parts = window.signIn('settings', codex);
+      const block = window.settingsPart(`${codex} [data-sign-in]`);
       return {
         ...parts,
         anchors: block.querySelectorAll('a').length,
@@ -226,7 +234,7 @@ test('a lookalike host shows no link: the warning and the full address as text, 
         selectable: getComputedStyle(block.querySelector('[data-id=sign-in-url]')).userSelect,
         copies: block.querySelectorAll('[data-action^=copy]').length,
       };
-    }, step),
+    }, codex),
     {
       shown: true,
       lead: 'Enter this code on the sign-in page:',
@@ -329,9 +337,9 @@ test('adding a device-code provider shows its code and its known sign-in link in
   assert.deepEqual(page.errors, []);
 });
 
-test('the expired-session card shows the device code while signing in, and drops it once connected', async (t) => {
-  const page = await open(t, { login: 'code' });
-  const card = '.error-card[data-id="k-s3"]';
+const card = '.error-card[data-id="k-s3"]';
+
+async function chatLogin(page) {
   await page.evaluate(() => window.model.agent.select('cone-kitchen'));
   await page.until((card) => !!window.chatPart(`${card} [data-action=login]`), card);
   await page.evaluate((card) => {
@@ -341,6 +349,12 @@ test('the expired-session card shows the device code while signing in, and drops
   await new Promise((resolve) => setTimeout(resolve, 200));
   await click(page, 'chat', `${card} [data-action=login]`);
   await page.until((card) => window.signIn('chat', card).shown, card);
+}
+
+test('the expired-session card shows the device code and its known sign-in link while signing in, and drops them once connected', async (t) => {
+  const page = await open(t, { login: 'code' });
+  await chatLogin(page);
+  assert.equal(await page.evaluate(() => window.model.settings.connects.at(-1).id), 'openai-codex');
   assert.deepEqual(await page.evaluate((card) => window.signIn('chat', card), card), {
     shown: true,
     lead: 'Enter this code on the sign-in page:',
@@ -350,9 +364,9 @@ test('the expired-session card shows the device code while signing in, and drops
     copy: 'Copy the code',
     copyText: 'Copy',
     quiet: true,
-    link: null,
-    unknown,
-    url: 'https://auth.openai.com/codex/device',
+    link: known,
+    unknown: null,
+    url: null,
   });
   assert.equal(
     await page.evaluate((card) => window.chatPart(`${card} .detail`).textContent, card),
@@ -365,6 +379,25 @@ test('the expired-session card shows the device code while signing in, and drops
   assert.equal(
     await page.evaluate((card) => !!window.chatPart(`${card} [data-sign-in]`), card),
     false
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('the expired-session card shows a lookalike sign-in page as text with the warning, and no link', async (t) => {
+  const page = await open(t, { login: 'lookalike', delay: '200' });
+  await chatLogin(page);
+  assert.deepEqual(
+    await page.evaluate((card) => {
+      const parts = window.signIn('chat', card);
+      return [
+        parts.code,
+        parts.link,
+        parts.unknown,
+        parts.url,
+        window.chatPart(`${card} [data-sign-in]`).querySelectorAll('a').length,
+      ];
+    }, card),
+    ['WDJB-MJHT', null, unknown, 'https://auth.openai.com.example.net/device', 0]
   );
   assert.deepEqual(page.errors, []);
 });
