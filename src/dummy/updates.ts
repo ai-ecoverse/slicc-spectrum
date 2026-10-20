@@ -13,7 +13,15 @@ import type {
 import type { Clock } from './clock.ts';
 
 export type UpdateScenario = 'current' | 'boot' | 'starting' | 'available' | 'restart' | 'failure';
-export type PackageScenario = 'mixed' | 'empty' | 'fail' | 'user' | 'elsewhere';
+export type PackageScenario =
+  | 'mixed'
+  | 'empty'
+  | 'fail'
+  | 'user'
+  | 'elsewhere'
+  | 'npm'
+  | 'checking'
+  | 'offline';
 export type BetaScenario = 'offered' | 'installed' | 'blocked' | 'failed';
 export type PackageConfirm = (options: {
   title: string;
@@ -316,8 +324,72 @@ const userPackages = (): PackageItem[] => [
   }),
 ];
 
+const longDescription =
+  'Type-checks and compiles **TypeScript** to JavaScript. ' +
+  'See [the handbook](https://example.test/handbook) and `tsc --init`, ' +
+  '<b>projects</b>, _watch mode_ and incremental builds for large monorepos with many references. '.repeat(
+    3
+  );
+
+function fromNpm(items: readonly PackageItem[]): PackageItem[] {
+  const disk: Readonly<Record<string, number>> = { git: 58_400_000, python: 85_100_000 };
+  const npm = items.map((item) => ({
+    ...item,
+    size: disk[item.id] ?? (item.size as number) * 3,
+    unpacked: true as const,
+  }));
+  const at = (id: string) => npm.findIndex((item) => item.id === id);
+  const patch = (id: string, change: Partial<PackageItem>) => {
+    npm[at(id)] = { ...npm[at(id)], ...change };
+  };
+  patch('tsc', { description: longDescription });
+  patch('ruff', { notes: ['Rules that need a native plugin are left out in seven.'] });
+  patch('esbuild', { state: 'available', actions: ['install'], log: undefined });
+  patch('pdf', {
+    state: 'available',
+    offered: null,
+    size: undefined,
+    unpacked: undefined,
+    error: null,
+    log: undefined,
+    actions: [],
+    withheld: 'needs slicc-kernel 1.48.0 or newer',
+  });
+  patch('biome', {
+    state: 'outdated',
+    offered: '2.3.0',
+    actions: ['update', 'remove'],
+    withheld: 'version 2.3.0 needs slicc-kernel 1.48.0 or newer',
+  });
+  return npm;
+}
+
+function unknown(items: readonly PackageItem[], registry: 'checking' | 'unreachable') {
+  return items.map((item): PackageItem => {
+    const installed = item.version !== null;
+    return {
+      id: item.id,
+      package: item.package,
+      label: item.label,
+      description: '',
+      commands: [],
+      ...(item.requires ? { requires: item.requires } : {}),
+      state: installed ? 'installed' : 'available',
+      version: item.version,
+      offered: null,
+      progress: null,
+      error: null,
+      actions: installed ? ['remove'] : registry === 'unreachable' ? ['retry'] : [],
+      registry,
+    };
+  });
+}
+
 export function packageFixtures(scenario: PackageScenario): readonly PackageItem[] {
   if (scenario === 'empty') return [];
+  if (scenario === 'npm') return fromNpm(packageFixtures('mixed'));
+  if (scenario === 'checking' || scenario === 'offline')
+    return unknown(packageFixtures('npm'), scenario === 'offline' ? 'unreachable' : 'checking');
   const items: PackageItem[] = [
     offer('git', 'git', 'Version control for your projects.', ['git'], '2.47.1', 4_300_000),
     offer(
@@ -453,6 +525,8 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
   #confirm: PackageConfirm | undefined;
   declare packages?: () => readonly PackageItem[];
   declare actPackage?: (id: string, action: PackageAction) => Promise<void>;
+  declare refreshPackages?: () => Promise<void>;
+  #offline = false;
   declare developer?: () => boolean;
   declare setDeveloper?: (on: boolean) => Promise<void>;
   #beta: BetaScenario | undefined;
@@ -473,7 +547,13 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
       this.#packages = packageFixtures(options.packages);
       this.#fail = options.packages === 'fail';
       this.packages = () => this.#packages;
-      this.actPackage = (id, action) => this.#actPackage(id, action);
+      this.actPackage = (id, action) =>
+        action === 'retry' && this.#packages.find((item) => item.id === id)?.registry
+          ? this.#refresh()
+          : this.#actPackage(id, action);
+      this.#offline = options.packages === 'offline';
+      if (options.packages === 'npm' || options.packages === 'checking' || this.#offline)
+        this.refreshPackages = () => this.#refresh();
     }
   }
 
@@ -592,6 +672,27 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
         : {}),
       log: `${log}\nProgress: resolved 1, downloaded 1, added 1\nDone in 3.8s`,
     });
+  }
+
+  async #refresh(): Promise<void> {
+    const before = this.#packages;
+    this.#packages = before.map((item) =>
+      item.registry
+        ? { ...item, registry: 'checking', actions: item.version ? ['remove'] : [] }
+        : item
+    );
+    this.emit('packages', this.#packages);
+    await this.#clock.sleep(4);
+    if (this.#offline) {
+      this.#offline = false;
+      this.#packages = before;
+    } else {
+      const fresh = packageFixtures('npm');
+      this.#packages = this.#packages.map((item) =>
+        item.registry ? (fresh.find((next) => next.id === item.id) as PackageItem) : item
+      );
+    }
+    this.emit('packages', this.#packages);
   }
 
   list(): readonly UpdateItem[] {

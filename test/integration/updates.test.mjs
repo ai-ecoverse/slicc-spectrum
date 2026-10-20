@@ -1399,3 +1399,244 @@ test('a package installed elsewhere shows as installed where it lives, never off
   });
   assert.deepEqual(page.errors, []);
 });
+
+async function packagesPage(t, packages, browser = chrome, color = 'light') {
+  const page = await browser.page(t);
+  await page.goto(
+    `/ui/?${new URLSearchParams({ updates: 'current', packages, color, delay: '20' })}`
+  );
+  await page.until(() => window.ready && window.app.dock.api.panels.length > 0);
+  await page.evaluate(() => {
+    window.updates = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-updates', selector);
+    window.pkg = (id, selector = '') => window.updates(`li[data-id=${id}] ${selector}`.trim());
+    window.row = (id) => {
+      const row = window.pkg(id);
+      return {
+        state: row.dataset.state,
+        description: row.querySelector('.description').textContent.trim(),
+        registry: row.querySelector('.description').dataset.registry ?? null,
+        light: row.querySelector('swc-status-light')?.textContent.trim() ?? null,
+        version: row.querySelector('.meta .version')?.textContent.trim() ?? null,
+        buttons: [...row.querySelectorAll('.buttons swc-button')].map(
+          (button) => button.dataset.action
+        ),
+        withheld: row.querySelector('[data-withheld]')?.textContent.trim() ?? null,
+      };
+    };
+    window.focused = () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-updates').shadowRoot.activeElement;
+    window.app.show('updates');
+  });
+  await page.until(() => window.pkg('git'));
+  return page;
+}
+
+test('packages npm hasn’t answered for read Checking npm… without Install, and installed ones keep Remove', async (t) => {
+  const page = await packagesPage(t, 'checking');
+  assert.deepEqual(await page.evaluate(() => window.row('git')), {
+    state: 'available',
+    description: 'Checking npm…',
+    registry: 'checking',
+    light: null,
+    version: null,
+    buttons: [],
+    withheld: null,
+  });
+  assert.deepEqual(await page.evaluate(() => window.row('python')), {
+    state: 'installed',
+    description: 'Checking npm…',
+    registry: 'checking',
+    light: 'Installed',
+    version: '3.13.1',
+    buttons: ['remove'],
+    withheld: null,
+  });
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.updates('[data-section=packages] > .hint').textContent.trim(),
+      Boolean(window.updates('[data-action=retry-registry]')),
+      Boolean(window.updates('[data-section=packages] [data-error]')),
+    ]),
+    [
+      'Tools for the agent and the terminal. Install the ones you need; you can remove them later.',
+      false,
+      false,
+    ]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+for (const [name, browser] of [
+  ['wide', chrome],
+  ['narrow', narrow],
+]) {
+  test(`unreachable npm gets one Retry for the section, which keeps focus while checking and hands it to the heading ${name}`, async (t) => {
+    const page = await packagesPage(t, 'offline', browser);
+    if (name === 'narrow') await page.until(() => window.app.screen === 'phone');
+    assert.deepEqual(await page.evaluate(() => window.row('git')), {
+      state: 'available',
+      description: 'Couldn’t reach npm.',
+      registry: 'unreachable',
+      light: null,
+      version: null,
+      buttons: [],
+      withheld: null,
+    });
+    assert.deepEqual(await page.evaluate(() => window.row('uv').buttons), ['remove']);
+    assert.deepEqual(
+      await page.evaluate(() => [
+        window.updates('[data-registry=unreachable] .hint').textContent.trim(),
+        window.updates('[data-action=retry-registry]').textContent.trim(),
+        window.updates('[data-action=retry-registry]').getAttribute('accessible-label'),
+        window.updates('[data-section=packages] [data-action=retry]'),
+      ]),
+      [
+        'Couldn’t reach npm, so versions and sizes aren’t shown.',
+        'Retry',
+        'Retry reaching npm',
+        null,
+      ]
+    );
+    await page.until(() => {
+      const node = window.updates('[data-action=retry-registry]');
+      const box = node.getBoundingClientRect();
+      return box.width > 0 && box.right <= innerWidth;
+    });
+    assert.equal(
+      await page.evaluate(() => {
+        const node = window.$('slicc-app', 'slicc-dock', 'slicc-updates');
+        return node.scrollWidth <= node.clientWidth;
+      }),
+      true
+    );
+    const retry = () => {
+      const button = window.updates('[data-action=retry-registry]');
+      button.focus();
+      button.click();
+    };
+    await page.evaluate(retry);
+    await page.until(() => window.row('git').registry === 'checking');
+    assert.equal(
+      await page.evaluate(() =>
+        window.updates('[data-action=retry-registry]').hasAttribute('pending')
+      ),
+      true
+    );
+    assert.equal(
+      await page.evaluate(
+        () => window.focused() === window.updates('[data-action=retry-registry]')
+      ),
+      true
+    );
+    await page.until(() => window.row('git').registry === 'unreachable');
+    await page.until(() => !window.updates('[data-action=retry-registry]').hasAttribute('pending'));
+    assert.equal(
+      await page.evaluate(
+        () => window.focused() === window.updates('[data-action=retry-registry]')
+      ),
+      true
+    );
+    await page.evaluate(retry);
+    await page.until(() => window.row('git').registry === null);
+    await page.until(() => window.focused()?.id === 'packages');
+    assert.deepEqual(
+      await page.evaluate(() => [
+        window.updates('[data-action=retry-registry]'),
+        window.row('git').buttons,
+        window.row('git').version,
+      ]),
+      [null, ['install'], '2.47.1']
+    );
+    assert.deepEqual(page.errors, []);
+  });
+
+  test(`npm descriptions are plain, capped and clamped, notes and withheld reasons sit under them, and sizes read on disk ${name}`, async (t) => {
+    const page = await packagesPage(t, 'npm', browser);
+    if (name === 'narrow') await page.until(() => window.app.screen === 'phone');
+    await page.until(() => {
+      const node = window.pkg('tsc', '.description');
+      return node.getBoundingClientRect().right <= innerWidth;
+    });
+    const description = await page.evaluate(() => {
+      const node = window.pkg('tsc', '.description');
+      const line = Number.parseFloat(getComputedStyle(node).lineHeight);
+      const inner = window.pkg('tsc', '[data-action=install]').shadowRoot.querySelector('button');
+      return {
+        text: node.textContent,
+        elements: node.children.length,
+        clamped: node.clientHeight <= line * 2 + 1 && node.scrollHeight > node.clientHeight,
+        described: inner.ariaDescribedByElements?.[0] === node,
+      };
+    });
+    assert.equal(description.text.length, 300);
+    assert.match(
+      description.text,
+      /^Type-checks and compiles \*\*TypeScript\*\* to JavaScript\. See \[the handbook\]\(https:\/\/example\.test\/handbook\) and `tsc --init`, <b>projects<\/b>, _watch mode_ and/
+    );
+    assert.doesNotMatch(description.text, /\s{2}/);
+    assert.match(description.text, /…$/);
+    assert.deepEqual(
+      [description.elements, description.clamped, description.described],
+      [0, true, true]
+    );
+    assert.deepEqual(
+      await page.evaluate(() => [
+        window.pkg('ruff', '.description').textContent,
+        window.pkg('ruff', '[data-notes]').textContent,
+      ]),
+      ['Python linter and formatter.', 'Rules that need a native plugin are left out in seven.']
+    );
+    assert.deepEqual(await page.evaluate(() => window.row('pdf')), {
+      state: 'available',
+      description: 'Extract text, pages and details from PDF files.',
+      registry: null,
+      light: null,
+      version: null,
+      buttons: [],
+      withheld: 'Not offered: needs slicc-kernel 1.48.0 or newer.',
+    });
+    assert.deepEqual(await page.evaluate(() => window.row('biome')), {
+      state: 'installed',
+      description: 'Formats and lints JavaScript, TypeScript and JSON.',
+      registry: null,
+      light: 'Installed',
+      version: '2.2.4',
+      buttons: ['remove'],
+      withheld: 'Not offered: version 2.3.0 needs slicc-kernel 1.48.0 or newer.',
+    });
+    assert.deepEqual(
+      await page.evaluate(() => [
+        window.pkg('git', '[data-size]').textContent,
+        window.pkg('uv', '[data-size]').textContent,
+        window.pkg('python', '[data-size]'),
+      ]),
+      ['55.7 MB on disk', '17.5 MB on disk', null]
+    );
+    assert.equal(
+      await page.evaluate(() => {
+        const node = window.$('slicc-app', 'slicc-dock', 'slicc-updates');
+        return node.scrollWidth <= node.clientWidth;
+      }),
+      true
+    );
+    assert.deepEqual(page.errors, []);
+  });
+}
+
+test('rows from a bios without npm data keep the bare download size and today’s hint', async (t) => {
+  const page = await packagesPage(t, 'mixed');
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.pkg('git', '[data-size]').textContent,
+      window.updates('[data-section=packages] > .hint').textContent.trim(),
+      window.updates('[data-action=retry-registry]'),
+      window.row('git').registry,
+    ]),
+    [
+      '4.1 MB',
+      'Tools for the agent and the terminal. Install the ones you need; you can remove them later.',
+      null,
+      null,
+    ]
+  );
+});
