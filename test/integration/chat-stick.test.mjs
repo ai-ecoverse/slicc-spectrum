@@ -197,15 +197,15 @@ test("the user's own send while scrolled up scrolls down and resumes following",
   assert.deepEqual(page.errors, []);
 });
 
-test('a tool card opening above the viewport does not move the message being read', async (t) => {
+test('a tool run opening above the viewport does not move the message being read', async (t) => {
   const page = await open(t);
   await wheel(page, -1500);
   const before = await page.evaluate(() => {
     const log = window.log();
     const box = log.getBoundingClientRect();
-    const tools = [...log.querySelectorAll('details.tool:not([open])')].filter(
-      (tool) => tool.getBoundingClientRect().bottom < box.top
-    );
+    const tools = [
+      ...log.querySelectorAll('swc-response-status:not([open]):has(swc-response-status-step)'),
+    ].filter((tool) => tool.getBoundingClientRect().bottom < box.top);
     const turns = [...log.querySelectorAll('swc-conversation-turn')].filter((turn) => {
       const rect = turn.getBoundingClientRect();
       return rect.top > box.top + 40 && rect.top < box.bottom - 40;

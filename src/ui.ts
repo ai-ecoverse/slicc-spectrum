@@ -20,8 +20,8 @@ import { SliccNotices } from './app/notices.ts';
 import { SliccSecrets } from './app/secrets.ts';
 import { SliccSettings } from './app/settings.ts';
 import { SliccSprinkle } from './app/sprinkle.ts';
+import { SliccStatusLabel } from './app/status-label.ts';
 import { SliccTerminalPanel } from './app/terminals.ts';
-import { SliccToolRuns } from './app/tool-runs.ts';
 import { SliccTray } from './app/tray.ts';
 import { SliccUpdates } from './app/updates.ts';
 import { SliccValueRequest } from './app/value-request.ts';
@@ -91,7 +91,7 @@ export {
 const elements: Record<string, CustomElementConstructor> = {
   'slicc-agents': SliccAgents,
   'slicc-chat': SliccChat,
-  'slicc-tool-runs': SliccToolRuns,
+  'slicc-status-label': SliccStatusLabel,
   'slicc-composer': SliccComposer,
   'slicc-files': SliccFiles,
   'slicc-file-view': SliccFileView,

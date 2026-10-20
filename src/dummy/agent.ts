@@ -37,9 +37,14 @@ function chunks(text: string): string[] {
   return text.match(/\S+\s*|\s+/g) ?? [];
 }
 
+const burst = 120;
+const stride = 30;
+
 function ticks(steps: readonly Step[]): number {
   return steps.reduce((sum, step) => {
-    if (step.type === 'tool') return sum + step.ticks;
+    if (step.type === 'turn') return sum;
+    if (step.type === 'tool')
+      return sum + step.ticks + (step.streamed ? Math.ceil(step.title.length / burst) * stride : 0);
     if (step.type === 'part') return sum + 2;
     return sum + chunks(step.text).length;
   }, 0);
@@ -222,14 +227,21 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     const tool = {
       id: this.#id('t'),
       name: step.name,
-      title: step.title,
-      input: step.input,
+      title: step.streamed ? '' : step.title,
+      input: step.streamed ? '' : step.input,
       output: '',
       status: 'running' as const,
       paths: step.paths,
     };
     reply.parts.push({ type: 'tool', tool });
     this.emit('message', { agentId, message: reply });
+    const streamed = step.streamed ? step.title : '';
+    for (let at = burst; at < streamed.length + burst && !run.stopped; at += burst) {
+      await this.#clock.sleep(stride * run.pace);
+      tool.title = streamed.slice(0, at).trimEnd();
+      this.emit('message', { agentId, message: reply });
+    }
+    tool.input = step.input;
     const chunks = step.chunks ?? [];
     for (const chunk of chunks) {
       await this.#clock.sleep((step.ticks / (chunks.length + 1)) * run.pace);
@@ -246,7 +258,20 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     this.emit('message', { agentId, message: reply });
   }
 
-  async #step(agentId: string, reply: AssistantMessage, step: Step, run: Run): Promise<void> {
+  #turn(agentId: string, reply: AssistantMessage, model: string): AssistantMessage {
+    reply.status = 'done';
+    this.emit('message', { agentId, message: reply });
+    const next = this.#reply(model);
+    this.#post(agentId, next);
+    return next;
+  }
+
+  async #step(
+    agentId: string,
+    reply: AssistantMessage,
+    step: Exclude<Step, { type: 'turn' }>,
+    run: Run
+  ): Promise<void> {
     if (step.type === 'tool') return this.#tool(agentId, reply, step, run);
     if (step.type === 'part') {
       await this.#clock.sleep(2 * run.pace);
@@ -333,7 +358,9 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     let { steps, suggestion } = script(prompt, message.attachments ?? []);
     run.pace = this.#pace(agentId, steps);
     while (steps.length && !run.stopped) {
-      await this.#step(agentId, reply, steps[0] as Step, run);
+      const step = steps[0] as Step;
+      if (step.type === 'turn') reply = this.#turn(agentId, reply, agent.model);
+      else await this.#step(agentId, reply, step, run);
       steps = steps.slice(1);
       if (run.steers.length && !run.stopped && steps.length) {
         reply.status = 'done';

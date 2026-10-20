@@ -321,7 +321,7 @@ test('sending a message streams a reply with a tool call', async (t) => {
         'slicc-app',
         'slicc-dock',
         'slicc-chat',
-        '[data-status=streaming] details.tool[data-status=running]'
+        '[data-status=streaming] swc-response-status-step[data-status=running]'
       )
   );
   await page.until(() => {
@@ -376,28 +376,23 @@ test('sending a message streams a reply with a tool call', async (t) => {
     ''
   );
 
-  await page.evaluate(() => {
-    window
-      .$(
-        'slicc-app',
-        'slicc-dock',
-        'slicc-chat',
-        'swc-conversation-turn.assistant:last-of-type details.tool summary'
-      )
-      .click();
+  const opened = await page.evaluate(async () => {
+    const step = window.$(
+      'slicc-app',
+      'slicc-dock',
+      'slicc-chat',
+      'swc-conversation-turn.assistant:last-of-type swc-response-status-step'
+    );
+    step.querySelector('.run-toggle').click();
+    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    await chat.updateComplete;
+    return [
+      step.hasAttribute('data-open'),
+      chat.shadowRoot.querySelector(`#detail-${step.dataset.target} .output`).textContent,
+    ];
   });
-  assert.match(
-    await page.evaluate(
-      () =>
-        window.$(
-          'slicc-app',
-          'slicc-dock',
-          'slicc-chat',
-          'swc-conversation-turn.assistant:last-of-type details.tool[open] .output'
-        ).textContent
-    ),
-    /ℹ pass 3/
-  );
+  assert.equal(opened[0], true);
+  assert.match(opened[1], /ℹ pass 3/);
   assert.deepEqual(page.errors, []);
   await shot(page, 'chat-light');
 });
@@ -1951,44 +1946,53 @@ test('terminal and browser in dark', async (t) => {
 
 const chat = (...path) => window.$('slicc-app', 'slicc-dock', 'slicc-chat', ...path);
 
-test('tool cards show the command, its timeout, and an edit as a diff', async (t) => {
+test('tool steps show the command, its timeout, and an edit as a diff', async (t) => {
   const page = await open(t);
-  await page.evaluate(() => window.model.agent.select('cone-harbor'));
-  await page.until(
-    () =>
-      window
-        .$('slicc-app', 'slicc-dock', 'slicc-chat')
-        ?.shadowRoot?.querySelector('.runs[data-runs=cluster] .strip > .label')?.textContent
-  );
-  const cards = await page.evaluate(async () => {
-    const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot;
-    const cluster = root.querySelector('.runs[data-runs=cluster]');
-    const edit = cluster.querySelector('.tool[data-tool="edit_file"]');
-    cluster.querySelector(`[data-action=open-run][aria-controls=${edit.id}]`).click();
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    window.clusterSummary = [
-      cluster.querySelector('.strip').title,
-      cluster.querySelector('.icons').getAttribute('aria-label'),
-      cluster.querySelector('.strip > .label').textContent,
-    ];
-    return [...cluster.querySelectorAll('.tool')].map((card) => ({
-      name: card.dataset.tool,
-      meta: card.querySelector('.tool-meta')?.textContent ?? null,
-      input: card.querySelector('pre.input')?.textContent ?? null,
-      diff: card.querySelector('slicc-diff-view')?.getAttribute('path') ?? null,
-    }));
+  await page.evaluate(() => {
+    window.model.agent.select('cone-harbor');
+    window.labelled = (text) =>
+      [...(window.chatPart()?.shadowRoot?.querySelectorAll('swc-response-status') ?? [])].find(
+        (status) => status.querySelector('slicc-status-label')?.textContent === text
+      ) ?? null;
+    return true;
   });
-  assert.deepEqual(await page.evaluate(() => window.clusterSummary), [
-    '2 commands, 1 read, 1 edit. Done',
-    '2 commands, 1 read, 1 edit. Done',
-    'Find and fix the stale cache entry',
+  await page.until(() => !!window.labelled('Find and fix the stale cache entry'));
+  const steps = await page.evaluate(async () => {
+    const status = window.labelled('Find and fix the stale cache entry');
+    status.shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button').click();
+    const edit = status.querySelector('swc-response-status-step[data-tool="edit_file"]');
+    for (const toggle of status.querySelectorAll('.run-toggle')) toggle.click();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    window.statusSummary = [
+      status.getAttribute('status'),
+      status.getAttribute('slot'),
+      status.querySelectorAll('swc-response-status-step').length,
+      status.open,
+      edit.hasAttribute('data-open'),
+    ];
+    return [...status.querySelectorAll('swc-response-status-step')].map((step) => {
+      const detail = status.querySelector(`#detail-${step.dataset.target}`);
+      return {
+        name: step.dataset.tool,
+        meta: detail?.querySelector('.tool-meta')?.textContent ?? null,
+        input: detail?.querySelector('pre.input')?.textContent ?? null,
+        diff: detail?.querySelector('slicc-diff-view')?.getAttribute('path') ?? null,
+      };
+    });
+  });
+  assert.deepEqual(await page.evaluate(() => window.statusSummary), [
+    'complete',
+    'status',
+    4,
+    true,
+    true,
   ]);
   assert.deepEqual(
-    cards.find((card) => card.input === '$ npm test'),
+    steps.find((step) => step.input === '$ npm test'),
     { name: 'bash', meta: 'timeout 120s', input: '$ npm test', diff: null }
   );
   assert.deepEqual(
-    cards.find((card) => card.name === 'edit_file'),
+    steps.find((step) => step.name === 'edit_file'),
     {
       name: 'edit_file',
       meta: null,
@@ -1998,27 +2002,22 @@ test('tool cards show the command, its timeout, and an edit as a diff', async (t
   );
   await page.until(() =>
     window
-      .$('slicc-app', 'slicc-dock', 'slicc-chat')
-      .shadowRoot.querySelector('.tool slicc-diff-view')
+      .chatPart('.run-detail:not([hidden]) slicc-diff-view')
       ?.shadowRoot?.querySelector('diffs-container')
       ?.shadowRoot?.textContent.includes('dayOf')
   );
   await page.evaluate(() =>
     window
-      .$('slicc-app', 'slicc-dock', 'slicc-chat')
-      .shadowRoot.querySelector('.tool[data-tool="edit_file"]')
+      .chatPart('swc-response-status-step[data-tool="edit_file"]')
       .scrollIntoView({ block: 'start' })
   );
-  await shot(page, 'tool-cards-light');
+  await shot(page, 'tool-steps-light');
   await page.evaluate(() => window.model.settings.update({ color: 'dark' }));
   await page.until(
     () =>
-      window
-        .$('slicc-app', 'slicc-dock', 'slicc-chat')
-        .shadowRoot.querySelector('.tool slicc-diff-view')
-        ?.getAttribute('color') === 'dark'
+      window.chatPart('.run-detail:not([hidden]) slicc-diff-view')?.getAttribute('color') === 'dark'
   );
-  await shot(page, 'tool-cards-dark');
+  await shot(page, 'tool-steps-dark');
   assert.deepEqual(page.errors, []);
 });
 
@@ -2028,7 +2027,7 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
     window.outputs = [];
     const root = window.chatPart().shadowRoot;
     const record = () => {
-      const card = [...root.querySelectorAll('.tool[data-tool=bash]')].find((node) =>
+      const card = [...root.querySelectorAll('.run-detail')].find((node) =>
         node.querySelector('pre.input')?.textContent.includes('./status')
       );
       const text = card?.querySelector('pre.output')?.textContent;
@@ -2047,16 +2046,28 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
   const plain = 'bold cyan red bold green\nharbor ready\n FAIL   PASS   256 \n';
   const outputs = await page.evaluate(() => window.outputs);
   assert.deepEqual(outputs, ['bold ', 'bold cyan red bold green\n', plain]);
-  await page.evaluate(() =>
-    window.chatPart('swc-conversation-turn.assistant:last-of-type details.tool summary').click()
-  );
+  await page.evaluate(() => {
+    const step = window.chatPart(
+      'swc-conversation-turn.assistant:last-of-type swc-response-status-step[data-tool=bash]'
+    );
+    step
+      .closest('swc-response-status')
+      .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
+      .click();
+    step.querySelector('.run-toggle').click();
+    return true;
+  });
   await page.until(
-    () => !!window.chatPart('swc-conversation-turn.assistant:last-of-type details.tool[open]')
+    () =>
+      !!window.chatPart(
+        'swc-conversation-turn.assistant:last-of-type swc-response-status-step[data-tool=bash][data-open]'
+      )
   );
+  await page.evaluate(() => new Promise((resolve) => setTimeout(() => resolve(true), 400)));
   const read = () =>
     page.evaluate(() => {
       const pre = window.chatPart(
-        'swc-conversation-turn.assistant:last-of-type details.tool[open] pre.output'
+        'swc-conversation-turn.assistant:last-of-type .run-detail:not([hidden]) pre.output'
       );
       const probe = (value) => {
         const node = document.createElement('i');
@@ -2137,7 +2148,9 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
   await page.until((cyan) => {
     const span = [
       ...window
-        .chatPart('swc-conversation-turn.assistant:last-of-type details.tool[open] pre.output')
+        .chatPart(
+          'swc-conversation-turn.assistant:last-of-type .run-detail:not([hidden]) pre.output'
+        )
         .querySelectorAll('span'),
     ].find((node) => node.textContent === 'cyan');
     return getComputedStyle(span).color !== cyan;
@@ -2149,7 +2162,9 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
       chat.style.setProperty('--slicc-terminal-color-6', 'rgb(1, 2, 3)');
       const span = [
         ...window
-          .chatPart('swc-conversation-turn.assistant:last-of-type details.tool[open] pre.output')
+          .chatPart(
+            'swc-conversation-turn.assistant:last-of-type .run-detail:not([hidden]) pre.output'
+          )
           .querySelectorAll('span'),
       ].find((node) => node.textContent === 'cyan');
       const color = getComputedStyle(span).color;
@@ -2167,182 +2182,100 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
   assert.deepEqual(page.errors, []);
 });
 
-test('tool runs cluster across messages, pick their icons, and open from the keyboard', async (t) => {
+test('tool steps join across messages, keep their states, and open from the keyboard', async (t) => {
   const page = await open(t);
   await page.evaluate(() => window.model.agent.select('cone-kitchen'));
-  await page.until(() => !!window.chatPart('[data-id=k-m8] slicc-tool-runs .runs'));
+  await page.until(
+    () =>
+      window.chatPart('[data-id=k-m8] slicc-status-label')?.textContent.includes('Compare') &&
+      window.chatPart('[data-id=k-m3] slicc-status-label')?.textContent.includes('Walk')
+  );
   const shape = await page.evaluate(() => {
     const root = window.chatPart().shadowRoot;
-    const groups = (id) =>
-      [...root.querySelectorAll(`[data-id=${id}] slicc-tool-runs > .runs`)].map((runs) => [
-        runs.dataset.runs,
-        runs.querySelectorAll('.tool').length,
-        runs.dataset.status,
-      ]);
-    const icons = (index) =>
-      [
-        ...root
-          .querySelectorAll('[data-id=k-m8] slicc-tool-runs')
-          [index].querySelectorAll('.icons .chip'),
-      ].map((chip) => [chip.dataset.icon, chip.dataset.target ?? null, chip.dataset.state]);
-    const card = root.querySelector('.tool[data-id=k-tool1]');
+    const statuses = (id) =>
+      [...root.querySelectorAll(`swc-conversation-turn[data-id=${id}] swc-response-status`)].map(
+        (status) => [
+          status.getAttribute('status'),
+          status.querySelectorAll('swc-response-status-step').length,
+          status.querySelector('slicc-status-label').textContent,
+        ]
+      );
+    const step = root.querySelector('#run-k-t15');
     return {
-      m3: groups('k-m3'),
-      m8: groups('k-m8'),
-      single: groups('k-tool2'),
+      m3: statuses('k-m3'),
+      m8: statuses('k-m8'),
+      single: statuses('k-tool2'),
       absorbed: !!root.querySelector('swc-conversation-turn[data-id=k-tool1]'),
-      card: card?.id,
-      ran: card?.querySelector('.call > .ran')?.textContent,
-      first: icons(0),
-      second: icons(1),
+      owner: [step?.dataset.id, step?.closest('swc-conversation-turn')?.dataset.id],
+      ran: root.querySelector('#detail-k-t15 > .ran')?.textContent,
+      states: [...root.querySelectorAll('[data-id=k-m8] swc-response-status-step')].map((item) => [
+        item.id.slice(4),
+        item.dataset.status,
+        item.getAttribute('status'),
+      ]),
+      cards: root.querySelectorAll('slicc-tool-runs, .runs, details.tool').length,
+      hooks: [
+        root.querySelectorAll('swc-response-status[data-action=open-cluster]').length,
+        root.querySelectorAll('swc-response-status-step[data-action=open-run][data-target]').length,
+      ],
+      failed: root.querySelector('#run-k-r7 [slot=label]').textContent,
     };
   });
-  assert.deepEqual(shape.m3, [['cluster', 17, 'running']]);
+  assert.deepEqual(shape.m3, [
+    ['complete', 17, '2 failed, 1 cancelled · Walk through every kind of tool'],
+  ]);
   assert.deepEqual(shape.m8, [
-    ['cluster', 4, 'done'],
-    ['cluster', 5, 'running'],
+    ['complete', 9, '1 failed, 1 cancelled · Compare the docs with the live API'],
   ]);
-  assert.deepEqual(shape.single, [['single', 1, 'done']]);
+  assert.deepEqual(shape.single, [['complete', 1, 'bash Check the preview port']]);
   assert.equal(shape.absorbed, false);
-  assert.equal(shape.card, 'run-k-t15');
+  assert.deepEqual(shape.owner, ['k-tool1', 'k-m3']);
   assert.match(shape.ran, /^Ran at \d\d:\d\d$/);
-  assert.deepEqual(shape.first, [
-    ['favicon', 'api.example.com', 'done'],
-    ['file', '/workspace/harbor/docs/forecast.md', 'done'],
-    ['command', null, 'done'],
-    ['read', null, 'done'],
+  assert.deepEqual(shape.states, [
+    ['k-r1', 'done', 'complete'],
+    ['k-r2', 'done', 'complete'],
+    ['k-r3', 'done', 'complete'],
+    ['k-r4', 'done', 'complete'],
+    ['k-r5', 'done', 'complete'],
+    ['k-r6', 'done', 'complete'],
+    ['k-r7', 'error', 'stopped'],
+    ['k-r8', 'cancelled', 'stopped'],
+    ['k-r9', 'running', 'active'],
   ]);
-  assert.deepEqual(shape.second, [
-    ['edit', null, 'done'],
-    ['command', null, 'done'],
-    ['file', 'src/lib/units.test.ts', 'error'],
-    ['favicon', 'git.example.com', 'cancelled'],
-    ['command', null, 'running'],
-  ]);
+  assert.equal(shape.cards, 0);
+  assert.deepEqual(shape.hooks, [4, 27]);
+  assert.equal(shape.failed, 'bash Run the unit tests · Failed');
 
-  const focused = () => {
-    const active = window.chatPart().shadowRoot.activeElement;
-    return active ? (active.dataset.target ?? active.dataset.action ?? active.localName) : null;
-  };
-  const shown = () =>
-    [
-      ...window
-        .chatPart()
-        .shadowRoot.querySelectorAll('[data-id=k-m8] slicc-tool-runs')[1]
-        .querySelectorAll('.cards > .slot'),
-    ].map((slot) => (slot.hidden ? '-' : 'open'));
   await page.evaluate(() =>
-    window.chatPart().shadowRoot.querySelector('[data-action=open-run][data-target=k-r5]').focus()
-  );
-  await page.press('Tab');
-  await page.press('Tab');
-  assert.equal(await page.evaluate(focused), 'k-r7');
-  assert.equal(
-    await page.evaluate(() =>
-      window.chatPart().shadowRoot.activeElement.getAttribute('aria-label')
-    ),
-    'Run the unit tests, Failed'
+    window
+      .chatPart('[data-id=k-m8] swc-response-status')
+      .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
+      .focus()
   );
   await page.press('Enter');
-  await page.until(
-    () => window.chatPart('[data-target=k-r7]').getAttribute('aria-expanded') === 'true'
+  await page.until(() => window.chatPart('[data-id=k-m8] swc-response-status').open === true);
+  await page.evaluate(() => new Promise((resolve) => setTimeout(() => resolve(true), 400)));
+  await page.press('Tab');
+  assert.equal(
+    await page.evaluate(() => {
+      const active = window.chatPart().shadowRoot.activeElement;
+      return `${active?.className}@${active?.closest('swc-response-status-step')?.id}`;
+    }),
+    'run-toggle@run-k-r1'
   );
-  assert.deepEqual(await page.evaluate(shown), ['-', '-', 'open', '-', '-']);
+  await page.evaluate(() => window.chatPart('#run-k-r7 .run-toggle').focus());
+  await page.press('Enter');
+  await page.until(() => window.chatPart('#run-k-r7').hasAttribute('data-open'));
   assert.match(
-    await page.evaluate(() => window.chatPart('#run-k-r7 pre.input').textContent),
+    await page.evaluate(() => window.chatPart('#detail-k-r7 pre.input').textContent),
     /^\$ npx vitest run src\/lib\/units\.test\.ts$/
   );
-  assert.deepEqual(
-    await page.evaluate(() => {
-      const card = window.chatPart('#run-k-r7');
-      return [
-        card.localName,
-        card.getAttribute('role'),
-        card.getAttribute('aria-label'),
-        card.querySelectorAll('summary, .chevron, .chip, .title, .state').length,
-        card.textContent.includes('bash'),
-      ];
-    }),
-    ['div', 'region', 'Run the unit tests, Failed', 0, false]
-  );
   await page.press(' ');
-  await page.until(
-    () => window.chatPart('[data-target=k-r7]').getAttribute('aria-expanded') === 'false'
-  );
-  await page.press('Tab');
-  await page.press('Tab');
-  await page.press('Tab');
-  assert.equal(await page.evaluate(focused), 'open-cluster');
-  await page.evaluate(() => {
-    window.everyRun = () =>
-      window
-        .chatPart()
-        .shadowRoot.querySelectorAll('[data-id=k-m8] slicc-tool-runs')[1]
-        .querySelector('[data-action=open-cluster]')
-        .getAttribute('aria-expanded');
-  });
-  await page.press('Enter');
-  await page.until(() => window.everyRun() === 'true');
-  assert.deepEqual(await page.evaluate(shown), ['open', 'open', 'open', 'open', 'open']);
-  await page.press(' ');
-  await page.until(() => window.everyRun() === 'false');
-  assert.deepEqual(await page.evaluate(shown), ['-', '-', '-', '-', '-']);
-  await page.until(() =>
-    [
-      ...window.chatPart().shadowRoot.querySelectorAll('[data-id=k-m8] slicc-tool-runs .label'),
-    ].every((label) => label.textContent)
-  );
-  assert.deepEqual(
-    await page.evaluate(() =>
-      [
-        ...window.chatPart().shadowRoot.querySelectorAll('[data-id=k-m8] slicc-tool-runs .strip'),
-      ].map((strip) => [strip.title, strip.querySelector('.label').textContent])
-    ),
-    [
-      ['3 commands, 1 read. Done', 'Compare the docs with the live API'],
-      [
-        '4 commands, 1 edit. Running, 1 failed, 1 cancelled',
-        'Move the forecast docs to Celsius, then build and test the site',
-      ],
-    ]
-  );
-
-  await page.evaluate(() => window.chatPart('[data-id=k-tool2] details.run > summary').focus());
-  await page.press('Enter');
-  await page.until(() => window.chatPart('[data-id=k-tool2] details.run').open === true);
-  assert.equal(
-    await page.evaluate(() =>
-      window.chatPart('[data-id=k-tool2] details.run > summary').getAttribute('aria-label')
-    ),
-    'Check the preview port, Done'
-  );
-  assert.equal(
-    await page.evaluate(
-      () =>
-        window
-          .chatPart('[data-id=k-tool2] details.run > summary')
-          .querySelectorAll('.chevron, .name').length
-    ),
-    0
-  );
-  await page.press(' ');
-  await page.until(() => window.chatPart('[data-id=k-tool2] details.run').open === false);
-
-  const motion = () => {
-    const chip = window.chatPart('[data-target=k-r9] .chip');
-    const face = getComputedStyle(chip.querySelector('.face'));
-    return [face.animationName, getComputedStyle(chip).outlineStyle];
-  };
-  assert.deepEqual(await page.evaluate(motion), ['run-pulse', 'none']);
-  await page.send('Emulation.setEmulatedMedia', {
-    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
-  });
-  assert.deepEqual(await page.evaluate(motion), ['none', 'dashed']);
-  await page.send('Emulation.setEmulatedMedia', { features: [] });
+  await page.until(() => !window.chatPart('#run-k-r7').hasAttribute('data-open'));
   assert.deepEqual(page.errors, []);
 });
 
-test('a growing run keeps its place, shows its newest five runs and its label, and stacks on a narrow panel', async (t) => {
+test('a growing status keeps one header row while runs join, and ends on the run’s label', async (t) => {
   const page = await open(t, { delay: '30' });
   const viewport = (width) =>
     page.send('Emulation.setDeviceMetricsOverride', {
@@ -2354,21 +2287,23 @@ test('a growing run keeps its place, shows its newest five runs and its label, a
   t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
   await viewport(1280);
   await page.evaluate(() => window.model.agent.select('cone-harbor'));
-  await page.until(() => !!window.chatPart('.runs[data-runs=cluster]'));
+  await page.until(() => !!window.chatPart('swc-response-status'));
   await page.evaluate(() => {
     window.growth = [];
+    window.header = () => {
+      const status = window.chatPart(
+        'swc-conversation-turn.assistant:last-of-type swc-response-status'
+      );
+      return status ? Math.round(status.getBoundingClientRect().height) : null;
+    };
     const record = () => {
-      const turn = window
-        .chatPart()
-        .shadowRoot.querySelector('swc-conversation-turn.assistant[data-status]:last-of-type');
-      const runs = turn?.querySelector('.runs[data-runs=cluster]');
-      if (runs) {
-        const box = runs.querySelector('.strip').getBoundingClientRect();
+      const status = window.chatPart(
+        'swc-conversation-turn.assistant:last-of-type swc-response-status'
+      );
+      if (status) {
         const entry = [
-          runs.querySelectorAll('.icons > .run').length,
-          Math.round(box.left),
-          Math.round(box.width),
-          Math.round(box.height),
+          status.querySelectorAll('swc-response-status-step').length,
+          window.header(),
         ].join(' ');
         if (window.growth.at(-1) !== entry) window.growth.push(entry);
       }
@@ -2381,83 +2316,39 @@ test('a growing run keeps its place, shows its newest five runs and its label, a
     () =>
       window
         .chatPart('swc-conversation-turn.assistant:last-of-type')
-        ?.querySelectorAll('.runs[data-runs=cluster] .icons > .run[data-status=done]').length === 7
+        ?.querySelectorAll('swc-response-status-step[data-status=done]').length === 7
+  );
+  await page.until(
+    () =>
+      window.chatPart('swc-conversation-turn.assistant:last-of-type slicc-status-label')
+        ?.textContent === 'Find why Celsius requests get Fahrenheit'
   );
   const growth = await page.evaluate(() => {
     cancelAnimationFrame(window.growing);
     return window.growth;
   });
-  assert.deepEqual(
-    growth.map((entry) => entry.split(' ')[0]),
-    ['3', '4', '5', '6', '7']
-  );
-  assert.equal(new Set(growth.map((entry) => entry.split(' ').slice(1).join(' '))).size, 1);
-  await page.until(
-    () =>
-      window.chatPart('swc-conversation-turn.assistant:last-of-type .runs .strip > .label')
-        ?.textContent === 'Find why Celsius requests get Fahrenheit'
-  );
-  const geometry = () => {
-    const runs = window.chatPart('swc-conversation-turn.assistant:last-of-type .runs');
-    const strip = runs.querySelector('.strip').getBoundingClientRect();
-    const icons = runs.querySelector('.icons');
-    const box = icons.getBoundingClientRect();
-    const label = runs.querySelector('.label').getBoundingClientRect();
-    const buttons = [...icons.children].map((button) => button.getBoundingClientRect());
-    const shown = buttons.filter((b) => b.right > box.left + 1 && b.left < box.right - 1);
-    return {
-      shown: shown.length,
-      whole: shown.every((b) => b.left >= box.left - 0.5 && b.right <= box.right + 0.5),
-      newest: buttons.at(-1).right <= box.right + 0.5,
-      start: Math.round(box.left - strip.left),
-      end: Math.round(strip.right - label.right),
-      stacked: label.top >= box.bottom,
-      margins: Math.round(
-        strip.left - runs.parentElement.parentElement.getBoundingClientRect().left
-      ),
-    };
-  };
-  const wide = await page.evaluate(geometry);
-  assert.deepEqual(
-    [wide.shown, wide.whole, wide.newest, wide.stacked],
-    [5, true, true, false],
-    JSON.stringify(wide)
-  );
-  assert.ok(wide.start < 8 && wide.end < 16, JSON.stringify(wide));
-  await page.evaluate(() =>
-    window
-      .chatPart('swc-conversation-turn.assistant:last-of-type .runs .icons > .run:last-child')
-      .click()
-  );
-  const edges = () => {
-    const runs = window.chatPart('swc-conversation-turn.assistant:last-of-type .runs');
-    const strip = runs.querySelector('.strip').getBoundingClientRect();
-    const input = runs
-      .querySelector('.cards > .slot:not([hidden]) pre.input')
-      .getBoundingClientRect();
-    return [strip.left - input.left, strip.right - input.right].map(Math.round);
-  };
-  assert.deepEqual(await page.evaluate(edges), [0, 0]);
-  await shot(page, 'tool-runs-growing');
+  const counts = [...new Set(growth.map((entry) => entry.split(' ')[0]))];
+  assert.deepEqual(counts.slice(-7), ['1', '2', '3', '4', '5', '6', '7']);
+  const heights = new Set(growth.map((entry) => entry.split(' ')[1]).filter((h) => h !== '0'));
+  assert.equal(heights.size, 1, JSON.stringify(growth));
+  const wide = await page.evaluate(() => window.header());
+  assert.equal(String(wide), [...heights][0]);
+  await shot(page, 'tool-steps-growing');
 
   await viewport(420);
   await page.until(() => window.app.getAttribute('screen') === 'phone');
   await page.until(
-    () => !!window.chatPart('swc-conversation-turn.assistant:last-of-type .runs .strip > .label')
+    () =>
+      window.chatPart('swc-conversation-turn.assistant:last-of-type slicc-status-label')
+        ?.textContent === 'Find why Celsius requests get Fahrenheit'
   );
-  const narrow = await page.evaluate(geometry);
-  assert.deepEqual(
-    [narrow.shown, narrow.whole, narrow.newest, narrow.stacked],
-    [7, true, true, true],
-    JSON.stringify(narrow)
-  );
-  assert.deepEqual(await page.evaluate(edges), [0, 0]);
+  assert.equal(await page.evaluate(() => window.header()), wide);
   await page.evaluate(() =>
     window
-      .chatPart('swc-conversation-turn.assistant:last-of-type .runs')
+      .chatPart('swc-conversation-turn.assistant:last-of-type swc-response-status')
       .scrollIntoView({ block: 'center' })
   );
-  await shot(page, 'tool-runs-phone');
+  await shot(page, 'tool-steps-phone');
   assert.deepEqual(page.errors, []);
 });
 
@@ -2481,7 +2372,8 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
       steered: count('.message.user[data-mode=steer]'),
       assistant: count('.message.assistant'),
       tool: count('.message.tool-message'),
-      cluster: count('.runs[data-runs=cluster]'),
+      statuses: count('swc-response-status'),
+      steps: count('swc-response-status-step[id^="run-"]'),
       markers: count('.marker'),
       errors: count('.error-card'),
       notices: count('.notice'),
@@ -2510,7 +2402,8 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     steered: 1,
     assistant: 8,
     tool: 1,
-    cluster: 3,
+    statuses: 4,
+    steps: 27,
     markers: 3,
     errors: 3,
     notices: 1,
@@ -7722,8 +7615,8 @@ test('the composer floats clear of the log, describes its keys and shows what yo
   await page.until(() => !window.model.agent.busy('cone-sliccy'));
 
   for (const [prompt, icons] of [
-    ['Add a Kelvin helper', ['aiLogo', 'page', 'pencil', 'aiLogo']],
-    ['Run the tests', ['aiLogo', 'hourglass', 'aiLogo']],
+    ['Add a Kelvin helper', ['page', 'pencil', 'aiLogo']],
+    ['Run the tests', ['hourglass', 'aiLogo']],
     ['Open the docs', ['eye', 'aiLogo']],
   ]) {
     await page.evaluate((text) => {
@@ -7741,14 +7634,14 @@ test('the composer floats clear of the log, describes its keys and shows what yo
     const composer = chat.shadowRoot.querySelector('slicc-composer');
     const frame = () =>
       new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const strips = [...log.querySelectorAll('summary')];
+    const strips = [...log.querySelectorAll('swc-response-status')];
     const target = strips[Math.floor(strips.length / 2)];
     log.scrollTop = 0;
     await frame();
     log.scrollTop += target.getBoundingClientRect().top - composer.getBoundingClientRect().top + 4;
     await frame();
     const hidden = target.getBoundingClientRect().bottom > composer.getBoundingClientRect().top;
-    target.focus();
+    target.shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button').focus();
     await frame();
     return {
       strips: strips.length,

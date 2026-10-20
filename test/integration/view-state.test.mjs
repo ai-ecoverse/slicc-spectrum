@@ -226,10 +226,13 @@ const panels = [
       window.part('chat:cone-kitchen', '[data-action=open-run][data-target=k-r7]').click();
       return true;
     },
-    held: () =>
-      window
-        .part('chat:cone-kitchen', '[data-action=open-run][data-target=k-r7]')
-        ?.getAttribute('aria-expanded') === 'true',
+    held: () => {
+      const step = window.part('chat:cone-kitchen', '[data-action=open-run][data-target=k-r7]');
+      return (
+        !!step?.hasAttribute('data-open') &&
+        step.closest('[data-action=open-cluster]')?.open === true
+      );
+    },
   },
   {
     name: 'an expanded address in Browser',
