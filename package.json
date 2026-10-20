@@ -107,7 +107,7 @@
     "esbuild": "0.28.2",
     "happy-dom": "20.14.6",
     "lefthook": "2.2.1",
-    "lucide": "1.55.0",
+    "lucide": "1.56.0",
     "mdast-util-from-markdown": "2.1.0",
     "mdast-util-gfm-autolink-literal": "2.0.1",
     "mdast-util-gfm-strikethrough": "2.0.1",
