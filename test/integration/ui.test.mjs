@@ -2326,15 +2326,44 @@ test('256 and truecolor output keeps 4.5:1 on tinted backgrounds in light and da
     const chat = document.createElement('slicc-chat');
     chat.model = window.model;
     document.body.append(chat);
-    await chat.updateComplete;
-    const span = [...chat.shadowRoot.querySelectorAll('pre.output span')].find(
-      (node) => node.textContent === 'slate'
-    );
-    const style = span?.getAttribute('style');
+    const added = [];
+    const watch = new MutationObserver((records) => {
+      for (const record of records) added.push(...record.addedNodes);
+    });
+    watch.observe(chat.shadowRoot, { childList: true });
+    const settle = async () => {
+      await chat.updateComplete;
+      for (const record of watch.takeRecords()) added.push(...record.addedNodes);
+      return added.filter(
+        (node) => node.localName === 'div' && node.matches('.call.run-detail:not([id])')
+      ).length;
+    };
+    const style = () =>
+      [...chat.shadowRoot.querySelectorAll('pre.output span')]
+        .find((node) => node.textContent === 'slate')
+        ?.getAttribute('style');
+    const probes = [await settle()];
+    const styles = [style()];
+    for (let i = 0; i < 3; i++) {
+      chat.requestUpdate();
+      await settle();
+    }
+    probes.push(await settle());
+    window.model.settings.update({ color: 'light' });
+    probes.push(await settle());
+    styles.push(style());
     chat.remove();
-    return style;
+    document.body.append(chat);
+    probes.push(await settle());
+    styles.push(style());
+    watch.disconnect();
+    chat.remove();
+    return { probes, styles };
   });
-  assert.equal(bare, 'color: rgb(20, 20, 20)');
+  assert.deepEqual(bare, {
+    probes: [2, 2, 4, 6],
+    styles: ['color: rgb(20, 20, 20)', 'color: rgb(20, 20, 20)', 'color: rgb(20, 20, 20)'],
+  });
   assert.deepEqual(page.errors, []);
 });
 
