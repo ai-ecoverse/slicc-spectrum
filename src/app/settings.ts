@@ -393,7 +393,11 @@ export class SliccSettings extends ThemedElement {
       }
       .other-way {
         justify-self: start;
-        --swc-action-button-edge-to-text: 0;
+        padding: 0;
+        border: 0;
+        background: none;
+        font-size: var(--swc-font-size-75);
+        cursor: pointer;
       }
       .add {
         margin-block-start: var(--swc-spacing-200);
@@ -946,13 +950,12 @@ export class SliccSettings extends ThemedElement {
     if (!dual(account) || account.status === 'connected' || this.#signingIn(account))
       return nothing;
     const entering = this.entering === account.id;
-    return html`<swc-action-button
-      class="other-way"
-      size="m"
-      quiet
+    return html`<button
+      type="button"
+      class="swc-Link swc-Link--standalone swc-Link--quiet other-way"
       data-action=${entering ? 'use-sign-in' : 'use-key'}
       @click=${() => (entering ? this.#useSignIn(account) : this.#enter(account))}
-    >${entering ? 'Sign in instead' : 'Use an API key instead'}</swc-action-button>`;
+    >${entering ? 'Sign in instead' : 'Use an API key instead'}</button>`;
   }
 
   #enter(account: Account): void {

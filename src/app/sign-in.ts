@@ -105,13 +105,14 @@ const copyLabels: Record<Copied, string> = { done: 'Copied', failed: 'Couldn’t
 function codeBlock(
   code: string,
   copied: Copied | undefined,
-  copy: (code: string) => void
+  copy: (code: string) => void,
+  size: 's' | 'm'
 ): TemplateResult {
   const label = copied ? copyLabels[copied] : 'Copy';
   return html`<p class="enter">Enter this code on the sign-in page:</p>
     <div class="code-row">
       <span class="code" data-id="sign-in-code">${code}</span>
-      <swc-action-button size="m" quiet data-action="copy-sign-in-code" accessible-label=${copied ? label : 'Copy the code'} @click=${() => copy(code)}><swc-icon-copy slot="icon"></swc-icon-copy>${label}</swc-action-button>
+      <swc-action-button size=${size} quiet data-action="copy-sign-in-code" accessible-label=${copied ? label : 'Copy the code'} @click=${() => copy(code)}><swc-icon-copy slot="icon"></swc-icon-copy>${label}</swc-action-button>
       <span class="sr" role="status">${copied ? label : ''}</span>
     </div>`;
 }
@@ -120,11 +121,12 @@ export function signInDetails(
   id: string,
   signIn: AccountSignIn | undefined,
   copied: Copied | undefined,
-  copy: (code: string) => void
+  copy: (code: string) => void,
+  size: 's' | 'm' = 'm'
 ): TemplateResult | typeof nothing {
   if (!(signIn?.code || signIn?.url)) return nothing;
   return html`<div class="sign-in" data-sign-in>
-    ${signIn.code ? codeBlock(signIn.code, copied, copy) : nothing}
+    ${signIn.code ? codeBlock(signIn.code, copied, copy, size) : nothing}
     ${pageLink(signIn.url, signInPage(id, signIn.url))}
   </div>`;
 }

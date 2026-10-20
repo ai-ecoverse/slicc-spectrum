@@ -185,6 +185,33 @@ test('a URL-only sign-in on its known host shows only the link', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
+test('a failed copy reads Couldn’t copy, on the button and in the status', async (t) => {
+  const page = await open(t, { providers: 'all', delay: '200' });
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.clipboard, 'writeText', {
+      configurable: true,
+      value: async () => {
+        throw new Error('denied');
+      },
+    });
+    return true;
+  });
+  await addCodex(page);
+  await click(page, 'settings', `${step} [data-action=copy-sign-in-code]`);
+  await page.until((step) => window.signIn('settings', step).copyText === 'Couldn’t copy', step);
+  assert.deepEqual(
+    await page.evaluate(
+      (step) => [
+        window.signIn('settings', step).copy,
+        window.settingsPart(`${step} [data-sign-in] [role=status]`).textContent,
+      ],
+      step
+    ),
+    ['Couldn’t copy', 'Couldn’t copy']
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a lookalike host shows no link: the warning and the full address as text, and the code stays', async (t) => {
   const page = await open(t, { providers: 'all', login: 'lookalike', delay: '200' });
   await addCodex(page);
@@ -348,7 +375,14 @@ async function dualPage(t, params = {}) {
     window.calls = [];
     const port = window.model.settings;
     const connect = port.connect.bind(port);
+    window.held = null;
     port.connect = (...args) => {
+      if (window.hold && args[3]?.method === 'key') {
+        window.calls.push({ call: 'held', options: args[3] });
+        return new Promise((resolve, reject) => {
+          window.held = () => connect(...args).then(resolve, reject);
+        });
+      }
       window.calls.push({
         call: 'connect',
         args: args.length,
@@ -446,6 +480,46 @@ test('a dual account takes a key: vault.put first, then connect with method key'
       'Not connected'
   );
   assert.equal(await page.evaluate(record), 'removed');
+  assert.deepEqual(page.errors, []);
+});
+
+test('a dual account never reads Signing in while its key connect is pending', async (t) => {
+  const page = await dualPage(t);
+  await page.evaluate(() => {
+    window.hold = true;
+    return true;
+  });
+  await click(page, 'settings', '.account[data-id=lumen] + .notes [data-action=use-key]');
+  await page.until(
+    () =>
+      window.settingsPart('form.key[data-id=lumen] input[data-field=value]') ===
+      window.inner().activeElement
+  );
+  await page.type('lumen-sample-0042');
+  await page.press('Enter');
+  await page.until(() => typeof window.held === 'function');
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const row = window.settingsPart('.account[data-id=lumen]');
+      return [
+        row.querySelector('swc-status-light').textContent,
+        row.querySelector('[data-action=connect]')?.hasAttribute('pending') ?? false,
+        !!window.settingsPart('[data-signing]'),
+        !!window.settingsPart('.account[data-id=lumen] [data-action=cancel-sign-in]'),
+        window.settingsPart('form.key[data-id=lumen] [data-action=save]').hasAttribute('pending'),
+      ];
+    }),
+    ['Not connected', false, false, false, true]
+  );
+  await page.evaluate(() => {
+    window.held();
+    return true;
+  });
+  await page.until(
+    () =>
+      window.settingsPart('.account[data-id=lumen] swc-status-light')?.textContent === 'Connected'
+  );
   assert.deepEqual(page.errors, []);
 });
 
