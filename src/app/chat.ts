@@ -389,7 +389,9 @@ export class SliccChat extends ThemedElement {
         display: inline-flex;
       }
       .asks[data-open] .decision-turn:not([data-detail]) .command {
-        display: none;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
       }
       .asks[data-open] .decision-turn:not([data-detail]) .decision-text {
         overflow: hidden;

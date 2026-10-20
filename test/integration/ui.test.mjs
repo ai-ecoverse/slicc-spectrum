@@ -3043,6 +3043,27 @@ test('scoop-notify licks read in plain language, expand to the report and open i
 
 async function asks(page) {
   await page.evaluate(() => {
+    window.commandLine = (card) => {
+      const command = card.querySelector('.command');
+      if (!command) return 'none';
+      const root = window.chatPart().shadowRoot;
+      const box = command.getBoundingClientRect();
+      const turn = card.getBoundingClientRect();
+      const view = root.querySelector('.asks').getBoundingClientRect();
+      const style = getComputedStyle(command);
+      return {
+        shown:
+          box.width > 0 &&
+          box.height > 0 &&
+          box.top >= turn.top &&
+          box.bottom <= turn.bottom &&
+          box.top >= view.top &&
+          box.bottom <= view.bottom,
+        mono: /monospace/.test(style.fontFamily),
+        line: Math.round(box.height) <= Math.ceil(Number.parseFloat(style.lineHeight)) + 20,
+        detail: card.querySelector('.decision-turn').hasAttribute('data-detail'),
+      };
+    };
     window.askLayout = () => {
       const root = window.chatPart().shadowRoot;
       const log = root.querySelector('.log');
@@ -3167,6 +3188,18 @@ for (const [width, height] of [
     assert.equal(all.stacked, false);
     assert.deepEqual(all.blocked, []);
     assert.ok(all.controls >= 6, JSON.stringify(all));
+    assert.deepEqual(
+      await page.evaluate(() =>
+        [...window.chatPart().shadowRoot.querySelectorAll('.asks[data-open] .ask')].map((card) => [
+          card.querySelector('.decision-turn').dataset.id,
+          window.commandLine(card),
+        ])
+      ),
+      [
+        ['k-q3', 'none'],
+        ['k-l17', { shown: true, mono: true, line: true, detail: false }],
+      ]
+    );
     await page.evaluate(() => {
       window.chatPart('[data-action=show-waiting]').focus();
       return true;
@@ -3245,6 +3278,7 @@ test('four open asks at 420 fade at the cut edge while more is below, and Tab sc
   await page.until(() => document.querySelector('slicc-app').screen === 'phone');
   await page.evaluate(() => window.model.agent.select('cone-kitchen'));
   await page.until(() => !!window.chatPart('.decision-turn[data-id=k-l17] [data-action=allow]'));
+  await asks(page);
   const [tag, late] = await page.evaluate(() => {
     const agent = window.model.agent;
     const ids = [];
@@ -3292,13 +3326,20 @@ test('four open asks at 420 fade at the cut edge while more is below, and Tab sc
         card.querySelector('.decision-turn').dataset.id,
         active.dataset.action ?? 'card',
         box.top >= view.top - 1 && box.bottom <= view.bottom + 1,
+        active.dataset.action === 'allow' ? window.commandLine(card) : null,
       ];
     });
     if (!step) break;
     seen.push(step);
   }
   assert.deepEqual(
-    seen.filter(([, action]) => ['allow', 'deny', 'answer'].includes(action)),
+    seen.filter(([, action]) => action === 'allow').map(([id, , , command]) => [id, command]),
+    ['k-l17', tag, late].map((id) => [id, { shown: true, mono: true, line: true, detail: false }])
+  );
+  assert.deepEqual(
+    seen
+      .filter(([, action]) => ['allow', 'deny', 'answer'].includes(action))
+      .map((step) => step.slice(0, 3)),
     [
       ['k-q3', 'answer', true],
       ['k-q3', 'answer', true],
