@@ -1,4 +1,4 @@
-import type { Account, AgentHold, SecretView, SliccModel } from '../model/types.ts';
+import type { Account, AgentHold, Message, SecretView, SliccModel } from '../model/types.ts';
 import { DummyAgent } from './agent.ts';
 import { type ApprovalScenario, DummyApprovals } from './approvals.ts';
 import { type BrowserScenario, browserHistory, DummyBrowser, drive } from './browser.ts';
@@ -21,7 +21,7 @@ import {
 } from './network.ts';
 import { DummyNotices, type NoticeScenario, readOnlyText, startingText } from './notices.ts';
 import { providerAccounts, providerFixtures } from './providers.ts';
-import { DummySettings, type DummyTransport } from './settings.ts';
+import { type DummyLogin, DummySettings, type DummyTransport } from './settings.ts';
 import { longAsk } from './showcase.ts';
 import { DummySprinkles } from './sprinkles.ts';
 import { DummyTabs, type TabsScenario } from './tabs.ts';
@@ -56,7 +56,7 @@ export interface DummyOptions {
   follow?: FollowScenario | 'off';
   vault?: VaultScenario | 'off';
   guests?: GuestsScenario | 'off';
-  accounts?: 'settings' | 'vault';
+  accounts?: 'settings' | 'vault' | 'dual';
   providers?: 'connected' | 'none' | 'all';
   mcp?: 'moved';
   transport?: DummyTransport;
@@ -67,7 +67,7 @@ export interface DummyOptions {
   sprinkles?: 'builtin' | 'cones';
   monitor?: 'dummy' | 'agent';
   import?: ImportScenario | 'off';
-  login?: 'ok' | 'fail';
+  login?: DummyLogin;
 }
 
 export interface DummyModel extends SliccModel {
@@ -94,8 +94,31 @@ export function vaultAccounts(accounts: readonly Account[]): Account[] {
 export const docsUrl = 'https://docs.example/mcp';
 export const movedDocs = 'https://docs.eu.example/mcp';
 
+function hinted(login?: DummyLogin): boolean {
+  return login === 'code' || login === 'url' || login === 'lookalike';
+}
+
+function signInChat(
+  conversations: Record<string, Message[]>,
+  login?: DummyLogin
+): Record<string, Message[]> {
+  if (!hinted(login)) return conversations;
+  return {
+    ...conversations,
+    'cone-kitchen': conversations['cone-kitchen'].map((message) =>
+      message.id === 'k-s3'
+        ? {
+            ...message,
+            account: 'openai-codex',
+            text: 'The OpenAI Codex session expired. Log in again to continue.',
+          }
+        : message
+    ),
+  };
+}
+
 function settingsAccounts(
-  accounts: 'settings' | 'vault',
+  accounts: 'settings' | 'vault' | 'dual',
   providers: 'connected' | 'none' | 'all',
   transport?: DummyTransport,
   mcp?: 'moved'
@@ -106,11 +129,17 @@ function settingsAccounts(
 }
 
 function listedAccounts(
-  accounts: 'settings' | 'vault',
+  accounts: 'settings' | 'vault' | 'dual',
   providers: 'connected' | 'none' | 'all',
   transport?: DummyTransport
 ): Account[] {
-  const all = accounts === 'vault' ? vaultAccounts(fixtures.accounts) : fixtures.accounts;
+  const all =
+    accounts === 'settings'
+      ? fixtures.accounts
+      : [
+          ...vaultAccounts(fixtures.accounts),
+          ...(accounts === 'dual' ? [fixtures.dualAccount] : []),
+        ];
   if (providers === 'all') return providerAccounts(all, transport === 'none' ? 'none' : undefined);
   return all.map((account) =>
     providers === 'none' && account.group !== 'mcp'
@@ -119,8 +148,8 @@ function listedAccounts(
   );
 }
 
-function vaultRecords(accounts: 'settings' | 'vault', mcp?: 'moved'): SecretView[] {
-  if (accounts !== 'vault') return [];
+function vaultRecords(accounts: 'settings' | 'vault' | 'dual', mcp?: 'moved'): SecretView[] {
+  if (accounts === 'settings') return [];
   return accountRecords(Date.now(), mcp === 'moved' ? docsUrl : undefined);
 }
 
@@ -196,14 +225,10 @@ export function createDummyModel({
     history: browserHistory(scenario),
     controlled: scenario === 'driving' ? ['tab-preview', 'tab-pull'] : [],
   });
+  const chats = signInChat(fixtures.conversations, login);
   const agent = new DummyAgent(
     fixtures.agents,
-    asks === 'long'
-      ? {
-          ...fixtures.conversations,
-          'cone-kitchen': [...fixtures.conversations['cone-kitchen'], longAsk()],
-        }
-      : fixtures.conversations,
+    asks === 'long' ? { ...chats, 'cone-kitchen': [...chats['cone-kitchen'], longAsk()] } : chats,
     { files, browser },
     time,
     fixtures.queues,
@@ -226,7 +251,10 @@ export function createDummyModel({
     settings: new DummySettings(
       fixtures.defaults,
       providers === 'none' ? [...fixtures.models, ...fixtures.laterModels] : fixtures.models,
-      settingsAccounts(accounts, providers, transport, mcp),
+      [
+        ...settingsAccounts(accounts, providers, transport, mcp),
+        ...(hinted(login) ? [fixtures.codexAccount] : []),
+      ],
       storage,
       time,
       undefined,

@@ -1,5 +1,6 @@
 import type {
   Account,
+  AccountSignIn,
   Agent,
   BrowserTab,
   Change,
@@ -428,6 +429,44 @@ export const accounts: Account[] = [
     group: 'mcp',
   },
 ];
+
+export const dualAccount: Account = {
+  id: 'lumen',
+  provider: 'Lumen AI',
+  identity: '',
+  status: 'disconnected',
+  auth: 'oauth',
+  secret: 'api-key',
+  store: 'vault',
+  keyUrl: 'https://console.lumen.example/keys',
+  vaultName: 'LUMEN_API_KEY',
+};
+
+export const codexAccount: Account = {
+  id: 'openai-codex',
+  provider: 'OpenAI Codex',
+  identity: 'harbor-ops@example.com',
+  status: 'expired',
+  auth: 'oauth',
+};
+
+export const deviceSignIn: AccountSignIn = {
+  url: 'https://auth.openai.com/codex/device',
+  code: 'WDJB-MJHT',
+};
+
+export const pageSignIn: AccountSignIn = {
+  url: 'https://auth.openai.com/oauth/authorize?client_id=slicc-dummy&response_type=code&state=7f3a',
+};
+
+export const lookalikeSignIn: AccountSignIn = {
+  url: 'https://auth.openai.com.example.net/device',
+  code: 'WDJB-MJHT',
+};
+
+export const signIns: ReadonlyMap<string, AccountSignIn> = new Map([
+  ['openai-codex', deviceSignIn],
+]);
 
 export const agents: Agent[] = [
   {
