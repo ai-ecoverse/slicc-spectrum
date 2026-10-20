@@ -334,7 +334,7 @@ export class SliccSettings extends ThemedElement {
       }
       .sign-in .enter,
       .sign-in .unknown,
-      .sign-in .page,
+      .sign-in .address,
       .sign-in .swc-Link {
         font-size: var(--swc-font-size-75);
       }

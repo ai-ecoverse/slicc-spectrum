@@ -3,6 +3,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-copy.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { AccountSignIn } from '../model/types.ts';
+import { breakable } from './reach.ts';
 
 export const continuing = 'Continue in the sign-in window that opened.';
 export const closed = 'Closed the sign-in window? Cancel, then Log in again.';
@@ -96,7 +97,7 @@ function pageLink(url: string, known: string | null): TemplateResult | typeof no
     return html`<a class="swc-Link swc-Link--standalone swc-Link--quiet" href=${known} target="_blank" rel="noopener noreferrer" data-action="open-sign-in">Open the sign-in page</a>`;
   if (!url) return nothing;
   return html`<p class="unknown" data-id="sign-in-unknown"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${unknownPage}</span></p>
-    <span class="page" data-id="sign-in-url">${url}</span>`;
+    <span class="address" data-id="sign-in-url">${breakable(url)}</span>`;
 }
 
 const copyLabels: Record<Copied, string> = { done: 'Copied', failed: 'Couldn’t copy' };
@@ -155,7 +156,7 @@ export const signInCss = css`
     flex: none;
     margin-block-start: var(--swc-spacing-50);
   }
-  .sign-in .page {
+  .sign-in .address {
     font-family: var(--swc-code-font-family-stack);
     color: var(--swc-neutral-content-color-default);
     overflow-wrap: anywhere;
