@@ -50,8 +50,16 @@ async function click(page, surface, selector) {
       if (!target || target.disabled) return false;
       target.scrollIntoView({ block: 'center' });
       const box = target.getBoundingClientRect();
-      window.point = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-      return box.width > 0;
+      const [x, y] = [box.left + box.width / 2, box.top + box.height / 2];
+      let node = document.elementFromPoint(x, y);
+      while (node?.shadowRoot && node !== target) {
+        const inner = node.shadowRoot.elementFromPoint(x, y);
+        if (!inner || inner === node) break;
+        node = inner;
+      }
+      const hit = node === target || target.contains(node) || target.shadowRoot?.contains(node);
+      window.point = { x, y };
+      return box.width > 0 && hit;
     },
     [surface, selector]
   );
@@ -237,6 +245,11 @@ test('the expired-session card shows the device code while signing in, and drops
   const card = '.error-card[data-id="k-s3"]';
   await page.evaluate(() => window.model.agent.select('cone-kitchen'));
   await page.until((card) => !!window.chatPart(`${card} [data-action=login]`), card);
+  await page.evaluate((card) => {
+    window.chatPart(card).scrollIntoView({ block: 'center' });
+    return true;
+  }, card);
+  await new Promise((resolve) => setTimeout(resolve, 200));
   await click(page, 'chat', `${card} [data-action=login]`);
   await page.until((card) => window.signIn('chat', card).shown, card);
   assert.deepEqual(await page.evaluate((card) => window.signIn('chat', card), card), {
