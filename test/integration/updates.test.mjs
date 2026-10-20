@@ -1255,7 +1255,7 @@ test('package rows link their release or npm page, show what’s new after the c
   assert.deepEqual(rows.biome, [
     'npm page',
     'npm page for Biome 2.2.4',
-    'https://www.npmjs.com/package/@harbor/biome-wasm/v/2.2.4',
+    'https://www.npmjs.com/package/@harbor/biome-wasm',
     '_blank',
   ]);
   assert.deepEqual(rows.python, [
@@ -1413,8 +1413,8 @@ async function packagesPage(t, packages, browser = chrome, color = 'light') {
       const row = window.pkg(id);
       return {
         state: row.dataset.state,
-        description: row.querySelector('.description').textContent.trim(),
-        registry: row.querySelector('.description').dataset.registry ?? null,
+        description: row.querySelector('.description')?.textContent.trim() ?? null,
+        registry: row.dataset.registry ?? null,
         light: row.querySelector('swc-status-light')?.textContent.trim() ?? null,
         version: row.querySelector('.meta .version')?.textContent.trim() ?? null,
         buttons: [...row.querySelectorAll('.buttons swc-button')].map(
@@ -1475,14 +1475,31 @@ for (const [name, browser] of [
     if (name === 'narrow') await page.until(() => window.app.screen === 'phone');
     assert.deepEqual(await page.evaluate(() => window.row('git')), {
       state: 'available',
-      description: 'Couldn’t reach npm.',
+      description: null,
       registry: 'unreachable',
       light: null,
       version: null,
       buttons: [],
       withheld: null,
     });
-    assert.deepEqual(await page.evaluate(() => window.row('uv').buttons), ['remove']);
+    assert.deepEqual(await page.evaluate(() => window.row('uv')), {
+      state: 'installed',
+      description: null,
+      registry: 'unreachable',
+      light: 'Installed',
+      version: '0.8.1',
+      buttons: ['remove'],
+      withheld: null,
+    });
+    assert.deepEqual(
+      await page.evaluate(() => [
+        window.pkg('uv', '[data-action=npm-page]').href,
+        window.pkg('uv').textContent.includes('Couldn’t reach npm'),
+        window.updates('[data-section=packages]').textContent.split('Couldn’t reach npm').length -
+          1,
+      ]),
+      ['https://www.npmjs.com/package/@harbor/uv-wasm', false, 1]
+    );
     assert.deepEqual(
       await page.evaluate(() => [
         window.updates('[data-registry=unreachable] .hint').textContent.trim(),
@@ -1568,11 +1585,14 @@ for (const [name, browser] of [
         described: inner.ariaDescribedByElements?.[0] === node,
       };
     });
-    assert.equal(description.text.length, 300);
-    assert.match(
-      description.text,
-      /^Type-checks and compiles \*\*TypeScript\*\* to JavaScript\. See \[the handbook\]\(https:\/\/example\.test\/handbook\) and `tsc --init`, <b>projects<\/b>, _watch mode_ and/
+    assert.equal(description.text.length <= 300, true);
+    assert.equal(
+      description.text.startsWith(
+        'Type-checks and compiles TypeScript to JavaScript. See the handbook and tsc --init, projects, watch mode and incremental builds'
+      ),
+      true
     );
+    assert.doesNotMatch(description.text, /[*_`<>[\]]|https?:/);
     assert.doesNotMatch(description.text, /\s{2}/);
     assert.match(description.text, /…$/);
     assert.deepEqual(
@@ -1616,8 +1636,23 @@ for (const [name, browser] of [
       light: 'Installed',
       version: '2.2.4',
       buttons: ['remove'],
-      withheld: 'Not offered: version 2.3.0 needs slicc-kernel 1.48.0 or newer.',
+      withheld: null,
     });
+    assert.deepEqual(
+      await page.evaluate(() => {
+        const link = window.pkg('biome', '[data-action=npm-page]');
+        return [
+          window.pkg('biome', '[data-newer]').textContent,
+          link.href,
+          [...window.pkg('biome').querySelectorAll('a')].map((a) => a.href),
+        ];
+      }),
+      [
+        '2.3.0 isn’t offered yet: needs slicc-kernel 1.48.0 or newer.',
+        'https://www.npmjs.com/package/@harbor/biome-wasm',
+        ['https://www.npmjs.com/package/@harbor/biome-wasm'],
+      ]
+    );
     assert.deepEqual(
       await page.evaluate(() => [
         window.pkg('git', '[data-size]').textContent,

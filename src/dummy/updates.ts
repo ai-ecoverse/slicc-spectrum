@@ -361,10 +361,14 @@ function fromNpm(items: readonly PackageItem[]): PackageItem[] {
     withheld: 'needs slicc-kernel 1.48.0 or newer',
   });
   patch('biome', {
-    state: 'outdated',
-    offered: '2.3.0',
-    actions: ['update', 'remove'],
-    withheld: 'version 2.3.0 needs slicc-kernel 1.48.0 or newer',
+    state: 'installed',
+    offered: '2.2.4',
+    actions: ['remove'],
+    newer: { version: '2.3.0', reason: 'needs slicc-kernel 1.48.0 or newer' },
+  });
+  npm[at('biome')] = Object.assign(npm[at('biome')], {
+    homepage: 'javascript:alert(1)',
+    repository: { type: 'git', url: 'https://evil.example/biome' },
   });
   return npm;
 }

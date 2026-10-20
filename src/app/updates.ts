@@ -201,8 +201,42 @@ function actionLabel(item: PackageItem, action: PackageAction): string {
 
 export const plainLimit = 300;
 
+const entities: Readonly<Record<string, string>> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+};
+
+const decoded = (text: string): string =>
+  text.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (entity, name: string) => {
+    if (name[0] !== '#') return entities[name.toLowerCase()] ?? entity;
+    const hex = /^#x/i.test(name);
+    const code = Number.parseInt(name.slice(hex ? 2 : 1), hex ? 16 : 10);
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : entity;
+  });
+
+export function stripped(text: string): string {
+  const target = String.raw`\(((?:[^()]|\([^()]*\))*)\)`;
+  return decoded(
+    text
+      .replace(/^[ \t]*(?:`{3,}|~{3,}).*$/gm, '')
+      .replace(/^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+[.)][ \t]+)+/gm, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<\/?[a-z][^>]*>/gi, '')
+      .replace(new RegExp(String.raw`!\[([^\]]*)\]${target}`, 'g'), '$1')
+      .replace(new RegExp(String.raw`\[([^\]]*)\]${target}`, 'g'), '$1')
+      .replace(/(`+)([^\n]+?)\1(?!`)/g, '$2')
+      .replace(/(\*\*|__)(?=\S)(.+?)\1/g, '$2')
+      .replace(/\*(?=\S)([^*\n]+?)\*/g, '$1')
+      .replace(/(^|[^\w])_(?=\S)([^_\n]+?)_(?![\w])/g, '$1$2')
+  );
+}
+
 export function plain(text: string, limit = plainLimit): string {
-  const flat = text.replace(/\s+/g, ' ').trim();
+  const flat = stripped(text).replace(/\s+/g, ' ').trim();
   return flat.length > limit ? `${flat.slice(0, limit - 1).trimEnd()}…` : flat;
 }
 
@@ -210,11 +244,6 @@ export function withheldText(reason: string, prefix = 'Not offered'): string {
   const text = plain(reason, 200).replace(/\.$/, '');
   return `${prefix}: ${text}${text.endsWith('…') ? '' : '.'}`;
 }
-
-const registryText = {
-  checking: 'Checking npm…',
-  unreachable: 'Couldn’t reach npm.',
-} as const;
 
 const unreachable = (items: readonly PackageItem[]): boolean =>
   items.some((item) => item.registry === 'unreachable');
@@ -372,6 +401,14 @@ export function whatsNew(
     .map((release) => releaseNotes(release, name));
   return range.some((entry) => entry.body) ? range : [];
 }
+
+export const npmPage = (name: string): string =>
+  `https://www.npmjs.com/package/${name
+    .split('/')
+    .map((part) =>
+      part.startsWith('@') ? `@${encodeURIComponent(part.slice(1))}` : encodeURIComponent(part)
+    )
+    .join('/')}`;
 
 const secure = (url: string) => /^https:\/\//i.test(url);
 
@@ -635,7 +672,7 @@ export class SliccUpdates extends ModelElement {
         -webkit-line-clamp: 2;
         overflow-wrap: anywhere;
       }
-      .description[data-registry],
+      [data-registry] > .description,
       .withheld {
         color: var(--swc-neutral-subdued-content-color-default);
       }
@@ -643,6 +680,9 @@ export class SliccUpdates extends ModelElement {
         font-size: var(--swc-font-size-75);
         line-height: var(--swc-line-height-200);
         overflow-wrap: anywhere;
+      }
+      .rows > li[data-registry='unreachable'] {
+        grid-template-areas: 'name buttons';
       }
       .registry {
         display: flex;
@@ -901,7 +941,7 @@ export class SliccUpdates extends ModelElement {
   protected updated(changed: PropertyValues): void {
     super.updated(changed);
     for (const row of this.renderRoot.querySelectorAll<HTMLElement>('li[data-id]')) {
-      const description = row.querySelector('.description') as Element;
+      const description = row.querySelector('.description');
       for (const button of row.querySelectorAll<HTMLElement & { updateComplete: Promise<unknown> }>(
         '.buttons swc-button'
       ))
@@ -909,7 +949,7 @@ export class SliccUpdates extends ModelElement {
           const inner = button.shadowRoot?.querySelector('button') as
             | (HTMLButtonElement & { ariaDescribedByElements: Element[] })
             | null;
-          if (inner) inner.ariaDescribedByElements = [description];
+          if (inner) inner.ariaDescribedByElements = description ? [description] : [];
         });
     }
   }
@@ -1047,7 +1087,7 @@ export class SliccUpdates extends ModelElement {
       return html`<a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${version} release notes`}>Release notes</a>`;
     }
     if (!npm) return nothing;
-    return html`<a class="swc-Link swc-Link--standalone" href=${`https://www.npmjs.com/package/${npm}/v/${version}`} target="_blank" rel="noopener noreferrer" data-action="npm-page" aria-label=${`npm page for ${label} ${version}`}>npm page</a>`;
+    return html`<a class="swc-Link swc-Link--standalone" href=${npmPage(npm)} target="_blank" rel="noopener noreferrer" data-action="npm-page" aria-label=${`npm page for ${label} ${version}`}>npm page</a>`;
   }
 
   #version(item: UpdateItem, meta: string | null): TemplateResult {
@@ -1155,7 +1195,7 @@ export class SliccUpdates extends ModelElement {
     const shown = busy ? [busy] : act ? actions : [];
     const error = this.problems.get(item.id) ?? item.error;
     const managed = managedText(item);
-    return html`<li data-id=${item.id} data-state=${item.state}>
+    return html`<li data-id=${item.id} data-state=${item.state} data-registry=${item.registry ?? nothing}>
       <div class="name">
         <h3 title=${item.package}>${item.label}</h3>
         ${light ? html`<swc-status-light size="s" variant=${light[0]}>${light[1]}</swc-status-light>` : nothing}
@@ -1171,7 +1211,7 @@ export class SliccUpdates extends ModelElement {
             @click=${() => void this.actPackage(item.id, action)}
           >${packageActions[action]}</swc-button>`
       )}</div>
-      ${item.registry ? html`<p class="description" data-registry=${item.registry}>${registryText[item.registry]}</p>` : html`<p class="description">${plain(item.description)}</p>`}
+      ${item.registry === 'unreachable' ? nothing : html`<p class="description">${item.registry ? 'Checking npm…' : plain(item.description)}</p>`}
       ${item.withheld ? html`<p class="withheld" data-withheld>${withheldText(item.withheld)}</p>` : item.newer ? html`<p class="withheld" data-newer>${withheldText(item.newer.reason, `${item.newer.version} isn’t offered yet`)}</p>` : nothing}
       ${this.#packageMeta(item, all)}
       ${item.notes?.length || managed ? html`<p class="notes" data-notes>${(item.notes ?? []).map((note) => html`<span>${plain(note)}</span>`)}${managed ? html`<span data-managed>${managed}</span>` : nothing}</p>` : nothing}
