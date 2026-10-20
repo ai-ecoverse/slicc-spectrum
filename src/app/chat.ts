@@ -69,6 +69,8 @@ function joins(
       joined.set(anchor.id, {
         calls: [...(before?.calls ?? []), ...calls],
         live: !!before?.live || (message.role === 'assistant' && message.status === 'streaming'),
+        stopped:
+          !!before?.stopped || (message.role === 'assistant' && message.status === 'stopped'),
       });
       for (const call of calls)
         owners.set(call.id, {
@@ -82,7 +84,11 @@ function joins(
     anchor = toolTail(message, showThinking) ? message : null;
   }
   if (anchor && busy)
-    joined.set(anchor.id, { calls: joined.get(anchor.id)?.calls ?? [], live: true });
+    joined.set(anchor.id, {
+      ...joined.get(anchor.id),
+      calls: joined.get(anchor.id)?.calls ?? [],
+      live: true,
+    });
   return { joined, owners, into };
 }
 

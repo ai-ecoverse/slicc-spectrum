@@ -97,6 +97,7 @@ export type RunContext = Pick<Handlers, 'color' | 'model' | 'owners' | 'agentId'
 export interface Joined {
   calls: ToolCall[];
   live: boolean;
+  stopped?: boolean;
 }
 
 export const alone: Joined = { calls: [], live: false };
@@ -435,9 +436,10 @@ function phase(
   status: AssistantMessage['status'],
   calls: readonly ToolCall[],
   live: boolean,
-  said = false
+  said = false,
+  stopped = false
 ): Phase | null {
-  if (status === 'stopped') return 'stopped';
+  if (status === 'stopped' || stopped) return 'stopped';
   if (!calls.length) return status === 'streaming' && !said ? 'active' : null;
   return status === 'streaming' || live ? 'active' : 'complete';
 }
@@ -652,12 +654,11 @@ export function toolTail(message: Message, showThinking: boolean): boolean {
 
 export function toolOnly(message: Message, showThinking: boolean): ToolCall[] | null {
   if (message.role === 'tool') return [message.tool];
-  if (message.role !== 'assistant' || (message.status !== 'done' && message.status !== 'streaming'))
-    return null;
+  if (message.role !== 'assistant') return null;
   if (message.parts.some((entry) => entry.type === 'question')) return null;
   const shown = message.parts.filter((entry) => !silent(entry, showThinking));
   if (shown.some((entry) => entry.type !== 'tool')) return null;
-  if (!shown.length && message.status === 'done') return null;
+  if (!shown.length && message.status !== 'streaming') return null;
   return shown.map((entry) => (entry as Extract<MessagePart, { type: 'tool' }>).tool);
 }
 
@@ -793,7 +794,8 @@ export function assistant(
             message.status,
             calls,
             joined.live,
-            message.parts.some((entry) => entry.type !== 'tool' && !silent(entry, showThinking))
+            message.parts.some((entry) => entry.type !== 'tool' && !silent(entry, showThinking)),
+            joined.stopped
           ),
           message.id,
           calls,
@@ -828,7 +830,7 @@ export function toolMessage(
   owners.set(message.tool.id, { at: message.createdAt, stamp });
   const calls = [message.tool, ...joined.calls];
   return html`<swc-conversation-turn type="system" class="message tool-message" accessible-label=${`Tool ${message.tool.name}`} data-id=${message.id}>
-    <swc-system-message>${status(phase('done', calls, joined.live), message.id, calls, { ...context, owners })}${suggestion && context.suggest ? suggestions(suggestion, context as Pick<Handlers, 'suggest'>) : nothing}</swc-system-message>
+    <swc-system-message>${status(phase('done', calls, joined.live, false, joined.stopped), message.id, calls, { ...context, owners })}${suggestion && context.suggest ? suggestions(suggestion, context as Pick<Handlers, 'suggest'>) : nothing}</swc-system-message>
   </swc-conversation-turn>`;
 }
 

@@ -403,3 +403,79 @@ test('a streaming reply that only asks a question shows it, even right after a r
     true
   );
 });
+
+test('stopping a tool-only reply that joined a run keeps it in that run, which reads as stopped', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    const call = (id, title, status) => ({
+      id,
+      name: 'bash',
+      title,
+      input: title,
+      output: '',
+      status,
+      paths: [],
+    });
+    window.stopJoined = {
+      id: 'stop-follow',
+      role: 'assistant',
+      status: 'streaming',
+      createdAt: now,
+      model: 'claude-opus-5-5',
+      parts: [{ type: 'tool', tool: call('stop-t2', 'wrangler tail --env staging', 'running') }],
+    };
+    const added = [
+      { id: 'stop-user', role: 'user', text: 'Deploy and watch it', createdAt: now },
+      {
+        id: 'stop-run',
+        role: 'assistant',
+        status: 'done',
+        createdAt: now,
+        model: 'claude-opus-5-5',
+        parts: [{ type: 'tool', tool: call('stop-t1', 'wrangler deploy --env staging', 'done') }],
+      },
+      window.stopJoined,
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  await page.until(
+    () =>
+      window
+        .chatPart('swc-conversation-turn[data-id="stop-run"] swc-response-status')
+        ?.querySelectorAll('swc-response-status-step').length === 2
+  );
+  const before = await page.evaluate(() =>
+    Math.round(
+      window.chatPart('swc-conversation-turn[data-id="stop-run"]').getBoundingClientRect().top
+    )
+  );
+  await page.evaluate(() => {
+    window.stopJoined.status = 'stopped';
+    window.stopJoined.parts[0].tool.status = 'cancelled';
+    window.model.agent.emit('message', { agentId: 'cone-sliccy', message: window.stopJoined });
+    return true;
+  });
+  await page.until(
+    () =>
+      window
+        .chatPart('swc-conversation-turn[data-id="stop-run"] swc-response-status')
+        ?.getAttribute('status') === 'stopped'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      own: !!window.chatPart('swc-conversation-turn[data-id="stop-follow"]'),
+      steps: window
+        .chatPart('swc-conversation-turn[data-id="stop-run"] swc-response-status')
+        .querySelectorAll('swc-response-status-step').length,
+      top: Math.round(
+        window.chatPart('swc-conversation-turn[data-id="stop-run"]').getBoundingClientRect().top
+      ),
+    })),
+    { own: false, steps: 2, top: before }
+  );
+});

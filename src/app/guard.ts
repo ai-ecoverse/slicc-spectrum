@@ -25,7 +25,7 @@ const prefixes = [
 ];
 
 const keyed =
-  /(?:[\w-]*(?:token|secret|passw(?:or)?d|pwd|api[_-]?key|access[_-]?key|private[_-]?key|credential|auth(?:orization)?)[\w-]*["']?\s*[:=]\s*|(?:^|\s)--?[\w-]*(?:token|secret|password|api-key|key)\s+|\bbearer\s+)/gi;
+  /(?:(?:[\w-]*(?:token|secret|passw(?:or)?d|pwd|api[_-]?key|access[_-]?key|private[_-]?key|credential)[\w-]*|\b(?:auth|authorization)\b)["']?\s*[:=]\s*|(?:^|\s)--?[\w-]*(?:token|secret|password|api-key|key)\s+|\bbearer\s+)/gi;
 
 const word = /[^\s'"=:,;(){}[\]`]+/g;
 
