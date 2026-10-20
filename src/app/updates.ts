@@ -5,7 +5,7 @@ import '@adobe/spectrum-wc/components/progress-bar/swc-progress-bar.js';
 import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import link from '@adobe/spectrum-wc/link.css';
-import { css, html, nothing, type TemplateResult, unsafeCSS } from 'lit';
+import { css, html, nothing, type PropertyValues, type TemplateResult, unsafeCSS } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import type {
   InstallProgress,
@@ -148,15 +148,30 @@ function pinVersion(item: PackageItem, pin: PackagePin): readonly string[] {
   return [version, pin.base === version ? 'the version seven ships' : `seven ships ${pin.base}`];
 }
 
+function held(item: PackageItem): PackageItem {
+  if (!item.withheld) return item;
+  return {
+    ...item,
+    offered: item.version,
+    state: item.state === 'outdated' ? 'installed' : item.state,
+    actions: item.actions.filter((action) => action !== 'install' && action !== 'update'),
+  };
+}
+
 function placed(item: PackageItem): PackageItem {
   const installs = item.installs ?? [];
-  if (!installs.length) return item;
+  if (!installs.length) return held(item);
   const version = item.version ?? installs[0].version;
   const newer = item.offered !== null && item.offered !== version;
   const state = item.state === 'available' ? (newer ? 'outdated' : 'installed') : item.state;
   const owned = installs.some((install) => install.manager === 'panel');
   const hidden = new Set<PackageAction>(owned ? ['install'] : ['install', 'remove']);
-  return { ...item, version, state, actions: item.actions.filter((action) => !hidden.has(action)) };
+  return held({
+    ...item,
+    version,
+    state,
+    actions: item.actions.filter((action) => !hidden.has(action)),
+  });
 }
 
 const elsewhere = (item: PackageItem): readonly PackageInstall[] =>
@@ -183,6 +198,68 @@ function actionLabel(item: PackageItem, action: PackageAction): string {
   if (action === 'remove' && shared(item)) return `Remove the panel’s copy of ${item.label}`;
   return `${packageActions[action]} ${item.label}`;
 }
+
+export const plainLimit = 300;
+
+const entities: Readonly<Record<string, string>> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  copy: '©',
+  reg: '®',
+  trade: '™',
+  hellip: '…',
+  ndash: '–',
+  mdash: '—',
+  lsquo: '‘',
+  rsquo: '’',
+  ldquo: '“',
+  rdquo: '”',
+};
+
+const decoded = (text: string): string =>
+  text.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (entity, name: string) => {
+    if (name[0] !== '#') return entities[name.toLowerCase()] ?? entity;
+    const hex = /^#x/i.test(name);
+    const code = Number.parseInt(name.slice(hex ? 2 : 1), hex ? 16 : 10);
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : entity;
+  });
+
+export function stripped(text: string): string {
+  const target = String.raw`\(((?:[^()]|\([^()]*\))*)\)`;
+  return decoded(text)
+    .replace(/^[ \t]*(?:`{3,}|~{3,}).*$/gm, '')
+    .replace(/^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+[.)][ \t]+)+/gm, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<\/?[a-z][^>]*>/gi, '')
+    .replace(new RegExp(String.raw`!\[([^\]]*)\]${target}`, 'g'), '$1')
+    .replace(new RegExp(String.raw`\[([^\]]*)\]${target}`, 'g'), '$1')
+    .replace(/(`+)([^\n]+?)\1(?!`)/g, '$2')
+    .replace(/(\*\*|__)(?=\S)(.+?)\1/g, '$2')
+    .replace(/\*(?=\S)([^*\n]+?)\*/g, '$1')
+    .replace(/(^|[^\w])_(?=\S)([^_\n]+?)_(?![\w])/g, '$1$2');
+}
+
+export function plain(text: string, limit = plainLimit): string {
+  const flat = [...stripped(text).replace(/\s+/g, ' ').trim()];
+  return flat.length > limit
+    ? `${flat
+        .slice(0, limit - 1)
+        .join('')
+        .trimEnd()}…`
+    : flat.join('');
+}
+
+export function withheldText(reason: string, prefix = 'Not offered'): string {
+  const text = plain(reason, 200).replace(/\.$/, '');
+  return `${prefix}: ${text}${text.endsWith('…') ? '' : '.'}`;
+}
+
+const unreachable = (items: readonly PackageItem[]): boolean =>
+  items.some((item) => item.registry === 'unreachable');
 
 const packageRunning: ReadonlySet<PackageState> = new Set(['installing', 'updating', 'removing']);
 
@@ -338,6 +415,14 @@ export function whatsNew(
   return range.some((entry) => entry.body) ? range : [];
 }
 
+export const npmPage = (name: string): string =>
+  `https://www.npmjs.com/package/${name
+    .split('/')
+    .map((part) =>
+      part.startsWith('@') ? `@${encodeURIComponent(part.slice(1))}` : encodeURIComponent(part)
+    )
+    .join('/')}`;
+
 const secure = (url: string) => /^https:\/\//i.test(url);
 
 const installed = (releases: readonly UpdateRelease[] | undefined, version: string) =>
@@ -414,13 +499,18 @@ export class SliccUpdates extends ModelElement {
     failures: { state: true },
     busy: { state: true },
     problems: { state: true },
+    refreshing: { state: true },
+    still: { state: true },
   };
   #logs = new ViewSet(this, 'updates');
   #reached = new Map<string, { value: number; label: string }>();
+  #retryHeld = false;
   declare pending: ReadonlySet<string>;
   declare failures: Failures;
   declare busy: ReadonlyMap<string, PackageAction>;
   declare problems: Failures;
+  declare refreshing: boolean;
+  declare still: boolean;
 
   constructor() {
     super();
@@ -593,8 +683,35 @@ export class SliccUpdates extends ModelElement {
         grid-area: description;
         margin: 0;
         overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow-wrap: anywhere;
+      }
+      [data-registry] > .description,
+      .withheld {
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .withheld {
+        font-size: var(--swc-font-size-75);
+        line-height: var(--swc-line-height-200);
+        overflow-wrap: anywhere;
+      }
+      .rows > li[data-registry='unreachable'] {
+        grid-template-areas: 'name buttons';
+      }
+      .registry {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--swc-spacing-100) var(--swc-spacing-200);
+        margin-block-end: var(--swc-spacing-100);
+      }
+      .registry .hint {
+        margin: 0;
+      }
+      #packages:focus {
+        outline: none;
       }
       .rows > li > .meta {
         justify-content: flex-start;
@@ -730,12 +847,6 @@ export class SliccUpdates extends ModelElement {
         .rows > li {
           grid-template-areas: 'name buttons' 'description description';
         }
-        .description {
-          display: -webkit-box;
-          -webkit-box-orient: vertical;
-          -webkit-line-clamp: 2;
-          white-space: normal;
-        }
       }
     `,
   ];
@@ -745,6 +856,8 @@ export class SliccUpdates extends ModelElement {
     this.failures = new Map();
     this.busy = new Map();
     this.problems = new Map();
+    this.refreshing = false;
+    this.still = false;
     this.#reached.clear();
     const port = model.updates;
     if (!port) return [];
@@ -821,6 +934,48 @@ export class SliccUpdates extends ModelElement {
         );
         if (lost) row?.querySelector<HTMLElement>('swc-button')?.focus();
       }
+    }
+  }
+
+  async refreshPackages(): Promise<void> {
+    const port = this.model?.updates;
+    if (!port?.refreshPackages || this.refreshing) return;
+    this.refreshing = true;
+    this.still = false;
+    try {
+      await port.refreshPackages();
+    } catch {
+    } finally {
+      if (this.model?.updates === port) {
+        this.refreshing = false;
+        this.still = unreachable(port.packages?.() ?? []);
+      }
+    }
+  }
+
+  protected willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed);
+    const active = this.shadowRoot?.activeElement as HTMLElement | null | undefined;
+    this.#retryHeld = active?.dataset.action === 'retry-registry';
+  }
+
+  protected updated(changed: PropertyValues): void {
+    super.updated(changed);
+    if (this.#retryHeld && !this.renderRoot.querySelector('[data-action="retry-registry"]'))
+      this.renderRoot.querySelector<HTMLElement>('#packages')?.focus();
+    for (const row of this.renderRoot.querySelectorAll<HTMLElement>('li[data-id]')) {
+      const description = row.querySelector('.description');
+      for (const button of row.querySelectorAll<HTMLElement & { updateComplete: Promise<unknown> }>(
+        '.buttons swc-button'
+      ))
+        void button.updateComplete.then(() => {
+          const inner = button.shadowRoot?.querySelector('button') as
+            | (HTMLButtonElement & { ariaDescribedByElements: Element[] })
+            | null;
+          if (inner)
+            inner.ariaDescribedByElements =
+              description && !row.dataset.registry ? [description] : [];
+        });
     }
   }
 
@@ -957,7 +1112,7 @@ export class SliccUpdates extends ModelElement {
       return html`<a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${version} release notes`}>Release notes</a>`;
     }
     if (!npm) return nothing;
-    return html`<a class="swc-Link swc-Link--standalone" href=${`https://www.npmjs.com/package/${npm}/v/${version}`} target="_blank" rel="noopener noreferrer" data-action="npm-page" aria-label=${`npm page for ${label} ${version}`}>npm page</a>`;
+    return html`<a class="swc-Link swc-Link--standalone" href=${npmPage(npm)} target="_blank" rel="noopener noreferrer" data-action="npm-page" aria-label=${`npm page for ${label} ${version}`}>npm page</a>`;
   }
 
   #version(item: UpdateItem, meta: string | null): TemplateResult {
@@ -1026,12 +1181,13 @@ export class SliccUpdates extends ModelElement {
           : item.version;
     const download =
       item.size !== undefined && (item.version === null || item.offered !== item.version);
+    const bytes = download ? `${size(item.size as number)}${item.unpacked ? ' on disk' : ''}` : '';
     const requires = requiresText(item, all);
     return html`<p class="meta">
       ${version ? html`<span class="version">${version}</span>` : nothing}
       ${shared(item) ? html`<span data-install="panel">the panel’s copy</span>` : nothing}
       ${elsewhere(item).map((install) => html`<span data-install>${installText(install, item.version)}</span>`)}
-      ${download ? html`<span>${size(item.size as number)}</span>` : nothing}
+      ${download ? html`<span data-size>${bytes}</span>` : nothing}
       ${requires ? html`<span data-requires>${requires}</span>` : nothing}
       ${this.#packageLink(item)}
     </p>`;
@@ -1058,10 +1214,13 @@ export class SliccUpdates extends ModelElement {
   #package(item: PackageItem, all: readonly PackageItem[], act: boolean): TemplateResult {
     const light = packageLight(item);
     const busy = this.busy.get(item.id);
-    const shown = busy ? [busy] : act ? item.actions : [];
+    const actions = item.registry
+      ? item.actions.filter((action) => action !== 'retry')
+      : item.actions;
+    const shown = busy ? [busy] : act ? actions : [];
     const error = this.problems.get(item.id) ?? item.error;
     const managed = managedText(item);
-    return html`<li data-id=${item.id} data-state=${item.state}>
+    return html`<li data-id=${item.id} data-state=${item.state} data-registry=${item.registry ?? nothing}>
       <div class="name">
         <h3 title=${item.package}>${item.label}</h3>
         ${light ? html`<swc-status-light size="s" variant=${light[0]}>${light[1]}</swc-status-light>` : nothing}
@@ -1077,9 +1236,10 @@ export class SliccUpdates extends ModelElement {
             @click=${() => void this.actPackage(item.id, action)}
           >${packageActions[action]}</swc-button>`
       )}</div>
-      <p class="description">${item.description}</p>
-      ${this.#packageMeta(item, all)}
-      ${item.notes?.length || managed ? html`<p class="notes" data-notes>${(item.notes ?? []).map((note) => html`<span>${note}</span>`)}${managed ? html`<span data-managed>${managed}</span>` : nothing}</p>` : nothing}
+      ${item.registry === 'unreachable' ? nothing : html`<p class="description">${item.registry ? 'Checking npm…' : plain(item.description)}</p>`}
+      ${item.withheld ? html`<p class="withheld" data-withheld>${withheldText(item.withheld)}</p>` : item.newer ? html`<p class="withheld" data-newer>${withheldText(item.newer.reason, `${item.newer.version} isn’t offered yet`)}</p>` : nothing}
+      ${item.registry === 'unreachable' && item.version === null ? nothing : this.#packageMeta(item, all)}
+      ${item.notes?.length || managed ? html`<p class="notes" data-notes>${(item.notes ?? []).map((note) => html`<span>${plain(note)}</span>`)}${managed ? html`<span data-managed>${managed}</span>` : nothing}</p>` : nothing}
       ${
         item.warnings?.length
           ? html`<p class="warnings" data-warnings>${item.warnings.map(
@@ -1121,6 +1281,29 @@ export class SliccUpdates extends ModelElement {
     )}</ul>`;
   }
 
+  #packagesHint(port: UpdatesPort, offered: readonly PackageItem[]): TemplateResult {
+    if (!unreachable(offered) && !this.refreshing)
+      return html`<p class="hint">
+        ${offered.length ? 'Tools for the agent and the terminal. Install the ones you need; you can remove them later.' : 'No optional packages are offered right now.'}
+      </p>`;
+    return html`<div class="registry" data-registry="unreachable">
+      <p class="hint">${this.refreshing ? 'Checking npm…' : 'Couldn’t reach npm, so versions and sizes aren’t shown.'}</p>
+      ${
+        port.refreshPackages
+          ? html`<swc-button
+              size="s"
+              variant="secondary"
+              data-action="retry-registry"
+              accessible-label="Retry reaching npm"
+              ?pending=${this.refreshing}
+              @click=${() => void this.refreshPackages()}
+            >Retry</swc-button>`
+          : nothing
+      }
+      <span class="hidden" role="status" aria-live="polite" data-still>${this.still ? 'Still couldn’t reach npm.' : ''}</span>
+    </div>`;
+  }
+
   #packages(port: UpdatesPort | undefined): TemplateResult | typeof nothing {
     if (!port?.packages) return nothing;
     const all = port.packages().map(placed);
@@ -1128,10 +1311,8 @@ export class SliccUpdates extends ModelElement {
     const yours = all.filter((item) => item.origin === 'user');
     return html`<section data-section="packages" aria-labelledby="packages">
       <swc-divider size="m"></swc-divider>
-      <h2 id="packages">Optional packages</h2>
-      <p class="hint">
-        ${offered.length ? 'Tools for the agent and the terminal. Install the ones you need; you can remove them later.' : 'No optional packages are offered right now.'}
-      </p>
+      <h2 id="packages" tabindex="-1">Optional packages</h2>
+      ${this.#packagesHint(port, offered)}
       ${offered.length ? this.#list(offered, all, port) : nothing}
     </section>
     ${
