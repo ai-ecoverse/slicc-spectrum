@@ -610,10 +610,18 @@ export class SliccChat extends ThemedElement {
   };
 
   #reach(id: string): void {
-    [...this.renderRoot.querySelectorAll<HTMLElement>('.asks .decision-turn')]
-      .find((turn) => turn.dataset.id === id)
-      ?.querySelector('.decide')
-      ?.scrollIntoView({ block: 'nearest' });
+    const dock = this.renderRoot.querySelector<HTMLElement>('.asks');
+    const turn = [...(dock?.querySelectorAll<HTMLElement>('.decision-turn') ?? [])].find(
+      (candidate) => candidate.dataset.id === id
+    );
+    if (!dock || !turn) return;
+    const style = getComputedStyle(dock);
+    const room =
+      dock.clientHeight -
+      (Number.parseFloat(style.scrollPaddingBlockStart) || 0) -
+      (Number.parseFloat(style.scrollPaddingBlockEnd) || 0);
+    const target = turn.offsetHeight <= room ? turn : turn.querySelector('.decide');
+    target?.scrollIntoView({ block: 'nearest' });
   }
 
   #refocus(): void {

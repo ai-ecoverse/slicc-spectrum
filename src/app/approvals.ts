@@ -14,7 +14,7 @@ import type {
   SudoApproval,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
-import { Cuts, clampCss, fullCommand } from './command.ts';
+import { Cuts, clampCss, Ends, fullCommand, toScroll, toShow } from './command.ts';
 import { dialogStyles, focused } from './confirm.ts';
 import { size } from './messages.ts';
 
@@ -323,6 +323,25 @@ export function guestAsking(approval: GuestMessageApproval | GuestToolApproval):
     : `${approval.agentName ?? 'This cone'} wants to run ${approval.tool} for ${approval.requester.name}:`;
 }
 
+export function approved(approval: Approval): string {
+  if (approval.kind === 'sudo') return sudo(approval);
+  if (approval.kind === 'guest-message') return '';
+  if (approval.summary.trim()) return approval.summary;
+  return approval.args?.trim() ? `${approval.tool}\n${approval.args}` : '';
+}
+
+export function truncated(approval: Approval): boolean {
+  return approval.kind === 'guest-tool' && !approval.summary.trim() && !!approval.argsTruncated;
+}
+
+function hintOf(approval: Approval): string {
+  return approval.kind === 'sudo'
+    ? alwaysHint(approval)
+    : guestAlwaysHint(approval as GuestMessageApproval | GuestToolApproval);
+}
+
+const tooLong = "This request is too long to show in full, so it can't be allowed.";
+
 export function guestWaiting(approval: GuestMessageApproval | GuestToolApproval): string {
   return approval.kind === 'guest-message'
     ? `${approval.requester.name}'s message to ${approval.agentName ?? 'this cone'} waits for the owner's approval.`
@@ -392,6 +411,10 @@ export class SliccApprovals extends ModelElement {
     () => this.renderRoot,
     () => this.requestUpdate()
   );
+  #ends = new Ends(
+    () => this.renderRoot,
+    () => this.requestUpdate()
+  );
 
   constructor() {
     super();
@@ -410,6 +433,10 @@ export class SliccApprovals extends ModelElement {
       }
       sp-alert-dialog {
         display: grid;
+        --mod-alert-dialog-min-width: min(
+          var(--swc-alert-dialog-maximum-width),
+          calc(100vw - 2 * var(--swc-spacing-300))
+        );
       }
       .command {
         margin: var(--swc-spacing-200) 0 0;
@@ -420,6 +447,17 @@ export class SliccApprovals extends ModelElement {
         font-size: var(--swc-font-size-100);
         white-space: pre-wrap;
         overflow-wrap: anywhere;
+      }
+      .command .lines:not([data-clamp]) {
+        display: block;
+        max-block-size: min(16lh, 50dvh);
+        overflow: auto;
+        overscroll-behavior: contain;
+      }
+      .command .end {
+        display: inline-block;
+        inline-size: 0;
+        block-size: 0;
       }
       .full-command {
         margin-block-start: var(--swc-spacing-100);
@@ -501,6 +539,7 @@ export class SliccApprovals extends ModelElement {
       this.#closed.clear();
       this.#ended.clear();
       this.#full.clear();
+      this.#ends.clear();
     }
     if (!port) return [];
     return [
@@ -525,6 +564,7 @@ export class SliccApprovals extends ModelElement {
     clearTimeout(this.#arming);
     this.#showing = null;
     this.#cuts.disconnect();
+    this.#ends.disconnect();
   }
 
   #tick(on: boolean): void {
@@ -598,6 +638,7 @@ export class SliccApprovals extends ModelElement {
     const all = this.model?.approvals?.list() ?? [];
     this.#tick(this.isConnected && all.length > 0);
     this.#cuts.measure();
+    this.#ends.observe();
     const dialog = this.renderRoot.querySelector('dialog');
     const key = dialog
       ? `${dialog.dataset.approval}:${dialog.dataset.gone ?? ''}:${dialog.hasAttribute('data-rejected')}`
@@ -612,6 +653,7 @@ export class SliccApprovals extends ModelElement {
     }
     if (!dialog.open) dialog.showModal();
     this.#cuts.measure();
+    this.#ends.observe();
     const first = dialog.querySelector('[data-action=deny], [data-action=close]') as LitElement;
     void first.updateComplete.then(() => first.focus());
   }
@@ -660,11 +702,19 @@ export class SliccApprovals extends ModelElement {
   }
 
   #whole(approval: Approval): boolean {
+    const { id } = approval;
+    if (truncated(approval)) return false;
     return (
-      approval.kind === 'guest-message' ||
-      this.#full.has(approval.id) ||
-      this.#cuts.get(approval.id) === false
+      !approved(approval) ||
+      this.#cuts.get(id) === false ||
+      (this.#full.has(id) && this.#ends.has(id))
     );
+  }
+
+  #gate(approval: Approval): string {
+    if (truncated(approval)) return tooLong;
+    if (this.#whole(approval)) return '';
+    return this.#full.has(approval.id) ? toScroll : toShow;
   }
 
   #expand(id: string): void {
@@ -672,21 +722,23 @@ export class SliccApprovals extends ModelElement {
     this.requestUpdate();
   }
 
-  #command(approval: Approval, text: string, pending: boolean): TemplateResult {
+  #command(approval: Approval, pending: boolean): TemplateResult {
     const { id } = approval;
+    const text = approved(approval);
+    if (!text) return html`<p class="hint" data-id="no-details">This request has no details.</p>`;
     const full = !pending || this.#full.has(id);
     const toggle =
       pending && (full || this.#cuts.get(id)) ? fullCommand(full, () => this.#expand(id)) : nothing;
-    return html`<pre class="command" data-command=${approval.kind === 'sudo' ? '' : nothing} data-summary=${approval.kind === 'sudo' ? nothing : ''}><span class="lines" data-clamp=${full ? nothing : id}>${text}</span></pre>${toggle}`;
+    return html`<pre class="command" data-command=${approval.kind === 'sudo' ? '' : nothing} data-summary=${approval.kind === 'sudo' ? nothing : ''}><span class="lines" data-clamp=${full ? nothing : id}>${text}${pending ? html`<span class="end" data-end=${id}></span>` : nothing}</span></pre>${toggle}`;
   }
 
   #request(approval: Approval, pending = false): TemplateResult {
     if (approval.kind === 'sudo')
       return html`<p id="asking">${asking(approval)}:</p>
-        ${this.#command(approval, sudo(approval), pending)}`;
+        ${this.#command(approval, pending)}`;
     if (approval.kind === 'guest-tool')
       return html`<p id="asking">${guestAsking(approval)}</p>
-        ${this.#command(approval, approval.summary, pending)}`;
+        ${this.#command(approval, pending)}`;
     const files = approval.attachments ?? [];
     return html`<p id="asking">${guestAsking(approval)}</p>
       <div class="guest" data-guest-text>${approval.text}</div>
@@ -731,12 +783,8 @@ export class SliccApprovals extends ModelElement {
     const verdict = rulesOf(approval);
     const rules = verdict.certain ?? verdict.maybe;
     const always = approval.always && !rules;
-    const hint =
-      always && this.#whole(approval)
-        ? approval.kind === 'sudo'
-          ? alwaysHint(approval)
-          : guestAlwaysHint(approval)
-        : '';
+    const gate = this.#gate(approval);
+    const hint = always && this.#whole(approval) ? hintOf(approval) : '';
     return this.#dialog(
       approval,
       approval.id,
@@ -747,6 +795,7 @@ export class SliccApprovals extends ModelElement {
           ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${approval.cwd}</p>` : nothing}
           ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${verdict.certain ? html`<strong>This changes secret rules.</strong> It names <code>${rules}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${rules}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>` : nothing}
           ${hint ? html`<p class="hint">${hint}</p>` : nothing}
+          ${!failure && gate ? html`<p class="hint" data-allow-hint>${gate}</p>` : nothing}
           ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : html`<p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>`}
           ${rest.length ? html`<p class="more" data-more>${rest.length === 1 ? '1 more request is waiting.' : `${rest.length} more requests are waiting.`}</p>` : nothing}
           ${this.#actions(approval, !!failure, always)}

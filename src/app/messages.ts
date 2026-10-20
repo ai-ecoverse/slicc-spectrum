@@ -57,7 +57,7 @@ import type {
   UserMessage,
 } from '../model/types.ts';
 import { ansi } from './ansi.ts';
-import { fullCommand } from './command.ts';
+import { fullCommand, toShow } from './command.ts';
 import { markdown } from './markdown.ts';
 import { signInText } from './sign-in.ts';
 import type { ViewSet } from './view-state.ts';
@@ -1047,7 +1047,7 @@ function decide(message: LickMessage, handlers: Handlers, settled: boolean) {
   const cut = commands?.cut(message.id);
   const toggle =
     commands && (full || cut) ? fullCommand(full, () => commands.toggle(message.id)) : nothing;
-  const actions = html`<div class="decide">
+  const actions = html`${commands && !full && cut ? html`<p class="allow-hint" data-allow-hint>${toShow}</p>` : nothing}<div class="decide">
     ${toggle}
     <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'dismissed')}>Deny</swc-button>
     ${full || cut === false ? html`<swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>` : nothing}
@@ -2001,6 +2001,11 @@ export const messageCss = css`
   }
   .decide .full-command {
     margin-inline-end: auto;
+  }
+  .decision .allow-hint {
+    margin: 0;
+    color: var(--swc-neutral-subdued-content-color-default);
+    font-size: var(--swc-font-size-75);
   }
   .question.decision .options {
     display: flex;
