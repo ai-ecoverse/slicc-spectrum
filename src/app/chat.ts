@@ -859,8 +859,8 @@ export class SliccChat extends ThemedElement {
   }
 
   focus(): void {
-    if (!touched && globalThis.matchMedia('(pointer: fine)').matches)
-      this.focusOn('slicc-composer', '.log');
+    if (touched) return;
+    if (globalThis.matchMedia('(pointer: fine)').matches) this.focusOn('slicc-composer', '.log');
     else this.focusOn('.log');
   }
 

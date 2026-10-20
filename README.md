@@ -199,6 +199,7 @@ Every surface has a home side, left, center or right.
 Every panel has an icon in the left or right rail (on a phone, in one bar at the bottom, with the rest in its More menu).
 The icon stays when its panel is open; while the panel is visible it shows selected (`.selected`, `data-visible`, labelled "{Title}, shown").
 One click puts a closed panel back on its side, next to its neighbours, or brings an open one to the front.
+A touch or pen tap on a rail button closes its tooltip: a Gen2 `swc-tooltip` ignores focus that comes in the same task as `pointerdown`, but a tap focuses the button a task later, so the tooltip opened and stayed while the button kept focus (after a tap on Chat, which leaves focus where it is).
 Each thread, a cone's or a scoop's conversation, opens in its own chat panel (`chat:<agent id>`), as a tab in the same group as the other chats.
 Selecting a thread opens or reveals its tab, activating a chat tab selects its thread, and a thread's chat closes when the thread goes away (frozen or deleted).
 
@@ -628,6 +629,7 @@ Files and diffs open in one editor group next to the chat.
 Panels ask for them with `open-file` and `open-diff` events (`{ path }`), which `<slicc-app>` handles, or call `app.open('file' | 'diff', path)`.
 
 Keys: <kbd>Alt</kbd>+<kbd>1</kbd>… opens and focuses a panel, <kbd>F6</kbd> and <kbd>Shift</kbd>+<kbd>F6</kbd> move between groups, <kbd>Ctrl</kbd>+<kbd>]</kbd> and <kbd>Ctrl</kbd>+<kbd>[</kbd> between tabs, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> switches the theme.
+Focusing a chat panel this way, or with `show('chat')`, right after a touch or pen tap leaves focus where it is, so no on-screen keyboard opens and the empty log shows no ring; after a key or a mouse click it focuses the composer (its log without one) with a fine pointer, and the log with a coarse one.
 In terminal and browser tab strips, <kbd>←</kbd> and <kbd>→</kbd> switch tabs.
 In the agents and changes lists, arrows, <kbd>Home</kbd>, <kbd>End</kbd> and <kbd>Enter</kbd>; in the file tree, its own arrow keys and <kbd>Enter</kbd> to open.
 In the composer, <kbd>Enter</kbd> sends, <kbd>Shift</kbd>+<kbd>Enter</kbd> adds a line and <kbd>Esc</kbd> stops a reply.

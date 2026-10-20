@@ -645,6 +645,18 @@ async function pointer(t, fine) {
   return page;
 }
 
+async function chatSettled(page) {
+  await page.until(() => window.dock().api.activePanel?.id.startsWith('chat:'));
+  await page.evaluate(async () => {
+    const chat = window.dock().content(window.dock().api.activePanel.id);
+    await chat.updateComplete;
+    await chat.shadowRoot.querySelector('slicc-composer')?.updateComplete;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return true;
+  });
+  return page.evaluate(() => ({ ...window.activated(), deep: window.focused() }));
+}
+
 test('with a coarse pointer, activating a panel never focuses a text field', async (t) => {
   const page = await pointer(t, false);
   assert.equal(await page.evaluate(() => matchMedia('(pointer: fine)').matches), false);
@@ -709,6 +721,51 @@ test('with a fine pointer, activating chat focuses the composer', async (t) => {
   );
   assert.deepEqual(page.errors, []);
 });
+
+for (const fine of [true, false])
+  test(`with a ${fine ? 'fine' : 'coarse'} pointer, after a tap, show('chat') focuses nothing, and after a key the ${fine ? 'composer' : 'log'}`, async (t) => {
+    const page = await pointer(t, fine);
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    const tap = async (id) => {
+      const point = await page.evaluate((id) => {
+        const box = window.app.shadowRoot
+          .querySelector(`.rail [data-surface="${id}"]`)
+          .getBoundingClientRect();
+        return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+      }, id);
+      await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+      await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    };
+    await tap('memory');
+    await page.until(() => window.dock().api.activePanel?.id === 'memory');
+    await page.evaluate(() => void window.app.show('chat'));
+    const touched = await chatSettled(page);
+    assert.doesNotMatch(touched.deep, /slicc-chat/, touched.deep);
+    assert.equal(touched.text, false, touched.deep);
+
+    await tap('memory');
+    await page.until(() => window.dock().api.activePanel?.id === 'memory');
+    await tap('chat');
+    const tapped = await chatSettled(page);
+    assert.match(tapped.deep, /swc-action-button/, tapped.deep);
+    assert.equal(tapped.text, false, tapped.deep);
+    assert.deepEqual(
+      await page.evaluate(() =>
+        [...window.app.shadowRoot.querySelectorAll('swc-tooltip')]
+          .filter((tip) => tip.matches(':popover-open'))
+          .map((tip) => tip.getAttribute('for'))
+      ),
+      []
+    );
+
+    await page.press('Shift');
+    await page.evaluate(() => void window.app.show('chat'));
+    const target = fine
+      ? /slicc-chat > slicc-composer > swc-prompt-field > textarea$/
+      : /slicc-chat > div$/;
+    await page.until((source) => new RegExp(source).test(window.focused()), target.source);
+    assert.deepEqual(page.errors, []);
+  });
 
 test('the keyboard reaches every panel, agent and tab', async (t) => {
   const page = await open(t);
