@@ -3356,6 +3356,42 @@ test('four open asks at 420 fade at the cut edge while more is below, and Tab sc
   assert.deepEqual(page.errors, []);
 });
 
+test('a new ask opens the waiting list rather than hiding the card the user is in, and focus stays put', async (t) => {
+  const page = await open(t, { delay: '0' });
+  await page.evaluate(() => window.model.agent.select('cone-kitchen'));
+  await page.until(
+    () => !!window.chatPart('.asks .decision-turn[data-id=k-l17] [data-action=allow]')
+  );
+  await page.evaluate(() => {
+    window.chatPart('.decision-turn[data-id=k-l17] [data-action=allow]').focus();
+    return true;
+  });
+  const fresh = await page.evaluate(() => {
+    const agent = window.model.agent;
+    agent.lick('cone-kitchen', 'sudo-request', 'harbor', 'Wants to read the deploy key');
+    const message = agent.messages('cone-kitchen').at(-1);
+    message.state = 'pending';
+    agent.emit('messages', 'cone-kitchen');
+    return message.id;
+  });
+  await page.until((card) => !!window.chatPart(`.asks .decision-turn[data-id=${card}]`), fresh);
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.chatPart().shadowRoot;
+      const active = root.activeElement;
+      return [
+        !!root.querySelector('.asks[data-open]'),
+        root.querySelector('.decision-turn[data-id=k-l17]').closest('.ask').hidden,
+        active?.dataset.action,
+        active?.closest('.decision-turn')?.dataset.id,
+      ];
+    }),
+    [true, false, 'allow', 'k-l17']
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('decision cards dock above the log, reveal their place from the keyboard and keep focus when one leaves', async (t) => {
   const page = await open(t, { delay: '0' });
   await page.send('Emulation.setEmulatedMedia', {
@@ -3466,8 +3502,8 @@ test('decision cards dock above the log, reveal their place from the keyboard an
     (card) => !!window.chatPart(`.decision-turn[data-id=${card}] swc-button[data-action=allow]`),
     elsewhere
   );
-  assert.deepEqual(await page.evaluate(docked), [elsewhere]);
-  assert.equal(await page.evaluate(expanded), 'false');
+  assert.deepEqual(await page.evaluate(docked), ['k-q3', elsewhere]);
+  assert.equal(await page.evaluate(expanded), 'true');
   await page.evaluate((card) => {
     window.chatPart(`.decision-turn[data-id=${card}] swc-button[data-action=allow]`).focus();
     window.model.agent.resolveLick('cone-kitchen', card, 'dismissed');
@@ -3521,6 +3557,10 @@ test('decision cards dock above the log, reveal their place from the keyboard an
   assert.deepEqual(expired, [true, false, false, 'Timed out', 'Timed out']);
   await page.until(() => window.chatPart().shadowRoot.activeElement?.dataset.id === 'k-q3');
 
+  await page.evaluate(() => {
+    window.chatPart('.log').focus();
+    return true;
+  });
   const [timed, late] = await page.evaluate(() => {
     const agent = window.model.agent;
     const ids = [];

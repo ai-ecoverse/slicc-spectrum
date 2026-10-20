@@ -67,6 +67,7 @@ const compactWidth = 560;
 
 interface Ask {
   key: string;
+  id: string;
   at?: number;
   card: TemplateResult;
 }
@@ -109,7 +110,7 @@ function dock(
   const items = entries.map(([key, card]): Entry => {
     const ask = docked.get(key);
     if (!ask) return [key, card];
-    asks.push({ key, at: ask.at, card });
+    asks.push({ key, id: ask.id, at: ask.at, card });
     return [key, place(ask.id)];
   });
   return { items, asks };
@@ -576,6 +577,7 @@ export class SliccChat extends ThemedElement {
   #mark = 0;
 
   #all = false;
+  #seen = '';
 
   #focused = (event: FocusEvent): void => {
     const target = event.target as Element;
@@ -595,7 +597,7 @@ export class SliccChat extends ThemedElement {
   };
 
   #refocus(): void {
-    if (!this.#held || this.renderRoot.querySelector(':focus')) return;
+    if (!this.#held || (this.renderRoot as ShadowRoot).activeElement) return;
     this.#held = '';
     const next = [
       ...this.renderRoot.querySelectorAll<HTMLElement>('.asks .decision-turn[data-pending]'),
@@ -1017,6 +1019,10 @@ export class SliccChat extends ThemedElement {
   #asks(asks: Ask[]): TemplateResult | typeof nothing {
     if (!asks.length) return nothing;
     const older = asks.slice(0, -1);
+    const focused = (this.renderRoot as ShadowRoot).activeElement?.closest<HTMLElement>(
+      '.asks .decision-turn'
+    )?.dataset.id;
+    this.#all ||= older.some(({ id }) => id === focused);
     this.#all &&= older.length > 0;
     const open = this.#all;
     const timed = open ? [] : older.flatMap(({ at }) => (at === undefined ? [] : [at]));
@@ -1091,10 +1097,19 @@ export class SliccChat extends ThemedElement {
     return html`<div class="jump"><swc-action-button size="s" data-action="jump-latest" accessible-label=${spoken} @click=${this.#jump}><swc-icon-chevron-down slot="icon"></swc-icon-chevron-down>${label}</swc-action-button><span class="sr" role="status" aria-live="polite" data-jump-status>${fresh > 0 ? `${fresh} new ${fresh === 1 ? 'message' : 'messages'} below` : ''}</span></div>`;
   }
 
+  #switched(agent: Agent | undefined): void {
+    const id = agent?.id ?? '';
+    if (id === this.#seen) return;
+    this.#seen = id;
+    this.#all = false;
+    this.#details.clear();
+  }
+
   render(): TemplateResult {
     this.#handlers.color = this.color;
     this.#handlers.model = this.model ?? null;
     const agent = this.#agent();
+    this.#switched(agent);
     const watch = watchOnly(this.model);
     const seat = this.model?.seat;
     this.#handlers.readOnly = !!agent?.frozen || !!watch || !!seat;
