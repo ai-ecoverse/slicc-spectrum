@@ -22,6 +22,7 @@ import type {
   UserMessage,
 } from '../model/types.ts';
 import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
+import { Cuts, clampCss } from './command.ts';
 import { fade, folders, limit, type SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
 import { following, onWatch, watchOnly } from './follow.ts';
@@ -248,6 +249,7 @@ export class SliccChat extends ThemedElement {
     fade,
     markdownCss,
     messageCss,
+    clampCss,
     css`
       :host {
         position: relative;
@@ -389,11 +391,6 @@ export class SliccChat extends ThemedElement {
       .asks[data-open] .decision-head .detail {
         display: inline-flex;
       }
-      .asks[data-open] .decision-turn:not([data-detail]) .command {
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
-      }
       .asks[data-open] .decision-turn:not([data-detail]) .decision-text {
         overflow: hidden;
         white-space: nowrap;
@@ -489,6 +486,11 @@ export class SliccChat extends ThemedElement {
 
   #licks = new ViewSet(this, 'chat:licks');
   #details = new Set<string>();
+  #commands = new ViewSet(this, 'chat:commands');
+  #cuts = new Cuts(
+    () => this.renderRoot,
+    () => this.requestUpdate()
+  );
   #handlers: Handlers = {
     licks: this.#licks,
     detail: {
@@ -497,6 +499,11 @@ export class SliccChat extends ThemedElement {
         if (!this.#details.delete(id)) this.#details.add(id);
         this.requestUpdate();
       },
+    },
+    commands: {
+      cut: (id) => this.#cuts.get(id),
+      has: (id) => this.#commands.has(id),
+      toggle: (id) => this.#commands.toggle(id),
     },
     color: 'light',
     model: null,
@@ -744,6 +751,7 @@ export class SliccChat extends ThemedElement {
     globalThis.removeEventListener('pointercancel', this.#release, true);
     this.#resize.disconnect();
     this.#fit.disconnect();
+    this.#cuts.disconnect();
     this.#fitted = undefined;
     clearInterval(this.#tick);
     this.#tick = undefined;
@@ -751,7 +759,7 @@ export class SliccChat extends ThemedElement {
 
   protected updated(): void {
     this.#attach();
-    const timed = this.#timed();
+    const timed = this.isConnected && this.#timed();
     if (timed && this.#tick === undefined)
       this.#tick = setInterval(() => this.requestUpdate(), 1000);
     if (!timed && this.#tick !== undefined) {
@@ -762,6 +770,7 @@ export class SliccChat extends ThemedElement {
     const asks = [...this.renderRoot.querySelectorAll<HTMLElement>('.ask-list .decision-turn')];
     for (const turn of asks) turn.tabIndex = 0;
     this.#more();
+    this.#cuts.measure();
   }
 
   #timed(): boolean {

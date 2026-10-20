@@ -7,6 +7,7 @@ import type {
   ApprovalsPort,
 } from '../model/types.ts';
 import type { Clock } from './clock.ts';
+import { longCommand } from './showcase.ts';
 
 export type ApprovalScenario =
   | 'agent'
@@ -21,6 +22,7 @@ export type ApprovalScenario =
   | 'guest'
   | 'guest-follower'
   | 'guest-always'
+  | 'long'
   | 'none';
 
 const minutes = 60_000;
@@ -139,6 +141,7 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
   if (scenario === 'guest' || scenario === 'guest-follower') return guestFixtures(now);
   if (scenario === 'guest-always') return guestAlways(now);
   if (scenario === 'none') return [];
+  if (scenario === 'long') return [{ ...agent, id: 'sudo-release', command: longCommand }];
   if (scenario === 'user') return [user];
   if (scenario === 'many') return [agent, user, cache];
   if (scenario === 'elsewhere' || scenario === 'withdrawn') return [agent, user];
