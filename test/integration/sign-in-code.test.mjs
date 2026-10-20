@@ -17,6 +17,7 @@ async function open(t, params = {}) {
         window.copies.push(text);
       },
     });
+    window.inner = () => window.$('slicc-app', 'slicc-dock', 'slicc-settings').shadowRoot;
     window.part = (surface, selector) =>
       surface === 'chat' ? window.chatPart(selector) : window.settingsPart(selector);
     window.signIn = (surface, scope) => {
@@ -259,6 +260,114 @@ test('the expired-session card shows the device code while signing in, and drops
   await page.until((card) => window.chatPart(card)?.dataset.login === 'connected', card);
   assert.equal(
     await page.evaluate((card) => !!window.chatPart(`${card} [data-sign-in]`), card),
+    false
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+async function dualPage(t, params = {}) {
+  const page = await open(t, { accounts: 'dual', vault: 'secrets', delay: '20', ...params });
+  await page.evaluate(() => {
+    window.calls = [];
+    const port = window.model.settings;
+    const connect = port.connect.bind(port);
+    port.connect = (...args) => {
+      window.calls.push({
+        call: 'connect',
+        args: args.length,
+        id: args[0],
+        options: args[3] ?? null,
+        active: navigator.userActivation.isActive,
+      });
+      return connect(...args);
+    };
+    const vault = window.model.vault;
+    const put = vault.put.bind(vault);
+    vault.put = (...args) => {
+      window.calls.push({ call: 'put', name: args[0] });
+      return put(...args);
+    };
+    return true;
+  });
+  await settings(page);
+  await page.until(() => !!window.settingsPart('.account[data-id=lumen] [data-action=connect]'));
+  return page;
+}
+
+test('a dual account signs in with method sign-in inside the click', async (t) => {
+  const page = await dualPage(t);
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.settingsPart('.account[data-id=lumen] [data-action=connect]').textContent.trim(),
+      window
+        .settingsPart('.account[data-id=lumen] + .notes [data-action=use-key]')
+        .textContent.trim(),
+    ]),
+    ['Sign in', 'Use an API key instead']
+  );
+  await click(page, 'settings', '.account[data-id=lumen] [data-action=connect]');
+  await page.until(() => window.calls.length === 1);
+  assert.deepEqual(await page.evaluate(() => window.calls), [
+    { call: 'connect', args: 4, id: 'lumen', options: { method: 'sign-in' }, active: true },
+  ]);
+  await page.until(
+    () =>
+      window.settingsPart('.account[data-id=lumen] swc-status-light')?.textContent === 'Connected'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a dual account takes a key: vault.put first, then connect with method key', async (t) => {
+  const page = await dualPage(t);
+  await click(page, 'settings', '.account[data-id=lumen] + .notes [data-action=use-key]');
+  await page.until(
+    () =>
+      window.settingsPart('form.key[data-id=lumen] input[data-field=value]') ===
+      window.inner().activeElement
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window.settingsPart('form.key[data-id=lumen] [data-action=get-key]').getAttribute('href')
+    ),
+    'https://console.lumen.example/keys'
+  );
+  await click(page, 'settings', 'form.key[data-id=lumen] + .notes [data-action=use-sign-in]');
+  await page.until(
+    () =>
+      !window.settingsPart('form.key[data-id=lumen]') &&
+      window.inner().activeElement ===
+        window.settingsPart('.account[data-id=lumen] [data-action=connect]')
+  );
+  await click(page, 'settings', '.account[data-id=lumen] + .notes [data-action=use-key]');
+  await page.until(
+    () =>
+      window.settingsPart('form.key[data-id=lumen] input[data-field=value]') ===
+      window.inner().activeElement
+  );
+  await page.type('lumen-sample-0042');
+  await page.press('Enter');
+  await page.until(
+    () =>
+      window.settingsPart('.account[data-id=lumen] swc-status-light')?.textContent === 'Connected'
+  );
+  assert.deepEqual(await page.evaluate(() => window.calls), [
+    { call: 'put', name: 'LUMEN_API_KEY' },
+    { call: 'connect', args: 4, id: 'lumen', options: { method: 'key' }, active: true },
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('accounts that are not dual call connect without options', async (t) => {
+  const page = await dualPage(t);
+  await click(page, 'settings', '.account[data-id=ai-adobe] [data-action=connect]');
+  await page.until(() => window.calls.length === 1);
+  assert.deepEqual(await page.evaluate(() => window.calls), [
+    { call: 'connect', args: 1, id: 'ai-adobe', options: null, active: true },
+  ]);
+  assert.equal(
+    await page.evaluate(
+      () => !!window.settingsPart('.account[data-id=ai-adobe] + .notes [data-action=use-key]')
+    ),
     false
   );
   assert.deepEqual(page.errors, []);

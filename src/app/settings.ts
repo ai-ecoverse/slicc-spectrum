@@ -1373,18 +1373,15 @@ export class SliccSettings extends ThemedElement {
         @click=${() => this.#disconnect(account)}
       >Disconnect</swc-button>`;
     }
-    const label = popup(account)
-      ? 'Sign in'
-      : account.status === 'expired'
-        ? 'Reconnect'
-        : 'Connect';
+    const signs = popup(account) || dual(account);
+    const label = signs ? 'Sign in' : account.status === 'expired' ? 'Reconnect' : 'Connect';
     const entering = this.entering === account.id;
     const busy = this.#signingIn(account) || (!entering && this.pending.has(account.id));
     return html`<swc-button
       size="m"
       variant="secondary"
       data-action="connect"
-      accessible-label=${popup(account) ? `Sign in to ${account.provider}` : `${label} ${account.provider}`}
+      accessible-label=${signs ? `Sign in to ${account.provider}` : `${label} ${account.provider}`}
       ?pending=${busy}
       ?disabled=${entering || !!account.blocked}
       @click=${() => this.#start(account)}
