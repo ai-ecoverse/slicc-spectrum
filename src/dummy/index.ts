@@ -22,6 +22,7 @@ import {
 import { DummyNotices, type NoticeScenario, readOnlyText, startingText } from './notices.ts';
 import { providerAccounts, providerFixtures } from './providers.ts';
 import { DummySettings, type DummyTransport } from './settings.ts';
+import { longAsk } from './showcase.ts';
 import { DummySprinkles } from './sprinkles.ts';
 import { DummyTabs, type TabsScenario } from './tabs.ts';
 import { DummyTerminals } from './terminals.ts';
@@ -51,6 +52,7 @@ export interface DummyOptions {
   notices?: NoticeScenario | 'off';
   tabs?: TabsScenario | 'off';
   approvals?: ApprovalScenario | 'off';
+  asks?: 'long' | 'off';
   follow?: FollowScenario | 'off';
   vault?: VaultScenario | 'off';
   guests?: GuestsScenario | 'off';
@@ -166,6 +168,7 @@ export function createDummyModel({
   notices = 'off',
   tabs = 'off',
   approvals = 'off',
+  asks = 'off',
   follow = 'off',
   vault = 'off',
   guests = 'off',
@@ -195,7 +198,12 @@ export function createDummyModel({
   });
   const agent = new DummyAgent(
     fixtures.agents,
-    fixtures.conversations,
+    asks === 'long'
+      ? {
+          ...fixtures.conversations,
+          'cone-kitchen': [...fixtures.conversations['cone-kitchen'], longAsk()],
+        }
+      : fixtures.conversations,
     { files, browser },
     time,
     fixtures.queues,

