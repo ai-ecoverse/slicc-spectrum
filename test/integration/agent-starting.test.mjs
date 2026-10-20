@@ -772,3 +772,175 @@ test('composers outside the app send the rows once, and not after both are gone'
   assert.deepEqual(await page.evaluate(() => window.sent().slice(-1)), ['Check the anchorage']);
   assert.deepEqual(page.errors, []);
 });
+
+test('while the agent starts the chat header says Starting with a neutral light, and shows the agent once it arrives', async (t) => {
+  const page = await open(t);
+  const header = () =>
+    page.evaluate(() => {
+      const header = window.chat().querySelector('header');
+      const light = header.querySelector('swc-status-light');
+      return [
+        header.textContent.trim(),
+        light?.getAttribute('variant') ?? null,
+        !!header.querySelector('[data-starting]'),
+      ];
+    });
+  assert.deepEqual(await header(), ['Starting…', 'neutral', true]);
+  await page.evaluate(() => {
+    window.model.agent.arrive();
+    return true;
+  });
+  await page.until(() => !!window.app.dock.content('chat:cone-sliccy'));
+  await page.until(() => !!window.chat().querySelector('header sp-picker'));
+  const [text, , starting] = await header();
+  assert.equal(starting, false);
+  assert.ok(!text.includes('Starting'), text);
+  assert.ok(!text.includes('No agent'), text);
+  assert.deepEqual(page.errors, []);
+});
+
+test('the chat header says No agent once the line clears with no agent', async (t) => {
+  const page = await open(t);
+  await page.until(() => !!window.chat().querySelector('header [data-starting]'));
+  await page.evaluate(() => {
+    window.model.agent.setStarting(null);
+    return true;
+  });
+  await page.until(() => window.chat().querySelector('header').textContent.trim() === 'No agent');
+  assert.equal(
+    await page.evaluate(() => !!window.chat().querySelector('header swc-status-light')),
+    false
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+const agentsNote = () =>
+  window.app.dock
+    .content('agents')
+    ?.shadowRoot?.querySelector('[data-empty=starting]')
+    ?.textContent.trim() ?? null;
+
+test('while the agent starts the Agents panel says it shows up there, and the line goes once it arrives', async (t) => {
+  const page = await open(t);
+  await page.until(() => !!window.app.dock.content('agents'));
+  assert.equal(await page.evaluate(agentsNote), 'The agent shows up here once it starts.');
+  assert.equal(
+    await page.evaluate(
+      () =>
+        getComputedStyle(
+          window.app.dock.content('agents').shadowRoot.querySelector('[data-empty=starting]')
+        ).color ===
+        getComputedStyle(
+          Object.assign(
+            window.app.dock.content('agents').shadowRoot.appendChild(document.createElement('i')),
+            { style: 'color: var(--swc-neutral-subdued-content-color-default)' }
+          )
+        ).color
+    ),
+    true
+  );
+  await page.evaluate(() => {
+    window.model.agent.arrive();
+    return true;
+  });
+  await page.until(
+    () => !!window.app.dock.content('agents').shadowRoot.querySelector('li[data-id=cone-sliccy]')
+  );
+  assert.equal(await page.evaluate(agentsNote), null);
+  assert.deepEqual(page.errors, []);
+});
+
+test('the Agents line goes when the line clears with no agent', async (t) => {
+  const page = await open(t);
+  await page.until(() => !!window.app.dock.content('agents'));
+  assert.equal(await page.evaluate(agentsNote), 'The agent shows up here once it starts.');
+  await page.evaluate(() => {
+    window.model.agent.setStarting(null);
+    return true;
+  });
+  await page.until(() => !window.model.agent.starting());
+  await page.until(
+    () => !window.app.dock.content('agents').shadowRoot.querySelector('[data-empty]')
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('the changes list and the diff name the agent once it arrives, not its id', async (t) => {
+  const page = await open(t);
+  const path = '/workspace/harbor/src/lib/cache.ts';
+  await page.evaluate((path) => {
+    const root = (id) => window.app.dock.content(id)?.shadowRoot;
+    window.row = () => root('changes')?.querySelector(`li[data-path="${path}"]`);
+    window.where = () => window.row()?.querySelector('.where').textContent.trim() ?? null;
+    window.label = () => root(`diff:${path}`)?.querySelector('.bar .label')?.textContent ?? null;
+    window.app.show('changes');
+    return true;
+  }, path);
+  await page.until(() => !!window.row());
+  assert.equal(
+    await page.evaluate(() => window.where()),
+    '/workspace/harbor/src/lib · cone-harbor'
+  );
+  await page.evaluate(() => {
+    window.row().click();
+    return true;
+  });
+  await page.until(() => !!window.label());
+  assert.equal(await page.evaluate(() => window.label()), 'Modified by cone-harbor');
+  assert.equal(await page.evaluate(() => window.row().isConnected), true);
+  await page.evaluate(() => {
+    window.model.agent.arrive();
+    return true;
+  });
+  await page.until(() => window.label() === 'Modified by harbor');
+  await page.until(() => window.where() === '/workspace/harbor/src/lib · harbor');
+  assert.deepEqual(page.errors, []);
+});
+
+for (const color of ['dark', 'light']) {
+  test(`the queued rows' dashed border has at least 3:1 against the composer in ${color}`, async (t) => {
+    const page = await open(t, { color });
+    await say(page, 'Check the harbor tides');
+    await say(page, 'Then list the moorings');
+    const result = await page.evaluate(() => {
+      const channels = (color) => {
+        const srgb = color.match(/color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)/);
+        if (srgb)
+          return [...srgb.slice(1, 4).map((value) => Number(value) * 255), Number(srgb[4] ?? 1)];
+        const [r, g, b, a = 1] = color.match(/[\d.]+/g).map(Number);
+        return [r, g, b, a];
+      };
+      const over = (top, bottom) => {
+        const [r, g, b, a] = channels(top);
+        const under = channels(bottom);
+        return [r, g, b].map((value, index) => value * a + under[index] * (1 - a));
+      };
+      const luminance = (rgb) => {
+        const [r, g, b] = rgb.map((value) => {
+          const v = value / 255;
+          return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const chat = window.chat();
+      const composer = chat.querySelector('slicc-composer');
+      const surface = over(
+        getComputedStyle(composer, '::before').backgroundColor,
+        getComputedStyle(chat.host).backgroundColor
+      );
+      const rows = [...window.composer().querySelectorAll('li.queued[data-mode=starting]')];
+      return rows.map((row) => {
+        const style = getComputedStyle(row);
+        const border = channels(style.borderTopColor).slice(0, 3);
+        const [high, low] = [luminance(border), luminance(surface)].sort((x, y) => y - x);
+        return [style.borderTopStyle, Math.round(((high + 0.05) / (low + 0.05)) * 100) / 100];
+      });
+    });
+    assert.equal(result.length, 2);
+    for (const [style, ratio] of result) {
+      assert.equal(style, 'dashed');
+      assert.ok(ratio >= 3, `${color} border contrast ${ratio}`);
+    }
+    assert.deepEqual(page.errors, []);
+  });
+}

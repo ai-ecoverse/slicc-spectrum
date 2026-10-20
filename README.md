@@ -259,6 +259,7 @@ Every row has up to two lines, aligned to the top under the name, starting with 
 A cone with scoops has a ribbon line below: one segment per scoop, coloured by status at 3:1 or more on every row background, then its scoops in words, naming only the busy ones, as in "2 scoops · 1 waiting" ("2 scoops" when all are idle).
 Its `aria-description` sums up every status, as in "2 scoops: 1 working, 1 idle".
 Rows without scoops or errors have no empty ribbon or error line.
+With no agents while the agent port's `starting()` returns a line, the panel says "The agent shows up here once it starts." (`[data-empty="starting"]`, subdued), and the line goes once an agent arrives or the line clears.
 The drop or delete button sits in its own column on the row's right edge, under the context fill, so the title ellipsizes before it and the focus ring stays whole; it shows on hover, on keyboard focus of the row, when <kbd>Tab</kbd> from the selected row reaches it, and always on touch, and it hides again once a pointer that clicked it leaves.
 The selected row has an accent bar on its inline-start edge.
 Under forced colors, the dots, segments, unread circle and selection bar keep `CanvasText`, `Highlight` and `HighlightText`.
@@ -307,7 +308,7 @@ Between the header and the transcript, a `<slicc-notices>` shows the model's not
 On a follower without Control, or while the agent port's `readOnly()` returns a line, a note (`p[data-follow="watch"]`, that line first, else the follow-based one) takes the composer's place, the header shows the model's name instead of the pickers and New conversation, and there's no suggested follow-up.
 An empty chat says "No messages yet.
 Ask sliccy something." with the agent's name, and only "No messages yet." while watch-only.
-While the agent port's `starting()` returns a line, the chat has no empty state (`[data-empty]`): the embedder's notice says what's going on.
+While the agent port's `starting()` returns a line, the chat has no empty state (`[data-empty]`): the embedder's notice says what's going on, and the header, with no agent yet, shows a neutral "Starting…" light (`[data-starting]`) instead of "No agent".
 With the model's `seat` set, the chat is a guest's page: the header shows only the cone's name (`[data-seat-cone]`) and its status, with no pickers, meter or New conversation; the guest's own messages (`origin` `guest` whose `seat` is the seat's `id`, or, without a `seat`, whose `from` is its `label`) read as the reader's own, with no name, while other guests keep "From {label}" and the host's messages read "From the host"; an open question or a permission request takes the normal card border, without its buttons, form or countdown, and stays in the log (no `data-pending`), and says "The host answers this."
 (`[data-host-answers]`, subdued); once answered, it shows the answer as everyone sees it; a reviewed guest message's outcome (a notice titled "It was approved.", "Nobody approved this in time.", "It was declined." or "It was withdrawn.", with the message as its text) reads as the quoted message, cut to one line, then the outcome (`.marker[data-ended]`); an approved one shows only "It was approved.", since the delivered message follows right after it; inline sprinkles inert with "View only on this device", error cards have no action and there's no suggested follow-up; the models aren't settled, and files can't be dropped.
 An empty guest chat says "No messages yet.
@@ -341,7 +342,7 @@ The message box.
 `/` completes commands (`/clear`, `/compact`, `/model`, `/thinking`, `/scoop`, `/stop`, `/freeze` when the port can freeze, `/theme`) and their arguments, `@` mentions agents and files.
 Attach from the computer, from SLICC's files, a browser screenshot or a shared secret (with a `vault.put`, the popup takes the value too, checks it like Settings › Secrets, puts it in the vault and attaches the name, showing errors inline and clearing the field; an empty value shares a name the vault already has, and a new value for one asks before it replaces it; while the vault is away (`availability()` `connecting` or `waiting`) or locked, it takes no value and says so; without one, it attaches the name and says to add the value in Settings › Secrets), or paste and drop files (25 MB each; a dropped folder, told apart by its drag entry, becomes a “Folders can’t be attached” chip, and a file that can't be read a “Could not read the file” chip, instead of an attachment).
 <kbd>Esc</kbd> in the `+` menu closes it, from any item, and puts focus back on `+`; it goes no further, so it doesn't also stop a reply.
-Queued messages wait above it, to send now or drop; a steer the agent still holds (`mode: 'steer'`, `li.queued[data-mode=steer]`) reads "Sends at the next step" and can only be dropped.
+Queued messages wait above it in a dashed box (`--swc-neutral-visual-color`, 3:1 or more against the composer in both themes), to send now or drop; a steer the agent still holds (`mode: 'steer'`, `li.queued[data-mode=steer]`) reads "Sends at the next step" and can only be dropped.
 Model and thinking pickers.
 Where the browser has speech recognition, the `+` menu ends with **Enable push to talk** (`settings.pushToTalk`, optional and off by default), a checkable item (`menuitemcheckbox`, `aria-checked`) described as "Hold Alt+M to dictate", which stays open when toggled; Settings has the same switch.
 While it is on, holding <kbd>Alt</kbd>+<kbd>M</kbd> in the field (by `code`, so <kbd>Option</kbd>+<kbd>M</kbd> on a Mac types no µ; not with Ctrl, ⌘ or Shift, nor during IME composition) dictates into it, the field's description ends with "hold Alt+M to dictate", and releasing either key, or leaving the window, stops it.
@@ -387,7 +388,7 @@ One file (`path`), highlighted, with its pending change and a link to the diff.
 
 #### `<slicc-changes>`
 
-Pending changes with their author.
+Pending changes with their author, by name, which follows `agents` so an agent that arrives later replaces its id (also in `<slicc-diff-panel>`'s bar).
 Opens the diff, accepts or reverts one change or all of them (**Accept all** and **Revert all** are `data-action="accept-all"` and `data-action="revert-all"`).
 While watch-only (`watchOnly()`: a follower without Control, or the agent port's `readOnly()`), the list and the diffs stay but no Accept or Revert shows: a subdued "Watch only" (`[data-watch-note]`, plain text, not a live region) stands where Accept all and Revert all were, and a revert confirmed after that is dropped.
 With nothing pending it says "No pending changes.

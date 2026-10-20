@@ -617,7 +617,7 @@ export class SliccComposer extends ThemedElement {
         padding: var(--swc-spacing-50) var(--swc-spacing-50) var(--swc-spacing-50) var(--swc-spacing-200);
         border-radius: var(--swc-corner-radius-medium-default);
         background: var(--swc-neutral-subtle-background-color-default);
-        border: var(--swc-border-width-100) dashed var(--swc-gray-300);
+        border: var(--swc-border-width-100) dashed var(--swc-neutral-visual-color);
         color: var(--swc-neutral-content-color-default);
       }
       .hold {
