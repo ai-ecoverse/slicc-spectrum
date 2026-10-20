@@ -43,6 +43,7 @@ import type {
   UserMessage,
 } from '../model/types.ts';
 import { ansi } from './ansi.ts';
+import { fullCommand, toShow } from './command.ts';
 import { guard } from './guard.ts';
 import { markdown } from './markdown.ts';
 import { signInText } from './sign-in.ts';
@@ -67,6 +68,11 @@ export interface Handlers {
   licks?: ViewSet;
   runs?: ViewSet;
   detail?: { has(id: string): boolean; toggle(id: string): void };
+  commands?: {
+    cut(id: string): boolean | undefined;
+    has(id: string): boolean;
+    toggle(id: string): void;
+  };
 }
 
 export interface Login {
@@ -981,6 +987,23 @@ function spokenLeft(left: number, at: number): string {
   return left <= 60_000 ? 'Less than a minute left' : `Expires at ${deadline(at)}`;
 }
 
+function decide(message: LickMessage, handlers: Handlers, settled: boolean) {
+  const commands = settled || !message.body ? undefined : handlers.commands;
+  const full = commands?.has(message.id) ?? true;
+  const cut = commands?.cut(message.id);
+  const toggle =
+    commands && (full || cut) ? fullCommand(full, () => commands.toggle(message.id)) : nothing;
+  const actions = html`${commands && !full && cut ? html`<p class="allow-hint" data-allow-hint>${toShow}</p>` : nothing}<div class="decide">
+    ${toggle}
+    <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'dismissed')}>Deny</swc-button>
+    ${full || cut === false ? html`<swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>` : nothing}
+  </div>`;
+  const command = message.body
+    ? html`<pre class="command"><span class="lines" data-clamp=${full ? nothing : message.id}>${message.body}</span></pre>`
+    : nothing;
+  return { actions, command };
+}
+
 function decision(message: LickMessage, handlers: Handlers): TemplateResult {
   const at = message.expiresAt;
   const now = Date.now();
@@ -988,14 +1011,7 @@ function decision(message: LickMessage, handlers: Handlers): TemplateResult {
   const guest = handlers.seat !== undefined;
   const timer = at === undefined || (guest && !expired) ? nothing : askTimer(at, now);
   const settled = expired || guest;
-  const actions = expired
-    ? nothing
-    : guest
-      ? hostAnswers
-      : html`<div class="decide">
-        <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'dismissed')}>Deny</swc-button>
-        <swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>
-      </div>`;
+  const { actions, command } = decide(message, handlers, settled);
   const detail = settled ? undefined : handlers.detail;
   const shown = !!detail?.has(message.id);
   const more = detail
@@ -1005,8 +1021,8 @@ function decision(message: LickMessage, handlers: Handlers): TemplateResult {
     <div class="decision" data-kind="approval">
       <div class="decision-head"><span class="who">${message.title}</span>${timer}${more}</div>
       <p class="decision-text">${message.text}</p>
-      ${message.body ? html`<pre class="command">${message.body}</pre>` : nothing}
-      ${actions}
+      ${command}
+      ${expired ? nothing : guest ? hostAnswers : actions}
     </div>
   </swc-conversation-turn>`;
 }
@@ -1727,6 +1743,7 @@ export const messageCss = css`
   }
   .decide {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--swc-spacing-85);
     padding: 0 var(--swc-spacing-100) var(--swc-spacing-100);
   }
@@ -1797,6 +1814,14 @@ export const messageCss = css`
   .question.decision .options {
     justify-content: flex-end;
     padding: 0;
+  }
+  .decide .full-command {
+    margin-inline-end: auto;
+  }
+  .decision .allow-hint {
+    margin: 0;
+    color: var(--swc-neutral-subdued-content-color-default);
+    font-size: var(--swc-font-size-75);
   }
   .question.decision .options {
     display: flex;
