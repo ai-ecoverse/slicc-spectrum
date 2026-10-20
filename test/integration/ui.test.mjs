@@ -10190,6 +10190,38 @@ test('vault session entries read as sent over their protocol, with how the kerne
       'HARBOR_API_KEY · Sent over HTTP/1.1 to quay.harbor.example:8443, through Tailscale by cone',
     ]
   );
+  await page.evaluate(() => {
+    const vault = window.model.vault;
+    const list = vault.list();
+    const next = {
+      ...list,
+      audit: [
+        {
+          ...list.audit[0],
+          seq: 16,
+          id: 'audit-16',
+          domain: 'imap.tide.example',
+          port: 993,
+          protocol: 'imap',
+          verifiedBy: 'ledger',
+        },
+        ...list.audit,
+      ],
+    };
+    vault.list = () => next;
+    vault.emit('list', next);
+    return true;
+  });
+  await page.until(() => !!window.settingsPart('slicc-secrets', 'ol.audit li[data-seq="16"]'));
+  assert.equal(
+    await page.evaluate(() =>
+      window
+        .settingsPart('slicc-secrets', 'ol.audit li[data-seq="16"] .what')
+        .textContent.replace(/\s+/g, ' ')
+        .trim()
+    ),
+    'TIDE_MAIL · Sent over imap to imap.tide.example:993, through slicc on this computer by cone'
+  );
   await clean(page);
   assert.deepEqual(page.errors, []);
 });

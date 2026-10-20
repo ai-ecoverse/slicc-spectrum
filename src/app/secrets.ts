@@ -23,8 +23,6 @@ import type {
   RefusedRule,
   RevealEntry,
   SecretView,
-  SessionEntry,
-  SessionProtocol,
   SliccModel,
   VaultList,
   VaultPort,
@@ -191,16 +189,22 @@ export function endpointsLine(
   return html`${parts.map((part, index) => html`${index ? '. ' : ''}${part}`)}`;
 }
 
-const sessionProtocols: Record<SessionProtocol, string> = {
+const sessionProtocols: Record<string, string> = {
   http1: 'HTTP/1.1',
   smtp: 'SMTP',
   pg: 'Postgres',
 };
 
-const sessionTrust: Record<NonNullable<SessionEntry['verifiedBy']>, string> = {
+const sessionTrust: Record<string, string> = {
   roots: 'trusted by public roots',
   anchored: 'trusted by its pinned anchor',
 };
+
+const sessionProtocol = (protocol: string): string =>
+  Object.hasOwn(sessionProtocols, protocol) ? sessionProtocols[protocol] : protocol;
+
+const sessionTrusted = (verifiedBy: string | undefined): string =>
+  verifiedBy && Object.hasOwn(sessionTrust, verifiedBy) ? `${sessionTrust[verifiedBy]}, ` : '';
 
 export function auditLine(
   entry: AuditEntry,
@@ -212,7 +216,7 @@ export function auditLine(
     case 'forward':
       return html`Sent to ${entry.domain}: <code>${entry.method} ${entry.path}</code>, through ${exitLabel(entry.exit, devices)}`;
     case 'session':
-      return html`Sent over ${sessionProtocols[entry.protocol]} to ${entry.domain}:${entry.port}, ${entry.verifiedBy ? `${sessionTrust[entry.verifiedBy]}, ` : ''}through ${exitLabel(entry.exit, devices)}`;
+      return html`Sent over ${sessionProtocol(entry.protocol)} to ${entry.domain}:${entry.port}, ${sessionTrusted(entry.verifiedBy)}through ${exitLabel(entry.exit, devices)}`;
     case 'mcp':
       return html`Sent to the MCP server ${entry.server} at ${entry.domain}: <code>${entry.method} ${entry.path}</code>, through ${exitLabel(entry.exit, devices)}`;
     case 'materialize':
