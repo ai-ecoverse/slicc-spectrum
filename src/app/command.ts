@@ -2,8 +2,8 @@ import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import { css, html, type TemplateResult } from 'lit';
 
 export const clampCss = css`
-  .command[data-clamp] {
-    box-sizing: content-box;
+  .command [data-clamp] {
+    display: block;
     max-block-size: 4lh;
     overflow: hidden;
   }
@@ -26,7 +26,7 @@ export class Cuts {
 
   measure(): void {
     let changed = false;
-    for (const command of this.#root().querySelectorAll<HTMLElement>('.command[data-clamp]')) {
+    for (const command of this.#root().querySelectorAll<HTMLElement>('.command [data-clamp]')) {
       this.#observer.observe(command);
       const id = command.dataset.clamp as string;
       const cut = command.clientHeight

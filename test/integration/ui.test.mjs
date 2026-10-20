@@ -3420,7 +3420,8 @@ async function cutCommand(page, scope) {
         range.setEnd(node, at - offset + tail.length);
       } else range.selectNodeContents(text);
       const tailBox = range.getBoundingClientRect();
-      const box = command.getBoundingClientRect();
+      const lines = command.querySelector('.lines');
+      const box = lines.getBoundingClientRect();
       const cardBox = card.getBoundingClientRect();
       const style = getComputedStyle(command);
       const allow = card.querySelector(
@@ -3456,7 +3457,7 @@ async function cutCommand(page, scope) {
               tailBox.top + tailBox.height / 2
             )
           ),
-        cut: command.scrollHeight > command.clientHeight + 1,
+        cut: lines.scrollHeight > lines.clientHeight + 1,
         wrap: [style.whiteSpace, style.overflowWrap, style.textOverflow, style.webkitLineClamp],
         mono: /monospace/.test(style.fontFamily),
       };

@@ -363,6 +363,9 @@ export class SliccChat extends ThemedElement {
       .asks[data-more]::after {
         display: block;
       }
+      .asks {
+        scroll-padding-block-end: var(--swc-spacing-500);
+      }
       .asks:has(.waiting) {
         scroll-padding-block-start: calc(var(--swc-component-height-100) + var(--swc-spacing-100));
       }
@@ -503,7 +506,10 @@ export class SliccChat extends ThemedElement {
     commands: {
       cut: (id) => this.#cuts.get(id),
       has: (id) => this.#commands.has(id),
-      toggle: (id) => this.#commands.toggle(id),
+      toggle: (id) => {
+        this.#commands.toggle(id);
+        void this.updateComplete.then(() => this.#reach(id));
+      },
     },
     color: 'light',
     model: null,
@@ -602,6 +608,13 @@ export class SliccChat extends ThemedElement {
       dock.scrollHeight - dock.scrollTop - dock.clientHeight > end + 1
     );
   };
+
+  #reach(id: string): void {
+    [...this.renderRoot.querySelectorAll<HTMLElement>('.asks .decision-turn')]
+      .find((turn) => turn.dataset.id === id)
+      ?.querySelector('.decide')
+      ?.scrollIntoView({ block: 'nearest' });
+  }
 
   #refocus(): void {
     if (!this.#held || (this.renderRoot as ShadowRoot).activeElement) return;

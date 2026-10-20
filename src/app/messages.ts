@@ -1053,7 +1053,7 @@ function decide(message: LickMessage, handlers: Handlers, settled: boolean) {
     ${full || cut === false ? html`<swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>` : nothing}
   </div>`;
   const command = message.body
-    ? html`<pre class="command" data-clamp=${full ? nothing : message.id}>${message.body}</pre>`
+    ? html`<pre class="command"><span class="lines" data-clamp=${full ? nothing : message.id}>${message.body}</span></pre>`
     : nothing;
   return { actions, command };
 }

@@ -677,7 +677,7 @@ export class SliccApprovals extends ModelElement {
     const full = !pending || this.#full.has(id);
     const toggle =
       pending && (full || this.#cuts.get(id)) ? fullCommand(full, () => this.#expand(id)) : nothing;
-    return html`<pre class="command" data-command=${approval.kind === 'sudo' ? '' : nothing} data-summary=${approval.kind === 'sudo' ? nothing : ''} data-clamp=${full ? nothing : id}>${text}</pre>${toggle}`;
+    return html`<pre class="command" data-command=${approval.kind === 'sudo' ? '' : nothing} data-summary=${approval.kind === 'sudo' ? nothing : ''}><span class="lines" data-clamp=${full ? nothing : id}>${text}</span></pre>${toggle}`;
   }
 
   #request(approval: Approval, pending = false): TemplateResult {
