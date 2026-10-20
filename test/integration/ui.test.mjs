@@ -645,12 +645,31 @@ async function pointer(t, fine) {
   return page;
 }
 
+async function chatSettled(page) {
+  await page.until(() => window.dock().api.activePanel?.id.startsWith('chat:'));
+  await page.evaluate(async () => {
+    const chat = window.dock().content(window.dock().api.activePanel.id);
+    await chat.updateComplete;
+    await chat.shadowRoot.querySelector('slicc-composer')?.updateComplete;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return true;
+  });
+  return page.evaluate(() => ({ ...window.activated(), deep: window.focused() }));
+}
+
 test('with a coarse pointer, activating a panel never focuses a text field', async (t) => {
   const page = await pointer(t, false);
   assert.equal(await page.evaluate(() => matchMedia('(pointer: fine)').matches), false);
   assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), true);
   const seen = [];
   const check = async (want) => {
+    if (want === 'chat') {
+      const state = await chatSettled(page);
+      assert.equal(state.focused, false, `chat: ${state.deep}`);
+      assert.equal(state.text, false, `chat: ${state.deep}`);
+      seen.push(`${state.id}: unfocused`);
+      return;
+    }
     const state = await page
       .within(
         5000,
@@ -689,7 +708,7 @@ test('with a coarse pointer, activating a panel never focuses a text field', asy
   }
   t.diagnostic(seen.join('\n'));
   assert.ok(
-    seen.some((line) => /^chat:.*slicc-chat > div$/.test(line)),
+    seen.some((line) => /^chat:.*: unfocused$/.test(line)),
     seen.join('\n')
   );
   assert.ok(
@@ -704,6 +723,31 @@ test('with a fine pointer, activating chat focuses the composer', async (t) => {
   await page.press('1', 'alt');
   await page.until(() => /slicc-agents/.test(window.focused()));
   await page.press('2', 'alt');
+  await page.until(() =>
+    /slicc-chat > slicc-composer > swc-prompt-field > textarea$/.test(window.focused())
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('after a tap, activating chat focuses neither its log nor its composer, until a key', async (t) => {
+  const page = await pointer(t, true);
+  await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+  const point = await page.evaluate(() => {
+    const box = window.app.shadowRoot
+      .querySelector('.rail [data-surface="memory"]')
+      .getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  });
+  await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+  await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.until(() => window.dock().api.activePanel?.id === 'memory');
+  await page.evaluate(() => void window.app.show('chat'));
+  const touched = await chatSettled(page);
+  assert.doesNotMatch(touched.deep, /slicc-chat/, touched.deep);
+  assert.equal(touched.text, false, touched.deep);
+
+  await page.press('Shift');
+  await page.evaluate(() => void window.app.show('chat'));
   await page.until(() =>
     /slicc-chat > slicc-composer > swc-prompt-field > textarea$/.test(window.focused())
   );

@@ -613,6 +613,7 @@ Files and diffs open in one editor group next to the chat.
 Panels ask for them with `open-file` and `open-diff` events (`{ path }`), which `<slicc-app>` handles, or call `app.open('file' | 'diff', path)`.
 
 Keys: <kbd>Alt</kbd>+<kbd>1</kbd>… opens and focuses a panel, <kbd>F6</kbd> and <kbd>Shift</kbd>+<kbd>F6</kbd> move between groups, <kbd>Ctrl</kbd>+<kbd>]</kbd> and <kbd>Ctrl</kbd>+<kbd>[</kbd> between tabs, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> switches the theme.
+Focusing a chat panel this way, or with `show('chat')`, focuses its composer (its log without one) when the pointer is fine and the last input was a key or a mouse; after a touch or pen tap, or without a fine pointer, it leaves focus where it is, so no on-screen keyboard opens and the empty log shows no ring.
 In terminal and browser tab strips, <kbd>←</kbd> and <kbd>→</kbd> switch tabs.
 In the agents and changes lists, arrows, <kbd>Home</kbd>, <kbd>End</kbd> and <kbd>Enter</kbd>; in the file tree, its own arrow keys and <kbd>Enter</kbd> to open.
 In the composer, <kbd>Enter</kbd> sends, <kbd>Shift</kbd>+<kbd>Enter</kbd> adds a line and <kbd>Esc</kbd> stops a reply.
