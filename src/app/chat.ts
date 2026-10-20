@@ -21,6 +21,7 @@ import type {
   Thinking,
   UserMessage,
 } from '../model/types.ts';
+import { readSurface } from './ansi.ts';
 import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
 import { Cuts, clampCss } from './command.ts';
 import { fade, folders, limit, type SliccComposer } from './composer.ts';
@@ -1183,6 +1184,7 @@ export class SliccChat extends ThemedElement {
   render(): TemplateResult {
     this.#handlers.color = this.color;
     this.#handlers.model = this.model ?? null;
+    this.#handlers.surface ??= readSurface(this.renderRoot);
     const agent = this.#agent();
     this.#switched(agent);
     const watch = watchOnly(this.model);

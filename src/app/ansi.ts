@@ -240,7 +240,95 @@ function on(rgb: string): string {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.179 ? 'var(--swc-black)' : 'var(--swc-white)';
 }
 
-function paint(style: AnsiStyle): [string | null, string | null] {
+type Rgb = [number, number, number];
+
+export interface Surface {
+  card: [Rgb, Rgb];
+  text: [Rgb, Rgb];
+}
+
+function triple(color: string): Rgb | null {
+  const found = color.match(/^rgb\((\d+), (\d+), (\d+)\)$/);
+  return found ? (found.slice(1).map(Number) as Rgb) : null;
+}
+
+export function readSurface(root: Node & ParentNode): Surface | undefined {
+  const read = (scheme: string) => {
+    const probe = document.createElement('div');
+    probe.className = 'call run-detail';
+    probe.hidden = true;
+    probe.style.colorScheme = scheme;
+    root.append(probe);
+    const style = getComputedStyle(probe);
+    const found = [triple(style.backgroundColor), triple(style.color)];
+    probe.remove();
+    return found;
+  };
+  const [light, dark] = [read('light'), read('dark')] as [Array<Rgb | null>, Array<Rgb | null>];
+  if (![...light, ...dark].every(Boolean)) return undefined;
+  return {
+    card: [light[0], dark[0]] as [Rgb, Rgb],
+    text: [light[1], dark[1]] as [Rgb, Rgb],
+  };
+}
+
+function luminance(rgb: Rgb): number {
+  const [r, g, b] = rgb.map((value) => {
+    const v = value / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  }) as Rgb;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function ratio(a: Rgb, b: Rgb): number {
+  const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (high + 0.05) / (low + 0.05);
+}
+
+function mix(color: Rgb, base: Rgb, amount: number): Rgb {
+  return color.map((value, i) =>
+    Math.round((base[i] as number) + (value - (base[i] as number)) * amount)
+  ) as Rgb;
+}
+
+function floor(color: Rgb, under: Rgb): Rgb {
+  const black: Rgb = [0, 0, 0];
+  const white: Rgb = [255, 255, 255];
+  const pole = ratio(black, under) >= ratio(white, under) ? black : white;
+  let step = 0;
+  while (ratio(mix(pole, color, step / 20), under) < 4.5) step++;
+  return mix(pole, color, step / 20);
+}
+
+const strength = [0.12, 0.25];
+
+function tint(color: Rgb, card: Rgb, text: Rgb, side: number): Rgb {
+  const amount = strength[side] as number;
+  const tinted = mix(color, card, amount);
+  const apart = Math.hypot(...tinted.map((value, i) => value - (card[i] as number)));
+  return apart < 16 ? mix(text, card, amount) : tinted;
+}
+
+const css = (rgb: Rgb) => `rgb(${rgb.join(', ')})`;
+const both = (pair: Rgb[]) => `light-dark(${pair.map(css).join(', ')})`;
+
+function extendedPaint(fg: Color, bg: Color, surface: Surface): [string, string | null] {
+  const backs =
+    typeof bg === 'string'
+      ? surface.card.map((card, side) =>
+          tint(triple(bg) as Rgb, card, surface.text[side] as Rgb, side)
+        )
+      : null;
+  const fronts = surface.card.map((card, side) =>
+    floor(
+      typeof fg === 'string' ? (triple(fg) as Rgb) : (surface.text[side] as Rgb),
+      backs?.[side] ?? card
+    )
+  );
+  return [both(fronts), backs ? both(backs) : null];
+}
+
+function paint(style: AnsiStyle, surface?: Surface): [string | null, string | null] {
   let { fg, bg } = style;
   if (style.inverse && fg === null && bg === null) {
     return ['var(--swc-background-layer-1-color)', 'var(--swc-neutral-content-color-default)'];
@@ -250,14 +338,16 @@ function paint(style: AnsiStyle): [string | null, string | null] {
   if (style.dim && fg === null && bg === null) {
     return ['var(--swc-neutral-subdued-content-color-default)', null];
   }
+  const extendedColor = typeof bg === 'string' || (bg === null && typeof fg === 'string');
+  if (surface && extendedColor) return extendedPaint(fg, bg, surface);
   if (bg === null) return [swatch(fg), null];
   if (typeof bg === 'string') return [typeof fg === 'string' ? fg : on(bg), bg];
   const tint = `var(--swc-${bg === 8 ? 'gray-700' : tints[bg % 8]})`;
   return [bg % 8 === 0 ? 'var(--swc-gray-25)' : null, tint];
 }
 
-function inline(style: AnsiStyle): string {
-  const [fg, bg] = paint(style);
+function inline(style: AnsiStyle, surface?: Surface): string {
+  const [fg, bg] = paint(style, surface);
   return [
     fg ? `color: ${fg}` : '',
     bg ? `background: ${bg}` : '',
@@ -269,9 +359,13 @@ function inline(style: AnsiStyle): string {
     .join('; ');
 }
 
-export function ansi(text: string, streaming = false): Array<TemplateResult | string> {
+export function ansi(
+  text: string,
+  streaming = false,
+  surface?: Surface
+): Array<TemplateResult | string> {
   return parseAnsi(text, streaming).map((run) => {
-    const style = inline(run.style);
+    const style = inline(run.style, surface);
     return style ? html`<span style=${style}>${run.text}</span>` : run.text;
   });
 }

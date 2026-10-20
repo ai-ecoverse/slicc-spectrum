@@ -2239,6 +2239,105 @@ test('a bash run renders its ANSI colours, strips other escapes and copies plain
   assert.deepEqual(page.errors, []);
 });
 
+test('256 and truecolor output keeps 4.5:1 on tinted backgrounds in light and dark', async (t) => {
+  const page = await open(t, { delay: '8' });
+  await page.evaluate(() => window.model.agent.send('cone-sliccy', 'Print 256 and truecolor'));
+  await page.until(
+    () => window.chatPart('swc-conversation-turn.assistant:last-of-type')?.dataset.status === 'done'
+  );
+  await page.evaluate(() => {
+    const step = window.chatPart(
+      'swc-conversation-turn.assistant:last-of-type swc-response-status-step[data-tool=bash]'
+    );
+    step
+      .closest('swc-response-status')
+      .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
+      .click();
+    step.querySelector('.run-toggle').click();
+    return true;
+  });
+  await page.until(
+    () =>
+      !!window.chatPart(
+        'swc-conversation-turn.assistant:last-of-type .run-detail:not([hidden]) pre.output'
+      )
+  );
+  const read = () =>
+    page.evaluate(() => {
+      const pre = window.chatPart(
+        'swc-conversation-turn.assistant:last-of-type .run-detail:not([hidden]) pre.output'
+      );
+      const luminance = (color) => {
+        const [r, g, b] = color
+          .match(/[\d.]+/g)
+          .slice(0, 3)
+          .map((value) => {
+            const v = Number(value) / 255;
+            return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+          });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const ratio = (a, b) => {
+        const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+        return (high + 0.05) / (low + 0.05);
+      };
+      const card = getComputedStyle(pre.closest('.run-detail')).backgroundColor;
+      const spans = [...pre.querySelectorAll('span')].map((node) => {
+        const style = getComputedStyle(node);
+        const tinted = style.backgroundColor !== 'rgba(0, 0, 0, 0)';
+        const under = tinted ? style.backgroundColor : card;
+        return {
+          text: node.textContent.trim(),
+          color: style.color,
+          background: tinted ? under : null,
+          contrast: ratio(style.color, under),
+          lift: ratio(under, card),
+        };
+      });
+      return { card, text: pre.textContent, spans };
+    });
+  const check = (seen, scheme) => {
+    assert.equal(seen.spans.length, 20, scheme);
+    for (const span of seen.spans)
+      assert.ok(span.contrast >= 4.5, `${scheme} ${JSON.stringify(span)} on ${seen.card}`);
+    const tints = seen.spans.filter((span) => span.background);
+    assert.equal(tints.length, 9, scheme);
+    for (const span of tints) assert.ok(span.lift < 2.5, `${scheme} ${JSON.stringify(span)}`);
+    const beacon = seen.spans.find((span) => span.text === 'beacon');
+    assert.notEqual(beacon.background, 'rgb(255, 255, 0)', scheme);
+    const white = seen.spans.find((span) => span.text === '231' && span.background);
+    assert.notEqual(white.background, 'rgb(255, 255, 255)', scheme);
+  };
+  const light = await read();
+  assert.ok(light.text.startsWith('cube  16 21 46 196 226 231 244\nrgb   slate harbor'));
+  check(light, 'light');
+  await page.evaluate(() => window.model.settings.update({ color: 'dark' }));
+  await page.until(
+    (card) =>
+      getComputedStyle(
+        window.chatPart('swc-conversation-turn.assistant:last-of-type .run-detail:not([hidden])')
+      ).backgroundColor !== card,
+    light.card
+  );
+  const dark = await read();
+  check(dark, 'dark');
+  assert.notEqual(dark.spans.find((span) => span.text === 'slate').color, 'rgb(20, 20, 20)');
+  const bare = await page.evaluate(async () => {
+    const chat = document.createElement('slicc-chat');
+    chat.model = window.model;
+    document.body.append(chat);
+    await chat.updateComplete;
+    const span = [...chat.shadowRoot.querySelectorAll('pre.output span')].find(
+      (node) => node.textContent === 'slate'
+    );
+    const style = span?.getAttribute('style');
+    chat.remove();
+    return style;
+  });
+  assert.equal(bare, 'color: rgb(20, 20, 20)');
+  assert.deepEqual(page.errors, []);
+});
+
 test('tool steps join across messages, keep their states, and open from the keyboard', async (t) => {
   const page = await open(t);
   await page.evaluate(() => window.model.agent.select('cone-kitchen'));

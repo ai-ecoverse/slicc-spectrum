@@ -43,7 +43,7 @@ import type {
   ToolStatus,
   UserMessage,
 } from '../model/types.ts';
-import { ansi } from './ansi.ts';
+import { ansi, type Surface } from './ansi.ts';
 import { fullCommand, toShow } from './command.ts';
 import { guard } from './guard.ts';
 import { markdown } from './markdown.ts';
@@ -54,6 +54,7 @@ export interface Handlers {
   color: 'light' | 'dark';
   model: SliccModel | null;
   readOnly: boolean;
+  surface?: Surface;
   answer(questionId: string, answer: string): void;
   resolve(messageId: string, state: Exclude<LickState, 'pending'>): void;
   action(action: ErrorAction, messageId?: string, account?: string): void;
@@ -94,7 +95,10 @@ export interface Owner {
   stamp?: boolean;
 }
 
-export type RunContext = Pick<Handlers, 'color' | 'model' | 'owners' | 'agentId' | 'runs'> & {
+export type RunContext = Pick<
+  Handlers,
+  'color' | 'model' | 'owners' | 'agentId' | 'runs' | 'surface'
+> & {
   anchor?: string;
 };
 
@@ -422,7 +426,7 @@ export function step(
     row,
     html`<div class="call run-detail" id=${`detail-${call.id}`} role="listitem" aria-label=${label} data-target=${call.id} ?hidden=${!open}>
       ${body(call, context.color)}
-      ${call.output ? html`<pre class="output">${ansi(call.output, call.status === 'running')}</pre>` : nothing}
+      ${call.output ? html`<pre class="output">${ansi(call.output, call.status === 'running', context.surface)}</pre>` : nothing}
       ${call.notes?.length ? notes(call.notes) : nothing}
       ${call.image ? html`<img class="shot" src=${call.image} alt=${call.title} />` : nothing}
       ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
