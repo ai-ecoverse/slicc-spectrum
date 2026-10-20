@@ -236,6 +236,7 @@ export class SliccChanges extends ModelElement {
   protected subscribe(model: SliccModel): Array<() => void> {
     return [
       changesOf(model).on('changes', () => this.requestUpdate()),
+      model.agent.on('agents', () => this.requestUpdate()),
       ...onWatch(model, () => this.requestUpdate()),
     ];
   }
@@ -465,6 +466,7 @@ export class SliccDiffPanel extends ThemedElement {
     return [
       ...super.subscribe(model),
       changesOf(model).on('changes', () => this.requestUpdate()),
+      model.agent.on('agents', () => this.requestUpdate()),
       ...onWatch(model, () => this.requestUpdate()),
     ];
   }

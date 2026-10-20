@@ -1126,6 +1126,12 @@ export class SliccChat extends ThemedElement {
     this.renderRoot.querySelector<SliccComposer>('slicc-composer')?.focus();
   }
 
+  #agentless(): TemplateResult {
+    return this.model?.agent.starting?.()
+      ? html`<swc-status-light size="s" variant="neutral" data-starting>Starting…</swc-status-light>`
+      : html`<span>No agent</span>`;
+  }
+
   #meta(agent: Agent, empty: boolean): TemplateResult {
     const model = this.model as SliccModel;
     const fill = Math.round(agent.contextFill * 100);
@@ -1199,7 +1205,7 @@ export class SliccChat extends ThemedElement {
     if (!this.behind) this.#mark = count;
     return html`
       <header ?data-compact=${this.compact}>
-        ${agent ? this.#meta(agent, !messages.length) : html`<span>No agent</span>`}
+        ${agent ? this.#meta(agent, !messages.length) : this.#agentless()}
       </header>
       <slicc-notices .model=${this.model}></slicc-notices>
       ${this.#asks(asks)}
