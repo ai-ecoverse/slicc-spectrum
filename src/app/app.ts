@@ -842,9 +842,9 @@ export class SliccApp extends ThemedElement {
   #railClick(event: PointerEvent, id: string): void {
     if (event.pointerType === 'touch' || event.pointerType === 'pen')
       (
-        this.renderRoot.querySelector(`swc-tooltip[for="rail-${id}"]`) as HTMLElement & {
-          open: boolean;
-        }
+        [...this.renderRoot.querySelectorAll('swc-tooltip')].find(
+          (tip) => tip.getAttribute('for') === `rail-${id}`
+        ) as HTMLElement & { open: boolean }
       ).open = false;
     this.show(id);
   }
