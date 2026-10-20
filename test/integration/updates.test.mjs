@@ -764,6 +764,21 @@ test('a ready update shows what’s new for its whole range, and rows without no
   assert.deepEqual(kernel.versions, ['1.13.0', '1.12.2', '1.12.1']);
   assert.equal(kernel.visible, true);
   assert.deepEqual(kernel.certified, [true, true, false]);
+  await page.evaluate(() => {
+    for (const summary of window
+      .inUpdates('[data-id=kernel] details[data-releases]')
+      .querySelectorAll('.release > summary'))
+      summary.click();
+    return true;
+  });
+  await page.until(() =>
+    [...window.inUpdates('[data-id=kernel]').querySelectorAll('details.release')].every(
+      (release) => release.open
+    )
+  );
+  kernel.text = await page.evaluate(
+    () => window.inUpdates('[data-id=kernel] details[data-releases]').innerText
+  );
   assert.deepEqual(kernel.links[0], [
     'Kernel 1.13.0 release notes',
     '_blank',
@@ -790,6 +805,157 @@ test('a ready update shows what’s new for its whole range, and rows without no
   assert.equal(
     await page.evaluate(() => Boolean(window.inUpdates('[data-id=global] details[data-releases]'))),
     false
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('what’s new expands only the newest release, the older ones are headers that open on click and keep their cut link', async (t) => {
+  const page = await open(t, 'restart');
+  await page.evaluate(() => {
+    window.inUpdates = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-updates', selector);
+    const port = window.model.updates;
+    const items = port.list().map((item) =>
+      item.id === 'kernel'
+        ? {
+            ...item,
+            releases: [
+              ...item.releases.map((release) =>
+                release.version === '1.12.1'
+                  ? { ...release, notes: `### Bug Fixes\n\n${'* tides\n'.repeat(2_000)}` }
+                  : release
+              ),
+              {
+                version: '1.12.5',
+                url: 'https://github.com/harbor-demo/harbor-kernel/releases/tag/v1.12.5',
+                notes:
+                  '<!-- cert-verify -->\ncertified @harbor/harbor-kernel@1.12.5\n<!-- /cert-verify -->',
+              },
+            ],
+          }
+        : item
+    );
+    port.list = () => items;
+    port.emit('items', items);
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() => Boolean(window.inUpdates('[data-id=kernel] [data-action=whats-new]')));
+  await page.evaluate(() => {
+    window.inUpdates('[data-id=kernel] [data-action=whats-new]').click();
+    return true;
+  });
+  await page.until(() => window.inUpdates('[data-id=kernel] details[data-releases]').open);
+  const read = () =>
+    page.evaluate(() => {
+      const details = window.inUpdates('[data-id=kernel] details[data-releases]');
+      return [...details.querySelectorAll('.release')].map((release) => {
+        const notes = release.querySelector('.markdown');
+        const cut = release.querySelector('[data-cut] a');
+        return {
+          version: release.dataset.version,
+          notes: Boolean(notes?.checkVisibility()),
+          header: release.querySelector('summary')?.dataset.action ?? null,
+          name: release.querySelector('summary')?.getAttribute('aria-label') ?? null,
+          link: release.querySelector('a[data-action=release-notes]')?.getAttribute('aria-label'),
+          certified: Boolean(release.querySelector('[data-certified]')),
+          cut: cut?.checkVisibility() ? cut.href : null,
+        };
+      });
+    });
+  assert.deepEqual(await read(), [
+    {
+      version: '1.13.0',
+      notes: true,
+      header: null,
+      name: null,
+      link: 'Kernel 1.13.0 release notes',
+      certified: true,
+      cut: null,
+    },
+    {
+      version: '1.12.5',
+      notes: false,
+      header: null,
+      name: null,
+      link: 'Kernel 1.12.5 release notes',
+      certified: true,
+      cut: null,
+    },
+    {
+      version: '1.12.2',
+      notes: false,
+      header: 'release',
+      name: 'Kernel 1.12.2 notes, certified',
+      link: 'Kernel 1.12.2 release notes',
+      certified: true,
+      cut: null,
+    },
+    {
+      version: '1.12.1',
+      notes: false,
+      header: 'release',
+      name: 'Kernel 1.12.1 notes',
+      link: 'Kernel 1.12.1 release notes',
+      certified: false,
+      cut: null,
+    },
+  ]);
+  const center = await page.evaluate(() => {
+    const summary = window.inUpdates('[data-id=kernel] .release[data-version="1.12.1"] > summary');
+    summary.scrollIntoView({ block: 'center' });
+    const box = summary.getBoundingClientRect();
+    const link = summary.querySelector('a').getBoundingClientRect();
+    return { x: box.right - 8, y: box.y + box.height / 2, wide: box.right - 8 > link.right + 24 };
+  });
+  assert.equal(center.wide, true);
+  for (const type of ['mousePressed', 'mouseReleased']) {
+    await page.send('Input.dispatchMouseEvent', {
+      type,
+      x: center.x,
+      y: center.y,
+      button: 'left',
+      clickCount: 1,
+    });
+  }
+  await page.until(
+    () => window.inUpdates('[data-id=kernel] .release[data-version="1.12.1"]').open === true
+  );
+  const opened = await read();
+  assert.deepEqual(
+    opened.map(({ version, notes, cut }) => [version, notes, cut]),
+    [
+      ['1.13.0', true, null],
+      ['1.12.5', false, null],
+      ['1.12.2', false, null],
+      ['1.12.1', true, 'https://github.com/harbor-demo/harbor-kernel/releases/tag/v1.12.1'],
+    ]
+  );
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 420,
+    height: 860,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await page.until(() => window.app.screen === 'phone');
+  await page.evaluate(() => {
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() => {
+    const release = window.inUpdates('[data-id=kernel] .release[data-version="1.12.1"]');
+    return release?.open === true && release.getBoundingClientRect().right <= innerWidth;
+  });
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.inUpdates('[data-id=kernel]').querySelectorAll('details.release')].map(
+        (release) => [release.dataset.version, release.open]
+      )
+    ),
+    [
+      ['1.12.2', false],
+      ['1.12.1', true],
+    ]
   );
   assert.deepEqual(page.errors, []);
 });
