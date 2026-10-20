@@ -64,13 +64,21 @@ function record() {
     lines: {},
   };
   const known = new Map();
-  const label = (status) => {
-    const root = status.shadowRoot;
-    const line =
-      root?.querySelector('.swc-ResponseStatus-headerTrailLine--enter .swc-ResponseStatus-label') ??
-      root?.querySelector('.swc-ResponseStatus-headerTrailLine--settled .swc-ResponseStatus-label');
-    return line?.textContent.trim() ?? '';
-  };
+  const watch = new MutationObserver((records) => {
+    for (const record of records) {
+      const label = record.target;
+      if (label.localName !== 'slicc-status-label') continue;
+      const turn = label.closest('swc-conversation-turn')?.dataset.id ?? '';
+      const text = label.textContent.trim();
+      const state = label.state;
+      const last = known.get(turn);
+      if (last && last.text === text && last.state === state) continue;
+      known.set(turn, { text, state });
+      seen.labels.push({ at: Math.round(performance.now()), turn, state, text });
+    }
+  });
+  watch.observe(window.chatPart().shadowRoot, { childList: true, subtree: true });
+  window.replayWatch = watch;
   const frame = (now) => {
     const log = window.chatPart('.log');
     if (log) {
@@ -93,8 +101,6 @@ function record() {
       if (missing.length || doubled.length)
         seen.steps.push({ at: Math.round(now), missing: missing.length, doubled: doubled.length });
       for (const status of log.querySelectorAll('swc-response-status')) {
-        const turn = status.closest('swc-conversation-turn')?.dataset.id ?? '';
-        const text = label(status);
         const state = status.getAttribute('status');
         const line = status.shadowRoot?.querySelector(
           '.swc-ResponseStatus-headerTrailLine--enter .swc-ResponseStatus-label, .swc-ResponseStatus-headerTrailLine--settled .swc-ResponseStatus-label'
@@ -104,11 +110,6 @@ function record() {
           const top = status.getBoundingClientRect().top;
           const key = `${Math.round((box.top - top) * 100) / 100}+${Math.round(box.height * 100) / 100}`;
           seen.lines[key] = (seen.lines[key] ?? 0) + 1;
-        }
-        const last = known.get(turn);
-        if (!last || last.text !== text || last.state !== state) {
-          known.set(turn, { text, state });
-          seen.labels.push({ at: Math.round(now), turn, state, text });
         }
       }
     }
@@ -121,6 +122,7 @@ function record() {
 
 function results() {
   cancelAnimationFrame(window.replayFrame);
+  window.replayWatch.disconnect();
   const seen = window.replaySeen;
   return { ...seen, turns: [...seen.turns], origin: performance.timeOrigin };
 }
