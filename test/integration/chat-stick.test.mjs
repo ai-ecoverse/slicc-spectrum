@@ -31,7 +31,8 @@ async function open(t, params = {}) {
 async function center(page) {
   return page.evaluate(() => {
     const box = window.log().getBoundingClientRect();
-    return { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };
+    const end = Math.min(box.bottom, window.chatPart('slicc-composer').getBoundingClientRect().top);
+    return { x: Math.round(box.x + box.width / 2), y: Math.round((box.top + end) / 2) };
   });
 }
 

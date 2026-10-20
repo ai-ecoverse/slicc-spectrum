@@ -5,6 +5,8 @@ import type {
   UpdateAction,
   UpdateItem,
   UpdateKind,
+  UpdateNpm,
+  UpdateRelease,
   UpdatesEvents,
   UpdatesPort,
 } from '../model/types.ts';
@@ -12,6 +14,7 @@ import type { Clock } from './clock.ts';
 
 export type UpdateScenario = 'current' | 'boot' | 'starting' | 'available' | 'restart' | 'failure';
 export type PackageScenario = 'mixed' | 'empty' | 'fail' | 'user' | 'elsewhere';
+export type BetaScenario = 'offered' | 'installed' | 'blocked' | 'failed';
 export type PackageConfirm = (options: {
   title: string;
   body: string;
@@ -20,6 +23,70 @@ export type PackageConfirm = (options: {
 }) => Promise<boolean>;
 
 const checkedAt = Date.UTC(2026, 9, 8, 8, 42);
+
+const tag = (
+  repo: string,
+  version: string,
+  notes?: string,
+  owner = 'ai-ecoverse'
+): UpdateRelease => ({
+  version,
+  url: `https://github.com/${owner}/${repo}/releases/tag/v${version}`,
+  ...(notes ? { notes } : {}),
+});
+
+const certified = (name: string, version: string) =>
+  `\n\n<!-- cert-verify -->\ncertified @harbor/${name}@${version} sha256=0f3c9a1e (covers ${version}; downstream: PASS)\n<!-- /cert-verify -->\n`;
+
+const notes = (repo: string, version: string, sections: string) =>
+  `# [${version}](https://github.com/ai-ecoverse/${repo}/compare/v${version}) (2026-10-07)\n\n${sections}`;
+
+const releaseFixtures: Readonly<Record<string, readonly UpdateRelease[]>> = {
+  kernel: [
+    tag(
+      'harbor-kernel',
+      '1.13.0',
+      notes(
+        'harbor-kernel',
+        '1.13.0',
+        '### Features\n\n* **fs:** watch a folder and get one event per batch of changes\n* **jobs:** `wait -n` returns the first job that finishes'
+      ) + certified('harbor-kernel', '1.13.0')
+    ),
+    tag(
+      'harbor-kernel',
+      '1.12.2',
+      notes(
+        'harbor-kernel',
+        '1.12.2',
+        '### Bug Fixes\n\n* **net:** a slow DNS answer no longer stalls the next request'
+      ) + certified('harbor-kernel', '1.12.2')
+    ),
+    tag(
+      'harbor-kernel',
+      '1.12.1',
+      notes(
+        'harbor-kernel',
+        '1.12.1',
+        '### Bug Fixes\n\n* **tty:** resizing a terminal mid-line keeps the cursor on its column'
+      )
+    ),
+    tag('harbor-kernel', '1.12.0'),
+  ],
+  agent: [
+    tag(
+      'harbor-agent',
+      '0.25.0',
+      notes(
+        'harbor-agent',
+        '0.25.0',
+        '### Features\n\n* **tools:** the agent can read a tide table from a CSV file\n\n### Bug Fixes\n\n* **chat:** a long answer keeps its code blocks intact when it is cut'
+      ) + certified('harbor-agent', '0.25.0'),
+      'some-fork'
+    ),
+    tag('harbor-agent', '0.24.0'),
+  ],
+  grammars: [tag('harbor-grammars', '4.5.0')],
+};
 
 export function updateFixtures(scenario: UpdateScenario): readonly UpdateItem[] {
   const components: readonly [UpdateKind, string, string][] = [
@@ -41,6 +108,7 @@ export function updateFixtures(scenario: UpdateScenario): readonly UpdateItem[] 
     checkedAt,
     error: null,
     actions: [],
+    ...(releaseFixtures[kind] ? { releases: releaseFixtures[kind] } : {}),
   }));
   const agent = items[2];
   if (scenario === 'boot') {
@@ -80,6 +148,103 @@ export function updateFixtures(scenario: UpdateScenario): readonly UpdateItem[] 
     });
   }
   return items;
+}
+
+const pin = '6.6.0';
+const latest = '6.13.5';
+const betaReleases: readonly UpdateRelease[] = [
+  tag(
+    'harbor-agent',
+    '6.13.5',
+    notes(
+      'harbor-agent',
+      '6.13.5',
+      '### Bug Fixes\n\n* **tools:** a tide table with a blank row no longer stops the import'
+    )
+  ),
+  tag(
+    'harbor-agent',
+    '6.10.0',
+    notes(
+      'harbor-agent',
+      '6.10.0',
+      '### Features\n\n* **chat:** answers can quote a buoy reading with its time and place'
+    )
+  ),
+  tag(
+    'harbor-agent',
+    '6.6.0',
+    notes('harbor-agent', '6.6.0', '### Bug Fixes\n\n* **chat:** a pasted chart keeps its axes') +
+      certified('harbor-agent', '6.6.0')
+  ),
+];
+const offered: UpdateNpm = { state: 'offered', latest, changes: { count: 12, gated: [] } };
+const blocked: UpdateNpm = {
+  state: 'not-offered',
+  latest,
+  reason: 'it needs kernel 1.14.0 or later',
+};
+const betaFailed =
+  'Couldn’t install the beta: pnpm stopped with an error, shown in the install log. Retry.';
+
+function betaActions(item: UpdateItem): UpdateAction[] {
+  return [
+    ...(item.beta ? (['back-to-certified'] as const) : []),
+    ...(item.npm?.state === 'offered' ? (['install-beta'] as const) : []),
+  ];
+}
+
+function withNpm(items: readonly UpdateItem[], npm: UpdateNpm | null): readonly UpdateItem[] {
+  return items.map((item) => {
+    if (item.kind !== 'agent') return item;
+    const next = { ...item, npm };
+    const kept = item.actions.filter(
+      (action) => action !== 'install-beta' && action !== 'back-to-certified'
+    );
+    return { ...next, actions: [...kept, ...betaActions(next)] };
+  });
+}
+
+export function betaFixtures(
+  items: readonly UpdateItem[],
+  scenario: BetaScenario
+): readonly UpdateItem[] {
+  return items.map((item) => {
+    if (item.kind !== 'agent') return item;
+    const base = {
+      ...item,
+      from: pin,
+      to: pin,
+      beta: null,
+      npm: offered,
+      releases: betaReleases,
+    };
+    const next: UpdateItem =
+      scenario === 'installed'
+        ? {
+            ...base,
+            from: latest,
+            to: latest,
+            beta: { version: latest, certified: pin },
+            npm: { state: 'current', latest },
+          }
+        : scenario === 'blocked'
+          ? { ...base, npm: blocked }
+          : scenario === 'failed'
+            ? {
+                ...base,
+                state: 'failed',
+                to: latest,
+                error: betaFailed,
+                log: `pnpm add @slicc/demo-agent@${latest}\nERR_PNPM_FETCH_TIMEOUT Request timed out after 30000ms`,
+              }
+            : base;
+    const extra = betaActions(next);
+    return {
+      ...next,
+      actions: [...(scenario === 'failed' ? (['retry'] as const) : item.actions), ...extra],
+    };
+  });
 }
 
 const offer = (
@@ -218,7 +383,28 @@ export function packageFixtures(scenario: PackageScenario): readonly PackageItem
     notes: ['1 untested dependency: @harbor/wasi-sockets@0.4.2-1'],
     actions: ['remove'],
   });
-  patch('uv', { state: 'outdated', version: '0.8.1', actions: ['update', 'remove'] });
+  patch('python', {
+    releases: [
+      { version: '3.13.1', url: 'https://github.com/harbor-demo/python-wasm/releases/tag/v3.13.1' },
+    ],
+  });
+  patch('uv', {
+    state: 'outdated',
+    version: '0.8.1',
+    actions: ['update', 'remove'],
+    releases: [
+      {
+        version: '0.9.2',
+        url: 'https://github.com/harbor-demo/uv-wasm/releases/tag/v0.9.2',
+        notes: '## 0.9.2\n\n### Bug Fixes\n\n* `uv run` finds the project in a parent folder again',
+      },
+      {
+        version: '0.9.0',
+        url: 'https://github.com/harbor-demo/uv-wasm/releases/tag/v0.9.0',
+        notes: '## 0.9.0\n\n### Features\n\n* `uv add` keeps the comments in `pyproject.toml`',
+      },
+    ],
+  });
   patch('esbuild', {
     state: 'installing',
     actions: [],
@@ -255,6 +441,7 @@ export function packageFixtures(scenario: PackageScenario): readonly PackageItem
 export interface DummyUpdatesOptions {
   packages?: PackageScenario;
   confirm?: PackageConfirm;
+  beta?: BetaScenario;
 }
 
 export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort {
@@ -266,10 +453,19 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
   #confirm: PackageConfirm | undefined;
   declare packages?: () => readonly PackageItem[];
   declare actPackage?: (id: string, action: PackageAction) => Promise<void>;
+  declare developer?: () => boolean;
+  declare setDeveloper?: (on: boolean) => Promise<void>;
+  #beta: BetaScenario | undefined;
+  #developer = true;
 
   constructor(scenario: UpdateScenario, clock: Clock, options: DummyUpdatesOptions = {}) {
     super();
-    this.#items = updateFixtures(scenario);
+    this.#beta = options.beta;
+    this.#items = this.#fixtures(scenario);
+    if (options.beta) {
+      this.developer = () => this.#developer;
+      this.setDeveloper = (on) => this.#setDeveloper(on);
+    }
     this.#ready = scenario !== 'boot' && scenario !== 'starting';
     this.#clock = clock;
     this.#confirm = options.confirm;
@@ -406,8 +602,36 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
     return this.#ready;
   }
 
+  #fixtures(scenario: UpdateScenario): readonly UpdateItem[] {
+    const items = updateFixtures(scenario);
+    if (!this.#beta) return items;
+    const fixed = betaFixtures(items, this.#beta);
+    return this.#developer ? fixed : withNpm(fixed, null);
+  }
+
+  async #setDeveloper(on: boolean): Promise<void> {
+    await this.#clock.sleep(4);
+    this.#developer = on;
+    this.#npm(on ? { state: 'checking' } : null);
+    if (!on) return;
+    await this.#clock.sleep(4);
+    const agent = this.#items.find((item) => item.kind === 'agent') as UpdateItem;
+    this.#npm(this.#check(agent.from));
+  }
+
+  #check(version: string | null): UpdateNpm | null {
+    if (!this.#developer) return null;
+    if (version === latest) return { state: 'current', latest };
+    return this.#beta === 'blocked' ? blocked : offered;
+  }
+
+  #npm(npm: UpdateNpm | null): void {
+    this.#items = withNpm(this.#items, npm);
+    this.emit('items', this.#items);
+  }
+
   setScenario(scenario: UpdateScenario): void {
-    this.#items = updateFixtures(scenario);
+    this.#items = this.#fixtures(scenario);
     this.#ready = scenario !== 'boot' && scenario !== 'starting';
     this.emit('items', this.#items);
   }
@@ -420,7 +644,9 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
   async act(id: string, action: UpdateAction): Promise<void> {
     const item = this.#items.find((candidate) => candidate.id === id);
     if (!item?.actions.includes(action)) throw new Error(`Update action unavailable: ${id}`);
-    if (action === 'update-now' || action === 'retry') {
+    const back = action === 'back-to-certified';
+    const beta = back || action === 'install-beta' || (action === 'retry' && item.to === latest);
+    if (action === 'update-now' || action === 'retry' || beta) {
       this.#patch(id, {
         state: 'downloading',
         progress: { phase: 'download', done: 0, total: 95 },
@@ -436,6 +662,22 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
       });
       await this.#clock.sleep(2);
     }
+    if (beta) {
+      const version = back ? pin : latest;
+      const next: UpdateItem = {
+        ...(this.#items.find((candidate) => candidate.id === id) as UpdateItem),
+        state: 'ready',
+        from: version,
+        to: version,
+        progress: null,
+        error: null,
+        checkedAt,
+        beta: back ? null : { version, certified: pin },
+        npm: this.#check(version),
+      };
+      this.#patch(id, { ...next, actions: ['restart-agent', ...betaActions(next)] });
+      return;
+    }
     const apply = action === 'update-now' && ['agent', 'bios', 'kernel', 'ui'].includes(item.kind);
     this.#patch(id, {
       state: apply ? 'ready' : 'installed',
@@ -443,6 +685,7 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
       progress: null,
       checkedAt,
       actions: apply ? [item.kind === 'agent' ? 'restart-agent' : 'reload'] : [],
+      ...(apply ? {} : { actions: betaActions(item) }),
     });
   }
 }

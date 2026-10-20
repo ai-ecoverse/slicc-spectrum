@@ -770,13 +770,39 @@ export type UpdateState =
   | 'available'
   | 'ready'
   | 'failed';
-export type UpdateAction = 'retry' | 'restart-agent' | 'reload' | 'update-now';
+export type UpdateAction =
+  | 'retry'
+  | 'restart-agent'
+  | 'reload'
+  | 'update-now'
+  | 'install-beta'
+  | 'back-to-certified';
+
+export interface UpdateBeta {
+  version: string;
+  certified: string;
+}
+
+export type NpmState = 'checking' | 'current' | 'offered' | 'not-offered' | 'failed';
+
+export interface UpdateNpm {
+  state: NpmState;
+  latest?: string;
+  reason?: string;
+  changes?: { count: number; gated: readonly string[] };
+}
 
 export interface InstallProgress {
   phase: 'download' | 'link';
   done: number;
   total: number;
   bytes?: { done: number; total: number };
+}
+
+export interface UpdateRelease {
+  version: string;
+  url: string;
+  notes?: string;
 }
 
 export interface UpdateItem {
@@ -791,6 +817,9 @@ export interface UpdateItem {
   error: string | null;
   actions: readonly UpdateAction[];
   log?: string;
+  releases?: readonly UpdateRelease[];
+  beta?: UpdateBeta | null;
+  npm?: UpdateNpm | null;
 }
 
 export type PackageState =
@@ -836,6 +865,7 @@ export interface PackageItem {
   log?: string;
   origin?: 'catalog' | 'user';
   pin?: PackagePin;
+  releases?: readonly UpdateRelease[];
   installs?: readonly PackageInstall[];
 }
 
@@ -850,6 +880,8 @@ export interface UpdatesPort extends Subscribable<UpdatesEvents> {
   act(id: string, action: UpdateAction): Promise<void>;
   packages?(): readonly PackageItem[];
   actPackage?(id: string, action: PackageAction): Promise<void>;
+  developer?(): boolean;
+  setDeveloper?(on: boolean): Promise<void>;
 }
 
 export type NetworkRoute = 'proxy' | 'extension' | 'tailnet' | 'page' | 'link';
@@ -1031,6 +1063,7 @@ export interface Notice {
   body: string;
   actions: readonly NoticeAction[];
   dismissible?: false;
+  session?: boolean;
 }
 
 export interface NoticesPort extends Subscribable<{ notices: readonly Notice[] }> {

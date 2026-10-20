@@ -2,8 +2,10 @@ import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/dropzone/swc-dropzone.js';
+import '@adobe/spectrum-wc/components/illustrated-message/swc-illustrated-message.js';
 import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc/patterns/ai-toolkit/conversation-thread/swc-conversation-thread.js';
+import '@adobe/spectrum-wc-icons/swc-icon-attach.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chevron-down.js';
 import '@adobe/spectrum-wc-icons/swc-icon-new.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
@@ -11,6 +13,7 @@ import { repeat } from 'lit/directives/repeat.js';
 import type {
   Agent,
   ErrorAction,
+  LickMessage,
   Message,
   Seat,
   SliccModel,
@@ -18,15 +21,15 @@ import type {
   UserMessage,
 } from '../model/types.ts';
 import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
-import { fade, type SliccComposer } from './composer.ts';
+import { fade, folders, limit, type SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
 import { following, onWatch, watchOnly } from './follow.ts';
 import { markdownCss } from './markdown.ts';
 import {
   alone,
+  askTimer,
   assistant,
   day,
-  flatPile,
   type Handlers,
   type Joined,
   type Login,
@@ -34,9 +37,7 @@ import {
   messageCss,
   mine,
   type Owner,
-  type Pile,
   questionTurn,
-  show,
   stamps,
   system,
   toolMessage,
@@ -99,21 +100,55 @@ const upward = new Set(['ArrowUp', 'PageUp', 'Home']);
 
 const compactWidth = 560;
 
-function pendingKeys(messages: readonly Message[]): string[] {
-  return messages.flatMap((message) => {
-    if (waiting(message)) return [message.id];
+interface Ask {
+  key: string;
+  id: string;
+  at?: number;
+  card: TemplateResult;
+}
+
+type Entry = [string, TemplateResult];
+
+function pendingAsks(messages: readonly Message[]): Array<[string, { id: string; at?: number }]> {
+  return messages.flatMap((message): Array<[string, { id: string; at?: number }]> => {
+    if (waiting(message))
+      return [[message.id, { id: message.id, at: (message as LickMessage).expiresAt }]];
     if (message.role !== 'assistant') return [];
-    return message.parts.flatMap((part) =>
-      part.type === 'question' && part.question.state === 'open'
-        ? [`${message.id}:${part.question.id}`]
-        : []
+    return message.parts.flatMap(
+      (part): Array<[string, { id: string }]> =>
+        part.type === 'question' && part.question.state === 'open'
+          ? [[`${message.id}:${part.question.id}`, { id: part.question.id }]]
+          : []
     );
   });
 }
 
-function pendingPiles(messages: readonly Message[]): Map<string, Pile> {
-  const keys = pendingKeys(messages);
-  return new Map(keys.map((key, stack) => [key, { stack }] as const));
+function into(card: Element, dock: HTMLElement): void {
+  const box = card.getBoundingClientRect();
+  const view = dock.getBoundingClientRect();
+  const start = view.top + (Number.parseFloat(getComputedStyle(dock).scrollPaddingBlockStart) || 0);
+  if (box.top < start) dock.scrollTop -= start - box.top;
+  else if (box.bottom > view.bottom)
+    dock.scrollTop += Math.min(box.bottom - view.bottom, box.top - start);
+}
+
+const place = (id: string): TemplateResult =>
+  html`<div class="ask-place" data-place=${id} aria-hidden="true"></div>`;
+
+function dock(
+  entries: Entry[],
+  messages: readonly Message[],
+  seat: Seat | undefined
+): { items: Entry[]; asks: Ask[] } {
+  const docked = new Map(seat ? [] : pendingAsks(messages));
+  const asks: Ask[] = [];
+  const items = entries.map(([key, card]): Entry => {
+    const ask = docked.get(key);
+    if (!ask) return [key, card];
+    asks.push({ key, id: ask.id, at: ask.at, card });
+    return [key, place(ask.id)];
+  });
+  return { items, asks };
 }
 
 const failed = (message: Message): boolean =>
@@ -171,6 +206,7 @@ export class SliccChat extends ThemedElement {
     compact: { state: true },
     behind: { state: true },
   };
+  static leaveAfter = 100;
   declare agent: string;
   declare dropping: boolean;
   declare compact: boolean;
@@ -192,18 +228,33 @@ export class SliccChat extends ThemedElement {
     return this.renderRoot.querySelector<SliccComposer>('slicc-composer');
   }
 
+  #accepts(event: DragEvent): boolean {
+    return carriesFiles(event) && !this.model?.seat && !!this.#composer()?.attachable();
+  }
+
   #over = (event: DragEvent): void => {
-    if (!(carriesFiles(event) && this.#composer()) || this.model?.seat) return;
+    if (!carriesFiles(event)) return;
     event.preventDefault();
-    (event.dataTransfer as DataTransfer).dropEffect = 'copy';
+    const transfer = event.dataTransfer as DataTransfer;
+    if (!this.#accepts(event)) {
+      transfer.dropEffect = 'none';
+      if (this.dropping) this.#clear();
+      return;
+    }
+    transfer.dropEffect = 'copy';
+    clearTimeout(this.#leaving);
     if (this.dropping) return;
     this.dropping = true;
     globalThis.addEventListener('keydown', this.#escape, true);
   };
 
+  #leaving: ReturnType<typeof setTimeout> | undefined;
+
   #leave = (event: DragEvent): void => {
     const to = event.relatedTarget;
-    if (!(to instanceof Node && this.contains(to))) this.#clear();
+    if (to instanceof Node && this.contains(to)) return;
+    clearTimeout(this.#leaving);
+    this.#leaving = setTimeout(() => this.#clear(), SliccChat.leaveAfter);
   };
 
   #escape = (event: KeyboardEvent): void => {
@@ -211,18 +262,20 @@ export class SliccChat extends ThemedElement {
   };
 
   #clear(): void {
+    clearTimeout(this.#leaving);
     this.dropping = false;
     globalThis.removeEventListener('keydown', this.#escape, true);
   }
 
   #drop = (event: DragEvent): void => {
     this.#clear();
-    const composer = this.#composer();
-    if (!(carriesFiles(event) && composer)) return;
+    if (!carriesFiles(event)) return;
+    event.preventDefault();
+    if (!this.#accepts(event)) return;
     if (event.composedPath().some((node) => (node as Element).localName === 'swc-prompt-field'))
       return;
-    event.preventDefault();
-    void composer.addFiles([...(event.dataTransfer as DataTransfer).files]);
+    const transfer = event.dataTransfer as DataTransfer;
+    void (this.#composer() as SliccComposer).addFiles([...transfer.files], folders(transfer));
   };
 
   static styles = [
@@ -305,7 +358,118 @@ export class SliccChat extends ThemedElement {
         padding: var(--swc-spacing-400) var(--swc-spacing-300) calc(var(--composer-height, 0px) + var(--composer-fade) + 1lh);
         scroll-padding-block-end: calc(var(--composer-height, 0px) + var(--composer-fade) + var(--swc-spacing-200));
         font-size: var(--swc-font-size-200);
-        scroll-padding-block-start: var(--pile, 0px);
+      }
+      .ask-place {
+        block-size: 0;
+        margin-block-end: calc(-1 * var(--swc-spacing-400));
+      }
+      .asks {
+        flex: 0 1 auto;
+        min-block-size: 0;
+        max-block-size: 50%;
+        overflow-y: auto;
+        container-type: inline-size;
+        position: relative;
+        z-index: 1;
+        padding: var(--swc-spacing-200) var(--swc-spacing-300);
+        border-block-end: var(--swc-border-width-100) solid var(--swc-gray-200);
+        background: var(--swc-background-layer-2-color);
+        box-shadow: 0 var(--swc-drop-shadow-elevated-y) var(--swc-drop-shadow-elevated-blur) var(--swc-drop-shadow-color-100);
+        font-size: var(--swc-font-size-200);
+        scrollbar-width: thin;
+        scrollbar-color: transparent transparent;
+      }
+      .asks:hover,
+      .asks:focus-within {
+        scrollbar-color: var(--swc-gray-500) transparent;
+      }
+      .asks::after {
+        content: '';
+        position: sticky;
+        bottom: calc(-1 * var(--swc-spacing-200));
+        display: none;
+        block-size: var(--swc-spacing-500);
+        margin-block-start: calc(-1 * var(--swc-spacing-500));
+        background: linear-gradient(to bottom, transparent, var(--swc-background-layer-2-color));
+        pointer-events: none;
+      }
+      .asks[data-more]::after {
+        display: block;
+      }
+      .asks:has(.waiting) {
+        scroll-padding-block-start: calc(var(--swc-component-height-100) + var(--swc-spacing-100));
+      }
+      .asks + .stage {
+        min-block-size: calc(var(--composer-height, 0px) + var(--composer-fade, 0px) + var(--swc-spacing-1000));
+      }
+      .asks[data-open] + .stage {
+        min-block-size: calc(var(--composer-height, 0px) + var(--composer-fade, 0px));
+      }
+      .asks[data-open] .decision {
+        gap: var(--swc-spacing-75);
+        padding-block: var(--swc-spacing-100);
+      }
+      .asks[data-open] .decide {
+        padding: 0;
+      }
+      .asks[data-open] .question.decision .options {
+        margin-block-start: 0;
+      }
+      .asks[data-open] .decision-head {
+        align-items: center;
+      }
+      .asks[data-open] .decision-head .who {
+        margin-inline-end: auto;
+      }
+      .asks[data-open] .decision-head .detail {
+        display: inline-flex;
+      }
+      .asks[data-open] .decision-turn:not([data-detail]) .command {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .asks[data-open] .decision-turn:not([data-detail]) .decision-text {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .waiting {
+        position: sticky;
+        top: calc(-1 * var(--swc-spacing-200));
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-100);
+        margin-block: calc(-1 * var(--swc-spacing-200)) var(--swc-spacing-100);
+        padding: var(--swc-spacing-200) var(--swc-spacing-700) 0;
+        background: var(--swc-background-layer-2-color);
+        font-size: var(--swc-font-size-100);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      @container (inline-size < 480px) {
+        .waiting {
+          padding-inline: var(--swc-spacing-300);
+        }
+      }
+      .ask-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--swc-spacing-200);
+      }
+      .waiting .timer {
+        margin-inline: auto var(--swc-spacing-300);
+      }
+      .waiting swc-icon-chevron-down {
+        transition: transform var(--swc-animation-duration-100) var(--swc-animation-ease-out);
+      }
+      .asks[data-open] .waiting swc-icon-chevron-down {
+        transform: rotate(180deg);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .waiting swc-icon-chevron-down {
+          transition: none;
+        }
       }
       @container (min-width: 600px) {
         .column {
@@ -326,20 +490,13 @@ export class SliccChat extends ThemedElement {
         z-index: 3;
         display: grid;
         pointer-events: none;
-        --swc-dropzone-background-color: color-mix(
-          in srgb,
-          var(--swc-accent-visual-color) 14%,
-          color-mix(in srgb, var(--swc-background-layer-2-color) 82%, transparent)
-        );
       }
-      swc-dropzone p {
-        padding: var(--swc-spacing-100) var(--swc-spacing-300);
-        border-radius: var(--swc-corner-radius-1000);
-        background: var(--swc-background-elevated-color);
-        box-shadow: var(--swc-drop-shadow-elevated);
-        font-size: var(--swc-font-size-300);
-        font-weight: var(--swc-bold-font-weight);
-        color: var(--swc-accent-content-color-default);
+      swc-dropzone swc-illustrated-message {
+        --swc-illustrated-message-illustration-size: var(--swc-spacing-700);
+      }
+      swc-dropzone swc-icon-attach {
+        --swc-icon-inline-size: 100%;
+        --swc-icon-block-size: 100%;
       }
       .jump {
         position: absolute;
@@ -367,9 +524,17 @@ export class SliccChat extends ThemedElement {
 
   #licks = new ViewSet(this, 'chat:licks');
   #runs = new ViewSet(this, 'chat:runs');
+  #details = new Set<string>();
   #handlers: Handlers = {
     licks: this.#licks,
     runs: this.#runs,
+    detail: {
+      has: (id) => this.#details.has(id),
+      toggle: (id) => {
+        if (!this.#details.delete(id)) this.#details.add(id);
+        this.requestUpdate();
+      },
+    },
     color: 'light',
     model: null,
     readOnly: false,
@@ -448,16 +613,32 @@ export class SliccChat extends ThemedElement {
   #held = '';
   #mark = 0;
 
+  #all = false;
+  #seen = '';
+
   #focused = (event: FocusEvent): void => {
-    const turn = (event.target as Element).closest<HTMLElement>('.decision-turn[data-pending]');
-    this.#held = turn?.dataset.id ?? '';
-    if (turn && Number(turn.style.getPropertyValue('--depth')) > 0) show(turn);
+    const target = event.target as Element;
+    this.#held = target.closest<HTMLElement>('.decision-turn[data-pending]')?.dataset.id ?? '';
+    const card = target.closest('.ask');
+    if (card) into(card, card.closest('.asks') as HTMLElement);
+  };
+
+  #more = (): void => {
+    const dock = this.renderRoot.querySelector<HTMLElement>('.asks');
+    if (!dock) return;
+    const end = Number.parseFloat(getComputedStyle(dock).paddingBlockEnd) || 0;
+    dock.toggleAttribute(
+      'data-more',
+      dock.scrollHeight - dock.scrollTop - dock.clientHeight > end + 1
+    );
   };
 
   #refocus(): void {
-    if (!this.#held || this.renderRoot.querySelector(':focus')) return;
+    if (!this.#held || (this.renderRoot as ShadowRoot).activeElement) return;
     this.#held = '';
-    const next = this.renderRoot.querySelector<HTMLElement>('.decision-turn[data-pending]');
+    const next = [
+      ...this.renderRoot.querySelectorAll<HTMLElement>('.asks .decision-turn[data-pending]'),
+    ].at(-1);
     if (next) next.focus();
     else this.renderRoot.querySelector<SliccComposer>('slicc-composer')?.focus();
   }
@@ -470,6 +651,7 @@ export class SliccChat extends ThemedElement {
   }
 
   #resize = new ResizeObserver(() => {
+    this.#more();
     const log = this.#log();
     if (!this.#stuck && log.scrollHeight <= log.clientHeight) this.#follow();
     else this.#pin();
@@ -531,7 +713,6 @@ export class SliccChat extends ThemedElement {
       this.#stuck = false;
     this.#last = log.scrollTop;
     this.#height = log.scrollHeight;
-    this.#pile();
   };
 
   #intent = {
@@ -614,43 +795,10 @@ export class SliccChat extends ThemedElement {
       clearInterval(this.#tick);
       this.#tick = undefined;
     }
-    this.#pile();
     this.#refocus();
-  }
-
-  #pile(): void {
-    const turns = [
-      ...this.renderRoot.querySelectorAll<HTMLElement>('.decision-turn[data-pending]'),
-    ];
-    const drawn = turns.map((turn) => turn.getBoundingClientRect().top);
-    for (const turn of turns) turn.style.position = 'static';
-    const flow = turns.map((turn) => turn.getBoundingClientRect().top);
-    for (const turn of turns) turn.style.position = '';
-    const pinned = turns.flatMap((turn, index) =>
-      drawn[index] - flow[index] > 1
-        ? [{ turn, stack: Number.parseFloat(turn.style.getPropertyValue('--stack')) }]
-        : []
-    );
-    for (const turn of turns) {
-      if (!pinned.some((entry) => entry.turn === turn)) {
-        turn.removeAttribute('data-pinned');
-        turn.style.removeProperty('--depth');
-      }
-    }
-    for (const { turn, stack } of pinned) {
-      turn.setAttribute('data-pinned', '');
-      turn.style.setProperty(
-        '--depth',
-        String(pinned.filter((other) => other.stack > stack).length)
-      );
-    }
-    const log = this.renderRoot.querySelector<HTMLElement>('.log');
-    const top = log?.getBoundingClientRect().top ?? 0;
-    const reach = Math.max(
-      0,
-      ...pinned.map(({ turn }) => turn.getBoundingClientRect().bottom - top)
-    );
-    log?.style.setProperty('--pile', `${reach}px`);
+    const asks = [...this.renderRoot.querySelectorAll<HTMLElement>('.ask-list .decision-turn')];
+    for (const turn of asks) turn.tabIndex = 0;
+    this.#more();
   }
 
   #timed(): boolean {
@@ -664,6 +812,7 @@ export class SliccChat extends ThemedElement {
   }
 
   protected firstUpdated(): void {
+    this.renderRoot.addEventListener('focusin', this.#focused as EventListener);
     this.#observe();
   }
 
@@ -796,8 +945,7 @@ export class SliccChat extends ThemedElement {
     changed: boolean,
     joined: Joined,
     owners: ReadonlyMap<string, Owner>,
-    stamp: boolean,
-    pile: Pile
+    stamp: boolean
   ): TemplateResult {
     const model = this.model as SliccModel;
     const handlers = { ...this.#handlers, owners };
@@ -825,12 +973,12 @@ export class SliccChat extends ThemedElement {
       case 'system':
         return system(message, this.#handlers);
       default:
-        return lick(message, this.#handlers, stamp, pile);
+        return lick(message, this.#handlers, stamp);
     }
   }
 
-  #items(messages: readonly Message[], agent: Agent): Array<[string, TemplateResult]> {
-    const out: Array<[string, TemplateResult]> = [];
+  #items(messages: readonly Message[], agent: Agent): Entry[] {
+    const out: Entry[] = [];
     let previous = '';
     let shown: string | undefined;
     const model = this.model as SliccModel;
@@ -845,7 +993,6 @@ export class SliccChat extends ThemedElement {
         : null;
     const showThinking = model.settings.get().showThinking;
     const stamped = stamps(messages);
-    const piles = pendingPiles(messages);
     const { joined, owners, into } = joins(
       messages,
       showThinking,
@@ -877,24 +1024,50 @@ export class SliccChat extends ThemedElement {
           changed,
           joined.get(message.id) ?? alone,
           owners,
-          stamped.has(message.id),
-          piles.get(message.id) ?? flatPile
+          stamped.has(message.id)
         ),
       ]);
-      out.push(...this.#questions(message, piles));
+      out.push(...this.#questions(message));
     }
     return out;
   }
 
-  #questions(message: Message, piles: ReadonlyMap<string, Pile>): Array<[string, TemplateResult]> {
+  #questions(message: Message): Entry[] {
     if (message.role !== 'assistant') return [];
-    return message.parts.flatMap((part) => {
-      if (part.type !== 'question') return [];
-      const key = `${message.id}:${part.question.id}`;
-      return [
-        [key, questionTurn(part.question, this.#handlers, piles.get(key) ?? flatPile)] as const,
-      ];
-    });
+    return message.parts.flatMap((part): Entry[] =>
+      part.type === 'question'
+        ? [[`${message.id}:${part.question.id}`, questionTurn(part.question, this.#handlers)]]
+        : []
+    );
+  }
+
+  #asks(asks: Ask[]): TemplateResult | typeof nothing {
+    if (!asks.length) return nothing;
+    const older = asks.slice(0, -1);
+    const focused = (this.renderRoot as ShadowRoot).activeElement?.closest<HTMLElement>(
+      '.asks .decision-turn'
+    )?.dataset.id;
+    this.#all ||= older.some(({ id }) => id === focused);
+    this.#all &&= older.length > 0;
+    const open = this.#all;
+    const timed = open ? [] : older.flatMap(({ at }) => (at === undefined ? [] : [at]));
+    const toggle = () => {
+      this.#all = !open;
+      this.requestUpdate();
+    };
+    return html`<section class="asks" aria-label="Waiting for you" ?data-open=${open} @scroll=${this.#more}><div class="column">
+      ${
+        older.length
+          ? html`<div class="waiting"><swc-action-button size="s" quiet data-action="show-waiting" aria-expanded=${open ? 'true' : 'false'} @click=${toggle}><swc-icon-chevron-down slot="icon"></swc-icon-chevron-down>${asks.length} waiting</swc-action-button>${timed.length ? askTimer(Math.min(...timed)) : nothing}</div>`
+          : nothing
+      }
+      <div class="ask-list" aria-live="polite">${repeat(
+        asks,
+        ({ key }) => key,
+        ({ card }, index) =>
+          html`<div class="ask" ?hidden=${!open && index < older.length}>${card}</div>`
+      )}</div>
+    </div></section>`;
   }
 
   #newChat(agent: Agent): void {
@@ -949,10 +1122,19 @@ export class SliccChat extends ThemedElement {
     return html`<div class="jump"><swc-action-button size="s" data-action="jump-latest" accessible-label=${spoken} @click=${this.#jump}><swc-icon-chevron-down slot="icon"></swc-icon-chevron-down>${label}</swc-action-button><span class="sr" role="status" aria-live="polite" data-jump-status>${fresh > 0 ? `${fresh} new ${fresh === 1 ? 'message' : 'messages'} below` : ''}</span></div>`;
   }
 
+  #switched(agent: Agent | undefined): void {
+    const id = agent?.id ?? '';
+    if (id === this.#seen) return;
+    this.#seen = id;
+    this.#all = false;
+    this.#details.clear();
+  }
+
   render(): TemplateResult {
     this.#handlers.color = this.color;
     this.#handlers.model = this.model ?? null;
     const agent = this.#agent();
+    this.#switched(agent);
     const watch = watchOnly(this.model);
     const seat = this.model?.seat;
     this.#handlers.readOnly = !!agent?.frozen || !!watch || !!seat;
@@ -960,7 +1142,7 @@ export class SliccChat extends ThemedElement {
     this.#handlers.seat = seat?.label;
     const messages = agent ? (this.model?.agent.messages(agent.id) ?? []) : [];
     this.#tail = messages.at(-1)?.id ?? '';
-    const items = agent && messages.length > 0 ? this.#items(messages, agent) : [];
+    const { items, asks } = dock(agent ? this.#items(messages, agent) : [], messages, seat);
     const count = items.filter(([key]) => !key.startsWith('day:')).length;
     if (!this.behind) this.#mark = count;
     return html`
@@ -968,6 +1150,7 @@ export class SliccChat extends ThemedElement {
         ${agent ? this.#meta(agent, !messages.length) : html`<span>No agent</span>`}
       </header>
       <slicc-notices .model=${this.model}></slicc-notices>
+      ${this.#asks(asks)}
       <div class="stage">
         <div
           class="log"
@@ -981,7 +1164,6 @@ export class SliccChat extends ThemedElement {
           @touchmove=${this.#intent}
           @keydown=${this.#intent}
           @pointerdown=${this.#hold}
-          @focusin=${this.#focused}
         >
           <div class="column" @keydown=${this.#keys}>
             ${
@@ -1003,9 +1185,16 @@ export class SliccChat extends ThemedElement {
       </div>
       ${
         this.dropping
-          ? html`<swc-dropzone dragged size="l" aria-label="Attach files" dragged-message="Drop to attach"><p>Drop to attach</p></swc-dropzone>`
+          ? html`<swc-dropzone dragged size="l" aria-label="Attach files" dragged-message="" data-surface="drop">
+              <swc-illustrated-message>
+                <swc-icon-attach></swc-icon-attach>
+                <h2 slot="heading">Drop files to attach</h2>
+                <span slot="description">Images, text and other files up to ${limit / 1024 / 1024} MB each join your next message. Folders can’t be attached.</span>
+              </swc-illustrated-message>
+            </swc-dropzone>`
           : nothing
       }
+      <p class="sr" role="status" data-announce="drop">${this.dropping ? 'Drop to attach files to your message' : ''}</p>
       ${
         watch
           ? watch === following(this.model)?.refused

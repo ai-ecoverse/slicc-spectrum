@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { launch } from './chrome.mjs';
 
@@ -2353,6 +2356,11 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
   const page = await open(t);
   await page.evaluate(() => window.model.agent.select('cone-kitchen'));
   await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.lick'));
+  await page.evaluate(() => {
+    window.chatPart('[data-action=show-waiting]').click();
+    return true;
+  });
+  await page.until(() => !!window.chatPart('.asks[data-open]'));
   const kinds = await page.evaluate(() => {
     const root = window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot;
     const count = (selector) => root.querySelectorAll(selector).length;
@@ -2926,47 +2934,389 @@ test('scoop-notify licks read in plain language, expand to the report and open i
   assert.deepEqual(page.errors, []);
 });
 
-test('decision cards pile at the top, reveal from the keyboard and leave the pile with focus kept', async (t) => {
+async function asks(page) {
+  await page.evaluate(() => {
+    window.commandLine = (card) => {
+      const command = card.querySelector('.command');
+      if (!command) return 'none';
+      const root = window.chatPart().shadowRoot;
+      const box = command.getBoundingClientRect();
+      const turn = card.getBoundingClientRect();
+      const view = root.querySelector('.asks').getBoundingClientRect();
+      const style = getComputedStyle(command);
+      return {
+        shown:
+          box.width > 0 &&
+          box.height > 0 &&
+          box.top >= turn.top &&
+          box.bottom <= turn.bottom &&
+          box.top >= view.top &&
+          box.bottom <= view.bottom,
+        mono: /monospace/.test(style.fontFamily),
+        line: Math.round(box.height) <= Math.ceil(Number.parseFloat(style.lineHeight)) + 20,
+        detail: card.querySelector('.decision-turn').hasAttribute('data-detail'),
+      };
+    };
+    window.askLayout = () => {
+      const root = window.chatPart().shadowRoot;
+      const log = root.querySelector('.log');
+      const view = log.getBoundingClientRect();
+      const rect = (element) => element.getBoundingClientRect();
+      const overlap = (a, b) =>
+        Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
+        Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+      const shown = [...root.querySelectorAll('swc-conversation-thread > *')]
+        .filter((element) => !element.matches('.decision-turn[data-pending], .ask-place'))
+        .map(rect)
+        .map((box) => ({
+          left: box.left,
+          right: box.right,
+          top: Math.max(box.top, view.top),
+          bottom: Math.min(box.bottom, view.bottom),
+        }))
+        .filter((box) => box.bottom - box.top > 1);
+      const cards = [...root.querySelectorAll('.decision-turn[data-pending]')].filter((card) =>
+        card.checkVisibility()
+      );
+      const boxes = cards.map((card) => {
+        const box = rect(card);
+        const dock = card.closest('.asks');
+        const clip = dock ? rect(dock) : box;
+        return {
+          left: box.left,
+          right: box.right,
+          top: Math.max(box.top, clip.top),
+          bottom: Math.min(box.bottom, clip.bottom),
+        };
+      });
+      const hit = (element) => {
+        const box = rect(element);
+        const at = root.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return !!at && (at === element || element.contains(at));
+      };
+      const controls = [
+        ...root.querySelectorAll(
+          '.decision-turn[data-pending] :is([data-action=allow], [data-action=deny], [data-action=answer], .timer)'
+        ),
+      ].filter((control) => control.checkVisibility());
+      const dock = root.querySelector('.asks');
+      const area = dock ? rect(dock) : null;
+      const leaks = [];
+      for (let y = area ? area.top + 2 : 0; area && y < area.bottom - 1; y += 16)
+        for (let x = area.left + 2; x < area.right - 1; x += 24) {
+          const at = root.elementFromPoint(x, y);
+          if (!at?.closest('.asks')) leaks.push([Math.round(x), Math.round(y), at?.localName]);
+        }
+      return {
+        leaks: leaks.slice(0, 5),
+        cards: cards.map((card) => card.dataset.id),
+        covered: cards.flatMap((card, index) =>
+          shown.some((box) => overlap(boxes[index], box)) ? [card.dataset.id] : []
+        ),
+        stacked: boxes.some((a, i) => boxes.some((b, j) => i < j && overlap(a, b))),
+        blocked: controls
+          .filter((control) => !hit(control))
+          .map((control) => control.dataset.action ?? control.className),
+        controls: controls.length,
+        top: Math.round(view.top),
+        bar: root.querySelector('[data-action=show-waiting]')?.textContent.trim() ?? null,
+      };
+    };
+    return true;
+  });
+}
+
+for (const [width, height] of [
+  [1280, 800],
+  [420, 860],
+]) {
+  test(`pending asks get their own region above the log at ${width}, never covering it or each other`, async (t) => {
+    const page = await open(t, { delay: '0' });
+    await page.send('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+    });
+    await page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+    if (width < 1280)
+      await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+    await page.evaluate(() => window.model.agent.select('cone-kitchen'));
+    await page.until(
+      (wide) =>
+        !!window.chatPart('.decision-turn[data-id=k-l17] [data-action=allow]') &&
+        window.chatPart().getBoundingClientRect().right <= innerWidth &&
+        window.chatPart().getBoundingClientRect().width <= wide,
+      width
+    );
+    await asks(page);
+    await page.evaluate(() => {
+      const log = window.chatPart('.log');
+      log.scrollTop = log.scrollHeight;
+      return true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const pending = await page.evaluate(() => window.askLayout());
+    assert.deepEqual(pending.leaks, []);
+    assert.deepEqual(pending.covered, [], JSON.stringify(pending));
+    assert.equal(pending.stacked, false);
+    assert.deepEqual(pending.blocked, []);
+    assert.ok(pending.controls >= 3, JSON.stringify(pending));
+    assert.equal(pending.bar, '2 waiting');
+    assert.deepEqual(pending.cards, ['k-l17']);
+
+    await page.evaluate(() => {
+      window.chatPart('[data-action=show-waiting]').click();
+      return true;
+    });
+    await page.until(() => !!window.chatPart('.asks[data-open] .decision-turn[data-id=k-q3]'));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const all = await page.evaluate(() => window.askLayout());
+    assert.deepEqual(all.leaks, []);
+    assert.deepEqual(all.cards, ['k-q3', 'k-l17']);
+    assert.deepEqual(all.covered, [], JSON.stringify(all));
+    assert.equal(all.stacked, false);
+    assert.deepEqual(all.blocked, []);
+    assert.ok(all.controls >= 6, JSON.stringify(all));
+    assert.deepEqual(
+      await page.evaluate(() =>
+        [...window.chatPart().shadowRoot.querySelectorAll('.asks[data-open] .ask')].map((card) => [
+          card.querySelector('.decision-turn').dataset.id,
+          window.commandLine(card),
+        ])
+      ),
+      [
+        ['k-q3', 'none'],
+        ['k-l17', { shown: true, mono: true, line: true, detail: false }],
+      ]
+    );
+    await page.evaluate(() => {
+      window.chatPart('[data-action=show-waiting]').focus();
+      return true;
+    });
+    const reached = [];
+    for (let i = 0; i < 12; i++) {
+      await page.press('Tab');
+      const step = await page.evaluate(() => {
+        const root = window.chatPart().shadowRoot;
+        const active = root.activeElement;
+        const card = active?.closest?.('.asks .ask');
+        if (!card) return null;
+        const box = card.getBoundingClientRect();
+        const view = root.querySelector('.asks').getBoundingClientRect();
+        return [
+          card.querySelector('.decision-turn').dataset.id,
+          active.dataset.action ?? 'card',
+          box.top >= view.top - 1 && box.bottom <= view.bottom + 1,
+        ];
+      });
+      if (!step) break;
+      reached.push(step);
+    }
+    assert.deepEqual(reached, [
+      ['k-q3', 'card', true],
+      ['k-q3', 'answer', true],
+      ['k-q3', 'answer', true],
+      ['k-q3', 'answer', true],
+      ['k-l17', 'card', true],
+      ['k-l17', 'ask-detail', true],
+      ['k-l17', 'deny', true],
+      ['k-l17', 'allow', true],
+    ]);
+
+    await page.evaluate(() => {
+      window.chatPart('.decision-turn[data-id=k-l17] [data-action=allow]').click();
+      return true;
+    });
+    await page.until(() => !window.chatPart('.decision-turn[data-id=k-l17][data-pending]'));
+    const one = await page.evaluate(() => window.askLayout());
+    assert.deepEqual([one.cards, one.bar, one.covered], [['k-q3'], null, []]);
+    assert.ok(one.top < all.top, JSON.stringify([one.top, all.top]));
+    await page.evaluate(() => {
+      window.chatPart('.decision-turn[data-id=k-q3] [data-action=answer]').click();
+      return true;
+    });
+    await page.until(() => !window.chatPart('.asks'));
+    const freed = await page.evaluate(() => window.askLayout());
+    assert.deepEqual(freed.cards, []);
+    assert.ok(freed.top < one.top, JSON.stringify([freed.top, one.top]));
+    assert.equal(
+      await page.evaluate(() => {
+        const root = window.chatPart().shadowRoot;
+        const log = root.querySelector('.log').getBoundingClientRect();
+        const above = root.querySelector('slicc-notices').getBoundingClientRect();
+        return Math.abs(log.top - above.bottom) <= 1;
+      }),
+      true
+    );
+    assert.deepEqual(page.errors, []);
+  });
+}
+
+test('four open asks at 420 fade at the cut edge while more is below, and Tab scrolls each card into view', async (t) => {
+  const page = await open(t, { delay: '0' });
+  await page.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+  });
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 420,
+    height: 860,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+  await page.evaluate(() => window.model.agent.select('cone-kitchen'));
+  await page.until(() => !!window.chatPart('.decision-turn[data-id=k-l17] [data-action=allow]'));
+  await asks(page);
+  const [tag, late] = await page.evaluate(() => {
+    const agent = window.model.agent;
+    const ids = [];
+    for (const [title, text] of [
+      ['quiet-otter', 'Wants to tag 1.9.0'],
+      ['amber-heron', 'Wants to delete the preview branch'],
+    ]) {
+      agent.lick('cone-kitchen', 'sudo-request', title, text, 'git tag v1.9.0');
+      const message = agent.messages('cone-kitchen').at(-1);
+      message.state = 'pending';
+      ids.push(message.id);
+    }
+    agent.emit('messages', 'cone-kitchen');
+    return ids;
+  });
+  await page.until((card) => !!window.chatPart(`.asks .decision-turn[data-id=${card}]`), late);
+  await page.evaluate(() => {
+    window.chatPart('[data-action=show-waiting]').click();
+    return true;
+  });
+  await page.until(() => !!window.chatPart('.asks[data-open]'));
+  await page.until(() => {
+    const dock = window.chatPart('.asks');
+    return dock.scrollHeight > dock.clientHeight && dock.hasAttribute('data-more');
+  });
+  assert.equal(
+    await page.evaluate(() => getComputedStyle(window.chatPart('.asks'), '::after').display),
+    'block'
+  );
+  await page.evaluate(() => {
+    window.chatPart('[data-action=show-waiting]').focus();
+    return true;
+  });
+  const seen = [];
+  for (let i = 0; i < 24; i++) {
+    await page.press('Tab');
+    const step = await page.evaluate(() => {
+      const root = window.chatPart().shadowRoot;
+      const active = root.activeElement;
+      const card = active?.closest?.('.asks .ask');
+      if (!card) return null;
+      const box = card.getBoundingClientRect();
+      const view = root.querySelector('.asks').getBoundingClientRect();
+      return [
+        card.querySelector('.decision-turn').dataset.id,
+        active.dataset.action ?? 'card',
+        box.top >= view.top - 1 && box.bottom <= view.bottom + 1,
+        active.dataset.action === 'allow' ? window.commandLine(card) : null,
+      ];
+    });
+    if (!step) break;
+    seen.push(step);
+  }
+  assert.deepEqual(
+    seen.filter(([, action]) => action === 'allow').map(([id, , , command]) => [id, command]),
+    ['k-l17', tag, late].map((id) => [id, { shown: true, mono: true, line: true, detail: false }])
+  );
+  assert.deepEqual(
+    seen
+      .filter(([, action]) => ['allow', 'deny', 'answer'].includes(action))
+      .map((step) => step.slice(0, 3)),
+    [
+      ['k-q3', 'answer', true],
+      ['k-q3', 'answer', true],
+      ['k-q3', 'answer', true],
+      ['k-l17', 'deny', true],
+      ['k-l17', 'allow', true],
+      [tag, 'deny', true],
+      [tag, 'allow', true],
+      [late, 'deny', true],
+      [late, 'allow', true],
+    ]
+  );
+  await page.until(() => !window.chatPart('.asks').hasAttribute('data-more'));
+  assert.deepEqual(page.errors, []);
+});
+
+test('a new ask opens the waiting list rather than hiding the card the user is in, and focus stays put', async (t) => {
+  const page = await open(t, { delay: '0' });
+  await page.evaluate(() => window.model.agent.select('cone-kitchen'));
+  await page.until(
+    () => !!window.chatPart('.asks .decision-turn[data-id=k-l17] [data-action=allow]')
+  );
+  await page.evaluate(() => {
+    window.chatPart('.decision-turn[data-id=k-l17] [data-action=allow]').focus();
+    return true;
+  });
+  const fresh = await page.evaluate(() => {
+    const agent = window.model.agent;
+    agent.lick('cone-kitchen', 'sudo-request', 'harbor', 'Wants to read the deploy key');
+    const message = agent.messages('cone-kitchen').at(-1);
+    message.state = 'pending';
+    agent.emit('messages', 'cone-kitchen');
+    return message.id;
+  });
+  await page.until((card) => !!window.chatPart(`.asks .decision-turn[data-id=${card}]`), fresh);
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.chatPart().shadowRoot;
+      const active = root.activeElement;
+      return [
+        !!root.querySelector('.asks[data-open]'),
+        root.querySelector('.decision-turn[data-id=k-l17]').closest('.ask').hidden,
+        active?.dataset.action,
+        active?.closest('.decision-turn')?.dataset.id,
+      ];
+    }),
+    [true, false, 'allow', 'k-l17']
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('decision cards dock above the log, reveal their place from the keyboard and keep focus when one leaves', async (t) => {
   const page = await open(t, { delay: '0' });
   await page.send('Emulation.setEmulatedMedia', {
     features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
   });
   await page.evaluate(() => window.model.agent.select('cone-kitchen'));
   await page.until(() => !!window.chatPart('.decision-turn[data-id=k-l17]'));
-  const bottom = () => {
-    const log = window.chatPart('.log');
-    log.scrollTop = log.scrollHeight;
-    return true;
-  };
-  const pile = () => {
-    const root = window.chatPart().shadowRoot;
-    const log = root.querySelector('.log');
-    const front = root.querySelector('.decision-turn[data-pinned]:not([style*="--depth: 1"])');
-    return {
-      cards: [...root.querySelectorAll('.decision-turn[data-pending]')].map((turn) => [
-        turn.dataset.id,
-        turn.hasAttribute('data-pinned'),
-        getComputedStyle(turn).filter,
-      ]),
-      padding: Number.parseFloat(log.style.getPropertyValue('--pile')),
-      front: front
-        ? Math.round(front.getBoundingClientRect().bottom - log.getBoundingClientRect().top)
-        : 0,
-      still: getComputedStyle(root.querySelector('.decision-turn')).transitionDuration,
-      focus: root.activeElement?.closest?.('[data-id]')?.dataset.id ?? null,
-    };
-  };
-  await page.evaluate(bottom);
-  await page.until(() =>
-    window.chatPart('.decision-turn[data-id=k-l17]').hasAttribute('data-pinned')
+  const docked = () =>
+    [
+      ...window
+        .chatPart()
+        .shadowRoot.querySelectorAll('.asks .ask:not([hidden]) .decision-turn[data-pending]'),
+    ].map((turn) => turn.dataset.id);
+  const expanded = () =>
+    window
+      .chatPart('[data-action=show-waiting]')
+      ?.shadowRoot.querySelector('button')
+      .getAttribute('aria-expanded') ?? null;
+  assert.deepEqual(await page.evaluate(docked), ['k-l17']);
+  assert.equal(await page.evaluate(expanded), 'false');
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.chatPart().shadowRoot.querySelectorAll('.log .ask-place')].map(
+        (place) => place.dataset.place
+      )
+    ),
+    ['k-q3', 'k-l17']
   );
-  const stuck = await page.evaluate(pile);
-  assert.deepEqual(stuck.cards, [
-    ['k-q3', true, 'blur(0.6px)'],
-    ['k-l17', true, 'blur(0px)'],
-  ]);
-  assert.ok(stuck.padding > 0 && Math.abs(stuck.padding - stuck.front) <= 1);
-  assert.equal(stuck.still, '0s');
+  assert.equal(
+    await page.evaluate(() => window.chatPart('.asks').getAttribute('aria-label')),
+    'Waiting for you'
+  );
   const timer = await page.evaluate(() => {
     const head = window.chatPart('.decision-turn[data-id=k-l17] .decision-head');
     const clock = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' });
@@ -2984,46 +3334,42 @@ test('decision cards pile at the top, reveal from the keyboard and leave the pil
   assert.equal(timer[3], false, timer[1]);
 
   await page.evaluate(() => {
+    window.chatPart('.log').scrollTop = 0;
     window.chatPart('.decision-turn[data-id=k-l17]').focus();
     return true;
   });
-  const before = await page.evaluate(() => window.chatPart('.log').scrollTop);
+  await page.until(() => window.chatPart('.log').scrollTop === 0);
   await page.press('Enter');
-  await page.until(
-    () => !window.chatPart('.decision-turn[data-id=k-l17]').hasAttribute('data-pinned')
-  );
-  const shown = await page.evaluate(pile);
-  assert.ok((await page.evaluate(() => window.chatPart('.log').scrollTop)) < before);
+  await page.until(() => window.chatPart('.log').scrollTop > 0);
   assert.deepEqual(
-    shown.cards.find(([id]) => id === 'k-l17'),
-    ['k-l17', false, 'none']
+    await page.evaluate(() => {
+      const root = window.chatPart().shadowRoot;
+      const log = root.querySelector('.log');
+      const view = log.getBoundingClientRect();
+      const place = root.querySelector('.ask-place[data-place=k-l17]').getBoundingClientRect();
+      return [
+        place.top >= view.top && place.top <= view.bottom,
+        root.activeElement?.closest?.('[data-id]')?.dataset.id ?? null,
+      ];
+    }),
+    [true, 'k-l17']
   );
-  assert.equal(shown.focus, 'k-l17');
 
-  await page.evaluate(bottom);
-  await page.until(
-    () => window.chatPart('.decision-turn[data-id=k-q3]').style.getPropertyValue('--depth') === '1'
-  );
   await page.evaluate(() => {
-    window
-      .chatPart('.decision-turn[data-id=k-q3] swc-button, .decision-turn[data-id=k-q3] input')
-      .focus();
+    window.chatPart('[data-action=show-waiting]').focus();
     return true;
   });
-  await page.until(
-    () => !window.chatPart('.decision-turn[data-id=k-q3]').hasAttribute('data-pinned')
-  );
+  await page.press('Enter');
+  await page.until(() => !!window.chatPart('.asks[data-open]'));
+  assert.deepEqual(await page.evaluate(docked), ['k-q3', 'k-l17']);
+  assert.equal(await page.evaluate(expanded), 'true');
 
-  await page.evaluate(bottom);
-  await page.until(() =>
-    window.chatPart('.decision-turn[data-id=k-l17]').hasAttribute('data-pinned')
-  );
   await page.evaluate(() => {
     window.chatPart('.decision-turn[data-id=k-l17] swc-button[data-action=allow]').focus();
     return true;
   });
   await page.press('Enter');
-  await page.until(() => !window.chatPart('.decision-turn[data-id=k-l17]'));
+  await page.until(() => !window.chatPart('.asks .decision-turn[data-id=k-l17]'));
   assert.equal(
     await page.evaluate(() => window.chatPart().shadowRoot.activeElement?.dataset.id),
     'k-q3'
@@ -3035,6 +3381,7 @@ test('decision cards pile at the top, reveal from the keyboard and leave the pil
     ),
     'confirmed'
   );
+  assert.equal(await page.evaluate(expanded), null);
 
   const elsewhere = await page.evaluate(() => {
     const agent = window.model.agent;
@@ -3048,6 +3395,8 @@ test('decision cards pile at the top, reveal from the keyboard and leave the pil
     (card) => !!window.chatPart(`.decision-turn[data-id=${card}] swc-button[data-action=allow]`),
     elsewhere
   );
+  assert.deepEqual(await page.evaluate(docked), ['k-q3', elsewhere]);
+  assert.equal(await page.evaluate(expanded), 'true');
   await page.evaluate((card) => {
     window.chatPart(`.decision-turn[data-id=${card}] swc-button[data-action=allow]`).focus();
     window.model.agent.resolveLick('cone-kitchen', card, 'dismissed');
@@ -3055,7 +3404,7 @@ test('decision cards pile at the top, reveal from the keyboard and leave the pil
   }, elsewhere);
   await page.until(
     (card) =>
-      !window.chatPart(`.decision-turn[data-id=${card}]`) &&
+      !window.chatPart(`.asks .decision-turn[data-id=${card}]`) &&
       window.chatPart().shadowRoot.activeElement?.dataset.id === 'k-q3',
     elsewhere
   );
@@ -3091,34 +3440,56 @@ test('decision cards pile at the top, reveal from the keyboard and leave the pil
   const expired = await page.evaluate((card) => {
     const turn = window.chatPart(`.decision-turn[data-id=${card}]`);
     return [
+      !!turn.closest('.log'),
       turn.hasAttribute('data-pending'),
       !!turn.querySelector('swc-button'),
       turn.querySelector('.timer').textContent,
       turn.querySelector('.timer + .sr').textContent,
     ];
   }, id);
-  assert.deepEqual(expired, [false, false, 'Timed out', 'Timed out']);
+  assert.deepEqual(expired, [true, false, false, 'Timed out', 'Timed out']);
   await page.until(() => window.chatPart().shadowRoot.activeElement?.dataset.id === 'k-q3');
-  const late = await page.evaluate(() => {
-    const agent = window.model.agent;
-    agent.lick('cone-kitchen', 'sudo-request', 'quiet-otter', 'Wants to tag 1.9.0');
-    const message = agent.messages('cone-kitchen').at(-1);
-    message.state = 'pending';
-    agent.emit('messages', 'cone-kitchen');
-    return message.id;
+
+  await page.evaluate(() => {
+    window.chatPart('.log').focus();
+    return true;
   });
-  await page.until((card) => !!window.chatPart(`.decision-turn[data-id=${card}]`), late);
+  const [timed, late] = await page.evaluate(() => {
+    const agent = window.model.agent;
+    const ids = [];
+    for (const [title, text, extra] of [
+      ['amber-heron', 'Wants to delete the preview branch', { expiresAt: Date.now() + 90_000 }],
+      ['quiet-otter', 'Wants to tag 1.9.0', {}],
+    ]) {
+      agent.lick('cone-kitchen', 'sudo-request', title, text);
+      const message = agent.messages('cone-kitchen').at(-1);
+      Object.assign(message, { state: 'pending' }, extra);
+      ids.push(message.id);
+    }
+    agent.emit('messages', 'cone-kitchen');
+    return ids;
+  });
+  await page.until((card) => !!window.chatPart(`.asks .decision-turn[data-id=${card}]`), late);
   assert.deepEqual(
-    await page.evaluate(() =>
-      [...window.chatPart().shadowRoot.querySelectorAll('.decision-turn[data-pending]')].map(
-        (turn) => [turn.dataset.id, turn.style.getPropertyValue('--stack').trim()]
-      )
-    ),
-    [
-      ['k-q3', '0'],
-      [late, '1'],
-    ]
+    await page.evaluate(() => {
+      const bar = window.chatPart('.waiting');
+      return [
+        bar.querySelector('[data-action=show-waiting]').textContent.trim(),
+        /^1:[23]\d$/.test(bar.querySelector('.timer').textContent),
+        bar.querySelector('.timer').getAttribute('aria-hidden'),
+        bar.querySelector('.timer + .sr').textContent.startsWith('Expires at '),
+      ];
+    }),
+    ['3 waiting', true, 'true', true]
   );
+  assert.deepEqual(await page.evaluate(docked), [late]);
+  await page.evaluate(() => {
+    window.chatPart('[data-action=show-waiting]').click();
+    return true;
+  });
+  await page.until(() => !!window.chatPart('.asks[data-open]'));
+  assert.deepEqual(await page.evaluate(docked), ['k-q3', timed, late]);
+  assert.equal(await page.evaluate(() => !!window.chatPart('.waiting .timer')), false);
   assert.deepEqual(page.errors, []);
 });
 
@@ -3477,6 +3848,253 @@ for (const [color, width] of [['dark'], ['light', 420]]) {
     assert.deepEqual(page.errors, []);
   });
 }
+
+async function dragOverChat(page) {
+  return page.evaluate(() => {
+    window.zoneRemovals = 0;
+    new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.removedNodes)
+          if (node.localName === 'swc-dropzone') window.zoneRemovals++;
+    }).observe(window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot, {
+      childList: true,
+      subtree: true,
+    });
+    window.chatDrag = (type, init = {}) => {
+      const data = new DataTransfer();
+      data.items.add(new File(['tide tables\n'], 'tides.txt', { type: 'text/plain' }));
+      window.lastTransfer = data;
+      return window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log').dispatchEvent(
+        new DragEvent(type, {
+          dataTransfer: data,
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+          ...init,
+        })
+      );
+    };
+    return !window.chatDrag('dragenter') && !window.chatDrag('dragover');
+  });
+}
+
+test('the drop zone over the chat says what it takes on an opaque surface, and holds while the drag moves', async (t) => {
+  const page = await open(t, { delay: '0' });
+  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer'));
+  assert.equal(await dragOverChat(page), true);
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone[dragged]')
+  );
+  const zone = await page.evaluate(() => {
+    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    const dropzone = chat.shadowRoot.querySelector('swc-dropzone');
+    const alpha = (color) => {
+      const context = document.createElement('canvas').getContext('2d');
+      context.fillStyle = color;
+      context.fillRect(0, 0, 1, 1);
+      return context.getImageData(0, 0, 1, 1).data[3] / 255;
+    };
+    return {
+      surface: dropzone.dataset.surface,
+      heading: dropzone.querySelector('h2[slot=heading]')?.textContent.trim(),
+      description: dropzone.querySelector('[slot=description]')?.textContent.trim(),
+      icon: !!dropzone.querySelector('swc-illustrated-message swc-icon-attach'),
+      alpha: alpha(
+        getComputedStyle(dropzone.shadowRoot.querySelector('.swc-Dropzone')).backgroundColor
+      ),
+      status: chat.shadowRoot.querySelector('[data-announce=drop]').textContent.trim(),
+    };
+  });
+  assert.deepEqual(zone, {
+    surface: 'drop',
+    heading: 'Drop files to attach',
+    description:
+      'Images, text and other files up to 25 MB each join your next message. Folders can’t be attached.',
+    icon: true,
+    alpha: 1,
+    status: 'Drop to attach files to your message',
+  });
+
+  assert.equal(
+    await page.evaluate(() => {
+      window.chatDrag('dragleave', { relatedTarget: null });
+      return !window.chatDrag('dragover');
+    }),
+    true
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      removals: window.zoneRemovals,
+      shown: !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone[dragged]'),
+    })),
+    { removals: 0, shown: true }
+  );
+
+  await page.evaluate(() => window.chatDrag('dragleave', { relatedTarget: null }));
+  await page.until(
+    () =>
+      !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone') &&
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', '[data-announce=drop]').textContent === ''
+  );
+
+  await dragOverChat(page);
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone[dragged]')
+  );
+  await page.evaluate(() => window.chatDrag('drop'));
+  await page.until(() => {
+    const attachments = window.$(
+      'slicc-app',
+      'slicc-dock',
+      'slicc-chat',
+      'slicc-composer'
+    ).attachments;
+    return (
+      !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone') &&
+      attachments.length === 1 &&
+      attachments[0].kind === 'text' &&
+      attachments[0].text === 'tide tables\n'
+    );
+  });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a folder dragged onto the chat is refused with a chip that says so, next to the files that came with it', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'slicc-drop-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, 'charts'));
+  writeFileSync(join(dir, 'charts', 'ebb.txt'), 'ebb\n');
+  writeFileSync(join(dir, 'tides.txt'), 'tide tables\n');
+  const page = await open(t, { delay: '0' });
+  await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer'));
+  const [x, y] = await page.evaluate(() => {
+    const box = window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.log').getBoundingClientRect();
+    return [Math.round(box.left + box.width / 2), Math.round(box.top + box.height / 3)];
+  });
+  const data = {
+    items: [],
+    files: [join(dir, 'charts'), join(dir, 'tides.txt')],
+    dragOperationsMask: 1,
+  };
+  for (const type of ['dragEnter', 'dragOver', 'drop'])
+    await page.send('Input.dispatchDragEvent', { type, x, y, data });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').attachments.length === 2
+  );
+  const chips = await page.evaluate(() =>
+    [
+      ...window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer')
+        .shadowRoot.querySelectorAll('swc-upload-attachment'),
+    ].map((chip) => ({
+      name: chip.querySelector('[slot=title]').textContent,
+      detail: chip.querySelector('[slot=subtitle]').textContent,
+      error: chip.hasAttribute('data-error'),
+      kind: chip.dataset.kind,
+    }))
+  );
+  assert.deepEqual(chips, [
+    { name: 'charts', detail: 'Folders can’t be attached', error: true, kind: 'file' },
+    { name: 'tides.txt', detail: '12 B', error: false, kind: 'text' },
+  ]);
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').focus();
+    return true;
+  });
+  await page.until(() => /slicc-composer > swc-prompt-field > textarea/.test(window.focused()));
+  await page.insert('Charts and tides');
+  await page.press('Enter');
+  await page.until(() =>
+    window.model.agent
+      .messages('cone-sliccy')
+      .some((message) => message.role === 'user' && message.text === 'Charts and tides')
+  );
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      sent: window.model.agent
+        .messages('cone-sliccy')
+        .find((message) => message.role === 'user' && message.text === 'Charts and tides')
+        .attachments.map((attachment) => [attachment.name, attachment.kind, !!attachment.error]),
+      left: window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').attachments.length,
+      chips: window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer')
+        .shadowRoot.querySelectorAll('swc-upload-attachment').length,
+    })),
+    { sent: [['tides.txt', 'text', false]], left: 0, chips: 0 }
+  );
+
+  const [fx, fy] = await page.evaluate(() => {
+    const box = window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field', 'textarea')
+      .getBoundingClientRect();
+    return [Math.round(box.left + box.width / 2), Math.round(box.top + box.height / 2)];
+  });
+  const onField = { ...data, files: [join(dir, 'charts')] };
+  for (const type of ['dragEnter', 'dragOver', 'drop'])
+    await page.send('Input.dispatchDragEvent', { type, x: fx, y: fy, data: onField });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').attachments[0]?.error ===
+      'Folders can’t be attached'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('while the composer waits to reconnect, the chat takes no drop and shows no drop zone', async (t) => {
+  const page = await open(t, { delay: '0', follow: 'reconnecting' });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
+        ?.disabled === true
+  );
+  assert.equal(await dragOverChat(page), true);
+  assert.equal(await page.evaluate(() => window.lastTransfer.dropEffect), 'none');
+  assert.equal(await page.evaluate(() => !window.chatDrag('drop')), true);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await page.evaluate(() => window.chatDrag('drop'));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      zone: !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone'),
+      attachments: window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').attachments
+        .length,
+    })),
+    { zone: false, attachments: 0 }
+  );
+
+  await page.evaluate(() => {
+    window.model.follow.setScenario('full');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
+        ?.disabled === false
+  );
+  assert.equal(await dragOverChat(page), true);
+  await page.until(
+    () => !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone[dragged]')
+  );
+  await page.evaluate(() => {
+    window.model.follow.setScenario('reconnecting');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'swc-prompt-field')
+        ?.disabled === true
+  );
+  assert.equal(await page.evaluate(() => !window.chatDrag('dragover')), true);
+  assert.equal(await page.evaluate(() => window.lastTransfer.dropEffect), 'none');
+  await page.until(
+    () =>
+      !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone') &&
+      window.$('slicc-app', 'slicc-dock', 'slicc-chat', '[data-announce=drop]').textContent === ''
+  );
+  assert.deepEqual(page.errors, []);
+});
 
 test('the slash popup offers the agent’s prompts and skills and sends them as messages', async (t) => {
   const page = await open(t, { delay: '0' });

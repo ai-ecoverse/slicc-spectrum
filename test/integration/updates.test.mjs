@@ -727,6 +727,571 @@ test('your packages say where they live, and that updates keep them until you re
   assert.deepEqual(page.errors, []);
 });
 
+test('a ready update shows what’s new for its whole range, and rows without notes show none', async (t) => {
+  const page = await open(t, 'restart');
+  await page.evaluate(() => {
+    window.inUpdates = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-updates', selector);
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() => Boolean(window.inUpdates('[data-id=kernel] details[data-releases]')));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const details = window.inUpdates('[data-id=kernel] details[data-releases]');
+      return [details.open, details.querySelector('summary').textContent.trim()];
+    }),
+    [false, 'What’s new']
+  );
+  await page.evaluate(() => {
+    window.inUpdates('[data-id=kernel] [data-action=whats-new]').click();
+    return true;
+  });
+  await page.until(() => window.inUpdates('[data-id=kernel] details[data-releases]').open);
+  const kernel = await page.evaluate(() => {
+    const details = window.inUpdates('[data-id=kernel] details[data-releases]');
+    const releases = [...details.querySelectorAll('.release')];
+    return {
+      versions: releases.map((release) => release.dataset.version),
+      visible: releases.every((release) => release.getBoundingClientRect().height > 0),
+      certified: releases.map((release) => Boolean(release.querySelector('[data-certified]'))),
+      links: releases.map((release) => {
+        const link = release.querySelector('a[data-action=release-notes]');
+        return [link.getAttribute('aria-label'), link.target, link.href];
+      }),
+      text: details.innerText,
+    };
+  });
+  assert.deepEqual(kernel.versions, ['1.13.0', '1.12.2', '1.12.1']);
+  assert.equal(kernel.visible, true);
+  assert.deepEqual(kernel.certified, [true, true, false]);
+  await page.evaluate(() => {
+    for (const summary of window
+      .inUpdates('[data-id=kernel] details[data-releases]')
+      .querySelectorAll('.release > summary'))
+      summary.click();
+    return true;
+  });
+  await page.until(() =>
+    [...window.inUpdates('[data-id=kernel]').querySelectorAll('details.release')].every(
+      (release) => release.open
+    )
+  );
+  kernel.text = await page.evaluate(
+    () => window.inUpdates('[data-id=kernel] details[data-releases]').innerText
+  );
+  assert.deepEqual(kernel.links[0], [
+    'Kernel 1.13.0 release notes',
+    '_blank',
+    'https://github.com/ai-ecoverse/harbor-kernel/releases/tag/v1.13.0',
+  ]);
+  assert.match(kernel.text, /Features[\s\S]*wait -n[\s\S]*Bug Fixes[\s\S]*slow DNS[\s\S]*mid-line/);
+  assert.doesNotMatch(kernel.text, /cert-verify|sha256|certified @harbor/);
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.inUpdates('[data-id=agent]').querySelectorAll('[data-releases] .release').length,
+      Boolean(window.inUpdates('[data-id=grammars] details')),
+      window
+        .inUpdates('[data-id=grammars] a[data-action=release-notes]')
+        ?.getAttribute('aria-label'),
+      Boolean(window.inUpdates('[data-id=skills] details, [data-id=skills] a')),
+    ]),
+    [1, false, 'Syntax grammars 4.5.0 release notes', false]
+  );
+  await page.evaluate(() => {
+    window.model.updates.setScenario('failure');
+    return true;
+  });
+  await page.until(() => Boolean(window.inUpdates('[data-id=global][data-state=failed]')));
+  assert.equal(
+    await page.evaluate(() => Boolean(window.inUpdates('[data-id=global] details[data-releases]'))),
+    false
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('what’s new expands only the newest release, the older ones are headers that open on click and keep their cut link', async (t) => {
+  const page = await open(t, 'restart');
+  await page.evaluate(() => {
+    window.inUpdates = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-updates', selector);
+    const port = window.model.updates;
+    const items = port.list().map((item) =>
+      item.id === 'kernel'
+        ? {
+            ...item,
+            releases: [
+              ...item.releases.map((release) =>
+                release.version === '1.12.1'
+                  ? { ...release, notes: `### Bug Fixes\n\n${'* tides\n'.repeat(2_000)}` }
+                  : release
+              ),
+              {
+                version: '1.12.5',
+                url: 'https://github.com/ai-ecoverse/harbor-kernel/releases/tag/v1.12.5',
+                notes:
+                  '<!-- cert-verify -->\ncertified @harbor/harbor-kernel@1.12.5\n<!-- /cert-verify -->',
+              },
+            ],
+          }
+        : item
+    );
+    port.list = () => items;
+    port.emit('items', items);
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() => Boolean(window.inUpdates('[data-id=kernel] [data-action=whats-new]')));
+  await page.evaluate(() => {
+    window.inUpdates('[data-id=kernel] [data-action=whats-new]').click();
+    return true;
+  });
+  await page.until(() => window.inUpdates('[data-id=kernel] details[data-releases]').open);
+  const read = () =>
+    page.evaluate(() => {
+      const details = window.inUpdates('[data-id=kernel] details[data-releases]');
+      return [...details.querySelectorAll('.release')].map((release) => {
+        const notes = release.querySelector('.markdown');
+        const cut = release.querySelector('[data-cut] a');
+        return {
+          version: release.dataset.version,
+          notes: Boolean(notes?.checkVisibility()),
+          header: release.querySelector('summary')?.dataset.action ?? null,
+          name: release.querySelector('summary')?.getAttribute('aria-label') ?? null,
+          link: release.querySelector('a[data-action=release-notes]')?.getAttribute('aria-label'),
+          certified: Boolean(release.querySelector('[data-certified]')),
+          cut: cut?.checkVisibility() ? cut.href : null,
+        };
+      });
+    });
+  assert.deepEqual(await read(), [
+    {
+      version: '1.13.0',
+      notes: true,
+      header: null,
+      name: null,
+      link: 'Kernel 1.13.0 release notes',
+      certified: true,
+      cut: null,
+    },
+    {
+      version: '1.12.5',
+      notes: false,
+      header: null,
+      name: null,
+      link: 'Kernel 1.12.5 release notes',
+      certified: true,
+      cut: null,
+    },
+    {
+      version: '1.12.2',
+      notes: false,
+      header: 'release',
+      name: 'Kernel 1.12.2 notes, certified',
+      link: 'Kernel 1.12.2 release notes',
+      certified: true,
+      cut: null,
+    },
+    {
+      version: '1.12.1',
+      notes: false,
+      header: 'release',
+      name: 'Kernel 1.12.1 notes',
+      link: 'Kernel 1.12.1 release notes',
+      certified: false,
+      cut: null,
+    },
+  ]);
+  const center = await page.evaluate(() => {
+    const summary = window.inUpdates('[data-id=kernel] .release[data-version="1.12.1"] > summary');
+    summary.scrollIntoView({ block: 'center' });
+    const box = summary.getBoundingClientRect();
+    const link = summary.querySelector('a').getBoundingClientRect();
+    return { x: box.right - 8, y: box.y + box.height / 2, wide: box.right - 8 > link.right + 24 };
+  });
+  assert.equal(center.wide, true);
+  for (const type of ['mousePressed', 'mouseReleased']) {
+    await page.send('Input.dispatchMouseEvent', {
+      type,
+      x: center.x,
+      y: center.y,
+      button: 'left',
+      clickCount: 1,
+    });
+  }
+  await page.until(
+    () => window.inUpdates('[data-id=kernel] .release[data-version="1.12.1"]').open === true
+  );
+  const opened = await read();
+  assert.deepEqual(
+    opened.map(({ version, notes, cut }) => [version, notes, cut]),
+    [
+      ['1.13.0', true, null],
+      ['1.12.5', false, null],
+      ['1.12.2', false, null],
+      ['1.12.1', true, 'https://github.com/ai-ecoverse/harbor-kernel/releases/tag/v1.12.1'],
+    ]
+  );
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 420,
+    height: 860,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await page.until(() => window.app.screen === 'phone');
+  await page.evaluate(() => {
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() => {
+    const release = window.inUpdates('[data-id=kernel] .release[data-version="1.12.1"]');
+    return release?.open === true && release.getBoundingClientRect().right <= innerWidth;
+  });
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.inUpdates('[data-id=kernel]').querySelectorAll('details.release')].map(
+        (release) => [release.dataset.version, release.open]
+      )
+    ),
+    [
+      ['1.12.2', false],
+      ['1.12.1', true],
+    ]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a third-party release with a cert block shows no Certified badge, while an ai-ecoverse one still does', async (t) => {
+  const page = await open(t, 'restart');
+  await page.evaluate(() => {
+    window.inUpdates = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-updates', selector);
+    const port = window.model.updates;
+    const signed = (owner, version) => ({
+      version,
+      url: `https://${owner}/harbor-kernel/releases/tag/v${version}`,
+      notes: `### Bug Fixes\n\n* **tides:** ${version}\n\n<!-- cert-verify -->\ncertified @harbor/harbor-kernel@${version} sha256=0f3c9a1e\n<!-- /cert-verify -->`,
+    });
+    const items = port.list().map((item) =>
+      item.id === 'kernel'
+        ? {
+            ...item,
+            releases: [
+              signed('github.com/some-fork', '1.13.0'),
+              signed('github.com.evil.example/ai-ecoverse', '1.12.2'),
+              signed('github.com/ai-ecoverse', '1.12.1'),
+            ],
+          }
+        : item
+    );
+    port.list = () => items;
+    port.emit('items', items);
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() => Boolean(window.inUpdates('[data-id=kernel] [data-action=whats-new]')));
+  await page.evaluate(() => {
+    for (const id of ['kernel', 'agent'])
+      window.inUpdates(`[data-id=${id}] [data-action=whats-new]`).click();
+    return true;
+  });
+  await page.until(() =>
+    ['kernel', 'agent'].every(
+      (id) => window.inUpdates(`[data-id=${id}] details[data-releases]`).open
+    )
+  );
+  const read = (id) =>
+    page.evaluate((id) => {
+      const details = window.inUpdates(`[data-id=${id}] details[data-releases]`);
+      return {
+        releases: [...details.querySelectorAll('.release')].map((release) => ({
+          version: release.dataset.version,
+          newest: release.hasAttribute('data-newest'),
+          name: release.querySelector('summary')?.getAttribute('aria-label') ?? null,
+          certified: Boolean(release.querySelector('.title [data-certified]')),
+        })),
+        text: details.innerText,
+      };
+    }, id);
+  const kernel = await read('kernel');
+  assert.deepEqual(kernel.releases, [
+    { version: '1.13.0', newest: true, name: null, certified: false },
+    { version: '1.12.2', newest: false, name: 'Kernel 1.12.2 notes', certified: false },
+    { version: '1.12.1', newest: false, name: 'Kernel 1.12.1 notes, certified', certified: true },
+  ]);
+  assert.doesNotMatch(kernel.text, /cert-verify|sha256|certified @harbor/);
+  const agent = await read('agent');
+  assert.deepEqual(agent.releases, [
+    { version: '0.25.0', newest: true, name: null, certified: false },
+  ]);
+  assert.doesNotMatch(agent.text, /cert-verify|sha256|certified @harbor/);
+  assert.deepEqual(page.errors, []);
+});
+
+test('Certified needs the cert block to name the release’s version, and on a package row its npm package', async (t) => {
+  const page = await chrome.page(t);
+  await page.goto('/ui/?updates=restart&packages=user&color=light&delay=20');
+  await page.until(() => window.ready && window.app.dock.api.panels.length > 0);
+  await page.evaluate(() => {
+    window.inUpdates = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-updates', selector);
+    const port = window.model.updates;
+    const signed = (repo, version, line) => ({
+      version,
+      url: `https://github.com/ai-ecoverse/${repo}/releases/tag/v${version}`,
+      notes: `* ${version}\n\n<!-- cert-verify -->\n${line} sha256=0f3c9a1e\n<!-- /cert-verify -->`,
+    });
+    const items = port.list().map((item) =>
+      item.id === 'kernel'
+        ? {
+            ...item,
+            releases: [
+              signed('harbor-kernel', '1.13.0', 'certified @harbor/harbor-kernel@1.13.0'),
+              signed('harbor-kernel', '1.12.2', 'certified @harbor/harbor-kernel@1.12.5'),
+            ],
+          }
+        : item
+    );
+    const packages = port.packages().map((item) =>
+      item.id === 'uv'
+        ? {
+            ...item,
+            releases: [
+              signed('uv-wasm', '0.9.2', 'certified @harbor/uv-wasm@0.9.2'),
+              signed('uv-wasm', '0.9.0', 'certified @harbor/other-wasm@0.9.0'),
+            ],
+          }
+        : item
+    );
+    port.list = () => items;
+    port.packages = () => packages;
+    port.emit('items', items);
+    port.emit('packages', packages);
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() =>
+    ['[data-id=kernel]', 'li[data-id=uv]'].every((row) =>
+      Boolean(window.inUpdates(`${row} [data-action=whats-new]`))
+    )
+  );
+  await page.evaluate(() => {
+    for (const row of ['[data-id=kernel]', 'li[data-id=uv]'])
+      window.inUpdates(`${row} [data-action=whats-new]`).click();
+    return true;
+  });
+  await page.until(() =>
+    ['[data-id=kernel]', 'li[data-id=uv]'].every(
+      (row) => window.inUpdates(`${row} details[data-releases]`).open
+    )
+  );
+  const read = (row) =>
+    page.evaluate((row) => {
+      const details = window.inUpdates(`${row} details[data-releases]`);
+      return {
+        releases: [...details.querySelectorAll('.release')].map((release) => [
+          release.dataset.version,
+          release.querySelector('summary')?.getAttribute('aria-label') ?? null,
+          Boolean(release.querySelector('.title [data-certified]')),
+        ]),
+        text: details.innerText,
+      };
+    }, row);
+  const kernel = await read('[data-id=kernel]');
+  assert.deepEqual(kernel.releases, [
+    ['1.13.0', null, true],
+    ['1.12.2', 'Kernel 1.12.2 notes', false],
+  ]);
+  assert.doesNotMatch(kernel.text, /cert-verify|sha256|certified @harbor/);
+  const uv = await read('li[data-id=uv]');
+  assert.deepEqual(uv.releases, [
+    ['0.9.2', null, true],
+    ['0.9.0', 'uv 0.9.0 notes', false],
+  ]);
+  assert.doesNotMatch(uv.text, /cert-verify|sha256|certified @harbor/);
+  assert.deepEqual(page.errors, []);
+});
+
+test('hostile release notes render as text and https links only, load no image and are capped', async (t) => {
+  const page = await open(t, 'restart');
+  await page.evaluate(() => {
+    window.inUpdates = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-updates', selector);
+    const port = window.model.updates;
+    const hostile = [
+      '### Features',
+      '',
+      '<script>window.pwned = 1</script>',
+      '',
+      '* <img src=x onerror="window.pwned = 2"> inline',
+      '* [run](javascript:window.pwned=3) and [plain](http://127.0.0.1:1/plain) and [ok](https://example.com/ok)',
+      '* ![pixel](data:image/png;base64,iVBORw0KGgo=) ![tracker](http://127.0.0.1:1/hostile-tracker.png) ![remote](https://example.com/hostile-remote.png)',
+      '',
+      '<iframe src="https://example.com/frame"></iframe>',
+      '',
+      '```',
+      `wide ${'w'.repeat(400)}`,
+      '```',
+      '',
+      'x'.repeat(10 * 1024 * 1024),
+    ].join('\n');
+    const items = port.list().map((item) =>
+      item.id === 'kernel'
+        ? {
+            ...item,
+            releases: [
+              { version: '1.13.0', url: 'https://example.com/v1.13.0', notes: hostile },
+              { version: '1.12.2', url: 'javascript:window.pwned=4', notes: '* fine' },
+            ],
+          }
+        : item
+    );
+    port.list = () => items;
+    port.emit('items', items);
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() => Boolean(window.inUpdates('[data-id=kernel] [data-action=whats-new]')));
+  await page.evaluate(() => {
+    window.inUpdates('[data-id=kernel] [data-action=whats-new]').click();
+    return true;
+  });
+  await page.until(() => window.inUpdates('[data-id=kernel] details[data-releases]').open);
+  const seen = await page.evaluate(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const details = window.inUpdates('[data-id=kernel] details[data-releases]');
+    const notes = details.querySelector('.release[data-version="1.13.0"] .markdown');
+    const allowed = new Set(['P', 'UL', 'LI', 'A', 'CODE', 'PRE', 'STRONG', 'EM']);
+    return {
+      pwned: window.pwned ?? null,
+      tags: [...new Set([...notes.querySelectorAll('*')].map((node) => node.tagName))].filter(
+        (tag) => !allowed.has(tag)
+      ),
+      links: [...details.querySelectorAll('a')].map((link) => [
+        link.getAttribute('href'),
+        link.target,
+        link.rel,
+      ]),
+      hostileText:
+        /window\.pwned = 1/.test(notes.textContent) &&
+        !/<script|<img|<iframe/.test(notes.textContent),
+      length: notes.textContent.length,
+      ellipsis: notes.textContent.trimEnd().endsWith('…'),
+      cut: details.querySelector('.release[data-version="1.13.0"] [data-cut] a')?.href ?? null,
+      plainTitle: details
+        .querySelector('.release[data-version="1.12.2"] .title')
+        .textContent.trim(),
+      fits: (() => {
+        const panel = window.inUpdates('.page').closest('.page');
+        const host = window.$('slicc-app', 'slicc-dock', 'slicc-updates');
+        return (
+          host.scrollWidth <= host.clientWidth && panel.getBoundingClientRect().right <= innerWidth
+        );
+      })(),
+      images: performance
+        .getEntriesByType('resource')
+        .filter((entry) => /hostile|\/x$|\/frame$/.test(entry.name))
+        .map((entry) => entry.name),
+    };
+  });
+  assert.equal(seen.pwned, null);
+  assert.deepEqual(seen.tags, []);
+  for (const [href, target, rel] of seen.links) {
+    assert.match(href, /^https:\/\//);
+    assert.equal(target, '_blank');
+    assert.equal(rel, 'noopener noreferrer');
+  }
+  assert.deepEqual(
+    seen.links.map(([href]) => href),
+    [
+      'https://example.com/v1.13.0',
+      'https://example.com/ok',
+      'https://example.com/hostile-remote.png',
+      'https://example.com/v1.13.0',
+    ]
+  );
+  assert.equal(seen.hostileText, true);
+  assert.ok(seen.length <= 8_192 + 1, String(seen.length));
+  assert.ok(seen.length > 7_000, String(seen.length));
+  assert.equal(seen.ellipsis, true);
+  assert.equal(seen.cut, 'https://example.com/v1.13.0');
+  assert.equal(seen.plainTitle, '1.12.2');
+  assert.deepEqual(seen.images, []);
+  assert.equal(seen.fits, true);
+  assert.deepEqual(page.errors, []);
+});
+
+test('package rows link their release or npm page, show what’s new after the commands, and keep it open across layouts', async (t) => {
+  const page = await chrome.page(t);
+  await page.goto('/ui/?updates=restart&packages=user&color=light&delay=20');
+  await page.until(() => window.ready && window.app.dock.api.panels.length > 0);
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await page.evaluate(() => {
+    window.inUpdates = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-updates', selector);
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() => Boolean(window.inUpdates('li[data-id=uv] [data-action=whats-new]')));
+  const rows = await page.evaluate(() => {
+    const link = (selector) => {
+      const node = window.inUpdates(selector);
+      return node && [node.textContent, node.getAttribute('aria-label'), node.href, node.target];
+    };
+    const uv = window.inUpdates('li[data-id=uv]');
+    const children = [...uv.children];
+    return {
+      biome: link('li[data-id=biome] .meta a[data-action=npm-page]'),
+      python: link('li[data-id=python] .meta a[data-action=release-notes]'),
+      uvLink: Boolean(uv.querySelector('.meta a')),
+      order:
+        children.indexOf(uv.querySelector(':scope > .commands')) <
+        children.indexOf(uv.querySelector(':scope > details[data-releases]')),
+      versions: [...uv.querySelectorAll('.release')].map((release) => release.dataset.version),
+      pins: [...window.inUpdates('section[data-section=user-packages]').querySelectorAll('a')]
+        .length,
+      focused: (() => {
+        const updates = window.$('slicc-app', 'slicc-dock', 'slicc-updates');
+        updates.focus();
+        return updates.shadowRoot.activeElement?.dataset.action ?? null;
+      })(),
+    };
+  });
+  assert.deepEqual(rows.biome, [
+    'npm page',
+    'npm page for Biome 2.2.4',
+    'https://www.npmjs.com/package/@harbor/biome-wasm/v/2.2.4',
+    '_blank',
+  ]);
+  assert.deepEqual(rows.python, [
+    'Release notes',
+    'Python 3.13.1 release notes',
+    'https://github.com/harbor-demo/python-wasm/releases/tag/v3.13.1',
+    '_blank',
+  ]);
+  assert.equal(rows.uvLink, false);
+  assert.equal(rows.order, true);
+  assert.deepEqual(rows.versions, ['0.9.2', '0.9.0']);
+  assert.equal(rows.pins, 0);
+  assert.equal(rows.focused, 'reload');
+  await page.evaluate(() => {
+    window.inUpdates('li[data-id=uv] [data-action=whats-new]').click();
+    return true;
+  });
+  await page.until(() => window.inUpdates('li[data-id=uv] details[data-releases]').open);
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 420,
+    height: 860,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await page.until(() => window.app.screen === 'phone');
+  await page.evaluate(() => {
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() => {
+    const details = window.inUpdates('li[data-id=uv] details[data-releases]');
+    return details?.open === true && details.getBoundingClientRect().right <= innerWidth;
+  });
+  assert.deepEqual(page.errors, []);
+});
+
 test('a package installed elsewhere shows as installed where it lives, never offers Install, and updates in place', async (t) => {
   const page = await installing(t);
   const row = await page.evaluate(async () => {

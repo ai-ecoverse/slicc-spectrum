@@ -44,7 +44,7 @@ import { installProperties } from './properties.ts';
 import { alone, tabsLight } from './tabs.ts';
 import { TerminalPanels } from './terminals.ts';
 import { theme } from './theme.ts';
-import { UpdateVisibility, updatesStatus } from './updates.ts';
+import { betaText, UpdateVisibility, updatesStatus } from './updates.ts';
 
 function railIcon(icon: string): TemplateResult {
   if (icon.startsWith('swc-icon-')) {
@@ -210,6 +210,12 @@ export class SliccApp extends ThemedElement {
       align-self: center;
       padding-inline: var(--swc-spacing-75);
       border-radius: var(--swc-corner-radius-small-default);
+    }
+    .update-status {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--swc-spacing-75);
+      white-space: nowrap;
     }
     header .tabs:focus-visible {
       outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
@@ -1009,15 +1015,20 @@ export class SliccApp extends ThemedElement {
   }
 
   #updatesIndicator(): TemplateResult | typeof nothing {
-    const updates = this.#offers('updates')
-      ? updatesStatus(this.model?.updates?.list() ?? [])
-      : null;
-    if (!updates) return nothing;
-    const text = updates[0].toUpperCase() + updates.slice(1);
-    return html`<swc-action-button id="updates" quiet size="s" data-updates accessible-label=${`Install / Update: ${updates}`} @click=${() => this.show('updates')}>
-        <swc-status-light size="s" variant=${updatesVariant(updates)}>${this.screen === 'phone' ? nothing : text}</swc-status-light>
+    const items = this.#offers('updates') ? (this.model?.updates?.list() ?? []) : [];
+    const updates = updatesStatus(items);
+    const beta = betaText(items);
+    if (!updates && !beta) return nothing;
+    const text = updates ? updates[0].toUpperCase() + updates.slice(1) : null;
+    const said = [updates, beta].filter(Boolean).join('. ');
+    const tip = [text, beta].filter(Boolean).join('. ');
+    return html`<swc-action-button id="updates" quiet size="s" data-updates accessible-label=${`Install / Update: ${said}`} @click=${() => this.show('updates')}>
+        <span class="update-status">
+          ${updates ? html`<swc-status-light size="s" variant=${updatesVariant(updates)}>${this.screen === 'phone' ? nothing : text}</swc-status-light>` : nothing}
+          ${beta ? html`<swc-badge size="s" variant="notice" subtle data-beta>Beta</swc-badge>` : nothing}
+        </span>
       </swc-action-button>
-      <swc-tooltip for="updates" placement="bottom">${text}</swc-tooltip>`;
+      <swc-tooltip for="updates" placement="bottom">${tip}</swc-tooltip>`;
   }
 
   #tabsIndicator(): TemplateResult | typeof nothing {

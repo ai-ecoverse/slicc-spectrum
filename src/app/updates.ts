@@ -1,9 +1,11 @@
+import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/divider/swc-divider.js';
 import '@adobe/spectrum-wc/components/progress-bar/swc-progress-bar.js';
 import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
-import { css, html, nothing, type TemplateResult } from 'lit';
+import link from '@adobe/spectrum-wc/link.css';
+import { css, html, nothing, type TemplateResult, unsafeCSS } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import type {
   InstallProgress,
@@ -15,11 +17,14 @@ import type {
   SliccModel,
   UpdateAction,
   UpdateItem,
+  UpdateNpm,
+  UpdateRelease,
   UpdateState,
   UpdatesPort,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
 import { chevron, disclosureStyles } from './disclosure.ts';
+import { markdown, markdownCss } from './markdown.ts';
 import { size } from './messages.ts';
 import { ViewSet } from './view-state.ts';
 
@@ -41,7 +46,73 @@ const actions: Record<UpdateAction, string> = {
   reload: 'Reload',
   'update-now': 'Update now',
   retry: 'Retry',
+  'install-beta': 'Install beta',
+  'back-to-certified': 'Back to certified',
 };
+
+const resting: ReadonlySet<UpdateState> = new Set(['current', 'installed']);
+
+const betaLight = ['notice', 'Beta installed'] as const;
+
+const betaActions: ReadonlySet<UpdateAction> = new Set(['install-beta', 'back-to-certified']);
+
+const folder = (label: string): string | null => /\((\/[^)]+)\)$/.exec(label)?.[1] ?? null;
+
+const component = (label: string): string => label.replace(/\s*\(\/[^)]+\)$/, '');
+
+export function betaText(items: readonly UpdateItem[]): string | null {
+  const item = items.find((candidate) => candidate.beta);
+  if (!item?.beta) return null;
+  return `${component(item.label)} runs beta ${item.beta.version}, not certified`;
+}
+
+const release = (npm: UpdateNpm): string =>
+  npm.latest ? `${npm.latest} on npm` : 'a newer release on npm';
+
+const refused = (npm: UpdateNpm): string =>
+  npm.reason ? `not offered: ${npm.reason}` : 'not offered';
+
+const sentence = (text: string): string => text[0].toUpperCase() + text.slice(1);
+
+export function npmMeta(item: UpdateItem): string | null {
+  const npm = item.npm;
+  const tried = item.to === npm?.latest && (!item.beta || item.state === 'failed');
+  const target = item.to && item.to !== item.from && !tried ? ` → ${item.to}` : '';
+  if (item.beta) return `${item.beta.version} beta · certified ${item.beta.certified}${target}`;
+  const pinned = item.from ? `${item.from} (certified)${target}` : 'Not installed';
+  if (npm?.state === 'offered') return `${pinned} · ${release(npm)}, not certified`;
+  if (npm?.state === 'not-offered') return `${pinned} · ${release(npm)}, ${refused(npm)}`;
+  return null;
+}
+
+function changed(item: UpdateItem, npm: UpdateNpm): string | null {
+  const where = folder(item.label);
+  const changes = npm.changes;
+  const gated = changes?.gated ?? [];
+  const count = changes
+    ? `${changes.count} ${changes.count === 1 ? 'package changes' : 'packages change'}${where ? ` in ${where}` : ''}.`
+    : '';
+  const text = [
+    item.beta ? `${sentence(release(npm))}, not certified.` : '',
+    count,
+    gated.length === 1 ? `${gated[0]} stays at its certified version.` : '',
+    gated.length > 1 ? `${list(gated)} stay at their certified versions.` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return text || null;
+}
+
+export function npmNote(item: UpdateItem): string | null {
+  const npm = item.npm;
+  if (npm?.state === 'current') return 'npm: no newer release';
+  if (npm?.state === 'checking') return 'Checking npm…';
+  if (npm?.state === 'failed') return npm.reason ?? 'Couldn’t check npm';
+  if (npm?.state === 'offered') return changed(item, npm);
+  if (npm?.state === 'not-offered' && item.beta)
+    return `${sentence(release(npm))}, ${refused(npm)}`;
+  return null;
+}
 
 const running: ReadonlySet<UpdateState> = new Set(['checking', 'downloading', 'linking']);
 
@@ -153,6 +224,125 @@ const itemBusy = (item: UpdateItem): boolean =>
 const packageBusy = (item: PackageItem): boolean =>
   packageRunning.has(item.state) || item.progress !== null;
 
+const parts = (version: string): [string, string | null] => {
+  const main = version.replace(/^v/, '').split('+')[0];
+  const dash = main.indexOf('-');
+  return dash < 0 ? [main, null] : [main.slice(0, dash), main.slice(dash + 1)];
+};
+
+const identifier = (a: string, b: string): number => {
+  const numeric = [/^\d+$/.test(a), /^\d+$/.test(b)];
+  if (numeric[0] && numeric[1]) return Math.sign(Number(a) - Number(b));
+  if (numeric[0] !== numeric[1]) return numeric[0] ? -1 : 1;
+  return a < b ? -1 : a > b ? 1 : 0;
+};
+
+const dotted = (a: string, b: string): number => {
+  const left = a.split('.');
+  const right = b.split('.');
+  for (let index = 0; index < Math.min(left.length, right.length); index++) {
+    const order = identifier(left[index], right[index]);
+    if (order) return order;
+  }
+  return Math.sign(left.length - right.length);
+};
+
+const newer = (a: string, b: string): number => {
+  const [coreA, preA] = parts(a);
+  const [coreB, preB] = parts(b);
+  const core = dotted(coreA, coreB);
+  if (core || preA === preB) return core;
+  if (preA === null) return 1;
+  return preB === null ? -1 : dotted(preA, preB);
+};
+
+const certBlock = /<!--\s*cert-verify\s*-->([\s\S]*?)<!--\s*\/cert-verify\s*-->/g;
+
+export const notesLimit = 8_192;
+
+interface Notes {
+  release: UpdateRelease;
+  body: string;
+  certified: boolean;
+  cut: boolean;
+}
+
+const noted = new WeakMap<UpdateRelease, Map<string | undefined, Notes>>();
+
+const bare = (version: string): string => version.replace(/^v/, '');
+
+function trusted(url: string): boolean {
+  try {
+    const { protocol, host, username, password, pathname } = new URL(url);
+    const [owner, repo, kind] = pathname.split('/').slice(1);
+    return (
+      protocol === 'https:' &&
+      host === 'github.com' &&
+      !username &&
+      !password &&
+      owner.toLowerCase() === 'ai-ecoverse' &&
+      Boolean(repo) &&
+      kind === 'releases'
+    );
+  } catch {
+    return false;
+  }
+}
+
+function vouches(inner: string, release: UpdateRelease, name: string | undefined): boolean {
+  const token = /^certified\s+(\S+)/.exec(inner.trim())?.[1] ?? '';
+  const at = token.lastIndexOf('@');
+  const named = token.slice(0, at);
+  return (
+    at > 0 &&
+    bare(token.slice(at + 1)) === bare(release.version) &&
+    (name === undefined || named === name)
+  );
+}
+
+export function releaseNotes(release: UpdateRelease, name?: string): Notes {
+  const cache = noted.get(release) ?? new Map<string | undefined, Notes>();
+  noted.set(release, cache);
+  const known = cache.get(name);
+  if (known) return known;
+  const text = release.notes ?? '';
+  const certified =
+    trusted(release.url) &&
+    [...text.matchAll(certBlock)].some(([, inner]) => vouches(inner, release, name));
+  const lines = text.replace(certBlock, '').trim().split('\n');
+  const heading = /^#{1,6}\s/.test(lines[0]) && lines[0].includes(bare(release.version));
+  const full = lines
+    .slice(heading ? 1 : 0)
+    .join('\n')
+    .trim();
+  const cut = full.length > notesLimit;
+  const head = full.slice(0, notesLimit);
+  const line = head.lastIndexOf('\n');
+  const body = cut ? `${(line > notesLimit / 2 ? head.slice(0, line) : head).trimEnd()}…` : full;
+  const notes = { release, body, certified, cut };
+  cache.set(name, notes);
+  return notes;
+}
+
+export function whatsNew(
+  releases: readonly UpdateRelease[] | undefined,
+  from: string | null,
+  to: string | null,
+  name?: string
+): readonly Notes[] {
+  if (!releases || from === null || to === null || to === from) return [];
+  const range = releases
+    .filter((release) => newer(release.version, from) > 0 && newer(release.version, to) <= 0)
+    .sort((a, b) => newer(b.version, a.version))
+    .map((release) => releaseNotes(release, name));
+  return range.some((entry) => entry.body) ? range : [];
+}
+
+const secure = (url: string) => /^https:\/\//i.test(url);
+
+const installed = (releases: readonly UpdateRelease[] | undefined, version: string) =>
+  releases?.find((release) => newer(release.version, version) === 0 && secure(release.url));
+
 type Failures = ReadonlyMap<string, string>;
 type Snapshot = ReadonlyMap<string, { state: string; error: string | null }>;
 
@@ -247,7 +437,9 @@ export class SliccUpdates extends ModelElement {
   }
 
   static styles = [
+    unsafeCSS(link),
     disclosureStyles,
+    markdownCss,
     css`
       :host {
         display: block;
@@ -301,6 +493,20 @@ export class SliccUpdates extends ModelElement {
       swc-status-light {
         align-self: center;
       }
+      .title {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--swc-spacing-100);
+        min-width: 0;
+      }
+      .npm {
+        margin: calc(-1 * var(--swc-spacing-100)) 0 0;
+        color: var(--swc-neutral-subdued-content-color-default);
+        font-size: var(--swc-font-size-75);
+        line-height: var(--swc-line-height-200);
+        overflow-wrap: anywhere;
+      }
       .version {
         font-family: var(--swc-code-font-family-stack);
       }
@@ -345,12 +551,12 @@ export class SliccUpdates extends ModelElement {
       section > .hint {
         margin-block-end: var(--swc-spacing-100);
       }
-      ul {
+      .rows {
         margin: 0;
         padding: 0;
         list-style: none;
       }
-      li {
+      .rows > li {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         grid-template-areas: 'name buttons' 'description buttons';
@@ -359,7 +565,7 @@ export class SliccUpdates extends ModelElement {
         padding: var(--swc-spacing-200) 0;
         border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
       }
-      li > :not(.name, .buttons, .description) {
+      .rows > li > :not(.name, .buttons, .description) {
         grid-column: 1 / -1;
         margin: 0;
       }
@@ -390,11 +596,11 @@ export class SliccUpdates extends ModelElement {
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      li .meta {
+      .rows > li > .meta {
         justify-content: flex-start;
         gap: 0;
       }
-      li .meta > * + *::before {
+      .rows > li > .meta > * + *::before {
         content: '·';
         margin-inline: var(--swc-spacing-100);
       }
@@ -448,6 +654,70 @@ export class SliccUpdates extends ModelElement {
       .package {
         color: var(--swc-neutral-subdued-content-color-default);
       }
+      .swc-Link {
+        font-size: inherit;
+      }
+      .title .swc-Link {
+        font-weight: inherit;
+      }
+      .installed {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: var(--swc-spacing-200);
+      }
+      .releases {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--swc-spacing-400);
+        margin-block-start: var(--swc-spacing-200);
+        padding: var(--swc-spacing-300);
+        border: var(--swc-border-width-100) solid transparent;
+        background: var(--swc-background-layer-1-color);
+        border-radius: var(--swc-corner-radius-medium-default);
+        overflow-wrap: anywhere;
+      }
+      .release {
+        min-width: 0;
+      }
+      .older-releases {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--swc-spacing-200);
+      }
+      .older-releases > details > summary {
+        width: 100%;
+      }
+      .older-releases > details[open]:not(:last-child) {
+        margin-block-end: var(--swc-spacing-200);
+      }
+      .older-releases > .older,
+      .older-releases > details > :not(summary) {
+        padding-inline-start: calc(var(--swc-workflow-icon-small) + var(--swc-spacing-75));
+      }
+      .title {
+        margin: 0;
+        font-size: var(--swc-font-size-100);
+        font-weight: var(--swc-bold-font-weight);
+        color: var(--swc-heading-color);
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--swc-spacing-100);
+      }
+      .cut {
+        margin: var(--swc-spacing-100) 0 0;
+      }
+      .release > .markdown {
+        margin-block-start: var(--swc-spacing-100);
+        line-height: var(--swc-line-height-200);
+      }
+      .release .markdown .heading[aria-level] {
+        font-size: var(--swc-font-size-100);
+        font-weight: var(--swc-bold-font-weight);
+        color: var(--swc-neutral-subdued-content-color-default);
+        margin-block: var(--swc-spacing-200) var(--swc-spacing-75);
+      }
       @container (max-width: 480px) {
         .page {
           padding: var(--swc-spacing-300);
@@ -457,7 +727,7 @@ export class SliccUpdates extends ModelElement {
           flex-direction: column;
           gap: var(--swc-spacing-50);
         }
-        li {
+        .rows > li {
           grid-template-areas: 'name buttons' 'description description';
         }
         .description {
@@ -607,9 +877,15 @@ export class SliccUpdates extends ModelElement {
   }
 
   #actions(item: UpdateItem): TemplateResult | typeof nothing {
-    if (!item.actions.length) return nothing;
+    const developer = typeof this.model?.updates?.setDeveloper === 'function';
+    const shown = item.actions.filter(
+      (action) =>
+        !betaActions.has(action) ||
+        (developer && (action !== 'install-beta' || item.npm?.state === 'offered'))
+    );
+    if (!shown.length) return nothing;
     const busy = this.pending.has(item.id);
-    return html`<div class="actions">${item.actions.map(
+    return html`<div class="actions">${shown.map(
       (action) =>
         html`<swc-button
           size="m"
@@ -629,20 +905,95 @@ export class SliccUpdates extends ModelElement {
     return html`<span>Checked <time datetime=${date.toISOString()}>${shown}</time></span>`;
   }
 
+  #title({ release, certified }: Notes, label: string): TemplateResult {
+    return html`${secure(release.url) ? html`<a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${release.version} release notes`}>${release.version}</a>` : release.version}${certified ? html`<swc-badge size="s" variant="positive" subtle data-certified>Certified</swc-badge>` : nothing}`;
+  }
+
+  #notes({ release, body, cut }: Notes, label: string, level: number): TemplateResult {
+    return html`${body ? html`<div class="markdown">${markdown(body, { strict: true, level })}</div>` : nothing}
+      ${cut && secure(release.url) ? html`<p class="cut" data-cut><a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`Read the full notes for ${label} ${release.version}`}>Read the full notes</a></p>` : nothing}`;
+  }
+
+  #older(key: string, entry: Notes, label: string, level: number): TemplateResult {
+    const version = entry.release.version;
+    if (!entry.body) {
+      return html`<div class="release older" data-version=${version}><p class="title" role="heading" aria-level=${level}>${this.#title(entry, label)}</p></div>`;
+    }
+    const id = `${key}:${version}`;
+    return html`<details class="release" data-version=${version} ?open=${this.#logs.has(id)} @toggle=${this.#logs.details(id)}>
+      <summary data-action="release" aria-label=${`${label} ${version} notes${entry.certified ? ', certified' : ''}`}>${chevron}<span class="title" role="heading" aria-level=${level}>${this.#title(entry, label)}</span></summary>
+      ${this.#notes(entry, label, level)}
+    </details>`;
+  }
+
+  #whatsNew(
+    key: string,
+    label: string,
+    entries: readonly Notes[],
+    level: number
+  ): TemplateResult | typeof nothing {
+    if (!entries.length) return nothing;
+    const [newest, ...older] = entries;
+    return html`<details data-releases ?open=${this.#logs.has(key)} @toggle=${this.#logs.details(key)}>
+      <summary data-action="whats-new">${chevron}What’s new</summary>
+      <div class="releases">
+        <div class="release" data-version=${newest.release.version} data-newest>
+          <p class="title" role="heading" aria-level=${level}>${this.#title(newest, label)}</p>
+          ${this.#notes(newest, label, level)}
+        </div>
+        ${older.length ? html`<div class="older-releases">${older.map((entry) => this.#older(key, entry, label, level))}</div>` : nothing}
+      </div>
+    </details>`;
+  }
+
+  #releaseLink(
+    label: string,
+    version: string,
+    releases: readonly UpdateRelease[] | undefined,
+    npm?: string
+  ): TemplateResult | typeof nothing {
+    const release = installed(releases, version);
+    if (release) {
+      return html`<a class="swc-Link swc-Link--standalone" href=${release.url} target="_blank" rel="noopener noreferrer" data-action="release-notes" aria-label=${`${label} ${version} release notes`}>Release notes</a>`;
+    }
+    if (!npm) return nothing;
+    return html`<a class="swc-Link swc-Link--standalone" href=${`https://www.npmjs.com/package/${npm}/v/${version}`} target="_blank" rel="noopener noreferrer" data-action="npm-page" aria-label=${`npm page for ${label} ${version}`}>npm page</a>`;
+  }
+
+  #version(item: UpdateItem, meta: string | null): TemplateResult {
+    const text = meta
+      ? html`<span data-npm-meta>${meta}</span>`
+      : html`<span class="version">${item.from ?? 'Not installed'}${item.to && item.to !== item.from ? html` → ${item.to}` : nothing}</span>`;
+    const link =
+      item.from !== null && (item.to === null || item.to === item.from)
+        ? this.#releaseLink(item.label, item.from, item.releases)
+        : nothing;
+    return link === nothing ? text : html`<span class="installed">${text}${link}</span>`;
+  }
+
   #item(item: UpdateItem): TemplateResult {
-    const [variant, state] = states[item.state];
+    const [variant, state] = item.beta && resting.has(item.state) ? betaLight : states[item.state];
     const label = item.state === 'failed' && item.from !== null ? 'Update failed' : state;
     const error = this.failures.get(item.id) ?? item.error;
+    const developer = typeof this.model?.updates?.setDeveloper === 'function';
+    const shown = developer ? item : { ...item, npm: null };
+    const meta = npmMeta(shown);
+    const note = npmNote(shown);
+    const ahead = shown.npm?.state === 'offered' ? (shown.npm.latest ?? null) : null;
     return html`<swc-divider size="s"></swc-divider>
-    <article data-id=${item.id} data-state=${item.state} aria-label=${item.label}>
+    <article data-id=${item.id} data-state=${item.state} data-npm=${item.npm?.state ?? nothing} aria-label=${item.label}>
       <div class="head">
-        <h2>${item.label}</h2>
+        <div class="title">
+          <h2>${item.label}</h2>
+          ${item.beta ? html`<swc-badge size="s" variant="notice" subtle data-beta>Beta</swc-badge>` : nothing}
+        </div>
         <swc-status-light variant=${variant}>${label}</swc-status-light>
       </div>
       <div class="meta">
-        <span class="version">${item.from ?? 'Not installed'}${item.to && item.to !== item.from ? html` → ${item.to}` : nothing}</span>
+        ${this.#version(item, meta)}
         ${item.state === 'starting' ? nothing : this.#checked(item.checkedAt)}
       </div>
+      ${note ? html`<p class="npm" data-npm-note>${note}</p>` : nothing}
       ${this.#progress(item)}
       ${
         error
@@ -653,6 +1004,7 @@ export class SliccUpdates extends ModelElement {
           : nothing
       }
       ${this.#actions(item)}
+      ${this.#whatsNew(`releases:item:${item.id}`, item.label, whatsNew(item.releases, item.from, ahead ?? item.to), 3)}
       ${item.log ? html`<details ?open=${this.#logs.has(`item:${item.id}`)} @toggle=${this.#logs.details(`item:${item.id}`)}><summary>${chevron}Install log</summary><pre>${item.log}</pre></details>` : nothing}
     </article>`;
   }
@@ -681,7 +1033,14 @@ export class SliccUpdates extends ModelElement {
       ${elsewhere(item).map((install) => html`<span data-install>${installText(install, item.version)}</span>`)}
       ${download ? html`<span>${size(item.size as number)}</span>` : nothing}
       ${requires ? html`<span data-requires>${requires}</span>` : nothing}
+      ${this.#packageLink(item)}
     </p>`;
+  }
+
+  #packageLink(item: PackageItem): TemplateResult | typeof nothing {
+    if (item.version === null || (item.offered !== null && item.offered !== item.version))
+      return nothing;
+    return html`<span>${this.#releaseLink(item.label, item.version, item.releases, item.package)}</span>`;
   }
 
   #packageProgress(item: PackageItem): TemplateResult | typeof nothing {
@@ -736,6 +1095,7 @@ export class SliccUpdates extends ModelElement {
             )}</p>`
           : nothing
       }
+      ${this.#whatsNew(`releases:package:${item.id}`, item.label, whatsNew(item.releases, item.version, item.offered, item.package), 4)}
       ${this.#packageProgress(item)}
       ${
         error
@@ -754,7 +1114,7 @@ export class SliccUpdates extends ModelElement {
     all: readonly PackageItem[],
     port: UpdatesPort
   ): TemplateResult {
-    return html`<ul>${repeat(
+    return html`<ul class="rows">${repeat(
       items,
       (item) => item.id,
       (item) => this.#package(item, all, Boolean(port.actPackage))

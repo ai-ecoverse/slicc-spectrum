@@ -66,6 +66,7 @@ export interface Handlers {
   seat?: string;
   licks?: ViewSet;
   runs?: ViewSet;
+  detail?: { has(id: string): boolean; toggle(id: string): void };
 }
 
 export interface Login {
@@ -549,8 +550,8 @@ function question(item: Question, handlers: Handlers): TemplateResult {
   </div>`;
 }
 
-export function questionTurn(item: Question, handlers: Handlers, pile: Pile): TemplateResult {
-  return html`<swc-conversation-turn type="system" class="message decision-turn" data-id=${item.id} data-state=${item.state} data-pending=${item.state === 'open' && handlers.seat === undefined ? '' : nothing} accessible-label=${`Question: ${item.question}`} style=${pileStyle(pile)} @click=${reveal} @keydown=${reveal}>${question(item, handlers)}</swc-conversation-turn>`;
+export function questionTurn(item: Question, handlers: Handlers): TemplateResult {
+  return html`<swc-conversation-turn type="system" class="message decision-turn" tabindex="-1" data-id=${item.id} data-state=${item.state} data-pending=${item.state === 'open' && handlers.seat === undefined ? '' : nothing} accessible-label=${`Question: ${item.question}`} @click=${reveal} @keydown=${reveal}>${question(item, handlers)}</swc-conversation-turn>`;
 }
 
 const delegationVerbs = {
@@ -947,7 +948,7 @@ function clock(ms: number): string {
 const still = (): boolean => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 function reveal(event: Event): void {
-  if ((event.target as Element).closest('swc-button, input, textarea')) return;
+  if ((event.target as Element).closest('swc-button, swc-action-button, input, textarea')) return;
   if (
     event instanceof KeyboardEvent &&
     (event.key !== 'Enter' || event.target !== event.currentTarget)
@@ -957,27 +958,22 @@ function reveal(event: Event): void {
 }
 
 export function show(turn: HTMLElement): void {
-  const log = turn.closest('.log');
+  const place = [
+    ...(turn.getRootNode() as ParentNode).querySelectorAll<HTMLElement>('.ask-place'),
+  ].find((candidate) => candidate.dataset.place === turn.dataset.id);
+  const log = place?.closest<HTMLElement>('.log');
   if (!log) return;
-  const origin = log.getBoundingClientRect().top;
-  const pile = turn.getBoundingClientRect().top - origin;
-  turn.style.position = 'static';
-  const flow = turn.getBoundingClientRect();
-  turn.style.position = '';
-  const natural = flow.top - origin;
-  const bottom = Math.max(16, log.clientHeight - flow.height - 16);
-  if (Math.abs(pile - natural) > 1)
-    log.scrollTo({ top: log.scrollTop + natural - bottom, behavior: still() ? 'auto' : 'smooth' });
+  const end = Number.parseFloat(getComputedStyle(log).scrollPaddingBlockEnd) || 0;
+  const at = (place as HTMLElement).getBoundingClientRect().top - log.getBoundingClientRect().top;
+  log.scrollTo({
+    top: log.scrollTop + at - log.clientHeight + end,
+    behavior: still() ? 'auto' : 'smooth',
+  });
 }
 
-export interface Pile {
-  stack: number;
-}
-
-export const flatPile: Pile = { stack: 0 };
-
-function pileStyle(pile: Pile): string {
-  return `--stack: ${pile.stack}`;
+export function askTimer(at: number, now = Date.now()): TemplateResult {
+  const left = at - now;
+  return html`<span class="timer" data-timer aria-hidden="true">${left <= 0 ? 'Timed out' : clock(left)}</span><span class="sr">${spokenLeft(left, at)}</span>`;
 }
 
 function spokenLeft(left: number, at: number): string {
@@ -985,15 +981,12 @@ function spokenLeft(left: number, at: number): string {
   return left <= 60_000 ? 'Less than a minute left' : `Expires at ${deadline(at)}`;
 }
 
-function decision(message: LickMessage, handlers: Handlers, pile: Pile): TemplateResult {
+function decision(message: LickMessage, handlers: Handlers): TemplateResult {
   const at = message.expiresAt;
-  const left = at === undefined ? null : at - Date.now();
-  const expired = left !== null && left <= 0;
+  const now = Date.now();
+  const expired = at !== undefined && at <= now;
   const guest = handlers.seat !== undefined;
-  const timer =
-    left === null || (guest && !expired)
-      ? nothing
-      : html`<span class="timer" data-timer aria-hidden="true">${expired ? 'Timed out' : clock(left)}</span><span class="sr">${spokenLeft(left, at as number)}</span>`;
+  const timer = at === undefined || (guest && !expired) ? nothing : askTimer(at, now);
   const settled = expired || guest;
   const actions = expired
     ? nothing
@@ -1003,9 +996,14 @@ function decision(message: LickMessage, handlers: Handlers, pile: Pile): Templat
         <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'dismissed')}>Deny</swc-button>
         <swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>
       </div>`;
-  return html`<swc-conversation-turn type="system" class="message decision-turn" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-pending=${settled ? nothing : ''} data-expired=${expired ? '' : nothing} style=${pileStyle(pile)} @click=${reveal} @keydown=${reveal}>
+  const detail = settled ? undefined : handlers.detail;
+  const shown = !!detail?.has(message.id);
+  const more = detail
+    ? html`<swc-action-button size="s" quiet class="detail" data-action="ask-detail" aria-expanded=${shown ? 'true' : 'false'} accessible-label=${shown ? 'Hide details' : 'Show details'} @click=${() => detail.toggle(message.id)}><swc-icon-chevron-right slot="icon" class="chevron"></swc-icon-chevron-right></swc-action-button>`
+    : nothing;
+  return html`<swc-conversation-turn type="system" class="message decision-turn" tabindex="-1" accessible-label=${`Permission request from ${message.title}`} data-id=${message.id} data-pending=${settled ? nothing : ''} data-expired=${expired ? '' : nothing} data-detail=${shown ? '' : nothing} @click=${reveal} @keydown=${reveal}>
     <div class="decision" data-kind="approval">
-      <div class="decision-head"><span class="who">${message.title}</span>${timer}</div>
+      <div class="decision-head"><span class="who">${message.title}</span>${timer}${more}</div>
       <p class="decision-text">${message.text}</p>
       ${message.body ? html`<pre class="command">${message.body}</pre>` : nothing}
       ${actions}
@@ -1054,13 +1052,8 @@ function lickContent(
   return html`<div class="report">${shown}${report ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="open-report" @click=${() => handlers.open(report)}>Open the report</swc-button>` : nothing}</div>`;
 }
 
-export function lick(
-  message: LickMessage,
-  handlers: Handlers,
-  stamp = true,
-  pile: Pile = flatPile
-): TemplateResult {
-  if (pendingApproval(message)) return decision(message, handlers, pile);
+export function lick(message: LickMessage, handlers: Handlers, stamp = true): TemplateResult {
+  if (pendingApproval(message)) return decision(message, handlers);
   const [line, failed, icon, label] = scoopLine(message);
   const severity = message.severity ?? (failed ? 'error' : undefined);
   const outcome =
@@ -1739,15 +1732,6 @@ export const messageCss = css`
   }
   swc-conversation-turn.decision-turn {
     container-type: inline-size;
-    transition:
-      top var(--swc-animation-duration-300) var(--swc-animation-ease-out),
-      transform var(--swc-animation-duration-300) var(--swc-animation-ease-out),
-      filter var(--swc-animation-duration-300) var(--swc-animation-ease-out);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    swc-conversation-turn.decision-turn {
-      transition: none;
-    }
   }
   slicc-sprinkle[inline] {
     position: relative;
@@ -1755,19 +1739,8 @@ export const messageCss = css`
     inline-size: calc(100cqw + var(--swc-spacing-300) * 2);
     transform: translateX(-50%);
   }
-  swc-conversation-turn.decision-turn[data-pending] {
-    position: sticky;
-    top: calc(var(--stack, 0) * (var(--swc-spacing-600) + var(--swc-spacing-75)));
-    z-index: calc(var(--stack, 0) + 1);
-  }
-  swc-conversation-turn.decision-turn[data-pinned] {
-    transform: scale(calc(1 - var(--depth, 0) * 0.03));
-    transform-origin: top center;
-    filter: blur(calc(var(--depth, 0) * 0.6px));
-  }
   .decision-turn[data-pending] .decision {
     border-color: var(--swc-gray-300);
-    box-shadow: var(--swc-drop-shadow-elevated);
   }
   .decision-turn[data-pending]:focus-visible {
     outline: none;
@@ -1796,6 +1769,12 @@ export const messageCss = css`
   }
   .decision-head .who {
     font-weight: var(--swc-bold-font-weight);
+  }
+  .decision-head .detail {
+    display: none;
+  }
+  .decision-turn[data-detail] .detail .chevron {
+    transform: rotate(90deg);
   }
   .timer {
     color: var(--swc-neutral-subdued-content-color-default);
