@@ -1149,7 +1149,17 @@ export interface GuestToolApproval {
   verdict?: ApprovalVerdict;
 }
 
-export type Approval = SudoApproval | GuestMessageApproval | GuestToolApproval;
+export interface TrayApproval {
+  id: string;
+  kind: 'tray';
+  op: 'url' | 'rotate' | 'unlink';
+  requester: ApprovalRequester;
+  device?: { id: string; name: string };
+  createdAt: number;
+  expiresAt: number;
+}
+
+export type Approval = SudoApproval | GuestMessageApproval | GuestToolApproval | TrayApproval;
 
 export type ApprovalEnd = 'answered' | 'withdrawn' | 'expired';
 

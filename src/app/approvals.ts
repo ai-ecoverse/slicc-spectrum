@@ -12,6 +12,7 @@ import type {
   GuestToolApproval,
   SliccModel,
   SudoApproval,
+  TrayApproval,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
 import { Cuts, clampCss, Ends, fullCommand, toScroll, toShow } from './command.ts';
@@ -323,9 +324,24 @@ export function guestAsking(approval: GuestMessageApproval | GuestToolApproval):
     : `${approval.agentName ?? 'This cone'} wants to run ${approval.tool} for ${approval.requester.name}:`;
 }
 
+export function trayTitle(approval: TrayApproval): string {
+  if (approval.op === 'url') return 'Share this seven’s join URL?';
+  if (approval.op === 'rotate') return 'Make a new join URL?';
+  return approval.device ? `Unlink ${approval.device.name}?` : 'Unlink a device?';
+}
+
+export function trayAsking(approval: TrayApproval): string {
+  const { name } = approval.requester;
+  if (approval.op === 'url')
+    return `${name} wants this seven’s join URL. Anyone with it can ask to link to this seven.`;
+  if (approval.op === 'rotate')
+    return `${name} wants a new join URL. Linked devices move to it, and the old one stops working.`;
+  return `${name} wants to unlink ${approval.device?.name ?? 'a device'} from this seven.`;
+}
+
 export function approved(approval: Approval): string {
   if (approval.kind === 'sudo') return sudo(approval);
-  if (approval.kind === 'guest-message') return '';
+  if (approval.kind === 'guest-message' || approval.kind === 'tray') return '';
   if (approval.summary.trim()) return approval.summary;
   return approval.args?.trim() ? `${approval.tool}\n${approval.args}` : '';
 }
@@ -376,7 +392,16 @@ const titles: Record<Approval['kind'], Record<'ask' | 'elsewhere' | 'expired', s
     elsewhere: 'Answered elsewhere',
     expired: 'Guest tool call timed out',
   },
+  tray: {
+    ask: '',
+    elsewhere: 'Answered in another tab',
+    expired: 'Tray request timed out',
+  },
 };
+
+function title(approval: Approval): string {
+  return approval.kind === 'tray' ? trayTitle(approval) : titles[approval.kind].ask;
+}
 
 function gone(reason: ApprovalEnd): 'elsewhere' | 'expired' {
   return reason === 'expired' ? 'expired' : 'elsewhere';
@@ -584,7 +609,7 @@ export class SliccApprovals extends ModelElement {
     )
       return;
     const verdict = rulesOf(approval);
-    const always = approval.kind === 'sudo' || approval.always;
+    const always = approval.kind === 'sudo' || (approval.kind !== 'tray' && approval.always);
     if (decision === 'always' && (!always || verdict.certain || verdict.maybe)) return;
     this.busy = decision;
     this.failure = null;
@@ -733,6 +758,7 @@ export class SliccApprovals extends ModelElement {
   }
 
   #request(approval: Approval, pending = false): TemplateResult {
+    if (approval.kind === 'tray') return html`<p id="asking">${trayAsking(approval)}</p>`;
     if (approval.kind === 'sudo')
       return html`<p id="asking">${asking(approval)}:</p>
         ${this.#command(approval, pending)}`;
@@ -746,7 +772,8 @@ export class SliccApprovals extends ModelElement {
   }
 
   #verdict(approval: Approval): TemplateResult | typeof nothing {
-    const verdict = approval.kind === 'sudo' ? undefined : approval.verdict;
+    const verdict =
+      approval.kind === 'sudo' || approval.kind === 'tray' ? undefined : approval.verdict;
     return verdict
       ? html`<p class="verdict" data-verdict=${verdict.decision}>${verdict.decision === 'unsure' ? 'The automatic check wasn’t sure' : `The automatic check would ${verdict.decision} this`}: ${verdict.reason}</p>`
       : nothing;
@@ -782,14 +809,14 @@ export class SliccApprovals extends ModelElement {
     const failure = this.failure?.id === approval.id ? this.failure.message : '';
     const verdict = rulesOf(approval);
     const rules = verdict.certain ?? verdict.maybe;
-    const always = approval.always && !rules;
+    const always = approval.kind !== 'tray' && approval.always && !rules;
     const gate = this.#gate(approval);
     const hint = always && this.#whole(approval) ? hintOf(approval) : '';
     return this.#dialog(
       approval,
       approval.id,
       html`<sp-alert-dialog variant="warning" data-approval-kind=${approval.kind}>
-          <h2 id="title" slot="heading">${titles[approval.kind].ask}</h2>
+          <h2 id="title" slot="heading">${title(approval)}</h2>
           ${this.#request(approval, true)}
           ${this.#verdict(approval)}
           ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${approval.cwd}</p>` : nothing}
