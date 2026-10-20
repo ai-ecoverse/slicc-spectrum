@@ -10173,6 +10173,27 @@ test('a panel that takes focus without the keyboard shows no focus ring, and sho
   assert.deepEqual(page.errors, []);
 });
 
+test('vault session entries read as sent over their protocol, with how the kernel trusted the host', async (t) => {
+  const page = await secretsPage(t, { vault: 'session' });
+  await page.until(() => !!window.settingsPart('slicc-secrets', 'ol.audit li[data-type=session]'));
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [
+        ...window
+          .settingsPart('slicc-secrets')
+          .shadowRoot.querySelectorAll('ol.audit li[data-type=session]'),
+      ].map((li) => li.querySelector('.what').textContent.replace(/\s+/g, ' ').trim())
+    ),
+    [
+      'TIDE_MAIL · Sent over SMTP to mail.tide.example:587, trusted by public roots, through slicc on this computer by cone',
+      'REEF_DEPLOY_KEY · Sent over Postgres to db.reef.example:5432, trusted by its pinned anchor, through SLICC on pier-nuc by cone',
+      'HARBOR_API_KEY · Sent over HTTP/1.1 to quay.harbor.example:8443, through Tailscale by cone',
+    ]
+  );
+  await clean(page);
+  assert.deepEqual(page.errors, []);
+});
+
 test('vault endpoints entries read as automatic, and Unpin unpins a pinned MCP token', async (t) => {
   const page = await secretsPage(t, { vault: 'purged' });
   await page.until(

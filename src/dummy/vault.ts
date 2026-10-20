@@ -41,6 +41,7 @@ export type VaultScenario =
   | 'backup'
   | 'waiting'
   | 'purged'
+  | 'session'
   | 'endpoints-fail';
 
 const minute = 60_000;
@@ -370,6 +371,60 @@ export function vaultPinned(now = Date.now()): AuditEntry {
   };
 }
 
+export function vaultSessions(now = Date.now()): AuditEntry[] {
+  const who = { uid: 1000, tag: 'cone' };
+  return [
+    {
+      ...who,
+      type: 'session',
+      seq: 15,
+      id: 'audit-15',
+      at: now - minute,
+      name: 'TIDE_MAIL',
+      session: 'kernel-session-tide-0015',
+      domain: 'mail.tide.example',
+      port: 587,
+      protocol: 'smtp',
+      position: 'auth-plain',
+      rule: 2,
+      verifiedBy: 'roots',
+      exit: 'proxy',
+    },
+    {
+      ...who,
+      type: 'session',
+      seq: 14,
+      id: 'audit-14',
+      at: now - 2 * minute,
+      name: 'REEF_DEPLOY_KEY',
+      session: 'kernel-session-reef-0014',
+      domain: 'db.reef.example',
+      port: 5432,
+      protocol: 'pg',
+      position: 'scram-sha-256',
+      rule: 3,
+      verifiedBy: 'anchored',
+      anchor: 'q83vEjRWeJA=',
+      exit: 'device:link-pier',
+    },
+    {
+      ...who,
+      type: 'session',
+      seq: 13,
+      id: 'audit-13',
+      at: now - 3 * minute,
+      name: 'HARBOR_API_KEY',
+      session: 'kernel-session-harbor-0013',
+      domain: 'quay.harbor.example',
+      port: 8443,
+      protocol: 'http1',
+      position: 'header:authorization',
+      rule: 1,
+      exit: 'tailscale',
+    },
+  ];
+}
+
 export function vaultPolicy(now = Date.now()): AuditEntry {
   return {
     type: 'policy',
@@ -473,6 +528,7 @@ export function vaultFixtures(
       : [
           ...(policy ? [vaultPolicy(now)] : []),
           ...(scenario === 'purged' ? [vaultPinned(now), vaultPurged(now)] : []),
+          ...(scenario === 'session' ? vaultSessions(now) : []),
           ...vaultAudit(now),
         ],
     auditMore: !empty,
