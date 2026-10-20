@@ -340,7 +340,7 @@ function hintOf(approval: Approval): string {
     : guestAlwaysHint(approval as GuestMessageApproval | GuestToolApproval);
 }
 
-const tooLong = "This request is too long to show in full, so it can't be allowed.";
+const tooLong = 'This request is too long to show in full, so it can’t be allowed.';
 
 export function guestWaiting(approval: GuestMessageApproval | GuestToolApproval): string {
   return approval.kind === 'guest-message'

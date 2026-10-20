@@ -3901,7 +3901,7 @@ test('a guest tool call whose args came truncated never offers Allow, even after
       window.focused().includes('swc-button')
   );
   await new Promise((resolve) => setTimeout(resolve, 600));
-  const tooLong = "This request is too long to show in full, so it can't be allowed.";
+  const tooLong = 'This request is too long to show in full, so it can’t be allowed.';
   assert.deepEqual(await page.evaluate(() => [window.dialogActions(), window.allowHint()]), [
     ['deny'],
     tooLong,
