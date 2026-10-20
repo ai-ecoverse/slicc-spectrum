@@ -399,6 +399,12 @@ export class SliccSettings extends ThemedElement {
         font-size: var(--swc-font-size-75);
         cursor: pointer;
       }
+      @media (forced-colors: active) {
+        .other-way {
+          color: LinkText;
+          text-decoration: underline;
+        }
+      }
       .add {
         margin-block-start: var(--swc-spacing-200);
         margin-inline-start: calc(-1 * var(--swc-spacing-100));
@@ -1738,7 +1744,6 @@ export class SliccSettings extends ThemedElement {
     const cancel = signing && !!this.model?.settings.cancel;
     return html`<p class="hint">Sign in to ${account.provider} in a new window.</p>
       ${signing ? this.#signingNote(account) : nothing}
-      ${this.#signInDetails(account)}
       <div class="buttons">
         ${
           cancel
@@ -1747,7 +1752,8 @@ export class SliccSettings extends ThemedElement {
         }
         <swc-button size="m" variant="accent" data-action="sign-in" ?pending=${signing} ?disabled=${!!account.blocked} @click=${() => this.connect(account.id, undefined, undefined, signInMethod(account))}>${signing ? 'Signing in…' : 'Sign in'}</swc-button>
         ${signing ? nothing : this.#leave(account)}
-      </div>`;
+      </div>
+      ${this.#signInDetails(account)}`;
   }
 
   #localStep(account: Account): TemplateResult {
