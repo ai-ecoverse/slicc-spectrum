@@ -782,7 +782,7 @@ test('a ready update shows what’s new for its whole range, and rows without no
   assert.deepEqual(kernel.links[0], [
     'Kernel 1.13.0 release notes',
     '_blank',
-    'https://github.com/harbor-demo/harbor-kernel/releases/tag/v1.13.0',
+    'https://github.com/ai-ecoverse/harbor-kernel/releases/tag/v1.13.0',
   ]);
   assert.match(kernel.text, /Features[\s\S]*wait -n[\s\S]*Bug Fixes[\s\S]*slow DNS[\s\S]*mid-line/);
   assert.doesNotMatch(kernel.text, /cert-verify|sha256|certified @harbor/);
@@ -826,7 +826,7 @@ test('what’s new expands only the newest release, the older ones are headers t
               ),
               {
                 version: '1.12.5',
-                url: 'https://github.com/harbor-demo/harbor-kernel/releases/tag/v1.12.5',
+                url: 'https://github.com/ai-ecoverse/harbor-kernel/releases/tag/v1.12.5',
                 notes:
                   '<!-- cert-verify -->\ncertified @harbor/harbor-kernel@1.12.5\n<!-- /cert-verify -->',
               },
@@ -927,7 +927,7 @@ test('what’s new expands only the newest release, the older ones are headers t
       ['1.13.0', true, null],
       ['1.12.5', false, null],
       ['1.12.2', false, null],
-      ['1.12.1', true, 'https://github.com/harbor-demo/harbor-kernel/releases/tag/v1.12.1'],
+      ['1.12.1', true, 'https://github.com/ai-ecoverse/harbor-kernel/releases/tag/v1.12.1'],
     ]
   );
   await page.send('Emulation.setDeviceMetricsOverride', {
@@ -957,6 +957,155 @@ test('what’s new expands only the newest release, the older ones are headers t
       ['1.12.1', true],
     ]
   );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a third-party release with a cert block shows no Certified badge, while an ai-ecoverse one still does', async (t) => {
+  const page = await open(t, 'restart');
+  await page.evaluate(() => {
+    window.inUpdates = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-updates', selector);
+    const port = window.model.updates;
+    const signed = (owner, version) => ({
+      version,
+      url: `https://${owner}/harbor-kernel/releases/tag/v${version}`,
+      notes: `### Bug Fixes\n\n* **tides:** ${version}\n\n<!-- cert-verify -->\ncertified @harbor/harbor-kernel@${version} sha256=0f3c9a1e\n<!-- /cert-verify -->`,
+    });
+    const items = port.list().map((item) =>
+      item.id === 'kernel'
+        ? {
+            ...item,
+            releases: [
+              signed('github.com/some-fork', '1.13.0'),
+              signed('github.com.evil.example/ai-ecoverse', '1.12.2'),
+              signed('github.com/ai-ecoverse', '1.12.1'),
+            ],
+          }
+        : item
+    );
+    port.list = () => items;
+    port.emit('items', items);
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() => Boolean(window.inUpdates('[data-id=kernel] [data-action=whats-new]')));
+  await page.evaluate(() => {
+    for (const id of ['kernel', 'agent'])
+      window.inUpdates(`[data-id=${id}] [data-action=whats-new]`).click();
+    return true;
+  });
+  await page.until(() =>
+    ['kernel', 'agent'].every(
+      (id) => window.inUpdates(`[data-id=${id}] details[data-releases]`).open
+    )
+  );
+  const read = (id) =>
+    page.evaluate((id) => {
+      const details = window.inUpdates(`[data-id=${id}] details[data-releases]`);
+      return {
+        releases: [...details.querySelectorAll('.release')].map((release) => ({
+          version: release.dataset.version,
+          newest: release.hasAttribute('data-newest'),
+          name: release.querySelector('summary')?.getAttribute('aria-label') ?? null,
+          certified: Boolean(release.querySelector('.title [data-certified]')),
+        })),
+        text: details.innerText,
+      };
+    }, id);
+  const kernel = await read('kernel');
+  assert.deepEqual(kernel.releases, [
+    { version: '1.13.0', newest: true, name: null, certified: false },
+    { version: '1.12.2', newest: false, name: 'Kernel 1.12.2 notes', certified: false },
+    { version: '1.12.1', newest: false, name: 'Kernel 1.12.1 notes, certified', certified: true },
+  ]);
+  assert.doesNotMatch(kernel.text, /cert-verify|sha256|certified @harbor/);
+  const agent = await read('agent');
+  assert.deepEqual(agent.releases, [
+    { version: '0.25.0', newest: true, name: null, certified: false },
+  ]);
+  assert.doesNotMatch(agent.text, /cert-verify|sha256|certified @harbor/);
+  assert.deepEqual(page.errors, []);
+});
+
+test('Certified needs the cert block to name the release’s version, and on a package row its npm package', async (t) => {
+  const page = await chrome.page(t);
+  await page.goto('/ui/?updates=restart&packages=user&color=light&delay=20');
+  await page.until(() => window.ready && window.app.dock.api.panels.length > 0);
+  await page.evaluate(() => {
+    window.inUpdates = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-updates', selector);
+    const port = window.model.updates;
+    const signed = (repo, version, line) => ({
+      version,
+      url: `https://github.com/ai-ecoverse/${repo}/releases/tag/v${version}`,
+      notes: `* ${version}\n\n<!-- cert-verify -->\n${line} sha256=0f3c9a1e\n<!-- /cert-verify -->`,
+    });
+    const items = port.list().map((item) =>
+      item.id === 'kernel'
+        ? {
+            ...item,
+            releases: [
+              signed('harbor-kernel', '1.13.0', 'certified @harbor/harbor-kernel@1.13.0'),
+              signed('harbor-kernel', '1.12.2', 'certified @harbor/harbor-kernel@1.12.5'),
+            ],
+          }
+        : item
+    );
+    const packages = port.packages().map((item) =>
+      item.id === 'uv'
+        ? {
+            ...item,
+            releases: [
+              signed('uv-wasm', '0.9.2', 'certified @harbor/uv-wasm@0.9.2'),
+              signed('uv-wasm', '0.9.0', 'certified @harbor/other-wasm@0.9.0'),
+            ],
+          }
+        : item
+    );
+    port.list = () => items;
+    port.packages = () => packages;
+    port.emit('items', items);
+    port.emit('packages', packages);
+    window.app.show('updates');
+    return true;
+  });
+  await page.until(() =>
+    ['[data-id=kernel]', 'li[data-id=uv]'].every((row) =>
+      Boolean(window.inUpdates(`${row} [data-action=whats-new]`))
+    )
+  );
+  await page.evaluate(() => {
+    for (const row of ['[data-id=kernel]', 'li[data-id=uv]'])
+      window.inUpdates(`${row} [data-action=whats-new]`).click();
+    return true;
+  });
+  await page.until(() =>
+    ['[data-id=kernel]', 'li[data-id=uv]'].every(
+      (row) => window.inUpdates(`${row} details[data-releases]`).open
+    )
+  );
+  const read = (row) =>
+    page.evaluate((row) => {
+      const details = window.inUpdates(`${row} details[data-releases]`);
+      return {
+        releases: [...details.querySelectorAll('.release')].map((release) => [
+          release.dataset.version,
+          release.querySelector('summary')?.getAttribute('aria-label') ?? null,
+          Boolean(release.querySelector('.title [data-certified]')),
+        ]),
+        text: details.innerText,
+      };
+    }, row);
+  const kernel = await read('[data-id=kernel]');
+  assert.deepEqual(kernel.releases, [
+    ['1.13.0', null, true],
+    ['1.12.2', 'Kernel 1.12.2 notes', false],
+  ]);
+  assert.doesNotMatch(kernel.text, /cert-verify|sha256|certified @harbor/);
+  const uv = await read('li[data-id=uv]');
+  assert.deepEqual(uv.releases, [
+    ['0.9.2', null, true],
+    ['0.9.0', 'uv 0.9.0 notes', false],
+  ]);
+  assert.doesNotMatch(uv.text, /cert-verify|sha256|certified @harbor/);
   assert.deepEqual(page.errors, []);
 });
 

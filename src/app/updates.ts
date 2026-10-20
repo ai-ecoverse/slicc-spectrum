@@ -267,18 +267,50 @@ interface Notes {
   cut: boolean;
 }
 
-const noted = new WeakMap<UpdateRelease, Notes>();
+const noted = new WeakMap<UpdateRelease, Map<string | undefined, Notes>>();
 
-export function releaseNotes(release: UpdateRelease): Notes {
-  const known = noted.get(release);
+const bare = (version: string): string => version.replace(/^v/, '');
+
+function trusted(url: string): boolean {
+  try {
+    const { protocol, host, username, password, pathname } = new URL(url);
+    const [owner, repo, kind] = pathname.split('/').slice(1);
+    return (
+      protocol === 'https:' &&
+      host === 'github.com' &&
+      !username &&
+      !password &&
+      owner.toLowerCase() === 'ai-ecoverse' &&
+      Boolean(repo) &&
+      kind === 'releases'
+    );
+  } catch {
+    return false;
+  }
+}
+
+function vouches(inner: string, release: UpdateRelease, name: string | undefined): boolean {
+  const token = /^certified\s+(\S+)/.exec(inner.trim())?.[1] ?? '';
+  const at = token.lastIndexOf('@');
+  const named = token.slice(0, at);
+  return (
+    at > 0 &&
+    bare(token.slice(at + 1)) === bare(release.version) &&
+    (name === undefined || named === name)
+  );
+}
+
+export function releaseNotes(release: UpdateRelease, name?: string): Notes {
+  const cache = noted.get(release) ?? new Map<string | undefined, Notes>();
+  noted.set(release, cache);
+  const known = cache.get(name);
   if (known) return known;
   const text = release.notes ?? '';
-  const certified = [...text.matchAll(certBlock)].some(([, inner]) =>
-    /^certified\b/.test(inner.trim())
-  );
+  const certified =
+    trusted(release.url) &&
+    [...text.matchAll(certBlock)].some(([, inner]) => vouches(inner, release, name));
   const lines = text.replace(certBlock, '').trim().split('\n');
-  const heading =
-    /^#{1,6}\s/.test(lines[0]) && lines[0].includes(release.version.replace(/^v/, ''));
+  const heading = /^#{1,6}\s/.test(lines[0]) && lines[0].includes(bare(release.version));
   const full = lines
     .slice(heading ? 1 : 0)
     .join('\n')
@@ -288,20 +320,21 @@ export function releaseNotes(release: UpdateRelease): Notes {
   const line = head.lastIndexOf('\n');
   const body = cut ? `${(line > notesLimit / 2 ? head.slice(0, line) : head).trimEnd()}…` : full;
   const notes = { release, body, certified, cut };
-  noted.set(release, notes);
+  cache.set(name, notes);
   return notes;
 }
 
 export function whatsNew(
   releases: readonly UpdateRelease[] | undefined,
   from: string | null,
-  to: string | null
+  to: string | null,
+  name?: string
 ): readonly Notes[] {
   if (!releases || from === null || to === null || to === from) return [];
   const range = releases
     .filter((release) => newer(release.version, from) > 0 && newer(release.version, to) <= 0)
     .sort((a, b) => newer(b.version, a.version))
-    .map(releaseNotes);
+    .map((release) => releaseNotes(release, name));
   return range.some((entry) => entry.body) ? range : [];
 }
 
@@ -1062,7 +1095,7 @@ export class SliccUpdates extends ModelElement {
             )}</p>`
           : nothing
       }
-      ${this.#whatsNew(`releases:package:${item.id}`, item.label, whatsNew(item.releases, item.version, item.offered), 4)}
+      ${this.#whatsNew(`releases:package:${item.id}`, item.label, whatsNew(item.releases, item.version, item.offered, item.package), 4)}
       ${this.#packageProgress(item)}
       ${
         error
