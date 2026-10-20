@@ -386,7 +386,7 @@ function errorCard(
     ${resolved ? nothing : html`<span class="sr">Error: </span>`}<span class="lead">${title}</span>
     ${text ? html`<span class="detail" role=${login ? 'status' : nothing}>${text}</span>` : nothing}
     ${fix ? html`<div class="fix" aria-live="off">${fixButton(fix, item, handlers, login)}</div>` : nothing}
-    ${signing ? signInDetails(login.signIn, login.copied, (code) => handlers.copySignIn?.(item.account as string, id, code)) : nothing}
+    ${signing ? signInDetails(item.account as string, login.signIn, login.copied, (code) => handlers.copySignIn?.(item.account as string, id, code)) : nothing}
     ${
       failure
         ? html`<div class="help" data-error="login"><sp-help-text size="s" variant="negative" icon>${failure}</sp-help-text><swc-action-button size="s" quiet data-action="settings" @click=${() => handlers.action('settings', item.id, item.account)}>Open settings</swc-action-button></div>`

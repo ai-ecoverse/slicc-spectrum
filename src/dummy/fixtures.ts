@@ -442,15 +442,22 @@ export const dualAccount: Account = {
   vaultName: 'LUMEN_API_KEY',
 };
 
-export const deviceSignIn: AccountSignIn = { url: 'https://example.com/device', code: 'WDJB-MJHT' };
+export const deviceSignIn: AccountSignIn = {
+  url: 'https://auth.openai.com/codex/device',
+  code: 'WDJB-MJHT',
+};
 
 export const pageSignIn: AccountSignIn = {
-  url: 'https://example.com/oauth/authorize?client_id=slicc-dummy&response_type=code&state=7f3a',
+  url: 'https://auth.openai.com/oauth/authorize?client_id=slicc-dummy&response_type=code&state=7f3a',
+};
+
+export const lookalikeSignIn: AccountSignIn = {
+  url: 'https://auth.openai.com.example.net/device',
+  code: 'WDJB-MJHT',
 };
 
 export const signIns: ReadonlyMap<string, AccountSignIn> = new Map([
-  ['github-copilot', deviceSignIn],
-  ['openai-codex', pageSignIn],
+  ['openai-codex', deviceSignIn],
 ]);
 
 export const agents: Agent[] = [

@@ -1,4 +1,5 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
+import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-copy.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import type { AccountSignIn } from '../model/types.ts';
@@ -70,12 +71,32 @@ export class SignInCopies {
   }
 }
 
-export function signInPage(url: string): string | null {
+export const signInHosts: ReadonlyMap<string, readonly string[]> = new Map([
+  ['openai-codex', ['auth.openai.com']],
+  ['xai', ['accounts.x.ai']],
+  ['kimi-coding', ['www.kimi.com']],
+]);
+
+export function signInPage(id: string, url: string): string | null {
+  let page: URL;
   try {
-    return new URL(url).protocol === 'https:' ? url : null;
+    page = new URL(url);
   } catch {
     return null;
   }
+  const plain = page.protocol === 'https:' && !page.username && !page.password && !page.port;
+  return plain && signInHosts.get(id)?.includes(page.hostname) ? page.href : null;
+}
+
+const unknownPage =
+  'This sign-in page isn’t one SLICC knows. Check the address before you go there.';
+
+function pageLink(url: string, known: string | null): TemplateResult | typeof nothing {
+  if (known)
+    return html`<a class="swc-Link swc-Link--standalone swc-Link--quiet" href=${known} target="_blank" rel="noopener noreferrer" data-action="open-sign-in">Open the sign-in page</a>`;
+  if (!url) return nothing;
+  return html`<p class="unknown" data-id="sign-in-unknown"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${unknownPage}</span></p>
+    <span class="page" data-id="sign-in-url">${url}</span>`;
 }
 
 const copyLabels: Record<Copied, string> = { done: 'Copied', failed: 'Couldn’t copy' };
@@ -95,15 +116,15 @@ function codeBlock(
 }
 
 export function signInDetails(
+  id: string,
   signIn: AccountSignIn | undefined,
   copied: Copied | undefined,
   copy: (code: string) => void
 ): TemplateResult | typeof nothing {
-  const url = signIn ? signInPage(signIn.url) : null;
-  if (!(signIn?.code || url)) return nothing;
+  if (!(signIn?.code || signIn?.url)) return nothing;
   return html`<div class="sign-in" data-sign-in>
-    ${signIn?.code ? codeBlock(signIn.code, copied, copy) : nothing}
-    ${url ? html`<a class="swc-Link swc-Link--standalone swc-Link--quiet" href=${url} target="_blank" rel="noopener noreferrer" data-action="open-sign-in">Open the sign-in page</a>` : nothing}
+    ${signIn.code ? codeBlock(signIn.code, copied, copy) : nothing}
+    ${pageLink(signIn.url, signInPage(id, signIn.url))}
   </div>`;
 }
 
@@ -121,6 +142,24 @@ export const signInCss = css`
     flex-wrap: wrap;
     align-items: center;
     gap: var(--swc-spacing-100);
+  }
+  .sign-in .unknown {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--swc-spacing-75);
+    margin: 0;
+    color: var(--swc-neutral-subdued-content-color-default);
+    --swc-icon-color: var(--swc-notice-visual-color);
+  }
+  .sign-in .unknown swc-icon-alert-triangle {
+    flex: none;
+    margin-block-start: var(--swc-spacing-50);
+  }
+  .sign-in .page {
+    font-family: var(--swc-code-font-family-stack);
+    color: var(--swc-neutral-content-color-default);
+    overflow-wrap: anywhere;
+    user-select: text;
   }
   .sign-in .code {
     font-family: var(--swc-code-font-family-stack);

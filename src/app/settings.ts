@@ -333,6 +333,8 @@ export class SliccSettings extends ThemedElement {
         color: var(--swc-neutral-subdued-content-color-default);
       }
       .sign-in .enter,
+      .sign-in .unknown,
+      .sign-in .page,
       .sign-in .swc-Link {
         font-size: var(--swc-font-size-75);
       }
@@ -391,7 +393,7 @@ export class SliccSettings extends ThemedElement {
       }
       .other-way {
         justify-self: start;
-        margin-inline-start: calc(-1 * var(--swc-spacing-100));
+        --swc-action-button-edge-to-text: 0;
       }
       .add {
         margin-block-start: var(--swc-spacing-200);
@@ -1169,8 +1171,9 @@ export class SliccSettings extends ThemedElement {
     return html`<a class="swc-Link get-key" href=${account.keyUrl} target="_blank" rel="noopener noreferrer" data-action="get-key">Get a key</a>`;
   }
 
-  #leave(account: Account): TemplateResult {
+  #leave(account: Account): TemplateResult | typeof nothing {
     const adding = this.adding?.id === account.id;
+    if (dual(account) && !adding) return nothing;
     return html`<swc-button size="m" variant="secondary" data-action=${adding ? 'back' : 'cancel'} @click=${() => (adding ? this.#back() : this.#cancel())}>${adding ? 'Back' : 'Cancel'}</swc-button>`;
   }
 
@@ -1539,7 +1542,7 @@ export class SliccSettings extends ThemedElement {
 
   #signInDetails(account: Account): TemplateResult | typeof nothing {
     if (account.status !== 'signing-in') return nothing;
-    return signInDetails(account.signIn, this.#copies.state(account.id), (code) => {
+    return signInDetails(account.id, account.signIn, this.#copies.state(account.id), (code) => {
       void this.#copies.copy(account.id, code);
     });
   }

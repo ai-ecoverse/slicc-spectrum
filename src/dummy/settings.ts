@@ -11,7 +11,7 @@ import type {
   SettingsPort,
 } from '../model/types.ts';
 import type { Clock } from './clock.ts';
-import { deviceSignIn, pageSignIn, signIns } from './fixtures.ts';
+import { deviceSignIn, lookalikeSignIn, pageSignIn, signIns } from './fixtures.ts';
 import { providerAccount } from './providers.ts';
 
 export const dummySettingsKey = 'slicc-ui.settings';
@@ -19,7 +19,7 @@ export const signInClosed = 'The sign-in window was closed before it finished.';
 
 export type DummyTransport = 'none' | 'extension' | 'link';
 
-export type DummyLogin = 'ok' | 'fail' | 'code' | 'url';
+export type DummyLogin = 'ok' | 'fail' | 'code' | 'url' | 'lookalike';
 
 function chosen(
   fields: readonly AccountField[] | undefined,
@@ -242,8 +242,11 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   }
 
   #hint(id: string): Pick<Account, 'signIn'> {
+    const scenario = { code: deviceSignIn, url: pageSignIn, lookalike: lookalikeSignIn };
     const signIn =
-      this.#login === 'code' ? deviceSignIn : this.#login === 'url' ? pageSignIn : signIns.get(id);
+      this.#login && this.#login in scenario
+        ? scenario[this.#login as keyof typeof scenario]
+        : signIns.get(id);
     return signIn ? { signIn } : {};
   }
 

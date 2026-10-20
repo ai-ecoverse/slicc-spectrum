@@ -36,6 +36,8 @@ async function open(t, params = {}) {
         copyText: copy?.textContent.trim() ?? null,
         quiet: copy ? copy.hasAttribute('quiet') : null,
         link: link ? { href: link.getAttribute('href'), target: link.target, rel: link.rel } : null,
+        unknown: block?.querySelector('[data-id=sign-in-unknown]')?.textContent.trim() ?? null,
+        url: block?.querySelector('[data-id=sign-in-url]')?.textContent.trim() ?? null,
       };
     };
     return true;
@@ -77,8 +79,24 @@ async function settings(page) {
 }
 
 const row = '.accounts .account[data-id=ai-adobe] + .notes';
+const unknown = 'This sign-in page isn’t one SLICC knows. Check the address before you go there.';
+const known = {
+  href: 'https://auth.openai.com/codex/device',
+  target: '_blank',
+  rel: 'noopener noreferrer',
+};
+const step = 'dialog.picker .step';
 
-test('a device code shows in the Settings row, monospace, with Copy and an https sign-in link', async (t) => {
+async function addCodex(page) {
+  await settings(page);
+  await click(page, 'settings', '[data-action=add-provider]');
+  await page.until(() => window.settingsPart('dialog.picker')?.open);
+  await click(page, 'settings', '.option[data-provider="openai-codex"]');
+  await click(page, 'settings', 'dialog.picker [data-action=sign-in]');
+  await page.until((step) => window.signIn('settings', step).shown, step);
+}
+
+test('a device code shows in the Settings row, monospace, with Copy, and a page that is not the account’s is plain text with a warning', async (t) => {
   const page = await open(t, { login: 'code' });
   await settings(page);
   await click(page, 'settings', '.account[data-id=ai-adobe] [data-action=connect]');
@@ -92,7 +110,9 @@ test('a device code shows in the Settings row, monospace, with Copy and an https
     copy: 'Copy the code',
     copyText: 'Copy',
     quiet: true,
-    link: { href: 'https://example.com/device', target: '_blank', rel: 'noopener noreferrer' },
+    link: null,
+    unknown,
+    url: 'https://auth.openai.com/codex/device',
   });
   assert.equal(
     await page.evaluate(
@@ -142,12 +162,10 @@ test('Cancel still stops a device-code sign-in and takes the code away', async (
   assert.deepEqual(page.errors, []);
 });
 
-test('a URL-only sign-in shows only the link, and a non-https URL shows no link', async (t) => {
-  const page = await open(t, { login: 'url', delay: '200' });
-  await settings(page);
-  await click(page, 'settings', '.account[data-id=ai-adobe] [data-action=connect]');
-  await page.until((row) => window.signIn('settings', row).shown, row);
-  assert.deepEqual(await page.evaluate((row) => window.signIn('settings', row), row), {
+test('a URL-only sign-in on its known host shows only the link', async (t) => {
+  const page = await open(t, { providers: 'all', login: 'url', delay: '200' });
+  await addCodex(page);
+  assert.deepEqual(await page.evaluate((step) => window.signIn('settings', step), step), {
     shown: true,
     lead: null,
     code: null,
@@ -157,13 +175,54 @@ test('a URL-only sign-in shows only the link, and a non-https URL shows no link'
     copyText: null,
     quiet: null,
     link: {
-      href: 'https://example.com/oauth/authorize?client_id=slicc-dummy&response_type=code&state=7f3a',
+      href: 'https://auth.openai.com/oauth/authorize?client_id=slicc-dummy&response_type=code&state=7f3a',
       target: '_blank',
       rel: 'noopener noreferrer',
     },
+    unknown: null,
+    url: null,
   });
-  await click(page, 'settings', '.account[data-id=ai-adobe] [data-action=cancel-sign-in]');
-  await page.until(() => !window.settingsPart('[data-sign-in]'));
+  assert.deepEqual(page.errors, []);
+});
+
+test('a lookalike host shows no link: the warning and the full address as text, and the code stays', async (t) => {
+  const page = await open(t, { providers: 'all', login: 'lookalike', delay: '200' });
+  await addCodex(page);
+  assert.deepEqual(
+    await page.evaluate((step) => {
+      const parts = window.signIn('settings', step);
+      const block = window.settingsPart(`${step} [data-sign-in]`);
+      return {
+        ...parts,
+        anchors: block.querySelectorAll('a').length,
+        icon: !!block.querySelector('[data-id=sign-in-unknown] swc-icon-alert-triangle'),
+        selectable: getComputedStyle(block.querySelector('[data-id=sign-in-url]')).userSelect,
+        copies: block.querySelectorAll('[data-action^=copy]').length,
+      };
+    }, step),
+    {
+      shown: true,
+      lead: 'Enter this code on the sign-in page:',
+      code: 'WDJB-MJHT',
+      mono: true,
+      select: 'all',
+      copy: 'Copy the code',
+      copyText: 'Copy',
+      quiet: true,
+      link: null,
+      unknown,
+      url: 'https://auth.openai.com.example.net/device',
+      anchors: 0,
+      icon: true,
+      selectable: 'text',
+      copies: 1,
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a javascript: sign-in page renders no link, only text', async (t) => {
+  const page = await open(t, { delay: '200' });
   await page.evaluate(() => {
     const port = window.model.settings;
     const accounts = port.accounts.bind(port);
@@ -175,17 +234,20 @@ test('a URL-only sign-in shows only the link, and a non-https URL shows no link'
       );
     return true;
   });
+  await settings(page);
   await click(page, 'settings', '.account[data-id=ai-adobe] [data-action=connect]');
   await page.until((row) => window.signIn('settings', row).code === 'ZXCV-BNMQ', row);
   assert.deepEqual(
-    await page.evaluate(
-      (row) => [
-        window.signIn('settings', row).link,
+    await page.evaluate((row) => {
+      const parts = window.signIn('settings', row);
+      return [
+        parts.link,
+        parts.unknown,
+        parts.url,
         window.settingsPart(`${row} [data-sign-in]`).querySelectorAll('a').length,
-      ],
-      row
-    ),
-    [null, 0]
+      ];
+    }, row),
+    [null, unknown, 'javascript:alert(1)', 0]
   );
   assert.deepEqual(page.errors, []);
 });
@@ -209,22 +271,22 @@ test('without a signIn, a signing-in row shows no code and no link', async (t) =
   assert.deepEqual(page.errors, []);
 });
 
-test('adding a device-code provider shows its code in the picker until it is connected', async (t) => {
+test('adding a device-code provider shows its code and its known sign-in link in the picker until it is connected', async (t) => {
   const page = await open(t, { providers: 'all' });
-  await settings(page);
-  await click(page, 'settings', '[data-action=add-provider]');
-  await page.until(() => window.settingsPart('dialog.picker')?.open);
-  await click(page, 'settings', '.option[data-provider="github-copilot"]');
-  await click(page, 'settings', 'dialog.picker [data-action=sign-in]');
-  await page.until(() => window.signIn('settings', 'dialog.picker .step').code === 'WDJB-MJHT');
+  await addCodex(page);
   assert.deepEqual(
-    await page.evaluate(() => [
-      window.settingsPart('dialog.picker [data-signing]').textContent,
-      window.signIn('settings', 'dialog.picker .step').link.href,
-      !!window.settingsPart('dialog.picker [data-action=cancel-sign-in]'),
-      !!window.settingsPart(`.accounts .account[data-id=github-copilot] + .notes [data-sign-in]`),
-    ]),
-    ['Continue in the sign-in window that opened.', 'https://example.com/device', true, false]
+    await page.evaluate((step) => {
+      const parts = window.signIn('settings', step);
+      return [
+        window.settingsPart('dialog.picker [data-signing]').textContent,
+        parts.code,
+        parts.link,
+        parts.unknown,
+        !!window.settingsPart('dialog.picker [data-action=cancel-sign-in]'),
+        !!window.settingsPart('.accounts .account[data-id=openai-codex] + .notes [data-sign-in]'),
+      ];
+    }, step),
+    ['Continue in the sign-in window that opened.', 'WDJB-MJHT', known, null, true, false]
   );
   await click(page, 'settings', 'dialog.picker [data-action=copy-sign-in-code]');
   await page.until(() => window.copies.length === 1);
@@ -232,7 +294,7 @@ test('adding a device-code provider shows its code in the picker until it is con
   await page.until(() => !window.settingsPart('dialog.picker'));
   assert.deepEqual(
     await page.evaluate(() => [
-      window.model.settings.accounts().find((account) => account.id === 'github-copilot').status,
+      window.model.settings.accounts().find((account) => account.id === 'openai-codex').status,
       !!window.settingsPart('[data-sign-in]'),
     ]),
     ['connected', false]
@@ -261,7 +323,9 @@ test('the expired-session card shows the device code while signing in, and drops
     copy: 'Copy the code',
     copyText: 'Copy',
     quiet: true,
-    link: { href: 'https://example.com/device', target: '_blank', rel: 'noopener noreferrer' },
+    link: null,
+    unknown,
+    url: 'https://auth.openai.com/codex/device',
   });
   assert.equal(
     await page.evaluate((card) => window.chatPart(`${card} .detail`).textContent, card),
