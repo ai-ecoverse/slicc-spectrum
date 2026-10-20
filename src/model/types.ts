@@ -862,6 +862,7 @@ export interface PackageItem {
   unpacked?: true;
   registry?: 'checking' | 'unreachable';
   withheld?: string;
+  newer?: { version: string; reason: string };
   progress: InstallProgress | null;
   error: string | null;
   actions: readonly PackageAction[];

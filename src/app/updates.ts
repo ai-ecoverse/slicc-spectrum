@@ -206,9 +206,9 @@ export function plain(text: string, limit = plainLimit): string {
   return flat.length > limit ? `${flat.slice(0, limit - 1).trimEnd()}…` : flat;
 }
 
-export function withheldText(reason: string): string {
+export function withheldText(reason: string, prefix = 'Not offered'): string {
   const text = plain(reason, 200).replace(/\.$/, '');
-  return `Not offered: ${text}${text.endsWith('…') ? '' : '.'}`;
+  return `${prefix}: ${text}${text.endsWith('…') ? '' : '.'}`;
 }
 
 const registryText = {
@@ -1172,7 +1172,7 @@ export class SliccUpdates extends ModelElement {
           >${packageActions[action]}</swc-button>`
       )}</div>
       ${item.registry ? html`<p class="description" data-registry=${item.registry}>${registryText[item.registry]}</p>` : html`<p class="description">${plain(item.description)}</p>`}
-      ${item.withheld ? html`<p class="withheld" data-withheld>${withheldText(item.withheld)}</p>` : nothing}
+      ${item.withheld ? html`<p class="withheld" data-withheld>${withheldText(item.withheld)}</p>` : item.newer ? html`<p class="withheld" data-newer>${withheldText(item.newer.reason, `${item.newer.version} isn’t offered yet`)}</p>` : nothing}
       ${this.#packageMeta(item, all)}
       ${item.notes?.length || managed ? html`<p class="notes" data-notes>${(item.notes ?? []).map((note) => html`<span>${plain(note)}</span>`)}${managed ? html`<span data-managed>${managed}</span>` : nothing}</p>` : nothing}
       ${

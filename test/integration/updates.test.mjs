@@ -1595,6 +1595,20 @@ for (const [name, browser] of [
       buttons: [],
       withheld: 'Not offered: needs slicc-kernel 1.48.0 or newer.',
     });
+    assert.deepEqual(
+      await page.evaluate(() => [
+        window.row('esbuild').version,
+        window.row('esbuild').buttons,
+        window.pkg('esbuild', '[data-newer]').textContent,
+        window.pkg('esbuild', '[data-withheld]'),
+      ]),
+      [
+        '0.25.10',
+        ['install'],
+        '0.26.0 isn’t offered yet: needs slicc-kernel 1.48.0 or newer.',
+        null,
+      ]
+    );
     assert.deepEqual(await page.evaluate(() => window.row('biome')), {
       state: 'installed',
       description: 'Formats and lints JavaScript, TypeScript and JSON.',

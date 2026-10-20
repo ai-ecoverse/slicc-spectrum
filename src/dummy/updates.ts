@@ -344,7 +344,12 @@ function fromNpm(items: readonly PackageItem[]): PackageItem[] {
   };
   patch('tsc', { description: longDescription });
   patch('ruff', { notes: ['Rules that need a native plugin are left out in seven.'] });
-  patch('esbuild', { state: 'available', actions: ['install'], log: undefined });
+  patch('esbuild', {
+    state: 'available',
+    actions: ['install'],
+    log: undefined,
+    newer: { version: '0.26.0', reason: 'needs slicc-kernel 1.48.0 or newer' },
+  });
   patch('pdf', {
     state: 'available',
     offered: null,
