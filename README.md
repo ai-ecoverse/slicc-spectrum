@@ -1164,7 +1164,8 @@ The Biome, TypeScript, lefthook, Renovate and CI configuration comes from [slicc
 
 Unit tests live in `test/unit/`, which is gitignored: each change brings fresh unit tests for its own lines, and they are never committed or kept.
 The pre-commit hook runs them in Node against happy-dom under monocart and fails the commit unless the staged lines in `src/` are fully covered (`slicc-unit-cover` runs the unit tests the change reaches, then `slicc-diff-cover`, which runs `diff-cover --fail-under 100` and needs [uv](https://docs.astral.sh/uv/)).
-`npm run test:unit` uses this repo's `mcr.config.mjs`, which extends shared-web's and picks the untested `src/` files with a function instead of the glob `**/*.{js,mjs,ts}`.
+`npm run test:unit` uses this repo's `mcr.config.mjs`, which extends shared-web's, preloads `unit-setup.mjs` into every test process, and picks the untested `src/` files with a function instead of the glob `**/*.{js,mjs,ts}`.
+`unit-setup.mjs` registers happy-dom's globals and turns `.css`, `.shtml` and `dockview-core/css` imports into text modules, as the build does, so a fresh unit test can import any module in `src/`.
 The glob's `**` skips dot directories, so in a checkout under one (a bb worktree in `~/.bb/`) untested files were left out of the report and the hook passed on lines no unit test ran.
 
 ## Design review
