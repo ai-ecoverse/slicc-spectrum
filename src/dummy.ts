@@ -50,6 +50,7 @@ export {
   leadersFixtures,
   linksFixtures,
   networkFixtures,
+  outdatedDevice,
   pairedDevice,
   pairingCode,
   pairingRefused,

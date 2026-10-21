@@ -1564,7 +1564,9 @@ export class SliccNetwork extends ModelElement {
     const pairing = links.pairing;
     const joinable = hasTray(links) || !!pairing;
     const active =
-      !!pairing && (pairing.state !== 'idle' || links.devices.some((device) => device.note));
+      !!pairing &&
+      (pairing.state !== 'idle' ||
+        links.devices.some((device) => device.note && device.state === 'offline'));
     return html`<section aria-labelledby="links" data-links=${linksSummary(links)}>
       <div class="head">
         <h2 id="links">Linked devices</h2>

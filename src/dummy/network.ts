@@ -28,7 +28,8 @@ export type LinksScenario =
   | 'followers'
   | 'pairing'
   | 'pairing-notray'
-  | 'forgotten';
+  | 'forgotten'
+  | 'outdated';
 
 export type LeadersScenario = 'connected' | 'failed' | 'unlinked' | 'disconnected' | 'two';
 
@@ -302,6 +303,11 @@ export const forgottenDevice: LinkedDevice = {
   note: 'SLICC on quay-studio no longer knows this seven. Pair it again.',
 };
 
+export const outdatedDevice: LinkedDevice = {
+  ...pairedDevice,
+  note: 'Update slicc to 1.47.0 or later to share this computer’s browsers.',
+};
+
 const others = linkedDevices.filter((device) => device.id !== pairedDevice.id);
 
 export function grant(device: LinkedDevice, key: AccessKey, allowed: boolean): LinkedDevice {
@@ -335,9 +341,10 @@ export function linksFixtures(
     return { links: { ...base, devices: others, pairing: { state: 'idle' } }, exit: null };
   if (scenario === 'pairing-notray')
     return { links: { devices: others, permission: null, pairing: { state: 'idle' } }, exit: null };
-  if (scenario === 'forgotten') {
+  if (scenario === 'forgotten' || scenario === 'outdated') {
+    const device = scenario === 'forgotten' ? forgottenDevice : outdatedDevice;
     return {
-      links: { ...base, devices: [forgottenDevice, ...others], pairing: { state: 'idle' } },
+      links: { ...base, devices: [device, ...others], pairing: { state: 'idle' } },
       exit: null,
     };
   }
