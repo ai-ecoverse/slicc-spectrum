@@ -1137,6 +1137,8 @@ Replay plays a longer run across ten replies, with long commands whose arguments
 
 The UI is ESM with code splitting: `slicc-ui.js`, `slicc-dummy.js` and `chunk-*.js` next to them in `dist/`, with no bare imports, so the folder can be served as plain files from OPFS. dockview's ESM build has no CSS; the build takes it from dockview's UMD bundle.
 `@pierre/diffs` highlights with [`@pierre/highlights`](https://diffs.com/highlights) (`preferredHighlighter: 'highlights'`), whose lexers for every language it knows are in one WebAssembly module inside `dist/`, so nothing loads from a CDN and highlighting works offline.
+Files in a language Highlights doesn't know (it has about 80, so not ini, dotenv, nginx or CSV, for example) show as plain text.
+The themes are `slicc-light` and `slicc-dark`: Pierre Light and Pierre Dark with every syntax colour shaded until it keeps 4.5:1 contrast on the code background and on the added and deleted line tints.
 Shiki stays out of `dist/`: the build replaces `shiki` and `@shikijs/*` with a module that throws.
 `dist/` is about 130 files and 7 MB of JavaScript.
 The build fails if React is bundled; `@pierre/trees` lists React as a peer dependency, so npm installs it, but the `web-components` entry runs on Preact.

@@ -6013,6 +6013,94 @@ test('a file highlights with @pierre/highlights, which loads no grammar or theme
   assert.deepEqual(page.errors, []);
 });
 
+for (const color of ['light', 'dark']) {
+  test(`every highlighted token keeps 4.5:1 contrast on its line in ${color}`, async (t) => {
+    const page = await open(t, { color });
+    await page.evaluate((scheme) => {
+      const before =
+        'export const greet = (name: string) => name + 1;\nlet seen = null; // once\nclass Tide { #depth = 42; static high = /a+/g; }\n';
+      const after =
+        'export const greet = (name: number) => name * 2;\nlet seen = true; // twice\nclass Tide { #depth = 42; static high = /a+/g; }\n';
+      const code = document.createElement('slicc-code-view');
+      Object.assign(code, {
+        id: 'contrast-code',
+        path: 'tide.ts',
+        color: scheme,
+        contents: before,
+      });
+      const diff = document.createElement('slicc-diff-view');
+      Object.assign(diff, {
+        id: 'contrast-diff',
+        path: 'tide.ts',
+        color: scheme,
+        oldText: before,
+        newText: after,
+      });
+      document.body.append(code, diff);
+      return true;
+    }, color);
+    await page.until(() =>
+      ['contrast-code', 'contrast-diff'].every(
+        (id) =>
+          document
+            .getElementById(id)
+            ?.shadowRoot.querySelector('diffs-container')
+            ?.shadowRoot.querySelectorAll('[data-line] span[style*="--diffs-token"]').length > 10
+      )
+    );
+    const weakest = await page.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      const paint = (...layers) => {
+        context.fillStyle = '#808080';
+        context.fillRect(0, 0, 1, 1);
+        for (const layer of layers) {
+          context.fillStyle = layer;
+          context.fillRect(0, 0, 1, 1);
+        }
+        return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+      };
+      const luminance = (rgb) => {
+        const [r, g, b] = rgb.map((value) => {
+          const c = value / 255;
+          return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const ratio = (a, b) => {
+        const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+        return (high + 0.05) / (low + 0.05);
+      };
+      return ['contrast-code', 'contrast-diff'].map((id) => {
+        const view = document.getElementById(id);
+        const host = getComputedStyle(view).backgroundColor;
+        const pre = view.shadowRoot
+          .querySelector('diffs-container')
+          .shadowRoot.querySelector('pre');
+        let low = { ratio: Infinity };
+        for (const line of pre.querySelectorAll('[data-line]')) {
+          for (const span of line.querySelectorAll('span[style*="--diffs-token"]')) {
+            const ground = paint(
+              host,
+              getComputedStyle(line).backgroundColor,
+              getComputedStyle(span).backgroundColor
+            );
+            const value = ratio(paint(getComputedStyle(span).color), ground);
+            if (value < low.ratio) low = { ratio: value, token: span.textContent.trim() };
+          }
+        }
+        return { id, ok: low.ratio >= 4.5, token: low.token };
+      });
+    });
+    assert.deepEqual(
+      weakest.filter((view) => !view.ok),
+      []
+    );
+    assert.deepEqual(page.errors, []);
+  });
+}
+
 test('each thread opens in its own chat tab next to the others', async (t) => {
   const page = await open(t);
   const groups = () =>
