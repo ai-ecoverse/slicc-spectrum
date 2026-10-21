@@ -61,7 +61,7 @@ jobs:
             await pick(hosted, context.eventName);
 
   ci:
-    uses: ai-ecoverse/slicc-shared-web/.github/workflows/node-ci.yml@v1.29.9
+    uses: ai-ecoverse/slicc-shared-web/.github/workflows/node-ci.yml@v1.29.10
     with:
       runs-on: ${{ needs.runner.outputs.runner }}
       timeout-minutes: 35
