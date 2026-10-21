@@ -20,13 +20,14 @@ concurrency:
 
 jobs:
   ci:
-    uses: ai-ecoverse/slicc-shared-web/.github/workflows/pipeline.yml@v2.5.0
+    uses: ai-ecoverse/slicc-shared-web/.github/workflows/pipeline.yml@v2.6.0
     secrets: inherit
     with:
       timeout-minutes: 35
       lint: node .github/scripts/gate.mjs lint "npm run lint"
       test: TEST_CONCURRENCY=4 npm test
       node-options: --max-old-space-size=8192
+      review-timeout-minutes: 120
       review-renovate: spectrum
       review-prompt: |
         SLICC-SPECTRUM
