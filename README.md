@@ -550,7 +550,7 @@ A rejection shows the error card with its sentence (a check without a `preview` 
 #### `<slicc-sprinkle>`
 
 A SLICC sprinkle (`.shtml`), as a panel or, with `inline`, as a dip in the chat that grows to fit, even when it loads out of view (the frame measures itself on load, after icons and fonts arrive, and on every resize).
-A dip has a tab-like handle: drag it into the dock (or onto a rail, or use its open-as-panel button, `data-action="detach-sprinkle"`) and it lives on as a sprinkle panel, with a note in the chat where it was and a **Show** button (`data-action="show-sprinkle"`) that brings the panel forward; which dips are out is saved in `slicc-ui.dips`.
+A dip has a tab-like handle: drag it into the dock (or onto a rail, or use its open-as-panel button, `data-action="detach-sprinkle"`, an extra-small action button whose tap target pads out to 24 × 24 px on a coarse pointer while it looks the same) and it lives on as a sprinkle panel, with a note in the chat where it was and a **Show** button (`data-action="show-sprinkle"`) that brings the panel forward; which dips are out is saved in `slicc-ui.dips`.
 It runs in a sandboxed frame (`allow-scripts` only) with SLICC's sprinkle theme (the `--s2-*` tokens and `.sprinkle-*` classes), the app's fonts, and Lucide icons (`<i data-lucide>`, `LucideIcons.render()`).
 It talks back through `slicc.lick({ action, data })`, which reaches the owning cone as a `sprinkle` lick, and, when the port has `call`, reads files and keeps state (see [Sprinkle bridge](#sprinkle-bridge)).
 Panel sprinkles sit at the top of the right rail with their Lucide icon.

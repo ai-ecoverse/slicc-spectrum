@@ -240,20 +240,27 @@ export class SliccSprinkle extends ThemedElement {
     .handle {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: var(--swc-spacing-85);
       width: max-content;
       max-width: 100%;
       box-sizing: border-box;
-      height: 28px;
-      padding: 0 4px 0 6px;
-      border: 1px solid var(--spectrum-gray-200);
+      height: calc(var(--swc-component-height-75) + var(--swc-spacing-75));
+      padding-block: 0;
+      padding-inline: var(--swc-spacing-85) var(--swc-spacing-75);
+      border: var(--swc-border-width-100) solid var(--swc-gray-200);
       border-bottom: 0;
-      border-radius: 6px 6px 0 0;
-      background: var(--spectrum-background-layer-1-color);
-      color: var(--spectrum-neutral-subdued-content-color-default);
-      font-size: var(--spectrum-font-size-75);
+      border-radius: var(--swc-corner-radius-300) var(--swc-corner-radius-300) 0 0;
+      background: var(--swc-background-layer-1-color);
+      color: var(--swc-neutral-subdued-content-color-default);
+      font-size: var(--swc-font-size-75);
       cursor: grab;
       user-select: none;
+    }
+    @media (pointer: coarse) {
+      .handle [data-action='detach-sprinkle'] {
+        display: inline-flex;
+        padding: var(--swc-spacing-50);
+      }
     }
     .handle:active {
       cursor: grabbing;
@@ -262,17 +269,17 @@ export class SliccSprinkle extends ThemedElement {
       fill: currentColor;
     }
     .handle .name {
-      color: var(--spectrum-neutral-content-color-default);
+      color: var(--swc-neutral-content-color-default);
     }
     .moved {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border: 1px dashed var(--spectrum-gray-300);
-      border-radius: 8px;
-      color: var(--spectrum-neutral-subdued-content-color-default);
-      font-size: var(--spectrum-font-size-75);
+      gap: var(--swc-spacing-100);
+      padding: var(--swc-spacing-100) var(--swc-spacing-200);
+      border: var(--swc-border-width-100) dashed var(--swc-gray-300);
+      border-radius: var(--swc-corner-radius-medium-default);
+      color: var(--swc-neutral-subdued-content-color-default);
+      font-size: var(--swc-font-size-75);
     }
     .view-only {
       color: var(--spectrum-neutral-subdued-content-color-default);
