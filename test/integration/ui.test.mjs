@@ -6625,6 +6625,79 @@ test('a dip opens as a panel from its Gen2 button, and the Show button in its no
   assert.deepEqual(page.errors, []);
 });
 
+for (const [pointer, width, height] of [
+  ['coarse', 420, 860],
+  ['fine', 420, 860],
+  ['fine', 1280, 800],
+])
+  test(`with a ${pointer} pointer at ${width}, the dip's open-as-panel button is ${pointer === 'coarse' ? 'a 24 by 24 tap target' : 'its desktop size'}`, async (t) => {
+    const page = await open(t, { pointer });
+    await page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+    if (pointer === 'coarse') {
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      t.after(() =>
+        page.send('Emulation.setTouchEmulationEnabled', { enabled: false }).catch(() => {})
+      );
+    }
+    await page.until(
+      (coarse) => matchMedia('(pointer: coarse) and (min-width: 1px)').matches === coarse,
+      pointer === 'coarse'
+    );
+    await page.until(
+      (phone) => (document.querySelector('slicc-app').screen === 'phone') === phone,
+      width === 420
+    );
+    await page.evaluate(() => {
+      window.dip = () =>
+        window
+          .$('slicc-app', 'slicc-dock')
+          .content('chat:cone-sliccy')
+          ?.shadowRoot.querySelector('slicc-sprinkle[inline]');
+      return true;
+    });
+    await page.until(
+      () => !!window.dip()?.shadowRoot.querySelector('.handle [data-action=detach-sprinkle]')
+    );
+    const box = await page.within(5000, () => {
+      window.dip().scrollIntoView({ block: 'center' });
+      const button = window.dip().shadowRoot.querySelector('.handle [data-action=detach-sprinkle]');
+      const rect = button.getBoundingClientRect();
+      if (rect.width === 0 || rect.right > innerWidth || rect.bottom > innerHeight) return null;
+      return {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        size: button.getAttribute('size'),
+        label: button.getAttribute('accessible-label'),
+        handle: window.dip().shadowRoot.querySelector('.handle').getBoundingClientRect().height,
+      };
+    });
+    assert.equal(box.size, 'xs');
+    assert.equal(box.label, 'Open Welcome as a panel');
+    assert.equal(box.handle, 28);
+    if (pointer === 'fine') {
+      assert.deepEqual([box.width, box.height], [20, 22]);
+      assert.deepEqual(page.errors, []);
+      return;
+    }
+    assert.ok(box.width >= 24 && box.height >= 24, `${box.width} x ${box.height}`);
+    const point = { x: box.x + 1, y: box.y + 1 };
+    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+    await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.until(() => window.$('slicc-app', 'slicc-dock').has('sprinkle:welcome'));
+    await page.until(
+      () => !!window.dip()?.shadowRoot.querySelector('.moved [data-action=show-sprinkle]')
+    );
+    assert.deepEqual(page.errors, []);
+  });
+
 test('status items sit in the header on one line, and nothing sits under it', async (t) => {
   const page = await open(t);
   const width = () => window.$('slicc-app', 'header .status').getBoundingClientRect().width;
