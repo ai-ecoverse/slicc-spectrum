@@ -94,3 +94,36 @@ test('the pre-commit hook fails closed until slicc-shared-web hooks are installe
   assert.equal(present.status, 0, present.stdout + present.stderr);
   assert.doesNotMatch(present.stdout + present.stderr, /hooks missing/);
 });
+
+test('the committed pre-commit shim fails closed until npm install installs the hook', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'slicc-shim-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const hookEnv = { ...env(), NO_COLOR: '1' };
+  for (const key of Object.keys(hookEnv)) {
+    if (key.startsWith('LEFTHOOK') || key.startsWith('GIT_')) delete hookEnv[key];
+  }
+  const git = (...args) =>
+    spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
+      cwd: dir,
+      env: hookEnv,
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+  assert.equal(git('init', '-q').status, 0);
+  assert.equal(git('config', 'core.hooksPath', '.githooks').status, 0);
+  mkdirSync(join(dir, '.githooks'));
+  cpSync(join(root, '.githooks/pre-commit'), join(dir, '.githooks/pre-commit'));
+  writeFileSync(join(dir, 'file.txt'), 'x\n');
+  assert.equal(git('add', 'file.txt').status, 0);
+  const missing = git('commit', '-q', '-m', 'test');
+  assert.notEqual(missing.status, 0, missing.stdout + missing.stderr);
+  assert.match(missing.stderr, /pre-commit: run npm install/);
+  const installed = join(dir, 'node_modules/.git-hooks');
+  mkdirSync(installed, { recursive: true });
+  writeFileSync(join(installed, 'pre-commit'), '#!/bin/sh\necho installed hook ran\n', {
+    mode: 0o755,
+  });
+  const present = git('commit', '-q', '-m', 'test');
+  assert.equal(present.status, 0, present.stdout + present.stderr);
+  assert.match(present.stdout + present.stderr, /installed hook ran/);
+});

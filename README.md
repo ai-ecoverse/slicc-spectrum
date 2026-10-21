@@ -1169,6 +1169,7 @@ The test page is served cross-origin isolated (COOP/COEP), as slicc-kernel requi
 `test/integration/ui.test.mjs` covers the shell, the layout (moving, closing, floating, reopening and reloading), streaming a reply with a tool call, stopping it, switching themes and the keyboard, and saves screenshots to `artifacts/ui/`.
 
 The Biome, TypeScript, lefthook, Renovate and CI configuration comes from [slicc-shared-web](https://github.com/ai-ecoverse/slicc-shared-web), which also provides the `slicc-lint`, `slicc-lint-comments`, `slicc-agents-md`, `slicc-no-unit-tests`, `slicc-unit-cover` and `slicc-diff-cover` commands used by `npm run lint` and the pre-commit hook.
+`npm install` runs its `slicc-install-hooks` (a no-op on Windows), which sets the shared `core.hooksPath` to `.githooks` and installs lefthook into each worktree's own `node_modules/.git-hooks`; the committed shims in `.githooks/` run that hook, and fail with "run npm install" in a worktree that has none.
 
 Unit tests live in `test/unit/`, which is gitignored: each change brings fresh unit tests for its own lines, and they are never committed or kept.
 The pre-commit hook runs them in Node against happy-dom under monocart and fails the commit unless the staged lines in `src/` are fully covered (`slicc-unit-cover` runs the unit tests the change reaches, then `slicc-diff-cover`, which runs `diff-cover --fail-under 100` and needs [uv](https://docs.astral.sh/uv/)).
