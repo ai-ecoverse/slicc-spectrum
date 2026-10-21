@@ -33,13 +33,15 @@ const shown = async (cdp) => {
         expression: `({
           url: location.pathname + location.search,
           color: document.querySelector('slicc-app').shadowRoot.querySelector('sp-theme').getAttribute('color'),
-          width: outerWidth,
         })`,
         returnByValue: true,
       },
       session
     );
-    return result.value;
+    const { bounds } = await client.send('Browser.getWindowForTarget', {
+      targetId: page.targetId,
+    });
+    return { ...result.value, window: `${bounds.width}×${bounds.height}` };
   } finally {
     client.close();
   }
@@ -86,11 +88,11 @@ test('review:browser serves a side once and shows its UI page, light over the ex
   assert.deepEqual(await shown(cdp[0]), {
     url: '/ui/?delay=0&color=light',
     color: 'light',
-    width: 1440,
+    window: '1440×900',
   });
   assert.deepEqual(await shown(cdp[1]), {
     url: '/ui/?delay=0&color=dark',
     color: 'dark',
-    width: 1440,
+    window: '1440×900',
   });
 });
