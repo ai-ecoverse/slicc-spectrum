@@ -1,4 +1,15 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>ai-ecoverse/slicc-shared-web"]
+  "extends": ["github>ai-ecoverse/slicc-shared-web"],
+  "packageRules": [
+    {
+      "matchPackageNames": [
+        "@adobe/spectrum-wc",
+        "@adobe/spectrum-wc-icons",
+        "@spectrum-web-components/**"
+      ],
+      "groupName": "spectrum",
+      "groupSlug": "spectrum"
+    }
+  ]
 }

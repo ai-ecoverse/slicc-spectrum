@@ -1160,7 +1160,7 @@ npm run lint
 npm test
 ```
 
-`npm test` builds `dist/` and runs the integration tests in headless Chromium over raw CDP, through the [harness from slicc-shared-web](https://github.com/ai-ecoverse/slicc-shared-web#integration-test-harness), against a fake backend (`test/integration/page/fake-backend.js`).
+`npm test` builds `dist/`, installs Chrome for Testing with `slicc-cdp install-browser` and runs the integration tests over raw CDP (headless on a developer machine, with a window on CI), through the [harness from slicc-shared-web](https://github.com/ai-ecoverse/slicc-shared-web#integration-test-harness), against a fake backend (`test/integration/page/fake-backend.js`).
 It writes CPU profiles, screenshots and console logs to `artifacts/`, and V8 coverage of `dist/` to `coverage/` only with `SLICC_COVERAGE=1` (CI leaves it off, since nothing reads it; the unit tests' diff coverage is separate).
 The test page is served cross-origin isolated (COOP/COEP), as slicc-kernel requires.
 `test/integration/kernel.test.mjs` runs `bash -i` end to end on `@ai-ecoverse/slicc-kernel` (a pinned dev dependency), with `@ai-ecoverse/wasm-bash` and `@ai-ecoverse/wasm-coreutils` installed into OPFS by the page (`/kernel.html`).
@@ -1177,19 +1177,14 @@ The pre-commit hook runs them in Node against happy-dom under monocart and fails
 `unit-setup.mjs` registers happy-dom's globals and turns `.css`, `.shtml` and `dockview-core/css` imports into text modules, as the build does, so a fresh unit test can import any module in `src/`.
 The glob's `**` skips dot directories, so in a checkout under one (a bb worktree in `~/.bb/`) untested files were left out of the report and the hook passed on lines no unit test ran.
 
-## Design review
+## CI and reviews
 
-[`.github/workflows/design-review.yml`](.github/workflows/design-review.yml) has Claude review every ready, same-repo pull request visually, against Spectrum 2 and general design guidelines, and leave a comment with screenshots.
-It also runs on `workflow_dispatch` with `pr_number`; fork pull requests and drafts are skipped.
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) is one caller of slicc-shared-web's [pipeline](https://github.com/ai-ecoverse/slicc-shared-web#pipeline), on pull requests, in the merge queue and on pushes to main, which cancel nothing.
 
-- **Setup** (`CERT_RUNNER`): main and the pull request are each built and served by `test/integration/chrome.mjs`, and each is open in a Chrome with a window under Xvfb, so hover works: main on CDP 9301 (`:8301/ui/?delay=0`), the pull request on CDP 9302 (`:8302`).
-  Claude drives both with `playwright-core`, shoots the same states side by side (light and dark, desktop and a 420×860 mobile viewport), and reads spectrum.adobe.com, seeded with every URL in its sitemap.
-- **What it checks:** tokens only, never colour alone, contrast in dark, focus, copy, typography, icons, layout at 420, and the `data-*` hooks embedders test on.
-  The prompt carries the setup pitfalls too: wait for fonts, blur focus, compare at the same scroll anchor, and use a real mobile viewport.
-- **The comment:** Claude writes `comment.md` and its screenshots, uploaded as the run's `design-review-comment-<pr>` and `design-review-shots-<pr>` artifacts.
-  A separate `post` job on a fresh runner, the only one with the Cloudflare token, puts the screenshots in the R2 bucket slicc uses for PR screenshots (`slicc-pr-screenshots`, under `slicc-spectrum/pr-<n>/<run>/`) and posts the comment with them inline from its public URL.
-  A screenshot that doesn't upload is linked to the artifact instead.
-  The token is the org secret `CLOUDFLARE_API_TOKEN`; `CLOUDFLARE_ACCOUNT_ID`, `R2_BUCKET` and `R2_PUBLIC_BASE_URL` default to slicc's values.
+- **Lint** runs on every event through `.github/scripts/gate.mjs lint`, which fails unless `npm run lint` ends with `slicc-lint: PASS`.
+- **Tests** run on pull requests and in the merge queue, on Chrome with a window under Xvfb, split across four shards by timings, each with `TEST_CONCURRENCY=4` and `--max-old-space-size=8192`. `ci / integration` passes only when the shards' JUnit reports hold a test that ran and no failure.
+- **Reviews:** every push to a pull request gets a Claude and a Codex review on Bedrock, with this repo's code and design guidance in `review-prompt`. Each side of the change (`head`, `base`) has two review browsers; `npm run review:browser` (`.github/scripts/review-browser.mjs`) builds that side if `dist/` is missing, serves its test page once (`head` on port 8301, `base` on 8302) and opens `/ui/?delay=0` in a 1440×900 window, light in the `extension` browser and dark in the `cli` one. The reviewers shoot base and head side by side, light and dark, desktop and a 420×860 phone viewport, and the pipeline's `post` job, the only one with `CLOUDFLARE_API_TOKEN`, puts their screenshots in R2 (`slicc-pr-screenshots`). `ci / review` passes when both approve.
+- **Release:** semantic-release publishes on a push to main only, with npm trusted publishing registered for `ci.yml` (`npm run trust`).
 
 ## License
 
