@@ -6469,7 +6469,7 @@ test('a dip drags out of the chat into the dock and lives on as a panel', async 
   await shot(page, 'dip-panel-light');
 
   await page.evaluate(() => {
-    window.dip().shadowRoot.querySelector('.moved sp-action-button').click();
+    window.dip().shadowRoot.querySelector('.moved [data-action=show-sprinkle]').click();
     return true;
   });
   await page.until(() => window.$('slicc-app', 'slicc-dock').has('sprinkle:welcome'));
@@ -6542,6 +6542,86 @@ test('a dip dropped on a rail waits there, and its button opens it as a panel', 
         ?.shadowRoot.querySelector('iframe')
   );
   await shot(page, 'dip-panel-dark');
+  assert.deepEqual(page.errors, []);
+});
+
+test('a dip opens as a panel from its Gen2 button, and the Show button in its note brings the panel back', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    window.dip = () =>
+      window
+        .$('slicc-app', 'slicc-dock')
+        .content('chat:cone-sliccy')
+        ?.shadowRoot.querySelector('slicc-sprinkle[inline]');
+    return true;
+  });
+  await page.until(
+    () => !!window.dip()?.shadowRoot.querySelector('.handle [data-action=detach-sprinkle]')
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const button = window.dip().shadowRoot.querySelector('.handle [data-action=detach-sprinkle]');
+      return {
+        tag: button.localName,
+        label: button.getAttribute('accessible-label'),
+        title: button.title,
+        icon: button.querySelector('[slot=icon]')?.localName ?? null,
+      };
+    }),
+    {
+      tag: 'swc-action-button',
+      label: 'Open Welcome as a panel',
+      title: 'Open as a panel',
+      icon: 'swc-icon-open-in',
+    }
+  );
+  const { root } = await page.send('DOM.getDocument', { depth: -1, pierce: true });
+  const { nodes } = await page.send('Accessibility.queryAXTree', {
+    nodeId: root.nodeId,
+    accessibleName: 'Open Welcome as a panel',
+  });
+  assert.deepEqual(
+    nodes.filter((node) => !node.ignored).map((node) => node.role?.value),
+    ['button']
+  );
+
+  await page.evaluate(() => {
+    window.dip().shadowRoot.querySelector('.handle [data-action=detach-sprinkle]').click();
+    return true;
+  });
+  await page.until(() => window.$('slicc-app', 'slicc-dock').has('sprinkle:welcome'));
+  await page.until(
+    () => !!window.dip()?.shadowRoot.querySelector('.moved [data-action=show-sprinkle]')
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const button = window.dip().shadowRoot.querySelector('.moved [data-action=show-sprinkle]');
+      return { tag: button.localName, text: button.textContent.trim() };
+    }),
+    { tag: 'swc-action-button', text: 'Show' }
+  );
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('slicc-ui.dips'))), [
+    'welcome',
+  ]);
+
+  const other = await page.evaluate(() => {
+    const panel = window.$('slicc-app', 'slicc-dock').api.getPanel('sprinkle:welcome');
+    const sibling = panel.group.panels.find((item) => item.id !== 'sprinkle:welcome');
+    sibling.api.setActive();
+    return sibling.id;
+  });
+  assert.ok(other);
+  await page.until(
+    () => !window.$('slicc-app', 'slicc-dock').api.getPanel('sprinkle:welcome').api.isVisible
+  );
+  await page.evaluate(() => {
+    window.dip().shadowRoot.querySelector('.moved [data-action=show-sprinkle]').click();
+    return true;
+  });
+  await page.until(() => {
+    const panel = window.$('slicc-app', 'slicc-dock').api.getPanel('sprinkle:welcome');
+    return panel.api.isVisible && panel.group.activePanel?.id === 'sprinkle:welcome';
+  });
   assert.deepEqual(page.errors, []);
 });
 

@@ -1,3 +1,4 @@
+import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import { css, html, nothing, type PropertyValues, svg, type TemplateResult } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import type { SliccModel, Sprinkle, SprinkleMethod, SprinklePort } from '../model/types.ts';
@@ -464,7 +465,7 @@ export class SliccSprinkle extends ThemedElement {
       return html`<div class="moved">
         <swc-icon-open-in size="s"></swc-icon-open-in>
         <span>${data.title} is open as a panel.</span>
-        <sp-action-button size="s" quiet @click=${() => this.#send('show-surface', `sprinkle:${data.id}`)}>Show</sp-action-button>
+        <swc-action-button size="s" quiet data-action="show-sprinkle" @click=${() => this.#send('show-surface', `sprinkle:${data.id}`)}>Show</swc-action-button>
       </div>`;
     }
     const bridged = !!this.model?.sprinkles.call;
@@ -486,9 +487,9 @@ export class SliccSprinkle extends ThemedElement {
     return html`<div class="handle" draggable="true" title="Drag into the dock or a rail to open as a panel" @dragstart=${this.#drag}>
         ${grip}
         <span class="name">${data.title}</span>
-        <sp-action-button size="xs" quiet label=${`Open ${data.title} as a panel`} title="Open as a panel" @click=${() => this.#send('detach-sprinkle', data.id)}>
+        <swc-action-button size="xs" quiet data-action="detach-sprinkle" accessible-label=${`Open ${data.title} as a panel`} title="Open as a panel" @click=${() => this.#send('detach-sprinkle', data.id)}>
           <swc-icon-open-in slot="icon"></swc-icon-open-in>
-        </sp-action-button>
+        </swc-action-button>
         ${caption}
       </div>
       <div class="frame">${frame}</div>`;
