@@ -338,6 +338,52 @@ test('a forgotten device shows its note with an icon', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
+test('an update note on a linked device leaves Link another device closed until a pairing fails', async (t) => {
+  const page = await open(t, 'outdated');
+  await network(page);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const row = window.net().querySelector('[data-device=link-quay]');
+      return [
+        window.net().querySelector('details').open,
+        row.dataset.state,
+        row.querySelector('[data-note]').textContent.replace(/\s+/g, ' ').trim(),
+        window.pairState(),
+      ];
+    }),
+    [
+      false,
+      'connected',
+      'Warning: Update slicc to 1.47.0 or later to share this computer’s browsers.',
+      'idle',
+    ]
+  );
+  await page.evaluate(async () => {
+    const port = window.model.network;
+    await port.pairComputer('https://seven.sliccy.ai/#slicc-pair=17117.fail.ab12ef');
+    await port.confirmPairing().catch(() => {});
+    return true;
+  });
+  await page.until(() => window.pairState() === 'failed');
+  await page.until(() => window.net().querySelector('details').open === true);
+  assert.deepEqual(page.errors, []);
+});
+
+test('an update note stays closed and a forgotten device then unfolds it', async (t) => {
+  const page = await open(t, 'outdated');
+  await network(page);
+  assert.equal(await page.evaluate(() => window.net().querySelector('details').open), false);
+  await page.evaluate(() => {
+    window.model.network.setLinks('forgotten');
+    return true;
+  });
+  await page.until(
+    () => window.net().querySelector('[data-device=link-quay]')?.dataset.state === 'offline'
+  );
+  await page.until(() => window.net().querySelector('details').open === true);
+  assert.deepEqual(page.errors, []);
+});
+
 test('pairing fits a phone at 420 without horizontal overflow in every state', async (t) => {
   const page = await open(t, 'pairing', 420, 860);
   await page.until(() => window.app.screen === 'phone');
