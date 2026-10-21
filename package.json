@@ -83,7 +83,7 @@
     "@happy-dom/global-registrator": "21.0.3",
     "@pierre/diffs": "1.5.2",
     "@pierre/trees": "1.0.0-beta.6",
-    "@spectrum-web-components/action-menu": "1.12.4",
+    "@spectrum-web-components/action-menu": "1.12.5",
     "@spectrum-web-components/alert-dialog": "1.12.4",
     "@spectrum-web-components/field-label": "1.12.4",
     "@spectrum-web-components/help-text": "1.12.4",
