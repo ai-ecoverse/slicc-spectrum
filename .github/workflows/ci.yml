@@ -27,6 +27,7 @@ jobs:
       lint: node .github/scripts/gate.mjs lint "npm run lint"
       test: TEST_CONCURRENCY=4 npm test
       node-options: --max-old-space-size=8192
+      review-renovate: spectrum
       review-prompt: |
         SLICC-SPECTRUM
 
