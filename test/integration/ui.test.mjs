@@ -6081,11 +6081,10 @@ for (const color of ['light', 'dark']) {
         let low = { ratio: Infinity };
         for (const line of pre.querySelectorAll('[data-line]')) {
           for (const span of line.querySelectorAll('span[style*="--diffs-token"]')) {
-            const ground = paint(
-              host,
-              getComputedStyle(line).backgroundColor,
-              getComputedStyle(span).backgroundColor
-            );
+            const layers = [];
+            for (let node = span; node !== line; node = node.parentElement)
+              layers.unshift(getComputedStyle(node).backgroundColor);
+            const ground = paint(host, getComputedStyle(line).backgroundColor, ...layers);
             const value = ratio(paint(getComputedStyle(span).color), ground);
             if (value < low.ratio) low = { ratio: value, token: span.textContent.trim() };
           }

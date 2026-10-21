@@ -4,8 +4,8 @@ import type { Theme } from '@pierre/highlights';
 export const codeThemes = { light: 'slicc-light', dark: 'slicc-dark' } as const;
 
 export const codeGrounds = {
-  light: ['#ffffff', '#ffe8e4', '#e7f4ec'],
-  dark: ['#222222', '#381917', '#182d22'],
+  light: ['#ffffff', '#ffe8e4', '#e7f4ec', '#f9ccca', '#c8e7d8'],
+  dark: ['#222222', '#381917', '#182d22', '#5f1d1f', '#144b35'],
 } as const;
 
 const minimum = 4.5;
