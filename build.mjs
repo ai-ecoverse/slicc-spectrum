@@ -1,6 +1,5 @@
 import { execFileSync } from 'node:child_process';
 import { copyFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { env } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
@@ -21,70 +20,17 @@ const inline = {
   },
 };
 
-const bundledLanguages = new Set([
-  'css',
-  'diff',
-  'html',
-  'javascript',
-  'json',
-  'jsonc',
-  'jsx',
-  'markdown',
-  'python',
-  'shellscript',
-  'sql',
-  'toml',
-  'tsx',
-  'typescript',
-  'xml',
-  'yaml',
-]);
-
-const grammarBase = env.SLICC_GRAMMAR_BASE ?? 'https://cdn.jsdelivr.net/npm/@shikijs/';
-const shikiVersions = {
-  langs: JSON.parse(
-    await readFile(new URL('./node_modules/@shikijs/langs/package.json', import.meta.url))
-  ).version,
-  themes: JSON.parse(
-    await readFile(new URL('./node_modules/@shikijs/themes/package.json', import.meta.url))
-  ).version,
-};
-
-const grammarLoader = fileURLToPath(new URL('./src/app/grammars.ts', import.meta.url));
-const peers = JSON.parse(
-  await readFile(new URL('./package.json', import.meta.url))
-).peerDependencies;
-for (const kind of ['langs', 'themes']) {
-  if (peers[`@shikijs/${kind}`] !== shikiVersions[kind]) {
-    throw new Error(
-      `peerDependencies @shikijs/${kind} is ${peers[`@shikijs/${kind}`]}, but ${shikiVersions[kind]} is installed`
-    );
-  }
-}
-const grammarImport = /import\((["'])@shikijs\/(langs|themes)\/([\w.-]+)\1\)/g;
-
-const grammars = {
-  name: 'grammars-on-demand',
+const noShiki = {
+  name: 'no-shiki',
   setup(build) {
-    build.onLoad({ filter: /[\\/]node_modules[\\/].+\.m?js$/ }, async (args) => {
-      const source = await readFile(args.path, 'utf8');
-      if (!/import\(["']@shikijs\//.test(source)) return undefined;
-      const contents = source.replace(grammarImport, (call, _quote, kind, name) =>
-        kind === 'langs' && bundledLanguages.has(name)
-          ? call
-          : `__sliccGrammar(${JSON.stringify(kind)}, ${JSON.stringify(name)})`
-      );
-      const header = `import { grammar as __sliccLoad } from ${JSON.stringify(grammarLoader)};\nconst __sliccGrammar = (kind, name) => __sliccLoad(kind, name, ${JSON.stringify(shikiVersions)}[kind], ${JSON.stringify(grammarBase)});\n`;
-      return { contents: header + contents, loader: 'js' };
-    });
-    build.onResolve({ filter: /^@shikijs\/(langs|themes)\/[\w.-]+$/ }, (args) => {
-      const [, kind, name] = args.path.match(/^@shikijs\/(langs|themes)\/([\w.-]+)$/);
-      if (kind === 'langs' && bundledLanguages.has(name)) return undefined;
-      return {
-        path: `${grammarBase}${kind}@${shikiVersions[kind]}/dist/${name}.mjs`,
-        external: true,
-      };
-    });
+    build.onResolve({ filter: /^(shiki|@shikijs\/[\w-]+)(\/.*)?$/ }, () => ({
+      path: 'shiki',
+      namespace: 'no-shiki',
+    }));
+    build.onLoad({ filter: /.*/, namespace: 'no-shiki' }, () => ({
+      contents: "throw new Error('Shiki is not bundled: highlighting runs on @pierre/highlights');",
+      loader: 'js',
+    }));
   },
 };
 
@@ -130,7 +76,7 @@ const { metafile } = await build({
   target: 'es2024',
   sourcemap: 'linked',
   loader: { '.css': 'text', '.shtml': 'text' },
-  plugins: [inline, dockviewCss, grammars],
+  plugins: [inline, dockviewCss, noShiki],
   logLevel: 'warning',
   metafile: true,
 });

@@ -5979,8 +5979,8 @@ test('new surfaces in dark', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
-test('a language outside dist loads from the local grammar base first', async (t) => {
-  const page = await open(t, { grammars: '/node_modules/@shikijs/' });
+test('a file highlights with @pierre/highlights, which loads no grammar or theme', async (t) => {
+  const page = await open(t);
   await page.evaluate(() =>
     window.model.files
       .write('/workspace/harbor/tools/check.rs', 'fn main() {\n    println!("ok");\n}\n')
@@ -5991,11 +5991,6 @@ test('a language outside dist loads from the local grammar base first', async (t
     return true;
   });
   await page.until(() => window.code('file:/workspace/harbor/tools/check.rs').includes('println'));
-  const deadline = Date.now() + 10_000;
-  while (!chrome.requests.includes('/node_modules/@shikijs/langs/dist/rust.mjs')) {
-    assert.ok(Date.now() < deadline, chrome.requests.join());
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
   await page.until(() => {
     const view = window
       .$('slicc-app', 'slicc-dock')
@@ -6003,9 +5998,18 @@ test('a language outside dist loads from the local grammar base first', async (t
       .shadowRoot.querySelector('slicc-code-view');
     const root = view.shadowRoot.querySelector('diffs-container').shadowRoot;
     return [...root.querySelectorAll('span')].some(
-      (span) => span.textContent === 'fn' && span.getAttribute('style')?.includes('--diffs')
+      (span) => span.textContent.trim() === 'fn' && span.getAttribute('style')?.includes('--diffs')
     );
   });
+  assert.deepEqual(
+    await page.evaluate(() =>
+      performance
+        .getEntriesByType('resource')
+        .map((entry) => entry.name)
+        .filter((name) => /shiki/.test(name))
+    ),
+    []
+  );
   assert.deepEqual(page.errors, []);
 });
 

@@ -11,7 +11,6 @@ import { Dips, dipType } from './dips.ts';
 import { followPage, terminalsAllowed, watchOnly } from './follow.ts';
 import { defaultFontBase, defaultVariableFont, installFonts } from './fonts.ts';
 import { deleteCone } from './freezer.ts';
-import { grammarBase, setGrammarBase } from './grammars.ts';
 import { settleModels } from './models.ts';
 import { agentTitle, untitled, watchTitles } from './names.ts';
 import { networkHealth, networkIcon, networkLabel, networkStatus, remoteLight } from './network.ts';
@@ -483,14 +482,6 @@ export class SliccApp extends ThemedElement {
   set variableFont(value: string | null) {
     this.#variableFont = value;
     if (this.isConnected) this.#fonts();
-  }
-
-  get grammarBase(): string | null {
-    return grammarBase();
-  }
-
-  set grammarBase(value: string | null) {
-    setGrammarBase(value);
   }
 
   #fonts(): void {

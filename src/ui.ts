@@ -38,8 +38,6 @@ export { resolveColor } from './app/base.ts';
 export type { ConfirmOptions, ConfirmVariant, PromptOptions } from './app/confirm.ts';
 export { confirm, prompt } from './app/confirm.ts';
 export type { ImportOutcome, ImportStage } from './app/freezer-import.ts';
-export type { GrammarKind } from './app/grammars.ts';
-export { grammarBase, setGrammarBase } from './app/grammars.ts';
 export type {
   PanelCaller,
   PanelInfo,

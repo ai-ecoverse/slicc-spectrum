@@ -38,6 +38,7 @@ abstract class PierreView extends HTMLElement {
       themeType: this.color,
       overflow: 'scroll' as const,
       disableFileHeader: true,
+      preferredHighlighter: 'highlights' as const,
     };
   }
 
