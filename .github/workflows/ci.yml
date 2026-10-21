@@ -7,64 +7,68 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
+  actions: read
+  issues: write
+  pull-requests: write
+  statuses: write
+  id-token: write
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  runner:
-    runs-on: ${{ vars.CERT_LIGHT_RUNNER || vars.CERT_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      runner: ${{ steps.pick.outputs.runner }}
-    steps:
-      - id: pick
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
-        env:
-          FORCED: ${{ vars.CI_RUNNER }}
-          POOL: ${{ vars.CERT_RUNNER }}
-        with:
-          script: |
-            const hosted = 'ubuntu-latest';
-            const pick = async (runner, why) => {
-              core.setOutput('runner', runner);
-              await core.summary.addRaw(`runner: ${runner} (${why})\n`).write();
-            };
-            if (process.env.FORCED) return await pick(process.env.FORCED, 'vars.CI_RUNNER');
-            const pool = process.env.POOL || hosted;
-            const { owner, repo } = context.repo;
-            if (context.eventName === 'pull_request') {
-              const head = context.payload.pull_request.head.repo;
-              const same = head && head.full_name === `${owner}/${repo}`;
-              return same ? await pick(pool, 'same-repo PR') : await pick(hosted, 'fork PR');
-            }
-            if (context.eventName === 'push' && context.ref === 'refs/heads/main') {
-              return await pick(pool, 'push to main');
-            }
-            if (context.eventName === 'merge_group') {
-              const base = context.payload.merge_group.base_ref.replace('refs/heads/', '');
-              const q = await github.graphql(
-                `query($o:String!,$n:String!,$b:String!){repository(owner:$o,name:$n){mergeQueue(branch:$b){entries(first:100){nodes{pullRequest{number isCrossRepository}}}}}}`,
-                { o: owner, n: repo, b: base }
-              );
-              const entries = q.repository.mergeQueue?.entries?.nodes ?? [];
-              const forks = entries.filter((e) => e.pullRequest?.isCrossRepository !== false);
-              return forks.length === 0
-                ? await pick(pool, `merge group, ${entries.length} same-repo entries`)
-                : await pick(hosted, `merge group with a fork or unknown PR: ${forks.map((e) => e.pullRequest?.number).join(', ')}`);
-            }
-            await pick(hosted, context.eventName);
-
   ci:
-    uses: ai-ecoverse/slicc-shared-web/.github/workflows/node-ci.yml@v1.30.1
+    uses: ai-ecoverse/slicc-shared-web/.github/workflows/pipeline.yml@v2.5.0
+    secrets: inherit
     with:
-      runs-on: ${{ needs.runner.outputs.runner }}
       timeout-minutes: 35
       lint: node .github/scripts/gate.mjs lint "npm run lint"
-      test: node .github/scripts/gate.mjs integration "TEST_CONCURRENCY=4 NODE_OPTIONS=--max-old-space-size=8192 npm test"
-    needs: runner
+      test: TEST_CONCURRENCY=4 npm test
+      node-options: --max-old-space-size=8192
+      review-prompt: |
+        SLICC-SPECTRUM
+
+        This repository is slicc-spectrum: SLICC's terminal and app shell as Lit web components on Spectrum 2 (Spectrum Web Components Gen2, `--swc-*` tokens, Spectrum 2 workflow icons), against a typed model (`src/model/`) with a dummy (`src/dummy/`) and a kernel model (`src/kernel/`). Read `AGENTS.md` and the README sections the change touches first: the README is the contract and holds the design notes, one row per component. `git diff $(git -C "$RUNNER_TEMP/base" rev-parse HEAD)...HEAD` is the change. Neither tree is built: run `npm run build` in a tree before you read its `dist/`.
+
+        Review it twice, as the code reviewer and as the design reviewer, and answer once.
+
+        CODE: look for real defects, in this order.
+        1. Correctness: logic errors, races (Lit update timing, async ports that reject or resolve late, listeners that leak or fire twice), wrong event targets, focus and keyboard handling, state that survives when it shouldn't.
+        2. Contract: the code does what the README says, type changes in `src/model/` are additive only, and `data-id`, `data-action`, `data-surface` and `slot="status"` are not renamed (slicc-bios tests on them).
+        3. Security: guest and approval paths never grant more than asked, no untrusted text reaches `innerHTML` or `unsafeHTML`, sprinkle frames stay sandboxed.
+        4. Tests: every behaviour change has an integration test in `test/integration/` through the public surface, and a fix's test would fail on the old code.
+        5. Repo rules: no comments anywhere (YAML included), no React, Spectrum components imported one by one, `--swc-*` tokens only, no em dashes or uppercase labels in copy.
+        You may run `npm run lint`, `npm run build` and single integration tests (`node --test --test-global-setup=node_modules/@ai-ecoverse/slicc-shared-web/harness/global.mjs test/integration/<file>.test.mjs`) to confirm a finding. Don't report style preferences, and don't report anything you haven't confirmed in the code.
+
+        DESIGN: when the change touches `src/`, the test page (`test/integration/page/`) or the build, review it visually against Spectrum 2 and general design guidelines; otherwise say in the summary that it doesn't change what users see.
+
+        What's set up:
+        - The review browsers in review/browsers.json show the UI test page against the dummy model, from each side's own `npm run review:browser` (`.github/scripts/review-browser.mjs`): the head is built and served on http://127.0.0.1:8301, the base on http://127.0.0.1:8302. The extension browser of each side shows `/ui/?delay=0&color=light`, the cli browser `/ui/?delay=0&color=dark`, each in a 1440×900 window. Other pages on the same servers: `/` (the terminal) and `/kernel-ui/`. The server logs are `slicc-spectrum-review-head.log` and `slicc-spectrum-review-base.log` in the temp dir.
+        - A base from before the hook leaves its browsers on about:blank. Then build and serve it yourself: `cd "$RUNNER_TEMP/base" && npm run build && (PORT=8302 nohup node test/integration/chrome.mjs > /tmp/base-page.log 2>&1 &)`, wait for "slicc-spectrum test page on" in that log, and navigate the base browsers there.
+        - Drive the browsers from small Node scripts run in the head's directory with `@ai-ecoverse/slicc-cdp`: `const client = await connect({ url: cdp })` (cdp from review/browsers.json), `Target.getTargets`, `const session = await client.attach(targetId)`, then `client.send(method, params, session)`: `Page.navigate`, `Runtime.evaluate`, `Input.dispatchMouseEvent` (the browsers are headed, so hover works), `Emulation.setDeviceMetricsOverride`, `Emulation.setEmulatedMedia`, and `Page.captureScreenshot`, whose base64 `data` you write to review/shots/<name>.png. There is no playwright.
+        - Query parameters: `delay=0` (keep it; the dummy paces replies with timers otherwise), `color=light|dark|system`, `readonly=version`, `leaders=two|failed|unlinked|disconnected`, and the follow and watch-only scenarios in the README's dummy section. Pick a cone by clicking its row in the Agents panel (`[data-id="cone-kitchen-sink"]`): kitchen-sink is the tour (every message kind, tool runs, licks, decisions, error cards, dividers), harbor has scoops, release-notes has severity licks, and inbox-triage and release-notes have unread counts.
+        - Spectrum's guidelines: `curl -fsSL https://spectrum.adobe.com/sitemap.xml` lists every page of spectrum.adobe.com (foundations, components, content). Read the ones that apply.
+
+        How to shoot (what goes wrong otherwise):
+        - Before every screenshot: wait for `customElements.whenDefined('slicc-app')` and `document.fonts.ready` (Adobe Clean loads late; a fallback font means the shot was too early), blur focus (`document.activeElement?.blur()`), and wait about 400 ms for transitions.
+        - Compare base and head in the same state and at the same anchor: scroll the same `data-id` into view (the chat pins to the bottom, so a raw diff is often only a scroll offset).
+        - Desktop is 1440×900 (`Emulation.setDeviceMetricsOverride` with `width: 1440, height: 900, deviceScaleFactor: 1, mobile: false`). Phone is a real 420×860 viewport with `mobile: true`, not a narrowed desktop window. Tablet is under 1200 px wide.
+        - Shoot both light and dark (the two browsers of a side, or `color=` on the URL). Shoot `prefers-reduced-motion`, `prefers-reduced-transparency` and forced colors (`Emulation.setEmulatedMedia`) when the change touches motion, the frosted composer or borders.
+        - The sandboxed sprinkle iframe stops painting off screen: scroll a dip into view and wait for its height to settle before you judge it.
+        - Also catch what a still shot misses: hover-only strips and focus-within reveals, streaming states (pulsing tool icons, the composer's and transcript's streaming icons), permission countdowns, the sticky decision pile after scrolling, and collapsed vs expanded (cones, lick bodies, tool cards).
+        - Not bugs: fixture text is invented, and times are relative to page load. RTL: check logical properties (`margin-inline`, `inset-inline`) in the CSS diff rather than shooting `dir=rtl`, unless the change touches layout direction. Spectrum's large scale isn't used.
+
+        What to check (start with what the change touches, then look around it for regressions):
+        1. Tokens only: `--swc-*` for colour, spacing, radius, type size and weight, and shadow. Flag raw px, hex or `rgb()` in CSS diffs; the decision pile's depth scale and blur are the known exceptions.
+        2. Never colour alone for status or severity: every status light has its word, every error card its icon and "Error:", every severity lick its icon, and the word survives truncation at 420.
+        3. Contrast AA (4.5:1 text, 3:1 icons and boundaries), especially text on tints (the indigo bubble, the unread pill, notice and negative fills) in dark.
+        4. Focus: a visible ring on every interactive element, nothing hidden under the floating composer or the sticky pile, and no hover-only actions.
+        5. Copy: sentence case, no em dashes, no uppercase labels, no "Click here", labels that match their actions; the negative variant only for destructive, unrecoverable actions, with Cancel focused.
+        6. Typography: Adobe Clean Spectrum VF with token weights (bold titles, subdued detail colour).
+        7. Icons: Spectrum workflow icons (`swc-icon-*`, `sp-icon-*`) at consistent sizes per surface; emoji only where designed, with `aria-hidden`.
+        8. Layout: no horizontal overflow at 420, headers that ellipsize instead of wrapping, and nothing that moves between base and head unless the change means it to.
+        Surfaces to cover as the change warrants: the chat transcript (kitchen-sink at top, middle and bottom), the composer (empty, a 3-line draft, attachments, queued rows), Agents, Changes and the diff, Network (`?leaders=two`), Settings, Monitor, Files and Memory, the Browser panel, the Freezer, the approvals dialog, notices, and the follow page and watch-only footer.
+
+        Your answer: start each comment with its severity, P1, P2 or P3, and give a concrete fix; a design finding names the Spectrum page it rests on. Shoot base and head in pairs where they differ, cropped to what matters, and put them in the summary or the comment they support. Deny when you confirmed a P1 or P2: a bug, a contract or security break, a behaviour change without its test, or a visual regression. End the summary with what you checked, the code and the design, and anything about this setup that got in your way.

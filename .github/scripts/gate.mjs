@@ -3,17 +3,6 @@ import { spawn } from 'node:child_process';
 const [name, command] = process.argv.slice(2);
 const kinds = {
   lint: (output) => (/^slicc-lint: PASS$/m.test(output) ? 'every slicc-lint step' : null),
-  integration: (output) => {
-    const last = (label) => {
-      const found = [...output.matchAll(new RegExp(`^(?:ℹ|#) ${label} (\\d+)$`, 'gm'))].at(-1);
-      return found ? Number(found[1]) : null;
-    };
-    const tests = last('tests');
-    const pass = last('pass');
-    const fail = last('fail');
-    if (!tests || !pass || fail !== 0) return null;
-    return `${pass} of ${tests} tests`;
-  },
 };
 
 const check = kinds[name];
