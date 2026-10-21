@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   ci:
-    uses: ai-ecoverse/slicc-shared-web/.github/workflows/pipeline.yml@v2.7.2
+    uses: ai-ecoverse/slicc-shared-web/.github/workflows/pipeline.yml@v2.7.4
     secrets: inherit
     with:
       timeout-minutes: 35
@@ -32,7 +32,7 @@ jobs:
       review-prompt: |
         SLICC-SPECTRUM
 
-        This repository is slicc-spectrum: SLICC's terminal and app shell as Lit web components on Spectrum 2 (Spectrum Web Components Gen2, `--swc-*` tokens, Spectrum 2 workflow icons), against a typed model (`src/model/`) with a dummy (`src/dummy/`) and a kernel model (`src/kernel/`). Read `AGENTS.md` and the README sections the change touches first: the README is the contract and holds the design notes, one row per component. `review/context/pr.diff` is the change; the checkout is shallow, so a three-dot `git diff` finds no merge base. Neither tree is built: run `npm run build` in a tree before you read its `dist/`.
+        This repository is slicc-spectrum: SLICC's terminal and app shell as Lit web components on Spectrum 2 (Spectrum Web Components Gen2, `--swc-*` tokens, Spectrum 2 workflow icons), against a typed model (`src/model/`) with a dummy (`src/dummy/`) and a kernel model (`src/kernel/`). Read `AGENTS.md` and the README sections the change touches first: the README is the contract and holds the design notes, one row per component. `git diff origin/main...HEAD`, or `$RUNNER_TEMP/review/context/pr.diff`, is the change. Neither tree is built: run `npm run build` in a tree before you read its `dist/`.
 
         Review it twice, as the code reviewer and as the design reviewer, and answer once.
 
@@ -47,9 +47,9 @@ jobs:
         DESIGN: when the change touches `src/`, the test page (`test/integration/page/`) or the build, review it visually against Spectrum 2 and general design guidelines; otherwise say in the summary that it doesn't change what users see.
 
         What's set up:
-        - The review browsers in review/browsers.json show the UI test page against the dummy model, from each side's own `npm run review:browser` (`.github/scripts/review-browser.mjs`): the head is built and served on http://127.0.0.1:8301, the base on http://127.0.0.1:8302. The extension browser of each side shows `/ui/?delay=0&color=light`, the cli browser `/ui/?delay=0&color=dark`, each in a 1440×900 window. Other pages on the same servers: `/` (the terminal) and `/kernel-ui/`. The server logs are `/tmp/slicc-spectrum-review-head.log` and `/tmp/slicc-spectrum-review-base.log` (Node's `os.tmpdir()`).
+        - The review browsers in `$RUNNER_TEMP/review/browsers.json` show the UI test page against the dummy model, from each side's own `npm run review:browser` (`.github/scripts/review-browser.mjs`): the head is built and served on http://127.0.0.1:8301, the base on http://127.0.0.1:8302. The extension browser of each side shows `/ui/?delay=0&color=light`, the cli browser `/ui/?delay=0&color=dark`, each in a 1440×900 window. Other pages on the same servers: `/` (the terminal) and `/kernel-ui/`. The server logs are `/tmp/slicc-spectrum-review-head.log` and `/tmp/slicc-spectrum-review-base.log` (Node's `os.tmpdir()`).
         - A base from before the hook leaves its browsers on about:blank. Then build and serve it yourself: `cd "$RUNNER_TEMP/base" && npm run build && (PORT=8302 nohup node test/integration/chrome.mjs > /tmp/base-page.log 2>&1 &)`, wait for "slicc-spectrum test page on" in that log, and navigate the base browsers there.
-        - Drive the browsers from small Node scripts run in the head's directory with `@ai-ecoverse/slicc-cdp`: `const client = await connect({ url: cdp })` (cdp from review/browsers.json), `Target.getTargets`, `const session = await client.attach(targetId)`, then `client.send(method, params, session)`: `Page.navigate`, `Runtime.evaluate`, `Input.dispatchMouseEvent` (the browsers are headed, so hover works), `Emulation.setDeviceMetricsOverride`, `Emulation.setEmulatedMedia`, and `Page.captureScreenshot`, whose base64 `data` you write to review/shots/<name>.png. There is no playwright.
+        - Drive the browsers from small Node scripts run in the head's directory with `@ai-ecoverse/slicc-cdp`: `const client = await connect({ url: cdp })` (cdp from `$RUNNER_TEMP/review/browsers.json`), `Target.getTargets`, `const session = await client.attach(targetId)`, then `client.send(method, params, session)`: `Page.navigate`, `Runtime.evaluate`, `Input.dispatchMouseEvent` (the browsers are headed, so hover works), `Emulation.setDeviceMetricsOverride`, `Emulation.setEmulatedMedia`, and `Page.captureScreenshot`, whose base64 `data` you write to `$RUNNER_TEMP/review/shots/<name>.png`. There is no playwright.
         - Query parameters: `delay=0` (keep it; the dummy paces replies with timers otherwise), `color=light|dark|system`, `readonly=version`, `leaders=two|failed|unlinked|disconnected`, and the follow and watch-only scenarios in the README's dummy section. Pick a cone by clicking its row in the Agents panel (`[data-id="cone-kitchen-sink"]`): kitchen-sink is the tour (every message kind, tool runs, licks, decisions, error cards, dividers), harbor has scoops, release-notes has severity licks, and inbox-triage and release-notes have unread counts.
         - Spectrum's guidelines: `curl -fsSL https://spectrum.adobe.com/sitemap.xml` lists every page of spectrum.adobe.com (foundations, components, content). Read the ones that apply.
 
