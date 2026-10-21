@@ -5,7 +5,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-info-circle.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import type { Approval, Notice, NoticesPort, SliccModel } from '../model/types.ts';
-import { asking, deadline, guestWaiting, sudo, waiting } from './approvals.ts';
+import { asking, deadline, guestWaiting, sudo, trayAsking, waiting } from './approvals.ts';
 import { ModelElement } from './base.ts';
 import { tabsBanner } from './tabs.ts';
 
@@ -196,6 +196,15 @@ export class SliccNotices extends ModelElement {
   }
 
   #approval(approval: Approval): TemplateResult {
+    if (approval.kind === 'tray')
+      return html`<div class="notice" role="status" data-approval-notice=${approval.id} data-approval-kind="tray" data-tone="warning">
+        <swc-icon-alert-triangle></swc-icon-alert-triangle>
+        <div class="text">
+          <span class="title">Waiting for tray approval</span>
+          <p>${trayAsking(approval)}</p>
+          <p>It waits for the owner's approval. Denied automatically at ${deadline(approval.expiresAt)}.</p>
+        </div>
+      </div>`;
     if (approval.kind !== 'sudo')
       return html`<div class="notice" role="status" data-approval-notice=${approval.id} data-approval-kind=${approval.kind} data-tone="warning">
         <swc-icon-alert-triangle></swc-icon-alert-triangle>

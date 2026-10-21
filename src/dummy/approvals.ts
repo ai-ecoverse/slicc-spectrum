@@ -26,6 +26,11 @@ export type ApprovalScenario =
   | 'guest-args'
   | 'guest-empty'
   | 'guest-truncated'
+  | 'tray'
+  | 'tray-url'
+  | 'tray-rotate'
+  | 'tray-unlink'
+  | 'tray-expired'
   | 'none';
 
 const minutes = 60_000;
@@ -132,6 +137,26 @@ function guestCall(scenario: ApprovalScenario, now: number): Approval {
   };
 }
 
+function trayFixtures(scenario: ApprovalScenario, now: number): Approval[] {
+  const requester = { kind: 'agent', name: 'sliccy', agentId: 'cone-sliccy' } as const;
+  const base = { requester, createdAt: now, expiresAt: now + 5 * minutes };
+  const all: Approval[] = [
+    { ...base, id: 'tray-url', kind: 'tray', op: 'url' },
+    { ...base, id: 'tray-rotate', kind: 'tray', op: 'rotate', createdAt: now + 1 },
+    {
+      ...base,
+      id: 'tray-unlink',
+      kind: 'tray',
+      op: 'unlink',
+      device: { id: 'device-kitchen', name: 'Kitchen tablet' },
+      createdAt: now + 2,
+    },
+  ];
+  if (scenario === 'tray') return all;
+  const id = scenario === 'tray-expired' ? 'tray-url' : scenario;
+  return all.filter((approval) => approval.id === id);
+}
+
 export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): Approval[] {
   const agent: Approval = {
     id: 'sudo-jq',
@@ -177,6 +202,7 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
     ];
   if (scenario === 'guest' || scenario === 'guest-follower') return guestFixtures(now);
   if (scenario === 'guest-always') return guestAlways(now);
+  if (scenario.startsWith('tray')) return trayFixtures(scenario, now);
   if (scenario.startsWith('guest-')) return [guestCall(scenario, now)];
   if (scenario === 'none') return [];
   if (scenario === 'long') return [{ ...agent, id: 'sudo-release', command: longCommand }];
@@ -204,6 +230,8 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
       void time
         .sleep(100)
         .then(() => this.end('sudo-jq', scenario === 'elsewhere' ? 'answered' : 'withdrawn'));
+    if (scenario === 'tray-expired')
+      void time.sleep(100).then(() => this.end('tray-url', 'expired'));
   }
 
   raise(approval: Approval): void {
