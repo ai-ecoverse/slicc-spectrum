@@ -214,7 +214,7 @@ export class SliccSprinkle extends ThemedElement {
     :host {
       display: block;
       height: 100%;
-      background: var(--spectrum-background-layer-2-color);
+      background: var(--swc-background-layer-2-color);
     }
     :host([inline]) {
       height: auto;
@@ -234,8 +234,8 @@ export class SliccSprinkle extends ThemedElement {
       outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
     }
     .frame {
-      border: 1px solid var(--spectrum-gray-200);
-      background: var(--spectrum-background-layer-1-color);
+      border: var(--swc-border-width-100) solid var(--swc-gray-200);
+      background: var(--swc-background-layer-1-color);
     }
     .handle {
       display: flex;
@@ -282,7 +282,7 @@ export class SliccSprinkle extends ThemedElement {
       font-size: var(--swc-font-size-75);
     }
     .view-only {
-      color: var(--spectrum-neutral-subdued-content-color-default);
+      color: var(--swc-neutral-subdued-content-color-default);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
