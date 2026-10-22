@@ -657,6 +657,8 @@ export interface MonitorVital {
   series?: number[];
   ratio?: number;
   hint?: string;
+  provider?: string;
+  window?: TrayBudget['window'];
 }
 
 export interface MonitorRow {
@@ -749,6 +751,7 @@ export interface TrayBudget {
   percent: number;
   window: 'daily' | 'weekly' | 'monthly';
   resets: string;
+  provider?: string;
 }
 
 export interface TrayStatus {

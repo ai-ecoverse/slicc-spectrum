@@ -79,6 +79,7 @@ const model = createDummyModel({
   monitor: params.get('monitor') ?? 'dummy',
   import: params.get('import') ?? 'off',
   login: params.get('login') ?? 'ok',
+  budget: params.get('budget') ?? 'plain',
 });
 if (params.has('color')) model.settings.update({ color: params.get('color') });
 const app = document.querySelector('slicc-app');

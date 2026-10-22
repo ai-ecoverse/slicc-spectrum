@@ -350,6 +350,12 @@ export class SliccApp extends ThemedElement {
       width: 0;
       flex: 1;
     }
+    :host([screen='tablet']) header sp-picker {
+      min-width: calc(var(--swc-spacing-400) * 4);
+    }
+    :host([screen='tablet']) header sp-action-menu {
+      flex-shrink: 0;
+    }
     :host([screen='phone']) header .spacer,
     :host([screen='phone']) header .view-label {
       display: none;
@@ -1121,7 +1127,7 @@ export class SliccApp extends ThemedElement {
           ${this.#updatesIndicator()}
           ${this.#remoteIndicator()}
           ${this.#networkIndicator()}
-          ${this.#offers('chat') ? html`<slicc-tray .model=${this.model} .panels=${['network', 'monitor'].filter((id) => this.#offers(id) && (id !== 'network' || this.model?.network))} ?compact=${this.screen === 'phone'} @show-surface=${this.#showSurface}></slicc-tray>` : nothing}
+          ${this.#offers('chat') ? html`<slicc-tray .model=${this.model} .panels=${['network', 'monitor'].filter((id) => this.#offers(id) && (id !== 'network' || this.model?.network))} ?compact=${this.screen === 'phone'} ?narrow=${this.screen === 'tablet'} @show-surface=${this.#showSurface}></slicc-tray>` : nothing}
           <sp-action-menu size="s" quiet label="View" @change=${this.#view}>
             <swc-icon-view-grid slot="icon"></swc-icon-view-grid>
             <span slot="label" class="view-label">View</span>

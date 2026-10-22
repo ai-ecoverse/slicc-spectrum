@@ -35,6 +35,16 @@ export function spendLine(status: TrayStatus): string {
   return line ? `${line}. ` : '';
 }
 
+const providerName: Record<string, string> = { adobe: 'Adobe', xai: 'SuperGrok' };
+
+export function providerOf(provider: string): string {
+  return Object.hasOwn(providerName, provider) ? providerName[provider] : provider;
+}
+
+export function budgetTitle(provider: string, window: string): string {
+  return `${providerOf(provider)} ${window}`;
+}
+
 export function budgetLine(status: TrayStatus, budget: TrayBudget): string {
   return `${spendLine(status)}${budget.percent}% of the ${budget.window} budget, ${budget.resets}.`;
 }
@@ -84,7 +94,8 @@ export class SliccTray extends ModelElement {
         gap: var(--swc-spacing-50);
       }
       :host([compact]) .chip .detail,
-      :host([compact]) .usage {
+      :host([compact]) .usage,
+      :host([narrow]) .usage .window {
         display: none;
       }
       .muted {
@@ -148,14 +159,20 @@ export class SliccTray extends ModelElement {
   }
 
   #usage(status: TrayStatus, budget: TrayBudget): TemplateResult {
-    const label = `Budget ${budget.percent}%`;
+    const provider = budget.provider;
+    const title = provider ? budgetTitle(provider, budget.window) : '';
+    const label = `${title || 'Budget'} ${budget.percent}%`;
+    const line = budgetLine(status, budget);
+    const shown = provider
+      ? html`<span>${providerOf(provider)}<span class="window"> ${budget.window}</span> ${budget.percent}%</span>`
+      : label;
     return html`${this.#item(
       'usage',
       'monitor',
-      `${label}. ${budgetLine(status, budget)}`,
-      html`<swc-status-light size="s" variant=${budgetVariant(budget.percent)}>${label}</swc-status-light>`,
+      `${label}. ${line}`,
+      html`<swc-status-light size="s" variant=${budgetVariant(budget.percent)}>${shown}</swc-status-light>`,
       () => this.#open('monitor')
     )}
-      <swc-tooltip for="usage" placement="bottom">${budgetLine(status, budget)}</swc-tooltip>`;
+      <swc-tooltip for="usage" placement="bottom">${title ? `${title}. ${line}` : line}</swc-tooltip>`;
   }
 }

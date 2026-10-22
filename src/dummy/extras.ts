@@ -1,4 +1,11 @@
-import type { FrozenCone, Memory, Message, Sprinkle, TrayStatus } from '../model/types.ts';
+import type {
+  FrozenCone,
+  Memory,
+  Message,
+  Sprinkle,
+  TrayBudget,
+  TrayStatus,
+} from '../model/types.ts';
 import suggestions from './sprinkles/suggestions.shtml';
 import welcome from './sprinkles/welcome.shtml';
 import { status } from './status.ts';
@@ -242,6 +249,8 @@ export const coneSprinkles: Sprinkle[] = [
   coneSprinkle('cone-release', 'changelog', 'Changelog', 'scroll-text', 'Draft notes for 2.4.0.'),
 ];
 
+const weekly: TrayBudget = { percent: 32, window: 'weekly', resets: 'resets in 4 days' };
+
 export const tray: TrayStatus = {
   name: 'sliccstart',
   kind: 'sliccstart',
@@ -253,6 +262,12 @@ export const tray: TrayStatus = {
   ],
   spent: 23.67,
   rate: 0.59,
-  budget: { percent: 32, window: 'weekly', resets: 'resets in 4 days' },
+  budget: weekly,
   joinUrl: 'https://www.example.com/join/7Q4D-K9TX',
 };
+
+export type BudgetScenario = 'plain' | 'adobe' | 'xai';
+
+export function trayWith(budget: BudgetScenario): TrayStatus {
+  return budget === 'plain' ? tray : { ...tray, budget: { ...weekly, provider: budget } };
+}
