@@ -194,3 +194,44 @@ test('at the narrowest tablet the header keeps the View menu and its last button
   assert.ok(header.menu >= header.icon && header.icon > 0, JSON.stringify(header));
   assert.deepEqual(page.errors, []);
 });
+
+test('on a 420 phone the SuperGrok budget card keeps its meter inside and names the window in its title', async (t) => {
+  const page = await open(t, { budget: 'xai' });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 420,
+    height: 860,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  await page.until(() => window.app.getAttribute('screen') === 'phone');
+  await page.evaluate(() => window.app.show('monitor'));
+  await page.until(() => {
+    const card = window
+      .$('slicc-app', 'slicc-dock')
+      .content('monitor')
+      ?.shadowRoot.querySelector('.vital[data-id=budget]');
+    const box = card?.getBoundingClientRect();
+    return !!box && box.width > 0 && box.right <= innerWidth;
+  });
+  await page.evaluate(() => document.fonts.ready.then(() => true));
+  await page.until(
+    () => window.$('slicc-app', 'slicc-dock').content('monitor').getAnimations().length === 0
+  );
+  const card = await page.evaluate(() => {
+    const vital = window
+      .$('slicc-app', 'slicc-dock')
+      .content('monitor')
+      .shadowRoot.querySelector('.vital[data-id=budget]');
+    return {
+      scroll: vital.scrollWidth,
+      client: vital.clientWidth,
+      shown: vital.querySelector('[slot=label]').innerText.trim(),
+      title: vital.title,
+    };
+  });
+  assert.ok(card.scroll <= card.client, JSON.stringify(card));
+  assert.equal(card.shown, 'SuperGrok', JSON.stringify(card));
+  assert.equal(card.title, 'SuperGrok weekly, resets in 4 days');
+  assert.deepEqual(page.errors, []);
+});

@@ -19,7 +19,7 @@ import type {
 import { ModelElement, shared } from './base.ts';
 import { panelCss } from './files.ts';
 import { copyText } from './reach.ts';
-import { budgetTitle } from './tray.ts';
+import { budgetTitle, providerOf } from './tray.ts';
 import { ViewScroll, ViewState } from './view-state.ts';
 
 export function sparkline(points: readonly number[], width = 120, height = 28): string {
@@ -207,9 +207,15 @@ export class SliccMonitor extends ModelElement {
         align-content: start;
         gap: var(--swc-spacing-50);
         min-width: 0;
+        container-type: inline-size;
         border-radius: var(--swc-corner-radius-medium-default);
         padding: var(--swc-spacing-200);
         background: var(--swc-background-layer-1-color);
+      }
+      @container (max-width: 113px) {
+        .window {
+          display: none;
+        }
       }
       .label {
         color: var(--swc-neutral-subdued-content-color-default);
@@ -442,11 +448,17 @@ export class SliccMonitor extends ModelElement {
   }
 
   #vital(vital: MonitorVital): TemplateResult {
-    const label = vital.provider
-      ? budgetTitle(vital.provider, vital.window ?? 'budget')
+    const provider = vital.provider;
+    const window = vital.window ?? 'budget';
+    const label = provider
+      ? html`${providerOf(provider)}<span class="window"> ${window}</span>`
       : vital.label;
+    const about = vital.hint ?? vital.unit;
+    const title = provider
+      ? [budgetTitle(provider, window), about].filter(Boolean).join(', ')
+      : about;
     if (vital.ratio !== undefined) {
-      return html`<div class="vital" data-id=${vital.id} title=${vital.hint ?? vital.unit ?? nothing}>
+      return html`<div class="vital" data-id=${vital.id} title=${title ?? nothing}>
         <swc-meter
           size="s"
           variant=${meterVariant(vital.ratio)}
