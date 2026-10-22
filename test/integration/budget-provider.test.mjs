@@ -235,3 +235,51 @@ test('on a 420 phone the SuperGrok budget card keeps its meter inside and names 
   assert.equal(card.title, 'SuperGrok weekly, resets in 4 days');
   assert.deepEqual(page.errors, []);
 });
+
+test('a provider budget card keeps its meter inside at every width, monthly or weekly at 100%', async (t) => {
+  const page = await open(t, { budget: 'xai' });
+  await page.evaluate(() => window.app.show('monitor'));
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock')
+        .content('monitor')
+        ?.shadowRoot.querySelector('.vital[data-id=budget]')
+  );
+  await page.evaluate(() => document.fonts.ready.then(() => true));
+  const overflow = await page.evaluate(async () => {
+    const host = window.$('slicc-app', 'slicc-dock').content('monitor');
+    const base = window.model.monitor.snapshot();
+    const found = [];
+    for (const window_ of ['monthly', 'weekly', 'daily']) {
+      window.model.monitor.snapshot = () => ({
+        ...base,
+        alerts: [],
+        vitals: [
+          {
+            id: 'budget',
+            label: `Budget (${window_})`,
+            value: '100%',
+            unit: 'resets in 4 days',
+            ratio: 1,
+            provider: 'xai',
+            window: window_,
+          },
+        ],
+      });
+      for (let width = 140; width <= 260; width += 2) {
+        host.style.width = `${width}px`;
+        host.shadowRoot.querySelector('.bar swc-action-button').click();
+        await host.updateComplete;
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+        const card = host.shadowRoot.querySelector('.vital[data-id=budget]');
+        if (card.scrollWidth > card.clientWidth)
+          found.push(`${window_}@${card.clientWidth}:${card.scrollWidth}`);
+      }
+    }
+    return found;
+  });
+  assert.deepEqual(overflow, []);
+  assert.deepEqual(page.errors, []);
+});

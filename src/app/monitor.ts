@@ -212,8 +212,13 @@ export class SliccMonitor extends ModelElement {
         padding: var(--swc-spacing-200);
         background: var(--swc-background-layer-1-color);
       }
-      @container (max-width: 113px) {
+      @container (max-width: 118px) {
         .window {
+          display: none;
+        }
+      }
+      @container (max-width: 125px) {
+        .window[data-window='monthly'] {
           display: none;
         }
       }
@@ -451,7 +456,7 @@ export class SliccMonitor extends ModelElement {
     const provider = vital.provider;
     const window = vital.window ?? 'budget';
     const label = provider
-      ? html`${providerOf(provider)}<span class="window"> ${window}</span>`
+      ? html`${providerOf(provider)}<span class="window" data-window=${window}> ${window}</span>`
       : vital.label;
     const about = vital.hint ?? vital.unit;
     const title = provider
