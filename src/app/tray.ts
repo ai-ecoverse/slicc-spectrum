@@ -87,6 +87,7 @@ export class SliccTray extends ModelElement {
       }
       swc-status-light {
         align-self: center;
+        white-space: nowrap;
       }
       .chip .followers {
         display: inline-flex;
@@ -95,6 +96,7 @@ export class SliccTray extends ModelElement {
       }
       :host([compact]) .chip .detail,
       :host([compact]) .usage,
+      :host([narrow]) .chip .spare,
       :host([narrow]) .usage .window {
         display: none;
       }
@@ -140,7 +142,10 @@ export class SliccTray extends ModelElement {
     const refused = refusedNow(model.follow?.state());
     const connection = `${connectionLabel[status.connection]}${refused ? ', can’t follow' : ''}`;
     const followers = `${status.followers.length} ${status.followers.length === 1 ? 'follower' : 'followers'}`;
-    const light = status.connection === 'live' ? status.name : `${status.name}, ${connection}`;
+    const live = status.connection === 'live';
+    const light = live
+      ? status.name
+      : html`<span class="spare">${status.name}, </span>${connection}`;
     const budget = shownBudget(status);
     return html`${this.#item(
       'chip',
@@ -150,7 +155,7 @@ export class SliccTray extends ModelElement {
           <swc-status-light size="s" variant=${refused ? 'neutral' : connectionVariant[status.connection]}>
             <span class="detail">${light}</span>
           </swc-status-light>
-          <span class="detail muted followers"><swc-icon-user-group size="s"></swc-icon-user-group>${status.followers.length}</span>
+          <span class=${live ? 'detail muted followers' : 'detail muted followers spare'}><swc-icon-user-group size="s"></swc-icon-user-group>${status.followers.length}</span>
         </span>`,
       () => this.#open('network', 'sync')
     )}

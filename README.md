@@ -590,7 +590,8 @@ With `guests` and no `network`, it shows only the Guests section (no connection,
 
 The tray items in the header, each opening a panel when that panel is in `panels`: the connection (`#chip`, a status light with the float's name and followers, `data-surface="network"`, neutral and labelled "…, can’t follow" while the follow is `refused` and `connected`, exactly when the follow light reads "Can’t follow") opens Network at its **Sync** section, and the budget (`#usage`, `data-surface="monitor"`) opens the Monitor.
 The budget chip reads "Budget 32%", or with the budget's `provider` that provider and the window, "Adobe weekly 32%" (`adobe` is Adobe, `xai` is SuperGrok and any other id shows as it is); its label and tooltip lead with the same words.
-With `narrow` (the app sets it on tablets) the chip leaves out the window, "Adobe 32%", and its label and tooltip keep it.
+Both chips keep their text on one line.
+With `narrow` (the app sets it on tablets) the budget chip leaves out the window, "Adobe 32%", and its label and tooltip keep it; a connection that isn't live shows only its state, "Reconnecting", without the float's name and followers, which its label keeps.
 Without the panel an item is a plain status with its label.
 
 #### `<slicc-confirm>`
@@ -1092,7 +1093,7 @@ Its buttons are plain Spectrum buttons that answer at once: Unlock unlocks, and 
 `createDummyModel({ hold: 'waiting' | 'locked' | 'off' })` (`?hold=` on `/ui/`) makes the agent hold two tool results; a `locked` hold clears when the dummy vault unlocks, and `model.agent.setHold(hold)` changes it.
 
 On phones the update status and the tray connection show only their status light (the tray's budget is hidden) and the network indicator a cloud icon, with the text in their labels and tooltips; the agent picker keeps room for the cone's name, cut with an ellipsis when long, and the bottom rail scrolls when needed.
-On tablets the agent picker gives up room before the View menu does, so the header keeps the View menu and its last button in view down to 640 px, and the tray's budget chip leaves out its window.
+On tablets the agent picker gives up room before the View menu does, so the header keeps the View menu and its last button in view from 640 to 1199 px, the tray's chips stay on one line each, the budget chip leaves out its window and a tray that isn't live shows only its state.
 The update status comes first so progress and failures remain reachable on narrow screens.
 While a row has `beta`, the update status shows a notice **Beta** badge (`[data-updates] [data-beta]`) after its light, or alone when nothing else applies, at every size; its tooltip and label add "{label} runs beta {version}, not certified", with the label's folder left out ("Agent runs beta 6.13.5, not certified").
 

@@ -351,7 +351,7 @@ export class SliccApp extends ThemedElement {
       flex: 1;
     }
     :host([screen='tablet']) header sp-picker {
-      min-width: calc(var(--swc-spacing-400) * 4);
+      min-width: calc(var(--swc-spacing-400) * 3);
     }
     :host([screen='tablet']) header sp-action-menu {
       flex-shrink: 0;
