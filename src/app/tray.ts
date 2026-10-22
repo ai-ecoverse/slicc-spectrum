@@ -164,7 +164,7 @@ export class SliccTray extends ModelElement {
     const label = `${title || 'Budget'} ${budget.percent}%`;
     const line = budgetLine(status, budget);
     const shown = provider
-      ? html`${providerOf(provider)}<span class="window"> ${budget.window}</span> ${budget.percent}%`
+      ? html`<span>${providerOf(provider)}<span class="window"> ${budget.window}</span> ${budget.percent}%</span>`
       : label;
     return html`${this.#item(
       'usage',

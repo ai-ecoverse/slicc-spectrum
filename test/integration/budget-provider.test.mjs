@@ -111,6 +111,18 @@ const fit = () => {
   const usage = root.querySelector('#usage');
   return {
     shown: usage.querySelector('swc-status-light').innerText.trim(),
+    lines: (() => {
+      const light = usage.querySelector('swc-status-light');
+      const walker = document.createTreeWalker(light, NodeFilter.SHOW_TEXT);
+      const tops = new Set();
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        for (const rect of range.getClientRects())
+          if (rect.width > 0) tops.add(Math.round(rect.bottom));
+      }
+      return tops.size;
+    })(),
     label: usage.getAttribute('accessible-label'),
     tip: root.querySelector('swc-tooltip[for=usage]').textContent.trim(),
     right: usage.getBoundingClientRect().right,
@@ -130,6 +142,7 @@ test('at 1280 the provider budget chip shows its window on one line in the heade
   });
   const box = await page.evaluate(fit);
   assert.equal(box.shown, 'SuperGrok weekly 32%', JSON.stringify(box));
+  assert.equal(box.lines, 1, JSON.stringify(box));
   assert.equal(box.height, box.chip, JSON.stringify(box));
 });
 
@@ -148,6 +161,7 @@ test('on a tablet the provider budget chip drops its window and the label and to
   );
   const box = await page.evaluate(fit);
   assert.equal(box.shown, 'SuperGrok 32%', JSON.stringify(box));
+  assert.equal(box.lines, 1, JSON.stringify(box));
   assert.match(box.label, /^SuperGrok weekly 32%\. /);
   assert.match(box.tip, /^SuperGrok weekly\. /);
   assert.equal(box.height, box.chip, JSON.stringify(box));
