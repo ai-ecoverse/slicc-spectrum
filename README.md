@@ -527,6 +527,7 @@ The search field is the shared one from `search.ts` (`sp-search[data-action=sear
 
 The live monitor: vitals (`.vital[data-id]`), each a meter when it has a `ratio` (budget, fullest context) and otherwise a value, its unit and delta on one line and a sparkline from its `series` (spend, active agents, processes, process memory).
 Each card keeps its place whatever it shows: the value line never wraps (a unit or delta that doesn't fit is left out whole rather than cut, and stays in the line's `title` and its text; a vital's optional `hint` replaces that tooltip, such as the exact reset time behind "resets in 4 days"), a card without a `series` keeps the sparkline's room, a meter keeps its description's line, and a card left alone on the last row spans it, so short and long values, 0% and 100%, and missing data move nothing below them.
+A vital with a `provider` (the budget) is headed by that provider and its `window`, "Adobe weekly" or "SuperGrok weekly", instead of its `label`, with the provider's name as in the tray.
 Then alerts (an alert's optional `command` shows after its detail, led by its `commandLabel` or "Run", as unwrapped code with **Copy**, `[data-command]` and `data-action="copy-command"`), and the sections (the agent's Tasks, Processes and Recent problems, then terminals, tabs, pending changes and tray followers; cones and sprinkles have their own panels; any other section an agent sends, such as an older agent's `agents` or `sprinkles`, renders the same way).
 Each section (`li.section[data-id]`) shows its count and an attention badge, and opens its surface with **Open** where one exists; the counts line up in one column whether or not a section has **Open**, and a section without rows keeps its name in line with the others (`agents`, `terminals` and `processes` → terminal, `tabs`, `changes`).
 A section with rows expands into them with its toggle (`.toggle`, `aria-expanded`; `data-open` on the section): collapsed by default, expanded while a row is `warn` or `error`, until the user toggles it; that choice holds for every view of the monitor on the same model, so a layout switch keeps it.
@@ -588,6 +589,8 @@ With `guests` and no `network`, it shows only the Guests section (no connection,
 #### `<slicc-tray>`
 
 The tray items in the header, each opening a panel when that panel is in `panels`: the connection (`#chip`, a status light with the float's name and followers, `data-surface="network"`, neutral and labelled "…, can’t follow" while the follow is `refused` and `connected`, exactly when the follow light reads "Can’t follow") opens Network at its **Sync** section, and the budget (`#usage`, `data-surface="monitor"`) opens the Monitor.
+The budget chip reads "Budget 32%", or with the budget's `provider` that provider and the window, "Adobe weekly 32%" (`adobe` is Adobe, `xai` is SuperGrok and any other id shows as it is); its label and tooltip lead with the same words.
+With `narrow` (the app sets it on tablets) the chip leaves out the window, "Adobe 32%", and its label and tooltip keep it.
 Without the panel an item is a plain status with its label.
 
 #### `<slicc-confirm>`
@@ -827,6 +830,7 @@ The dummy keeps state in memory and maps `/shared/x` to `/home/x` in its files, 
 Later backed by: the tray protocol.
 Connection, role, float kind, followers, spend and budget; `reconnect` and `disconnect`.
 `spent`, `rate` and `budget` are optional: the budget chip's tooltip and label leave out the spend while `spent` is 0 or missing, and the rate while `rate` is, and the chip itself hides without `budget`, or while it's at 0% with nothing spent.
+`budget.provider` is optional: the agent sends the selected model's provider's budget and names it here, and without it the chip reads as before.
 
 #### `updates` (optional)
 
@@ -1070,6 +1074,7 @@ The dummy records a `connect`'s `options` in `settings.connects`, and `{ method:
 The dummy's `docs` and `tickets` MCP accounts have a `url`, the dummy vault records each `endpoints` change and drops a record's pin once the page registers its server, and `createDummyModel({ mcp: 'moved' })` (`?mcp=moved` on `/ui/`) pins the vault's `MCP_DOCS_TOKEN` to docs' URL and moves `docs` to `movedDocs` (from `/dummy`).
 
 `createDummyModel({ monitor: 'agent' })` (`?monitor=agent` on `/ui/`) adds the agent's Tasks (a tree by `depth`), Processes and Recent problems sections to the monitor, and its Running vital.
+`createDummyModel({ budget: 'plain' | 'adobe' | 'xai' })` (`?budget=` on `/ui/`, `plain` by default) sets the tray budget's `provider`: none, so it reads "Budget 32%", or Adobe or SuperGrok, which the tray and the monitor's budget vital name.
 Like slicc-agent's snapshot, the dummy's vitals are the budget, Spend, Active agents, Processes and Process memory (both with a `series`) and Fullest context.
 
 `createDummyModel({ approvals: 'agent' | 'user' | 'many' | 'follower' | 'fail' | 'soon' | 'elsewhere' | 'withdrawn' | 'secrets' | 'guest' | 'guest-follower' | 'guest-always' | 'long' | 'guest-args' | 'guest-empty' | 'guest-truncated' | 'tray' | 'tray-url' | 'tray-rotate' | 'tray-unlink' | 'tray-expired' })` (`?approvals=` on `/ui/`) adds waiting sudo requests: one from an agent, one from a terminal user, three in a row (the last as `www-data`), one without `decide`, one whose `decide` fails, one that expires in 24 seconds, or two whose first is answered in another tab or withdrawn after a few seconds, or one from an agent that copies a file over `/etc/fnox/config.toml`, or (`guest`) three guest requests: a message from Seat 2 (Mara) with attachments and an allow verdict, a tool call with a deny verdict, and a message whose `decide` rejects with "Someone else already answered this."
@@ -1087,6 +1092,7 @@ Its buttons are plain Spectrum buttons that answer at once: Unlock unlocks, and 
 `createDummyModel({ hold: 'waiting' | 'locked' | 'off' })` (`?hold=` on `/ui/`) makes the agent hold two tool results; a `locked` hold clears when the dummy vault unlocks, and `model.agent.setHold(hold)` changes it.
 
 On phones the update status and the tray connection show only their status light (the tray's budget is hidden) and the network indicator a cloud icon, with the text in their labels and tooltips; the agent picker keeps room for the cone's name, cut with an ellipsis when long, and the bottom rail scrolls when needed.
+On tablets the agent picker gives up room before the View menu does, so the header keeps the View menu and its last button in view down to 640 px, and the tray's budget chip leaves out its window.
 The update status comes first so progress and failures remain reachable on narrow screens.
 While a row has `beta`, the update status shows a notice **Beta** badge (`[data-updates] [data-beta]`) after its light, or alone when nothing else applies, at every size; its tooltip and label add "{label} runs beta {version}, not certified", with the label's folder left out ("Agent runs beta 6.13.5, not certified").
 

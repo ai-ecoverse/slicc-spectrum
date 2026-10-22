@@ -4,6 +4,7 @@ import { type ApprovalScenario, DummyApprovals } from './approvals.ts';
 import { type BrowserScenario, browserHistory, DummyBrowser, drive } from './browser.ts';
 import { type ChangesScenario, DummyChanges } from './changes.ts';
 import { type Clock, clock } from './clock.ts';
+import type { BudgetScenario } from './extras.ts';
 import * as extras from './extras.ts';
 import { DummyFiles, type MountScenario } from './files.ts';
 import * as fixtures from './fixtures.ts';
@@ -68,6 +69,7 @@ export interface DummyOptions {
   monitor?: 'dummy' | 'agent';
   import?: ImportScenario | 'off';
   login?: DummyLogin;
+  budget?: BudgetScenario;
 }
 
 export interface DummyModel extends SliccModel {
@@ -213,6 +215,7 @@ export function createDummyModel({
   monitor = 'dummy',
   import: imports = 'off',
   login,
+  budget = 'plain',
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
   const mount =
@@ -276,7 +279,7 @@ export function createDummyModel({
       agent,
       files
     ),
-    tray: new DummyTray(extras.tray, time),
+    tray: new DummyTray(extras.trayWith(budget), time),
     updates: new DummyUpdates(updates, time, {
       ...(packages === 'off' ? {} : { packages }),
       ...(beta === 'off' ? {} : { beta }),

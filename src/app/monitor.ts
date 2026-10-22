@@ -19,6 +19,7 @@ import type {
 import { ModelElement, shared } from './base.ts';
 import { panelCss } from './files.ts';
 import { copyText } from './reach.ts';
+import { budgetTitle } from './tray.ts';
 import { ViewScroll, ViewState } from './view-state.ts';
 
 export function sparkline(points: readonly number[], width = 120, height = 28): string {
@@ -441,6 +442,9 @@ export class SliccMonitor extends ModelElement {
   }
 
   #vital(vital: MonitorVital): TemplateResult {
+    const label = vital.provider
+      ? budgetTitle(vital.provider, vital.window ?? 'budget')
+      : vital.label;
     if (vital.ratio !== undefined) {
       return html`<div class="vital" data-id=${vital.id} title=${vital.hint ?? vital.unit ?? nothing}>
         <swc-meter
@@ -448,13 +452,13 @@ export class SliccMonitor extends ModelElement {
           variant=${meterVariant(vital.ratio)}
           value=${Math.round(vital.ratio * 100)}
           value-label=${vital.value}
-          ><span slot="label">${vital.label}</span><span slot="description">${vital.unit ?? '\u00a0'}</span></swc-meter
+          ><span slot="label">${label}</span><span slot="description">${vital.unit ?? '\u00a0'}</span></swc-meter
         >
       </div>`;
     }
     const line = vital.series ? sparkline(vital.series) : '';
     return html`<div class="vital" data-id=${vital.id}>
-      <div class="label">${vital.label}</div>
+      <div class="label">${label}</div>
       <div class="reading" title=${vital.hint ?? [vital.value, vital.unit, vital.delta].filter(Boolean).join(' ')}><span class="value">${vital.value}</span>${
         vital.unit ? html`<span class="unit">${vital.unit}</span>` : nothing
       }${vital.delta ? html`<span class="delta">${vital.delta}</span>` : nothing}</div>

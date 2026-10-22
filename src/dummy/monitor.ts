@@ -150,6 +150,9 @@ export class DummyMonitor extends Emitter<MonitorEvents> implements MonitorPort 
                 value: `${status.budget.percent}%`,
                 unit: status.budget.resets,
                 ratio: status.budget.percent / 100,
+                ...(status.budget.provider
+                  ? { provider: status.budget.provider, window: status.budget.window }
+                  : {}),
               },
             ]
           : []),
