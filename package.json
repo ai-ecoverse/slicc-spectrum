@@ -59,18 +59,6 @@
     "lint": "slicc-lint",
     "format": "biome check --write ."
   },
-  "peerDependencies": {
-    "@shikijs/langs": "4.5.0",
-    "@shikijs/themes": "4.5.0"
-  },
-  "peerDependenciesMeta": {
-    "@shikijs/langs": {
-      "optional": true
-    },
-    "@shikijs/themes": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@adobe/spectrum-wc": "2.0.0-beta.5",
     "@adobe/spectrum-wc-icons": "2.0.0-beta.5",
@@ -83,7 +71,8 @@
     "@biomejs/biome": "2.5.15",
     "@fontsource/source-code-pro": "5.3.1",
     "@happy-dom/global-registrator": "21.0.3",
-    "@pierre/diffs": "1.5.2",
+    "@pierre/diffs": "1.6.1",
+    "@pierre/highlights": "0.2.0",
     "@pierre/trees": "1.0.0-beta.6",
     "@spectrum-web-components/action-menu": "1.12.5",
     "@spectrum-web-components/alert-dialog": "1.12.5",

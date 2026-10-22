@@ -1,10 +1,9 @@
 import { File, FileDiff } from '@pierre/diffs';
 import css from './code.css';
+import { codeThemes } from './code-theme.ts';
 import { adoptStyles } from './sheets.ts';
 
 export type CodeColor = 'light' | 'dark';
-
-const themes = { light: 'pierre-light', dark: 'pierre-dark' };
 
 interface Viewer {
   cleanUp(): void;
@@ -34,10 +33,11 @@ abstract class PierreView extends HTMLElement {
 
   protected options() {
     return {
-      theme: themes,
+      theme: codeThemes,
       themeType: this.color,
       overflow: 'scroll' as const,
       disableFileHeader: true,
+      preferredHighlighter: 'highlights' as const,
     };
   }
 

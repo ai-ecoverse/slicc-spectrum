@@ -220,7 +220,7 @@ Neither Adobe Clean can ship in a public package.
 The legacy faces come from `fontBase` (`AdobeClean-{Regular,Medium,Bold,ExtraBold}.otf`), which defaults to `/fonts/` on the current origin.
 Every `*.sliccy.ai` host passes it through to v6, and `npm start` proxies it from `seven.sliccy.ai`.
 The sans stack (`--swc-sans-font-family-stack`, also used by the 1.12 components) is the variable face, then Adobe Clean, then the system font stack, so text falls back face by face wherever a file doesn't load.
-`?delay=` sets the dummy's tick in milliseconds (default 30) , `?color=light|dark|system` the theme, and `?grammars=` the grammar base.
+`?delay=` sets the dummy's tick in milliseconds (default 30) and `?color=light|dark|system` the theme.
 
 ### Elements
 
@@ -1136,13 +1136,11 @@ Replay plays a longer run across ten replies, with long commands whose arguments
 ### Distribution
 
 The UI is ESM with code splitting: `slicc-ui.js`, `slicc-dummy.js` and `chunk-*.js` next to them in `dist/`, with no bare imports, so the folder can be served as plain files from OPFS. dockview's ESM build has no CSS; the build takes it from dockview's UMD bundle.
-`@pierre/diffs` highlights with Shiki.
-`dist/` carries the grammars SLICC needs most (CSS, diff, HTML, JavaScript, JSON, JSX, Markdown, Python, shell, SQL, TOML, TSX, TypeScript, XML, YAML); every other grammar and theme stays out of `dist/` and loads the first time a file needs it.
-It loads from `grammarBase` first, if set, and then from `https://cdn.jsdelivr.net/npm/@shikijs/` (pinned to the installed version, CORS and CORP headers set).
-For offline use, install the optional peer dependencies `@shikijs/langs` and `@shikijs/themes` (pinned to the same version; plain relative ESM, no bare imports), serve them, and point `grammarBase` (on `<slicc-app>`, or `setGrammarBase()`) at the folder holding `langs/` and `themes/`, for example `/node_modules/@shikijs/`.
-The build fails if the peer versions drift from the installed ones.
-`SLICC_GRAMMAR_BASE` points the build at another CDN.
-`dist/` is about 55 files and 5.5 MB of JavaScript.
+`@pierre/diffs` highlights with [`@pierre/highlights`](https://diffs.com/highlights) (`preferredHighlighter: 'highlights'`), whose lexers for every language it knows are in one WebAssembly module inside `dist/`, so nothing loads from a CDN and highlighting works offline.
+Files in a language Highlights doesn't know (it has about 80, so not ini, dotenv, nginx or CSV, for example) show as plain text.
+The themes are `slicc-light` and `slicc-dark`: Pierre Light and Pierre Dark with every syntax colour shaded until it keeps 4.5:1 contrast on the code background, on the added and deleted line tints, and on the changed-word highlights inside them.
+Shiki stays out of `dist/`: the build replaces `shiki` and `@shikijs/*` with a module that throws.
+`dist/` is about 130 files and 7 MB of JavaScript.
 The build fails if React is bundled; `@pierre/trees` lists React as a peer dependency, so npm installs it, but the `web-components` entry runs on Preact.
 Types are in `dist/types/ui.d.ts`, `dist/types/dummy.d.ts` and `dist/types/kernel.d.ts`, exported as `@ai-ecoverse/slicc-spectrum/ui`, `/dummy` and `/kernel`.
 
