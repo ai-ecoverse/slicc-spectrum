@@ -170,7 +170,7 @@ test('a streaming reply renders like the finished text and keeps the DOM of its 
       '# Plan\n\nFirst **bold `code`** line\nwith a soft break.\n\nintro\n\n  - a\n\n      b\n\n\t- tabbed\n\n\t  more\n\n- one\n- two\n\n  loose\n\n| a | b |\n| - | -: |\n| 1 | 2 |\n\n```ts\nconst a = 1;\n```\n\n> quote\nlazy\n\nSetext\n---\n\n1. x\n2. y\n\nSee [the docs][d].\n\n[d]: https://example.com/docs\n\ndone';
     const clean = (element) => element.innerHTML.replace(/<!--[^>]*-->/g, '');
     const stream = await window.post('md-stream', '', 'streaming');
-    const reference = await window.post('md-reference', '');
+    const reference = await window.post('md-reference', '', 'streaming');
     const mismatches = [];
     let heading = null;
     let kept = true;
@@ -203,6 +203,7 @@ test('a streaming reply renders like the finished text and keeps the DOM of its 
     }
     stream.parts[0].text = text;
     stream.status = 'done';
+    reference.status = 'done';
     reference.parts[0].text = `\n${text}`;
     window.model.agent.emit('message', { agentId: 'cone-sliccy', message: stream });
     await window.chatPart().updateComplete;
@@ -298,5 +299,139 @@ test('memory entries render the same markdown as the chat', async (t) => {
       smaller: true,
     }
   );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a fenced ts block in chat highlights with styled spans and an unknown language stays plain', async (t) => {
+  const page = await open(t);
+  const ts =
+    "export const tide = (depth: number): string =>\n  depth > 3 ? 'high' : 'low'; // invented";
+  const odd = 'qapla batlh 42 "honour"';
+  await page.evaluate(
+    (text) => window.post('md-code', text).then(() => true),
+    `Two blocks:\n\n\`\`\`ts\n${ts}\n\`\`\`\n\n\`\`\`klingon\n${odd}\n\`\`\`\n\n\`\`\`\n${odd}\n\`\`\``
+  );
+  await page.until(
+    () => !!window.rendered('md-code')?.querySelector('pre.code[data-lang=ts] span')
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const blocks = [...window.rendered('md-code').querySelectorAll('pre.code')];
+      const [lit, unknown, bare] = blocks;
+      const spans = [...lit.querySelectorAll('code > span')];
+      const colors = new Set(spans.map((span) => getComputedStyle(span).color));
+      return {
+        langs: blocks.map((block) => block.dataset.lang ?? null),
+        spans: spans.length > 8,
+        colors: colors.size >= 3,
+        texts: blocks.map((block) => block.querySelector('code').textContent),
+        plain: [unknown, bare].map((block) => block.querySelector('code').children.length),
+      };
+    }),
+    {
+      langs: ['ts', 'klingon', null],
+      spans: true,
+      colors: true,
+      texts: [ts, odd, odd],
+      plain: [0, 0],
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('hostile markup inside a highlighted code block renders as text and runs nothing', async (t) => {
+  const page = await open(t);
+  const hostile = [
+    '<script>window.pwned = 1</script>',
+    '<img src=x onerror="window.pwned = 2">',
+    '<svg onload="window.pwned = 3"></svg>',
+    '"></span><img src=x onerror="window.pwned = 4">',
+  ].join('\n');
+  await page.evaluate(
+    (text) => window.post('md-hostile', text).then(() => true),
+    `\`\`\`html\n${hostile}\n\`\`\`\n\n\`\`\`ts\nconst x = \`${hostile}\`;\n\`\`\``
+  );
+  await page.until(
+    () => window.rendered('md-hostile')?.querySelectorAll('pre.code span').length > 10
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const text = window.rendered('md-hostile');
+      return {
+        elements: text.querySelectorAll('script, img, svg, iframe, [onerror], [onload]').length,
+        onlySpans: [...text.querySelectorAll('pre.code code *')].every(
+          (node) => node.localName === 'span' && node.children.length === 0
+        ),
+        texts: [...text.querySelectorAll('pre.code code')].map((code) => code.textContent),
+        pwned: window.pwned ?? null,
+      };
+    }),
+    {
+      elements: 0,
+      onlySpans: true,
+      texts: [hostile, `const x = \`${hostile}\`;`],
+      pwned: null,
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('selecting a highlighted code block copies its exact source', async (t) => {
+  const page = await open(t);
+  const source = 'function tide() {\n\treturn [1,  2];   \n}\n\n// a blank line above';
+  await page.evaluate(
+    (text) => window.post('md-copy', text).then(() => true),
+    `\`\`\`js\n${source}\n\`\`\``
+  );
+  await page.until(() => !!window.rendered('md-copy')?.querySelector('pre.code span'));
+  const copied = await page.evaluate(() => {
+    const code = window.rendered('md-copy').querySelector('pre.code code');
+    const selection = getSelection();
+    selection.removeAllRanges();
+    selection.selectAllChildren(code);
+    return {
+      selected: selection.toString(),
+      numbers: code.querySelectorAll('[data-line-number], .line-number').length,
+    };
+  });
+  assert.deepEqual(copied, { selected: source, numbers: 0 });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a streaming code block stays plain until its fence closes, and an open fence highlights once the reply is done', async (t) => {
+  const page = await open(t);
+  const result = await page.evaluate(async () => {
+    const spans = (id) => window.rendered(id).querySelectorAll('pre.code span').length;
+    const step = async (message, text, status = 'streaming') => {
+      message.parts[0].text = text;
+      message.status = status;
+      window.model.agent.emit('message', { agentId: 'cone-sliccy', message });
+      await window.chatPart().updateComplete;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return spans(message.id);
+    };
+    const code = 'Look:\n\n```ts\nconst tide = 42;\n';
+    const stream = await window.post('md-seal', '', 'streaming');
+    const cut = await window.post('md-cut', '', 'streaming');
+    return {
+      open: await step(stream, code),
+      partial: await step(stream, `${code}\x60\x60`),
+      tilde: await step(stream, `${code}~~~`),
+      closed: (await step(stream, `${code}\x60\x60\x60`)) > 0,
+      after: (await step(stream, `${code}\x60\x60\x60\n\nand more`)) > 0,
+      cutStreaming: await step(cut, code),
+      cutDone: (await step(cut, code, 'done')) > 0,
+    };
+  });
+  assert.deepEqual(result, {
+    open: 0,
+    partial: 0,
+    tilde: 0,
+    closed: true,
+    after: true,
+    cutStreaming: 0,
+    cutDone: true,
+  });
   assert.deepEqual(page.errors, []);
 });

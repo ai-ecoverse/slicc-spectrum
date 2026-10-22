@@ -6014,7 +6014,7 @@ test('a file highlights with @pierre/highlights, which loads no grammar or theme
 });
 
 for (const color of ['light', 'dark']) {
-  test(`every highlighted token keeps 4.5:1 contrast on its line in ${color}`, async (t) => {
+  test(`every highlighted token keeps 4.5:1 contrast on its line and in chat code blocks in ${color}`, async (t) => {
     const page = await open(t, { color });
     await page.evaluate((scheme) => {
       const before =
@@ -6039,14 +6039,55 @@ for (const color of ['light', 'dark']) {
       document.body.append(code, diff);
       return true;
     }, color);
-    await page.until(() =>
-      ['contrast-code', 'contrast-diff'].every(
-        (id) =>
-          document
-            .getElementById(id)
-            ?.shadowRoot.querySelector('diffs-container')
-            ?.shadowRoot.querySelectorAll('[data-line] span[style*="--diffs-token"]').length > 10
-      )
+    await page.until(() => !!window.chatPart());
+    await page.evaluate(() => {
+      const agent = window.model.agent;
+      const messages = agent.messages.bind(agent);
+      const text = [
+        'Blocks:',
+        '```ts',
+        'export const greet = (name: string) => name + 1;\nlet seen = null; // once\nclass Tide { #depth = 42; static high = /a+/g; }',
+        '```',
+        '```json',
+        '{ "harbor": "north", "depth": 42, "open": true, "tags": ["calm", null] }',
+        '```',
+        '```python',
+        'def tide(depth: int) -> str:\n    return f"{depth:>3}" if depth else None  # low',
+        '```',
+        '```css',
+        '.harbor > a:hover { color: #0a0; margin: 4px !important; }',
+        '```',
+        '```bash',
+        'export TIDE=high && echo "$TIDE" | grep -c "h" # count',
+        '```',
+        '```html',
+        '<a href="/tide" data-depth="42">high &amp; low</a><!-- note -->',
+        '```',
+      ].join('\n');
+      const message = {
+        id: 'contrast-chat',
+        role: 'assistant',
+        status: 'done',
+        parts: [{ type: 'text', text }],
+        createdAt: Date.now(),
+        model: 'dummy',
+      };
+      agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), message] : messages(id));
+      agent.emit('messages', 'cone-sliccy');
+      return true;
+    });
+    await page.until(
+      () =>
+        ['contrast-code', 'contrast-diff'].every(
+          (id) =>
+            document
+              .getElementById(id)
+              ?.shadowRoot.querySelector('diffs-container')
+              ?.shadowRoot.querySelectorAll('[data-line] span[style*="--diffs-token"]').length > 10
+        ) &&
+        window.chatPart('[data-id=contrast-chat]')?.querySelectorAll('pre.code').length === 6 &&
+        !!window.chatPart('[data-id=contrast-chat] pre.code[data-lang=html] span') &&
+        !!window.chatPart('[data-id=contrast-chat] pre.code[data-lang=ts] span')
     );
     const weakest = await page.evaluate(() => {
       const canvas = document.createElement('canvas');
@@ -6072,7 +6113,7 @@ for (const color of ['light', 'dark']) {
         const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
         return (high + 0.05) / (low + 0.05);
       };
-      return ['contrast-code', 'contrast-diff'].map((id) => {
+      const views = ['contrast-code', 'contrast-diff'].map((id) => {
         const view = document.getElementById(id);
         const host = getComputedStyle(view).backgroundColor;
         const pre = view.shadowRoot
@@ -6091,6 +6132,21 @@ for (const color of ['light', 'dark']) {
         }
         return { id, ok: low.ratio >= 4.5, token: low.token };
       });
+      const chat = window.chatPart('[data-id=contrast-chat]');
+      const up = (node) => node.parentElement ?? node.getRootNode().host ?? null;
+      let low = { ratio: Infinity, count: 0 };
+      for (const span of chat.querySelectorAll('pre.code span')) {
+        const layers = [];
+        for (let node = span; node; node = up(node))
+          layers.unshift(getComputedStyle(node).backgroundColor);
+        const value = ratio(paint(getComputedStyle(span).color), paint(...layers));
+        low.count++;
+        if (value < low.ratio) low = { ...low, ratio: value, token: span.textContent.trim() };
+      }
+      return [
+        ...views,
+        { id: 'contrast-chat', ok: low.ratio >= 4.5 && low.count > 40, token: low.token },
+      ];
     });
     assert.deepEqual(
       weakest.filter((view) => !view.ok),

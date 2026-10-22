@@ -4,8 +4,8 @@ import type { Theme } from '@pierre/highlights';
 export const codeThemes = { light: 'slicc-light', dark: 'slicc-dark' } as const;
 
 export const codeGrounds = {
-  light: ['#ffffff', '#ffe8e4', '#e7f4ec', '#f9ccca', '#c8e7d8'],
-  dark: ['#222222', '#381917', '#182d22', '#5f1d1f', '#144b35'],
+  light: ['#ffffff', '#ffe8e4', '#e7f4ec', '#f9ccca', '#c8e7d8', '#f8f8f8'],
+  dark: ['#222222', '#381917', '#182d22', '#5f1d1f', '#144b35', '#1b1b1b'],
 } as const;
 
 const minimum = 4.5;
@@ -57,23 +57,18 @@ export function accessible(theme: Theme, name: string, grounds: readonly string[
   return { ...theme, name, style: { ...theme.style, syntax } };
 }
 
-registerCustomTheme(
-  codeThemes.light,
-  async () =>
-    accessible(
-      (await import('@pierre/highlights/themes/pierre-light')).default,
-      codeThemes.light,
-      codeGrounds.light
-    ),
-  'zed'
-);
-registerCustomTheme(
-  codeThemes.dark,
-  async () =>
-    accessible(
-      (await import('@pierre/highlights/themes/pierre-dark')).default,
-      codeThemes.dark,
-      codeGrounds.dark
-    ),
-  'zed'
-);
+const pierre = {
+  light: () => import('@pierre/highlights/themes/pierre-light'),
+  dark: () => import('@pierre/highlights/themes/pierre-dark'),
+};
+const loaded: Partial<Record<keyof typeof codeThemes, Promise<Theme>>> = {};
+
+export function codeTheme(color: keyof typeof codeThemes): Promise<Theme> {
+  loaded[color] ??= pierre[color]().then((module) =>
+    accessible(module.default, codeThemes[color], codeGrounds[color])
+  );
+  return loaded[color];
+}
+
+registerCustomTheme(codeThemes.light, () => codeTheme('light'), 'zed');
+registerCustomTheme(codeThemes.dark, () => codeTheme('dark'), 'zed');
