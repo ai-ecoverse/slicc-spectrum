@@ -21,10 +21,16 @@ function load(): Promise<Painter> {
     import('@pierre/highlights'),
     codeTheme('light'),
     codeTheme('dark'),
-  ]).then(([highlights, light, dark]) => {
-    painter = { highlights, themes: { light, dark } };
-    return painter;
-  });
+  ]).then(
+    ([highlights, light, dark]) => {
+      painter = { highlights, themes: { light, dark } };
+      return painter;
+    },
+    (error: unknown) => {
+      loading = null;
+      throw error;
+    }
+  );
   return loading;
 }
 
@@ -75,7 +81,10 @@ class Highlight extends AsyncDirective {
     this.#code = code;
     this.#lang = lang;
     if (painter) return paint(painter, code, lang);
-    void load().then((ready) => this.setValue(paint(ready, this.#code!, this.#lang)));
+    load().then(
+      (ready) => this.setValue(paint(ready, this.#code!, this.#lang)),
+      () => undefined
+    );
     return code;
   }
 }

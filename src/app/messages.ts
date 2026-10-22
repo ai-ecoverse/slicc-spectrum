@@ -602,10 +602,14 @@ function delegation(
   return html`<div class="delegation" data-kind=${entry.kind}><span aria-hidden="true">↳</span><strong>${delegationVerbs[entry.kind]}</strong>${target}<span>${entry.text}</span></div>`;
 }
 
-function part(entry: Exclude<MessagePart, { type: 'tool' }>, handlers: Handlers): TemplateResult {
+function part(
+  entry: Exclude<MessagePart, { type: 'tool' }>,
+  handlers: Handlers,
+  streaming: boolean
+): TemplateResult {
   switch (entry.type) {
     case 'text':
-      return html`<div class="text markdown">${markdown(entry.text)}</div>`;
+      return html`<div class="text markdown">${markdown(entry.text, { streaming })}</div>`;
     case 'thinking':
       return html`<div class="thinking">${entry.text}</div>`;
     case 'media':
@@ -648,10 +652,11 @@ function silent(entry: MessagePart, showThinking: boolean): boolean {
 export function parts(
   entries: MessagePart[],
   handlers: Handlers,
-  showThinking: boolean
+  showThinking: boolean,
+  streaming = false
 ): TemplateResult[] {
   return entries.flatMap((entry) =>
-    entry.type === 'tool' || silent(entry, showThinking) ? [] : [part(entry, handlers)]
+    entry.type === 'tool' || silent(entry, showThinking) ? [] : [part(entry, handlers, streaming)]
   );
 }
 
@@ -820,7 +825,8 @@ export function assistant(
             copySignIn: (account, _id, code) => handlers.copySignIn?.(account, message.id, code),
             dropping: () => handlers.dropping(message.id),
           },
-          showThinking
+          showThinking,
+          message.status === 'streaming'
         )}
         ${sources(message.parts)}
         ${suggestions(suggestion, handlers)}

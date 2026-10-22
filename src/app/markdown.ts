@@ -29,11 +29,13 @@ interface Context {
   definitions: Definitions;
   strict: boolean;
   level: number | null;
+  streaming: boolean;
 }
 
 export interface MarkdownOptions {
   strict?: boolean;
   level?: number;
+  streaming?: boolean;
 }
 
 interface Parsed {
@@ -241,7 +243,7 @@ function flow(node: RootContent, context: Context): Output {
     case 'heading':
       return html`<p class="heading" role="heading" aria-level=${Math.min(context.level === null ? node.depth + 2 : context.level + 1, 6)}>${inline(node, context)}</p>`;
     case 'code':
-      return html`<pre class="code" data-lang=${node.lang || nothing}><code>${closed.has(node) ? highlight(node.value, node.lang!) : node.value}</code></pre>`;
+      return html`<pre class="code" data-lang=${node.lang || nothing}><code>${node.lang && (!context.streaming || closed.has(node)) ? highlight(node.value, node.lang!) : node.value}</code></pre>`;
     case 'list':
       return list(node, context);
     case 'table':
@@ -260,7 +262,7 @@ function flow(node: RootContent, context: Context): Output {
 }
 
 function block(node: RootContent, context: Context): Output {
-  const key = `${context.strict}:${context.level}`;
+  const key = `${context.strict}:${context.level}:${context.streaming}`;
   const cache = rendered.get(key) ?? new WeakMap<RootContent, Output>();
   rendered.set(key, cache);
   let output = cache.get(node);
@@ -273,7 +275,12 @@ function block(node: RootContent, context: Context): Output {
 
 export function markdown(text: string, options: MarkdownOptions = {}): TemplateResult {
   const { blocks, definitions } = parse(text);
-  const context = { definitions, strict: options.strict === true, level: options.level ?? null };
+  const context = {
+    definitions,
+    strict: options.strict === true,
+    level: options.level ?? null,
+    streaming: options.streaming === true,
+  };
   return html`${blocks.map((node) => block(node, context))}`;
 }
 

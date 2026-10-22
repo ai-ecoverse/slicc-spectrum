@@ -170,7 +170,7 @@ test('a streaming reply renders like the finished text and keeps the DOM of its 
       '# Plan\n\nFirst **bold `code`** line\nwith a soft break.\n\nintro\n\n  - a\n\n      b\n\n\t- tabbed\n\n\t  more\n\n- one\n- two\n\n  loose\n\n| a | b |\n| - | -: |\n| 1 | 2 |\n\n```ts\nconst a = 1;\n```\n\n> quote\nlazy\n\nSetext\n---\n\n1. x\n2. y\n\nSee [the docs][d].\n\n[d]: https://example.com/docs\n\ndone';
     const clean = (element) => element.innerHTML.replace(/<!--[^>]*-->/g, '');
     const stream = await window.post('md-stream', '', 'streaming');
-    const reference = await window.post('md-reference', '');
+    const reference = await window.post('md-reference', '', 'streaming');
     const mismatches = [];
     let heading = null;
     let kept = true;
@@ -203,6 +203,7 @@ test('a streaming reply renders like the finished text and keeps the DOM of its 
     }
     stream.parts[0].text = text;
     stream.status = 'done';
+    reference.status = 'done';
     reference.parts[0].text = `\n${text}`;
     window.model.agent.emit('message', { agentId: 'cone-sliccy', message: stream });
     await window.chatPart().updateComplete;
@@ -395,5 +396,42 @@ test('selecting a highlighted code block copies its exact source', async (t) => 
     };
   });
   assert.deepEqual(copied, { selected: source, numbers: 0 });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a streaming code block stays plain until its fence closes, and an open fence highlights once the reply is done', async (t) => {
+  const page = await open(t);
+  const result = await page.evaluate(async () => {
+    const spans = (id) => window.rendered(id).querySelectorAll('pre.code span').length;
+    const step = async (message, text, status = 'streaming') => {
+      message.parts[0].text = text;
+      message.status = status;
+      window.model.agent.emit('message', { agentId: 'cone-sliccy', message });
+      await window.chatPart().updateComplete;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return spans(message.id);
+    };
+    const code = 'Look:\n\n```ts\nconst tide = 42;\n';
+    const stream = await window.post('md-seal', '', 'streaming');
+    const cut = await window.post('md-cut', '', 'streaming');
+    return {
+      open: await step(stream, code),
+      partial: await step(stream, `${code}\x60\x60`),
+      tilde: await step(stream, `${code}~~~`),
+      closed: (await step(stream, `${code}\x60\x60\x60`)) > 0,
+      after: (await step(stream, `${code}\x60\x60\x60\n\nand more`)) > 0,
+      cutStreaming: await step(cut, code),
+      cutDone: (await step(cut, code, 'done')) > 0,
+    };
+  });
+  assert.deepEqual(result, {
+    open: 0,
+    partial: 0,
+    tilde: 0,
+    closed: true,
+    after: true,
+    cutStreaming: 0,
+    cutDone: true,
+  });
   assert.deepEqual(page.errors, []);
 });
