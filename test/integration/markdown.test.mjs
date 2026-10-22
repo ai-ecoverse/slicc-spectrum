@@ -300,3 +300,100 @@ test('memory entries render the same markdown as the chat', async (t) => {
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('a fenced ts block in chat highlights with styled spans and an unknown language stays plain', async (t) => {
+  const page = await open(t);
+  const ts =
+    "export const tide = (depth: number): string =>\n  depth > 3 ? 'high' : 'low'; // invented";
+  const odd = 'qapla batlh 42 "honour"';
+  await page.evaluate(
+    (text) => window.post('md-code', text).then(() => true),
+    `Two blocks:\n\n\`\`\`ts\n${ts}\n\`\`\`\n\n\`\`\`klingon\n${odd}\n\`\`\`\n\n\`\`\`\n${odd}\n\`\`\``
+  );
+  await page.until(
+    () => !!window.rendered('md-code')?.querySelector('pre.code[data-lang=ts] span')
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const blocks = [...window.rendered('md-code').querySelectorAll('pre.code')];
+      const [lit, unknown, bare] = blocks;
+      const spans = [...lit.querySelectorAll('code > span')];
+      const colors = new Set(spans.map((span) => getComputedStyle(span).color));
+      return {
+        langs: blocks.map((block) => block.dataset.lang ?? null),
+        spans: spans.length > 8,
+        colors: colors.size >= 3,
+        texts: blocks.map((block) => block.querySelector('code').textContent),
+        plain: [unknown, bare].map((block) => block.querySelector('code').children.length),
+      };
+    }),
+    {
+      langs: ['ts', 'klingon', null],
+      spans: true,
+      colors: true,
+      texts: [ts, odd, odd],
+      plain: [0, 0],
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('hostile markup inside a highlighted code block renders as text and runs nothing', async (t) => {
+  const page = await open(t);
+  const hostile = [
+    '<script>window.pwned = 1</script>',
+    '<img src=x onerror="window.pwned = 2">',
+    '<svg onload="window.pwned = 3"></svg>',
+    '"></span><img src=x onerror="window.pwned = 4">',
+  ].join('\n');
+  await page.evaluate(
+    (text) => window.post('md-hostile', text).then(() => true),
+    `\`\`\`html\n${hostile}\n\`\`\`\n\n\`\`\`ts\nconst x = \`${hostile}\`;\n\`\`\``
+  );
+  await page.until(
+    () => window.rendered('md-hostile')?.querySelectorAll('pre.code span').length > 10
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const text = window.rendered('md-hostile');
+      return {
+        elements: text.querySelectorAll('script, img, svg, iframe, [onerror], [onload]').length,
+        onlySpans: [...text.querySelectorAll('pre.code code *')].every(
+          (node) => node.localName === 'span' && node.children.length === 0
+        ),
+        texts: [...text.querySelectorAll('pre.code code')].map((code) => code.textContent),
+        pwned: window.pwned ?? null,
+      };
+    }),
+    {
+      elements: 0,
+      onlySpans: true,
+      texts: [hostile, `const x = \`${hostile}\`;`],
+      pwned: null,
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('selecting a highlighted code block copies its exact source', async (t) => {
+  const page = await open(t);
+  const source = 'function tide() {\n\treturn [1,  2];   \n}\n\n// a blank line above';
+  await page.evaluate(
+    (text) => window.post('md-copy', text).then(() => true),
+    `\`\`\`js\n${source}\n\`\`\``
+  );
+  await page.until(() => !!window.rendered('md-copy')?.querySelector('pre.code span'));
+  const copied = await page.evaluate(() => {
+    const code = window.rendered('md-copy').querySelector('pre.code code');
+    const selection = getSelection();
+    selection.removeAllRanges();
+    selection.selectAllChildren(code);
+    return {
+      selected: selection.toString(),
+      numbers: code.querySelectorAll('[data-line-number], .line-number').length,
+    };
+  });
+  assert.deepEqual(copied, { selected: source, numbers: 0 });
+  assert.deepEqual(page.errors, []);
+});

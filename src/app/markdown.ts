@@ -20,6 +20,7 @@ import { gfmAutolinkLiteral } from 'micromark-extension-gfm-autolink-literal';
 import { gfmStrikethrough } from 'micromark-extension-gfm-strikethrough';
 import { gfmTable } from 'micromark-extension-gfm-table';
 import { gfmTaskListItem } from 'micromark-extension-gfm-task-list-item';
+import { highlight } from './highlight.ts';
 
 type Output = TemplateResult | string | typeof nothing;
 type Definitions = Map<string, Definition>;
@@ -62,6 +63,28 @@ const empty: Parsed = { text: '', blocks: [], starts: [], keep: 0, definitions: 
 const cache = new Map<string, Parsed>();
 const streams: Parsed[] = [];
 const rendered = new Map<string, WeakMap<RootContent, Output>>();
+const closed = new WeakSet<Nodes>();
+const opening = /^[\s>]*(`{3,}|~{3,})/;
+const closing = /^[\s>]*(`{3,}|~{3,})[ \t]*$/;
+
+function sealed(source: string): boolean {
+  const lines = source.split('\n');
+  const open = lines[0]!.match(opening)![1]!;
+  const end = lines.length > 1 ? lines.at(-1)!.match(closing)?.[1] : undefined;
+  return !!end && end[0] === open[0] && end.length >= open.length;
+}
+
+function seal(nodes: Nodes[], source: string): void {
+  for (const node of nodes) {
+    if (
+      node.type === 'code' &&
+      node.lang &&
+      sealed(source.slice(node.position!.start.offset, node.position!.end.offset))
+    )
+      closed.add(node);
+    if ('children' in node) seal(node.children, source);
+  }
+}
 
 function collect(nodes: Nodes[], found: Definitions): Definitions {
   for (const node of nodes) {
@@ -83,6 +106,7 @@ function parse(text: string): Parsed {
     empty;
   const tail = base.starts[base.keep] ?? 0;
   const tree = fromMarkdown(text.slice(tail), options);
+  seal(tree.children, text.slice(tail));
   const blocks = [...base.blocks.slice(0, base.keep), ...tree.children];
   const starts = [
     ...base.starts.slice(0, base.keep),
@@ -217,7 +241,7 @@ function flow(node: RootContent, context: Context): Output {
     case 'heading':
       return html`<p class="heading" role="heading" aria-level=${Math.min(context.level === null ? node.depth + 2 : context.level + 1, 6)}>${inline(node, context)}</p>`;
     case 'code':
-      return html`<pre class="code" data-lang=${node.lang || nothing}><code>${node.value}</code></pre>`;
+      return html`<pre class="code" data-lang=${node.lang || nothing}><code>${closed.has(node) ? highlight(node.value, node.lang!) : node.value}</code></pre>`;
     case 'list':
       return list(node, context);
     case 'table':
