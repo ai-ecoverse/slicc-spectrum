@@ -62,7 +62,7 @@
   "devDependencies": {
     "@adobe/spectrum-wc": "2.0.0-beta.5",
     "@adobe/spectrum-wc-icons": "2.0.0-beta.5",
-    "@ai-ecoverse/slicc-cdp": "1.31.4",
+    "@ai-ecoverse/slicc-cdp": "1.31.9",
     "@ai-ecoverse/slicc-kernel": "1.146.3",
     "@ai-ecoverse/slicc-shared-web": "2.10.2",
     "@ai-ecoverse/slicc-vault": "1.16.0",
