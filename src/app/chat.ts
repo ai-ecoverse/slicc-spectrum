@@ -735,9 +735,10 @@ export class SliccChat extends ThemedElement {
 
   #head(log: HTMLElement, card: Element): number {
     if (this.model?.agent.busy(this.#id())) return log.scrollHeight;
-    const edge = log.getBoundingClientRect().top + log.clientTop;
-    const top = card.getBoundingClientRect().top - edge + log.scrollTop;
-    if (top < log.scrollTop - 1) return log.scrollHeight;
+    const box = card.getBoundingClientRect();
+    const below = (log.firstElementChild as Element).getBoundingClientRect().bottom - box.bottom;
+    const top = box.top - log.getBoundingClientRect().top - log.clientTop + log.scrollTop;
+    if (below > 1 || top < log.scrollTop - 1) return log.scrollHeight;
     return top - (Number.parseFloat(getComputedStyle(log).paddingBlockStart) || 0);
   }
 
