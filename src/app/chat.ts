@@ -631,6 +631,7 @@ export class SliccChat extends ThemedElement {
   }
 
   #stuck = true;
+  #card: Element | null = null;
   #last = 0;
   #height = 0;
   #input = Number.NEGATIVE_INFINITY;
@@ -696,12 +697,12 @@ export class SliccChat extends ThemedElement {
     this.#more();
     const log = this.#log();
     if (!this.#stuck && log.scrollHeight <= log.clientHeight) this.#follow();
-    else this.#pin();
+    else this.#pin(false);
   });
   #fitted: Element | null | undefined;
   #fit = new ResizeObserver(([entry]) => {
     this.style.setProperty('--composer-height', `${(entry.target as HTMLElement).offsetHeight}px`);
-    this.#pin();
+    this.#pin(false);
   });
 
   #log(): HTMLElement {
@@ -721,12 +722,24 @@ export class SliccChat extends ThemedElement {
     return this.#gap() <= this.#slack();
   }
 
-  #pin(): void {
+  #pin(end = true): void {
     if (!this.#stuck) return;
     const log = this.#log();
-    log.scrollTop = log.scrollHeight;
+    const card = log.querySelector('swc-conversation-thread')?.lastElementChild ?? null;
+    const held = !end && card !== null && card === this.#card;
+    this.#card = card;
+    log.scrollTop = held ? this.#head(log, card) : log.scrollHeight;
     this.#last = log.scrollTop;
     this.#height = log.scrollHeight;
+  }
+
+  #head(log: HTMLElement, card: Element): number {
+    if (this.model?.agent.busy(this.#id())) return log.scrollHeight;
+    const box = card.getBoundingClientRect();
+    const below = (log.firstElementChild as Element).getBoundingClientRect().bottom - box.bottom;
+    const top = box.top - log.getBoundingClientRect().top - log.clientTop + log.scrollTop;
+    if (below > 1 || top < log.scrollTop - 1) return log.scrollHeight;
+    return top - (Number.parseFloat(getComputedStyle(log).paddingBlockStart) || 0);
   }
 
   #follow(): void {
@@ -789,7 +802,7 @@ export class SliccChat extends ThemedElement {
       this.behind = false;
     } else if (!this.#stuck) this.behind = true;
     this.requestUpdate();
-    void this.updateComplete.then(() => this.#pin());
+    void this.updateComplete.then(() => this.#pin(jump));
   }
 
   #observe(): void {
