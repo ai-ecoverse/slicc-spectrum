@@ -89,7 +89,7 @@
     "@wterm/core": "0.5.4",
     "@wterm/dom": "0.5.4",
     "@wterm/ghostty": "0.5.4",
-    "dockview-core": "8.6.0",
+    "dockview-core": "8.6.1",
     "esbuild": "0.28.2",
     "happy-dom": "21.0.3",
     "lefthook": "2.2.2",
