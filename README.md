@@ -83,7 +83,10 @@ Removing the element closes the session and destroys the screen. Adding it again
 
 ```ts
 interface TerminalBackend {
-  open(sink: TerminalSink, size: { cols: number; rows: number }): TerminalSession | Promise<TerminalSession>;
+  open(
+    sink: TerminalSink,
+    size: { cols: number; rows: number }
+  ): TerminalSession | Promise<TerminalSession>;
 }
 
 interface TerminalSink {
@@ -128,18 +131,18 @@ document.querySelector('slicc-terminal').backend = kernelBackend(kernel, { cwd: 
 
 The element sets wterm's `--term-*` variables from its own custom properties, so you can set them on the element or on any ancestor.
 
-| Property | Default |
-| :--- | :--- |
-| `--slicc-terminal-background` | `#1d1d1d` |
-| `--slicc-terminal-foreground` | `#d4d4d4` |
-| `--slicc-terminal-cursor` | `#aeafad` |
-| `--slicc-terminal-color-0` … `--slicc-terminal-color-15` | wterm's palette |
-| `--slicc-terminal-font-family` | `"Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace` |
-| `--slicc-terminal-font-size` | `14px` |
-| `--slicc-terminal-line-height` | `1.2` |
-| `--slicc-terminal-padding` | `8px` |
-| `--slicc-terminal-height` | `360px` (ignored when `rows` is set) |
-| `--slicc-terminal-border-radius` | `4px` |
+| Property                                                 | Default                                                             |
+| :------------------------------------------------------- | :------------------------------------------------------------------ |
+| `--slicc-terminal-background`                            | `#1d1d1d`                                                           |
+| `--slicc-terminal-foreground`                            | `#d4d4d4`                                                           |
+| `--slicc-terminal-cursor`                                | `#aeafad`                                                           |
+| `--slicc-terminal-color-0` … `--slicc-terminal-color-15` | wterm's palette                                                     |
+| `--slicc-terminal-font-family`                           | `"Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace` |
+| `--slicc-terminal-font-size`                             | `14px`                                                              |
+| `--slicc-terminal-line-height`                           | `1.2`                                                               |
+| `--slicc-terminal-padding`                               | `8px`                                                               |
+| `--slicc-terminal-height`                                | `360px` (ignored when `rows` is set)                                |
+| `--slicc-terminal-border-radius`                         | `4px`                                                               |
 
 The stylesheet (wterm's plus the theme) is constructed once per document and adopted into the document or shadow root the element is connected to. That includes iframes the element is moved into.
 
@@ -155,7 +158,6 @@ A page that puts a UI element straight into the document, such as a guest's page
 ## wterm notes
 
 Things found while building this against wterm 0.5.4, recorded here, not pushed upstream:
-
 - The built-in Zig core doesn't reflow: on a resize it cuts or pads each row and keeps no soft-wrap flags (its bridge has no `getRowMetadata`), so a line wrapped at 45 columns stays on two rows at 120, and `readText()` and copy split it.
   It also maps 24-bit colours (`38;2;r;g;b`) to the nearest of the 256 palette colours.
   The element runs on `@wterm/ghostty` instead, which reflows on resize, keeps wrap flags in the scrollback and renders 24-bit and 256 colours exactly (xterm's 0/95/135/175/215/255 cube).
@@ -653,7 +655,14 @@ Title the dialog with a question, say what can’t be undone in `body`, and name
 ```js
 import { confirm } from './dist/slicc-ui.js';
 
-if (await confirm({ title: 'Delete harbor?', body: 'Its scoops and messages are deleted. You can’t undo this.', action: 'Delete' })) remove();
+if (
+  await confirm({
+    title: 'Delete harbor?',
+    body: 'Its scoops and messages are deleted. You can’t undo this.',
+    action: 'Delete',
+  })
+)
+  remove();
 ```
 
 `prompt({ title, label, action, value, trigger, submit })` asks for one line of text in the same kind of modal dialog, with a 1.12 `sp-textfield` (Gen2 has no text field yet).
@@ -664,14 +673,18 @@ With `submit`, the dialog awaits it with the action pending and resolves the tri
 ```js
 import { prompt } from './dist/slicc-ui.js';
 
-const name = await prompt({ title: 'New cone', label: 'Name', action: 'Create', submit: (name) => model.agent.createCone(name).then(() => {}) });
+const name = await prompt({
+  title: 'New cone',
+  label: 'Name',
+  action: 'Create',
+  submit: (name) => model.agent.createCone(name).then(() => {}),
+});
 ```
 
 ### Secret rules check
 
 `secretRules(command, cwd)`, exported from `dist/slicc-ui.js` (`@ai-ecoverse/slicc-spectrum/ui`), is the check behind the sudo dialog's secret-rules warning.
 It takes a sudo request's command (without `sudo` and its options) and working folder, and returns `{ certain, maybe }`:
-
 - `certain` is an absolute path when the command names a file or folder holding SLICC's secret rules (`/etc/fnox`, `/etc/fnox/config.toml`, `/etc/slicc/secrets-policy.toml`), a folder above them it changes as a whole (`/`, `/etc`, `/etc/slicc`), a glob or brace that matches one, or a file named like them (`fnox`, `secrets-policy`) anywhere, as `/tmp/fnox/config.toml`.
   It sees through quotes, backslashes, `$'…'` and `$"…"`, `cd` and `pushd` (also inside `bash -c`), relative paths and `..`, extglobs, `/proc/self/root` and `/proc/self/cwd`, option clusters like `-t/etc/fnox`, and comma lists.
 - `maybe` is the token when the command may reach one of them and the check can't tell where it leads: an expansion (`$X`, `$(…)`, backticks), a `~user/..`, `~+` or `~-` path, a `/proc/<pid>/cwd` or `/dev/fd` path, or a command over 4096 characters (its first 40 followed by `…`).
@@ -692,7 +705,6 @@ The first gives `{ certain: '/etc/fnox/config.toml', maybe: null }`, the second 
 ### Sprinkle bridge
 
 A sprinkle's frame gets `window.slicc` with `name` and `lick(event)`. When the model's `sprinkles` port has `call`, it also gets:
-
 - `slicc.readFile(path)` resolves with the file's text.
 - `slicc.exists(path)` resolves with a boolean.
 - `slicc.getState()` returns the sprinkle's saved value, or `null`, synchronously: the frame is built with it, so `var saved = slicc.getState()` works on load.
@@ -711,7 +723,6 @@ Without `call`, none of the four exist, so guard them (`typeof slicc.readFile ==
 It returns `{ stdout, stderr, code }`.
 A leading `panel` in `argv` is dropped.
 `caller` is `{ agentId, cone?, readOnly? }`: `agentId` is the calling cone or scoop, or `null` for the user at a terminal; `cone` is the caller's cone when the agent already knows it (otherwise the `parentId` chain of `agentId` finds it).
-
 - `panel list [--json]` lists the panels the caller can reach, open or not, with their state (`active`, `shown`, `open` or `closed`) and why one is busy.
   `--json` prints `PanelInfo`s: `id`, `title`, `kind` (`surface`, `chat`, `terminal`, `sprinkle`, `file`, `diff`), home `side`, `agent`, `open`, `visible`, `active` and `busy`.
 - `panel open <id> [place] [--section <name>]` shows a panel without moving keyboard focus. `panel focus <id> [place] [--section <name>]` also gives it focus.
@@ -1110,7 +1121,12 @@ const root = await navigator.storage.getDirectory();
 const kernel = await createKernel({ root });
 const app = document.querySelector('slicc-app');
 app.surfaces = surfaces.filter((item) => item.id === 'files' || item.id === 'terminal');
-app.model = createKernelModel({ kernel, root, storage: localStorage, files: { skip: ['/node_modules'] } });
+app.model = createKernelModel({
+  kernel,
+  root,
+  storage: localStorage,
+  files: { skip: ['/node_modules'] },
+});
 ```
 
 - **`KernelFiles`** lists the OPFS root as the tree, reads and writes files through the OPFS API, and removes them recursively.
@@ -1186,7 +1202,6 @@ The glob's `**` skips dot directories, so in a checkout under one (a bb worktree
 ## CI and reviews
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) is one caller of slicc-shared-web's [pipeline](https://github.com/ai-ecoverse/slicc-shared-web#pipeline), on pull requests, in the merge queue and on pushes to main, which cancel nothing.
-
 - **Lint** runs on every event through `.github/scripts/gate.mjs lint`, which fails unless `npm run lint` ends with `slicc-lint: PASS`.
 - **Tests** run on pull requests and in the merge queue, on Chrome with a window under Xvfb, split across four shards by timings, each with `TEST_CONCURRENCY=4` and `--max-old-space-size=8192`. `ci / integration` passes only when the shards' JUnit reports hold a test that ran and no failure.
 - **Reviews:** every push to a pull request gets a Claude and a Codex review on Bedrock, with this repo's code and design guidance in `review-prompt`. Each side of the change (`head`, `base`) has two review browsers; `npm run review:browser` (`.github/scripts/review-browser.mjs`) builds that side if `dist/` is missing, serves its test page once (`head` on port 8301, `base` on 8302) and opens `/ui/?delay=0` in a 1440×900 window, light in the `extension` browser and dark in the `cli` one. The reviewers shoot base and head side by side, light and dark, desktop and a 420×860 phone viewport, and the pipeline's `post` job, the only one with `CLOUDFLARE_API_TOKEN`, puts their screenshots in R2 (`slicc-pr-screenshots`). `ci / review` passes when both approve.
