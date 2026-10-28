@@ -1,6 +1,7 @@
 # slicc-spectrum
 
 Web components for SLICC: `<slicc-terminal>` (wterm) and the app UI on Spectrum Web Components with dockview, against a typed model (`src/model/`) with a dummy (`src/dummy/`) and a slicc-kernel model for files and terminals (`src/kernel/`).
+
 - `npm run lint`, `npm test` (integration, CDP), `npm run test:unit` (happy-dom, gitignored `test/unit/`).
 - No comments anywhere. Changed lines in `src/` need 100% unit coverage. Every change also comes with committed integration tests in `test/integration/`; a fix's test fails on the old code.
 - No React. Import Spectrum components one by one.
