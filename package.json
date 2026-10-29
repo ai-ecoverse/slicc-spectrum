@@ -86,7 +86,7 @@
     "@spectrum-web-components/theme": "1.12.5",
     "@types/mdast": "4.0.4",
     "@types/node": "26.6.5",
-    "@wterm/core": "0.5.4",
+    "@wterm/core": "0.5.5",
     "@wterm/dom": "0.5.4",
     "@wterm/ghostty": "0.5.4",
     "dockview-core": "8.6.1",
