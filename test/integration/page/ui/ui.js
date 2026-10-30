@@ -70,6 +70,7 @@ const model = createDummyModel({
   accounts: params.get('accounts') ?? 'settings',
   providers: params.get('providers') ?? 'connected',
   mcp: params.get('mcp') ?? undefined,
+  servers: params.get('servers') ?? 'owner',
   transport: params.get('transport') ?? undefined,
   hold: params.get('hold') ?? 'off',
   readonly: params.get('readonly') ?? 'off',

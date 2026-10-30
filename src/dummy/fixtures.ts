@@ -4,6 +4,7 @@ import type {
   Agent,
   BrowserTab,
   Change,
+  McpRefusal,
   Message,
   ModelOption,
   Settings,
@@ -428,6 +429,43 @@ export const accounts: Account[] = [
     auth: 'oauth',
     group: 'mcp',
   },
+];
+
+const serverRow = (name: string, row: Partial<Account>): Account => ({
+  id: `mcp:${name}`,
+  provider: name,
+  identity: `${name}.example`,
+  url: `https://${name}.example/mcp`,
+  status: 'disconnected',
+  auth: 'local',
+  group: 'mcp',
+  ...row,
+});
+
+export const serverRefusals: Record<string, McpRefusal> = {
+  hollow: { code: 'stdio', reason: 'stdio servers need a newer kernel, so this one is skipped' },
+};
+
+export const serverStates: Account[] = [
+  serverRow('atlas', { status: 'connected', state: 'connected' }),
+  serverRow('beacon', { state: 'connecting' }),
+  serverRow('cargo', { state: 'failed' }),
+  serverRow('drift', {
+    auth: 'api-key',
+    secret: 'token',
+    store: 'vault',
+    state: 'needs-secret',
+  }),
+  serverRow('ember', { auth: 'oauth', store: 'vault', state: 'needs-auth' }),
+  serverRow('fathom', {
+    auth: 'api-key',
+    secret: 'token',
+    store: 'vault',
+    state: 'failed',
+  }),
+  serverRow('glacier', { state: 'disabled' }),
+  serverRow('hollow', { identity: '', url: undefined, state: 'refused' }),
+  serverRow('inlet', { url: undefined, state: 'refused' }),
 ];
 
 export const dualAccount: Account = {

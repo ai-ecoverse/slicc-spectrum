@@ -4,6 +4,8 @@ import type {
   AccountField,
   AccountStatus,
   ConnectOptions,
+  McpEdit,
+  McpRefusal,
   ModelOption,
   ProviderOption,
   Settings,
@@ -11,7 +13,7 @@ import type {
   SettingsPort,
 } from '../model/types.ts';
 import type { Clock } from './clock.ts';
-import { deviceSignIn, lookalikeSignIn, pageSignIn, signIns } from './fixtures.ts';
+import { deviceSignIn, lookalikeSignIn, pageSignIn, serverRefusals, signIns } from './fixtures.ts';
 import { providerAccount } from './providers.ts';
 
 export const dummySettingsKey = 'slicc-ui.settings';
@@ -20,6 +22,36 @@ export const signInClosed = 'The sign-in window was closed before it finished.';
 export type DummyTransport = 'none' | 'extension' | 'link';
 
 export type DummyLogin = 'ok' | 'fail' | 'code' | 'url' | 'lookalike';
+
+export type DummyServers = 'owner' | 'view-only' | 'refuse' | 'fail';
+
+export const serverRefused =
+  'url holds a literal secret. Put it in a header as ${NAME} and add the value in Settings › MCP servers';
+export const serverUnchanged =
+  "/etc/slicc/agent/mcp.json isn't valid JSON, so it is unchanged. Fix the file first.";
+export const serverUnanswered = 'The agent did not answer.';
+
+function serverAccount(name: string, entry: unknown): Account {
+  const { url, token } = entry as { url: string; token?: boolean };
+  const address = new URL(url);
+  const row = {
+    id: `mcp:${name}`,
+    provider: name,
+    identity: address.host,
+    url: `${address.origin}${address.pathname}`,
+    group: 'mcp' as const,
+  };
+  return token
+    ? {
+        ...row,
+        status: 'disconnected',
+        auth: 'api-key',
+        secret: 'token',
+        store: 'vault',
+        state: 'needs-secret',
+      }
+    : { ...row, status: 'connected', auth: 'local', state: 'connected' };
+}
 
 function chosen(
   fields: readonly AccountField[] | undefined,
@@ -54,14 +86,19 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   #login: DummyLogin | undefined;
   #transport: DummyTransport | undefined;
   #options: readonly ProviderOption[] = [];
+  #servers: DummyServers;
   readonly connects: Array<{
     id: string;
     gesture: boolean | null;
     fields?: Record<string, string>;
     options?: ConnectOptions;
   }> = [];
+  readonly serverEdits: Array<{ add: string; entry: unknown } | { remove: string }> = [];
   providers?: () => readonly ProviderOption[];
   remove?: (id: string) => Promise<void>;
+  addServer?: (name: string, entry: unknown) => Promise<McpEdit>;
+  removeServer?: (id: string) => Promise<McpEdit>;
+  refusals?: () => Promise<Record<string, McpRefusal>>;
 
   constructor(
     defaults: Settings,
@@ -73,10 +110,17 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
     gated = false,
     login?: DummyLogin,
     providers?: readonly ProviderOption[],
-    transport?: DummyTransport
+    transport?: DummyTransport,
+    servers: DummyServers = 'owner'
   ) {
     super();
     this.#transport = transport;
+    this.#servers = servers;
+    if (servers !== 'view-only') {
+      this.addServer = (name, entry) => this.#addServer(name, entry);
+      this.removeServer = (id) => this.#removeServer(id);
+      this.refusals = async () => serverRefusals;
+    }
     if (providers) {
       this.#options = providers;
       this.providers = () =>
@@ -156,6 +200,34 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
     this.emit('accounts', this.accounts());
   }
 
+  async #addServer(name: string, entry: unknown): Promise<McpEdit> {
+    this.serverEdits.push({ add: name, entry });
+    await this.#clock.sleep(10);
+    if (this.#servers === 'fail') throw new Error(serverUnanswered);
+    if (this.#servers === 'refuse') return { ok: false, code: 'url-secret', reason: serverRefused };
+    if (this.#accounts.some((account) => account.id === `mcp:${name}`))
+      return {
+        ok: false,
+        code: 'duplicate',
+        reason: `/etc/slicc/agent/mcp.json already has a server called "${name}". Remove it first.`,
+      };
+    void this.#clock.sleep(20).then(() => {
+      this.#accounts = [...this.#accounts, serverAccount(name, entry)];
+      this.emit('accounts', this.accounts());
+    });
+    return { ok: true };
+  }
+
+  async #removeServer(id: string): Promise<McpEdit> {
+    this.serverEdits.push({ remove: id });
+    await this.#clock.sleep(10);
+    if (this.#servers === 'fail') throw new Error(serverUnanswered);
+    if (this.#servers === 'refuse')
+      return { ok: false, code: 'file-invalid', reason: serverUnchanged };
+    void this.#clock.sleep(20).then(() => this.#drop(id));
+    return { ok: true };
+  }
+
   #add(id: string): boolean {
     const option = this.#options.find((candidate) => candidate.id === id);
     if (!option || this.#accounts.some((account) => account.id === id)) return false;
@@ -218,7 +290,12 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
           : account?.auth === 'api-key' || key
             ? ['API key', ...chosen(account?.fields, fields)].join(' · ')
             : account?.identity || `${id}-user@example.com`;
-    this.#set(id, { status: 'connected', identity, ...kept(account?.fields, fields) });
+    this.#set(id, {
+      status: 'connected',
+      identity,
+      ...(account?.state ? { state: 'connected' as const } : {}),
+      ...kept(account?.fields, fields),
+    });
     return true;
   }
 
@@ -255,6 +332,8 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
   }
 
   disconnect(id: string): void {
-    this.#set(id, { status: 'disconnected' });
+    const account = this.#accounts.find((candidate) => candidate.id === id);
+    const state = account?.auth === 'oauth' ? 'needs-auth' : 'needs-secret';
+    this.#set(id, { status: 'disconnected', ...(account?.state ? { state } : {}) });
   }
 }

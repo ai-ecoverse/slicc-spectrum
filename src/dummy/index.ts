@@ -22,7 +22,12 @@ import {
 } from './network.ts';
 import { DummyNotices, type NoticeScenario, readOnlyText, startingText } from './notices.ts';
 import { providerAccounts, providerFixtures } from './providers.ts';
-import { type DummyLogin, DummySettings, type DummyTransport } from './settings.ts';
+import {
+  type DummyLogin,
+  type DummyServers,
+  DummySettings,
+  type DummyTransport,
+} from './settings.ts';
 import { longAsk } from './showcase.ts';
 import { DummySprinkles } from './sprinkles.ts';
 import { DummyTabs, type TabsScenario } from './tabs.ts';
@@ -59,7 +64,8 @@ export interface DummyOptions {
   guests?: GuestsScenario | 'off';
   accounts?: 'settings' | 'vault' | 'dual';
   providers?: 'connected' | 'none' | 'all';
-  mcp?: 'moved';
+  mcp?: 'moved' | 'states';
+  servers?: DummyServers;
   transport?: DummyTransport;
   hold?: AgentHold['reason'] | 'off';
   readonly?: 'version' | 'off';
@@ -123,11 +129,12 @@ function settingsAccounts(
   accounts: 'settings' | 'vault' | 'dual',
   providers: 'connected' | 'none' | 'all',
   transport?: DummyTransport,
-  mcp?: 'moved'
+  mcp?: 'moved' | 'states'
 ): Account[] {
-  return listedAccounts(accounts, providers, transport).map((account) =>
+  const rows = listedAccounts(accounts, providers, transport).map((account) =>
     mcp === 'moved' && account.id === 'mcp:docs' ? { ...account, url: movedDocs } : account
   );
+  return mcp === 'states' ? [...rows, ...fixtures.serverStates] : rows;
 }
 
 function listedAccounts(
@@ -150,7 +157,10 @@ function listedAccounts(
   );
 }
 
-function vaultRecords(accounts: 'settings' | 'vault' | 'dual', mcp?: 'moved'): SecretView[] {
+function vaultRecords(
+  accounts: 'settings' | 'vault' | 'dual',
+  mcp?: 'moved' | 'states'
+): SecretView[] {
   if (accounts === 'settings') return [];
   return accountRecords(Date.now(), mcp === 'moved' ? docsUrl : undefined);
 }
@@ -206,6 +216,7 @@ export function createDummyModel({
   accounts = 'settings',
   providers = 'connected',
   mcp,
+  servers = 'owner',
   transport,
   hold = 'off',
   readonly = 'off',
@@ -264,7 +275,8 @@ export function createDummyModel({
       providers === 'none',
       login,
       providers === 'all' ? providerFixtures : undefined,
-      transport
+      transport,
+      servers
     ),
     memory: new DummyMemory(extras.memories, () => [
       { id: 'global', label: 'Everyone' },

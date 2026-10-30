@@ -60,7 +60,12 @@ export {
 export type { NoticeScenario } from './dummy/notices.ts';
 export { DummyNotices, noticeFixtures } from './dummy/notices.ts';
 export { providerAccount, providerAccounts, providerFixtures } from './dummy/providers.ts';
-export type { DummyLogin, DummySettings, DummyTransport } from './dummy/settings.ts';
+export type {
+  DummyLogin,
+  DummyServers,
+  DummySettings,
+  DummyTransport,
+} from './dummy/settings.ts';
 export type { TabsScenario } from './dummy/tabs.ts';
 export { DummyTabs, tabsFixtures } from './dummy/tabs.ts';
 export type {
