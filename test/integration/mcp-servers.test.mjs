@@ -438,16 +438,19 @@ test('an agent’s refusal to remove shows in the row and keeps it', async (t) =
 
 test('at a true 420 the rows and the form stay inside the page', async (t) => {
   const page = await open(t, { mcp: 'states' });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
   await page.send('Emulation.setDeviceMetricsOverride', {
     width: 420,
     height: 860,
     deviceScaleFactor: 1,
-    mobile: false,
+    mobile: true,
   });
-  t.after(() => page.send('Emulation.clearDeviceMetricsOverride'));
-  await page.until(
-    () => window.app.getAttribute('screen') === 'phone' || window.innerWidth === 420
-  );
+  await page.until(() => window.app.screen === 'phone');
+  await page.evaluate(() => {
+    window.app.show('settings');
+    return true;
+  });
+  await page.until(() => !!window.settingsPart('[data-action=add-server]'));
   await openForm(page);
   await page.until(() => {
     const form = window.settingsPart('form[data-form=add-server]');
