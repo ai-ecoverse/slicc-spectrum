@@ -646,6 +646,7 @@ export class SliccSettings extends ThemedElement {
     };
     queueMicrotask(() => settleModels(model));
     this.removing = new Set();
+    this.refusals = {};
     void this.#readRefusals(model);
     if (model.updates !== this.#developerPort) {
       this.#developerPort = model.updates;

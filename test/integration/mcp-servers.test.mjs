@@ -491,6 +491,41 @@ test('refusals() is asked only while a row is refused', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
+test('a swapped model shows no reason from the one before it', async (t) => {
+  const page = await open(t, { mcp: 'states' });
+  const line = 'This entry was refused. Remove it and add it again here.';
+  await page.until(
+    () =>
+      window.row('mcp:hollow')?.querySelector('[data-refusal]').textContent ===
+      'Stdio servers need a newer kernel, so this one is skipped'
+  );
+  await page.evaluate(async () => {
+    const { createDummyModel } = await import('/dist/slicc-dummy.js');
+    const next = createDummyModel({ delay: 5, color: 'light', mcp: 'states' });
+    next.settings.refusals = () =>
+      new Promise((resolve) => {
+        window.answer = resolve;
+      });
+    window.model = next;
+    window.app.model = next;
+    window.app.show('settings');
+    return true;
+  });
+  await page.until(() => typeof window.answer === 'function');
+  await page.until(
+    (line) => window.row('mcp:hollow')?.querySelector('[data-refusal]').textContent === line,
+    line
+  );
+  await page.evaluate(() => {
+    window.answer({ hollow: { code: 'sse', reason: 'the new reason' } });
+    return true;
+  });
+  await page.until(
+    () => window.row('mcp:hollow').querySelector('[data-refusal]').textContent === 'The new reason'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a view-only seat reads the plain line on a refused row', async (t) => {
   const page = await open(t, { mcp: 'states', servers: 'view-only' });
   await page.until(() => !!window.row('mcp:hollow'));
