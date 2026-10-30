@@ -462,6 +462,35 @@ test('a refused row re-reads its reason on every accounts event, and falls back 
   assert.deepEqual(page.errors, []);
 });
 
+test('refusals() is asked only while a row is refused', async (t) => {
+  const page = await open(t);
+  const count = () =>
+    page.evaluate(() => {
+      const { settings } = window.model;
+      const real = settings.refusals.bind(settings);
+      window.asked = 0;
+      settings.refusals = () => {
+        window.asked += 1;
+        return real();
+      };
+      settings.emit('accounts', settings.accounts());
+      return true;
+    });
+  await count();
+  await page.evaluate(() => new Promise((resolve) => setTimeout(() => resolve(true), 50)));
+  assert.equal(await page.evaluate(() => window.asked), 0);
+  await visit(page, { mcp: 'states' });
+  await page.until(() => !!window.row('mcp:hollow'));
+  await count();
+  await page.until(() => window.asked === 1);
+  await page.until(
+    () =>
+      window.row('mcp:hollow').querySelector('[data-refusal]').textContent ===
+      'Stdio servers need a newer kernel, so this one is skipped'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a view-only seat reads the plain line on a refused row', async (t) => {
   const page = await open(t, { mcp: 'states', servers: 'view-only' });
   await page.until(() => !!window.row('mcp:hollow'));

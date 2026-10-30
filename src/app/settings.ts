@@ -646,7 +646,6 @@ export class SliccSettings extends ThemedElement {
     };
     queueMicrotask(() => settleModels(model));
     this.removing = new Set();
-    this.refusals = {};
     void this.#readRefusals(model);
     if (model.updates !== this.#developerPort) {
       this.#developerPort = model.updates;
@@ -1666,8 +1665,12 @@ export class SliccSettings extends ThemedElement {
   }
 
   async #readRefusals(model: SliccModel): Promise<void> {
-    if (!model.settings.refusals) return;
     const call = ++this.#refusalCall;
+    const refused = model.settings.accounts().some((account) => account.state === 'refused');
+    if (!(refused && model.settings.refusals)) {
+      this.refusals = {};
+      return;
+    }
     const refusals = await model.settings.refusals().catch(() => ({}));
     if (call === this.#refusalCall && this.model === model) this.refusals = refusals;
   }
