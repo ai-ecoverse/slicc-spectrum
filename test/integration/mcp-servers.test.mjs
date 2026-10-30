@@ -237,24 +237,62 @@ test('Enter in a field adds the server, and Add waits for the answer', async (t)
   assert.deepEqual(page.errors, []);
 });
 
-test('the agent’s refusal shows in the form, keeps what was typed, and adds nothing', async (t) => {
+test('a URL with a secret in it says what to do, on the URL field, and adds nothing', async (t) => {
   const page = await open(t, { servers: 'refuse' });
-  await fillForm(page, { name: 'wiki', url: wiki, token: true });
+  await fillForm(page, { name: 'wiki', url: `${wiki}?key=abc123`, token: true });
   await submit(page);
-  await page.until(() => !!window.settingsPart('[data-problem=form]'));
+  await page.until(() => !!window.settingsPart('[data-problem=url]'));
   assert.equal(
-    await problem(page, 'form'),
-    'url holds a literal secret. Put it in a header as ${NAME} and add the value in Settings › MCP servers'
+    await problem(page, 'url'),
+    'This URL contains a secret. Remove it, turn on Uses a token, and paste the token when you connect.'
   );
+  assert.equal(await problem(page, 'form'), null);
   assert.deepEqual(
     await page.evaluate(() => ({
       name: window.field('name').value,
       url: window.field('url').value,
+      invalid: window.field('url').getAttribute('aria-invalid'),
       token: window.field('token').checked,
       pending: window.settingsPart('form[data-form=add-server] [data-action=save]').pending,
       added: window.account('mcp:wiki') === undefined,
     })),
-    { name: 'wiki', url: wiki, token: true, pending: false, added: true }
+    {
+      name: 'wiki',
+      url: `${wiki}?key=abc123`,
+      invalid: 'true',
+      token: true,
+      pending: false,
+      added: true,
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('any other refusal shows the agent’s reason as a sentence on the form', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    window.model.settings.addServer = async () => ({
+      ok: false,
+      code: 'sse',
+      reason: 'the legacy SSE transport is not supported; use the streamable HTTP URL',
+    });
+    return true;
+  });
+  await fillForm(page, { name: 'wiki', url: wiki });
+  await submit(page);
+  await page.until(() => !!window.settingsPart('[data-problem=form]'));
+  assert.equal(
+    await problem(page, 'form'),
+    'The legacy SSE transport is not supported; use the streamable HTTP URL'
+  );
+  assert.equal(await page.evaluate(() => window.field('url').hasAttribute('aria-invalid')), false);
+  await page.evaluate(() => {
+    window.model.settings.addServer = async () => ({ ok: false, reason: 'no code on this one' });
+    return true;
+  });
+  await submit(page);
+  await page.until(
+    () => window.settingsPart('[data-problem=form]')?.textContent.trim() === 'No code on this one'
   );
   assert.deepEqual(page.errors, []);
 });
@@ -266,7 +304,7 @@ test('a name the agent already has is refused in its own words', async (t) => {
   await page.until(() => !!window.settingsPart('[data-problem=form]'));
   assert.equal(
     await problem(page, 'form'),
-    'mcp.json already has a server called "docs". Remove it first.'
+    '/etc/slicc/agent/mcp.json already has a server called "docs". Remove it first.'
   );
   assert.deepEqual(page.errors, []);
 });
@@ -368,7 +406,7 @@ test('rows read their state in words, and only rows that sign in offer Connect',
     ember: row('Needs sign-in', 'ember.example', true),
     fathom: row('Couldn’t connect', 'fathom.example', true),
     glacier: row('Disabled', 'glacier.example', false),
-    hollow: row('Refused', 'This entry was refused. Remove it and add it again here.', false),
+    hollow: row('Refused', 'Stdio servers need a newer kernel, so this one is skipped', false),
     inlet: row(
       'Refused',
       'inlet.example · This entry was refused. Remove it and add it again here.',
@@ -380,6 +418,56 @@ test('rows read their state in words, and only rows that sign in offer Connect',
       window.row('mcp:ember').querySelector('[data-action=connect]').textContent.trim()
     ),
     'Sign in'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a refused row re-reads its reason on every accounts event, and falls back to the line', async (t) => {
+  const page = await open(t, { mcp: 'states' });
+  await page.until(() => !!window.row('mcp:hollow'));
+  const note = () =>
+    page.evaluate(() => window.row('mcp:hollow').querySelector('[data-refusal]').textContent);
+  await page.until(
+    () =>
+      window.row('mcp:hollow').querySelector('[data-refusal]').textContent ===
+      'Stdio servers need a newer kernel, so this one is skipped'
+  );
+  await page.evaluate(() => {
+    const { settings } = window.model;
+    settings.refusals = async () => ({
+      hollow: { code: 'sse', reason: 'the legacy SSE transport is not supported' },
+    });
+    settings.emit('accounts', settings.accounts());
+    return true;
+  });
+  await page.until(
+    () =>
+      window.row('mcp:hollow').querySelector('[data-refusal]').textContent ===
+      'The legacy SSE transport is not supported'
+  );
+  await page.evaluate(() => {
+    const { settings } = window.model;
+    settings.refusals = async () => {
+      throw new Error('EACCES');
+    };
+    settings.emit('accounts', settings.accounts());
+    return true;
+  });
+  await page.until(
+    () =>
+      window.row('mcp:hollow').querySelector('[data-refusal]').textContent ===
+      'This entry was refused. Remove it and add it again here.'
+  );
+  assert.equal(await note(), 'This entry was refused. Remove it and add it again here.');
+  assert.deepEqual(page.errors, []);
+});
+
+test('a view-only seat reads the plain line on a refused row', async (t) => {
+  const page = await open(t, { mcp: 'states', servers: 'view-only' });
+  await page.until(() => !!window.row('mcp:hollow'));
+  assert.equal(
+    await page.evaluate(() => window.row('mcp:hollow').querySelector('[data-refusal]').textContent),
+    'This entry was refused. Remove it and add it again here.'
   );
   assert.deepEqual(page.errors, []);
 });
@@ -498,7 +586,7 @@ test('an agent’s refusal to remove shows in the row and keeps it', async (t) =
   await page.until(
     () =>
       window.settingsPart('.account[data-id="mcp:docs"] ~ .failure')?.textContent.trim() ===
-      "mcp.json isn't valid JSON, so it is unchanged. Fix the file first."
+      "/etc/slicc/agent/mcp.json isn't valid JSON, so it is unchanged. Fix the file first."
   );
   assert.equal(await page.evaluate(() => !!window.row('mcp:docs')), true);
   assert.equal((await rowParts(page, 'mcp:docs')).label, 'Connected');

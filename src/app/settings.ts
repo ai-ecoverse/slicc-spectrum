@@ -20,6 +20,7 @@ import type {
   AccountStatus,
   ConnectOptions,
   McpEdit,
+  McpRefusal,
   McpState,
   ProviderAuth,
   ProviderOption,
@@ -94,6 +95,19 @@ const removeBodies: Partial<Record<string, string>> = {
 const serverGone = 'Agents can’t use it any more.';
 
 const refusedEntry = 'This entry was refused. Remove it and add it again here.';
+
+const urlSecret =
+  'This URL contains a secret. Remove it, turn on Uses a token, and paste the token when you connect.';
+
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+function serverRefusal(edit: Partial<McpRefusal> & { reason: string }): {
+  field: ServerField;
+  message: string;
+} {
+  if (edit.code === 'url-secret') return { field: 'url', message: urlSecret };
+  return { field: 'form', message: sentence(edit.reason) };
+}
 
 type ServerField = 'name' | 'url' | 'form';
 
@@ -205,6 +219,7 @@ export class SliccSettings extends ThemedElement {
     serverBusy: { state: true },
     serverProblem: { state: true },
     serverToken: { state: true },
+    refusals: { state: true },
     removing: { state: true },
   };
   declare pending: ReadonlySet<string>;
@@ -222,6 +237,7 @@ export class SliccSettings extends ThemedElement {
   declare serverBusy: boolean;
   declare serverProblem: { field: ServerField; message: string } | null;
   declare serverToken: boolean;
+  declare refusals: Readonly<Record<string, McpRefusal>>;
   declare removing: ReadonlySet<string>;
   #waits = new SignInWaits(() => this.requestUpdate());
   #copies = new SignInCopies(() => this.requestUpdate());
@@ -231,6 +247,7 @@ export class SliccSettings extends ThemedElement {
   #wanted: boolean | null = null;
   #developerPort: UpdatesPort | undefined;
   #call = 0;
+  #refusalCall = 0;
   #scroll = new ViewScroll(this, 'settings:scroll', { scroller: () => this, rows: '[data-id]' });
 
   constructor() {
@@ -250,6 +267,7 @@ export class SliccSettings extends ThemedElement {
     this.serverBusy = false;
     this.serverProblem = null;
     this.serverToken = false;
+    this.refusals = {};
     this.removing = new Set();
   }
 
@@ -628,6 +646,8 @@ export class SliccSettings extends ThemedElement {
     };
     queueMicrotask(() => settleModels(model));
     this.removing = new Set();
+    this.refusals = {};
+    void this.#readRefusals(model);
     if (model.updates !== this.#developerPort) {
       this.#developerPort = model.updates;
       this.#call += 1;
@@ -642,6 +662,7 @@ export class SliccSettings extends ThemedElement {
       model.settings.on('settings', settle),
       model.settings.on('accounts', () => {
         this.#settleRemoved(model);
+        void this.#readRefusals(model);
         settle();
       }),
       model.settings.on('providers', update),
@@ -1510,7 +1531,8 @@ export class SliccSettings extends ThemedElement {
 
   #refusedNote(account: Account): TemplateResult | typeof nothing {
     if (account.state !== 'refused') return nothing;
-    return html`<span data-refusal>${account.identity ? ' · ' : ''}${refusedEntry}</span>`;
+    const reason = this.refusals[serverOf(account)]?.reason;
+    return html`<span data-refusal>${account.identity ? ' · ' : ''}${reason ? sentence(reason) : refusedEntry}</span>`;
   }
 
   #otherKey(account: Account): TemplateResult | typeof nothing {
@@ -1643,6 +1665,13 @@ export class SliccSettings extends ThemedElement {
     this.removing = new Set(on ? [...rest, id] : rest);
   }
 
+  async #readRefusals(model: SliccModel): Promise<void> {
+    if (!model.settings.refusals) return;
+    const call = ++this.#refusalCall;
+    const refusals = await model.settings.refusals().catch(() => ({}));
+    if (call === this.#refusalCall && this.model === model) this.refusals = refusals;
+  }
+
   #settleRemoved(model: SliccModel): void {
     const listed = new Set(model.settings.accounts().map((account) => account.id));
     const left = [...this.removing].filter((id) => listed.has(id));
@@ -1668,7 +1697,7 @@ export class SliccSettings extends ThemedElement {
     try {
       await this.#clearServer(model, account);
       const edit = (await model.settings.removeServer?.(id)) as McpEdit;
-      if (!edit.ok) refused(edit.reason);
+      if (!edit.ok) refused(sentence(edit.reason));
       else if (this.model === model) this.focusOn('[data-action=add-server]');
     } catch (error) {
       refused(failureText(error));
@@ -1721,12 +1750,17 @@ export class SliccSettings extends ThemedElement {
       const edit = (await model.settings.addServer?.(name, entry)) as McpEdit;
       if (this.model !== model) return;
       if (edit.ok) this.#closeServerForm();
-      else this.serverProblem = { field: 'form', message: edit.reason };
+      else this.#refuseServer(serverRefusal(edit));
     } catch (error) {
       if (this.model === model) this.serverProblem = { field: 'form', message: failureText(error) };
     } finally {
       this.serverBusy = false;
     }
+  }
+
+  #refuseServer(problem: { field: ServerField; message: string }): void {
+    this.serverProblem = problem;
+    if (problem.field !== 'form') this.focusOn(`[data-server-field=${problem.field}]`);
   }
 
   #serverNote(field: ServerField): TemplateResult | typeof nothing {

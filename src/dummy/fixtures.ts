@@ -4,6 +4,7 @@ import type {
   Agent,
   BrowserTab,
   Change,
+  McpRefusal,
   Message,
   ModelOption,
   Settings,
@@ -440,6 +441,10 @@ const serverRow = (name: string, row: Partial<Account>): Account => ({
   group: 'mcp',
   ...row,
 });
+
+export const serverRefusals: Record<string, McpRefusal> = {
+  hollow: { code: 'stdio', reason: 'stdio servers need a newer kernel, so this one is skipped' },
+};
 
 export const serverStates: Account[] = [
   serverRow('atlas', { status: 'connected', state: 'connected' }),
