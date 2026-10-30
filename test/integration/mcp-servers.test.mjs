@@ -184,6 +184,23 @@ test('adding a server without a token shows a row with only Remove', async (t) =
   assert.deepEqual(page.errors, []);
 });
 
+test('the token help shows only while Uses a token is on', async (t) => {
+  const page = await open(t);
+  const help = () => page.evaluate(() => !!window.settingsPart('[data-token-help]'));
+  await openForm(page);
+  assert.equal(await help(), false);
+  await click(page, 'form[data-form=add-server] [data-server-field=token]');
+  await page.until(() => !!window.settingsPart('[data-token-help]'));
+  await click(page, 'form[data-form=add-server] [data-server-field=token]');
+  await page.until(() => !window.settingsPart('[data-token-help]'));
+  await click(page, 'form[data-form=add-server] [data-server-field=token]');
+  await page.until(() => !!window.settingsPart('[data-token-help]'));
+  await click(page, 'form[data-form=add-server] [data-action=cancel]');
+  await openForm(page);
+  assert.equal(await help(), false);
+  assert.deepEqual(page.errors, []);
+});
+
 test('Enter in a field adds the server, and Add waits for the answer', async (t) => {
   const page = await open(t);
   await fillForm(page, { name: 'wiki', url: wiki });
@@ -324,7 +341,17 @@ test('rows read their state in words, and only rows that sign in offer Connect',
   const page = await open(t, { mcp: 'states' });
   await page.until(() => !!window.row('mcp:hollow'));
   const rows = {};
-  for (const name of ['atlas', 'beacon', 'cargo', 'drift', 'ember', 'fathom', 'glacier', 'hollow'])
+  for (const name of [
+    'atlas',
+    'beacon',
+    'cargo',
+    'drift',
+    'ember',
+    'fathom',
+    'glacier',
+    'hollow',
+    'inlet',
+  ])
     rows[name] = await rowParts(page, `mcp:${name}`);
   const row = (label, identity, connect) => ({
     label,
@@ -341,7 +368,12 @@ test('rows read their state in words, and only rows that sign in offer Connect',
     ember: row('Needs sign-in', 'ember.example', true),
     fathom: row('Couldn’t connect', 'fathom.example', true),
     glacier: row('Disabled', 'glacier.example', false),
-    hollow: row('Refused', '', false),
+    hollow: row('Refused', 'This entry was refused. Remove it and add it again here.', false),
+    inlet: row(
+      'Refused',
+      'inlet.example · This entry was refused. Remove it and add it again here.',
+      false
+    ),
   });
   assert.equal(
     await page.evaluate(() =>
@@ -419,6 +451,43 @@ test('removing a server with no token touches neither the vault nor the endpoint
   await answer(page, true);
   await page.until(() => !window.row('mcp:atlas'));
   assert.deepEqual(await page.evaluate(() => window.order), ['removeServer']);
+  assert.deepEqual(page.errors, []);
+});
+
+test('with nothing in the vault, the dialog promises no deletion and no endpoint is taken back', async (t) => {
+  const page = await open(t, { mcp: 'states' });
+  await page.until(() => !!window.row('mcp:hollow'));
+  for (const id of ['atlas', 'drift', 'ember', 'glacier', 'hollow']) {
+    const { body } = await confirmRemove(page, `mcp:${id}`);
+    assert.equal(body, 'Agents can’t use it any more.');
+    await answer(page, false);
+  }
+  await confirmRemove(page, 'mcp:drift');
+  await answer(page, true);
+  await page.until(() => !window.row('mcp:drift'));
+  assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges), []);
+  assert.deepEqual(page.errors, []);
+});
+
+test('every trash button is named after its server for assistive technology', async (t) => {
+  const page = await open(t, { mcp: 'states' });
+  await page.until(() => !!window.row('mcp:hollow'));
+  const servers = await page.evaluate(() =>
+    window.model.settings
+      .accounts()
+      .filter((account) => account.group === 'mcp')
+      .map((account) => account.provider)
+  );
+  await page.send('Accessibility.enable');
+  const { nodes } = await page.send('Accessibility.getFullAXTree');
+  const names = nodes
+    .filter((node) => !node.ignored && node.role?.value === 'button')
+    .map((node) => node.name?.value)
+    .filter((name) => servers.some((server) => name === `Remove ${server}`));
+  assert.deepEqual(
+    names,
+    servers.map((server) => `Remove ${server}`)
+  );
   assert.deepEqual(page.errors, []);
 });
 

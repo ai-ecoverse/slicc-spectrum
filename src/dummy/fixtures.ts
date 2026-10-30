@@ -460,6 +460,7 @@ export const serverStates: Account[] = [
   }),
   serverRow('glacier', { state: 'disabled' }),
   serverRow('hollow', { identity: '', url: undefined, state: 'refused' }),
+  serverRow('inlet', { url: undefined, state: 'refused' }),
 ];
 
 export const dualAccount: Account = {

@@ -93,6 +93,8 @@ const removeBodies: Partial<Record<string, string>> = {
 
 const serverGone = 'Agents can’t use it any more.';
 
+const refusedEntry = 'This entry was refused. Remove it and add it again here.';
+
 type ServerField = 'name' | 'url' | 'form';
 
 const serverName = /^[A-Za-z0-9_-]+$/;
@@ -202,6 +204,7 @@ export class SliccSettings extends ThemedElement {
     serverOpen: { state: true },
     serverBusy: { state: true },
     serverProblem: { state: true },
+    serverToken: { state: true },
     removing: { state: true },
   };
   declare pending: ReadonlySet<string>;
@@ -218,6 +221,7 @@ export class SliccSettings extends ThemedElement {
   declare serverOpen: boolean;
   declare serverBusy: boolean;
   declare serverProblem: { field: ServerField; message: string } | null;
+  declare serverToken: boolean;
   declare removing: ReadonlySet<string>;
   #waits = new SignInWaits(() => this.requestUpdate());
   #copies = new SignInCopies(() => this.requestUpdate());
@@ -245,6 +249,7 @@ export class SliccSettings extends ThemedElement {
     this.serverOpen = false;
     this.serverBusy = false;
     this.serverProblem = null;
+    this.serverToken = false;
     this.removing = new Set();
   }
 
@@ -1494,13 +1499,18 @@ export class SliccSettings extends ThemedElement {
         this.#inVault(account)
           ? html`<span class="kept" data-store="vault">${account.identity ? ' · ' : ''}${kept(account)}</span>`
           : nothing
-      }</span>
+      }${this.#refusedNote(account)}</span>
       <swc-status-light class="state" variant=${variant}>${label}</swc-status-light>
       ${this.#actions(account)}
     </div>
     ${this.#rowNotes(account)}
     ${this.#movedNote(account)}
     ${this.adding?.id === account.id ? nothing : html`${this.#key(account)}${this.#otherKey(account)}${failure}`}`;
+  }
+
+  #refusedNote(account: Account): TemplateResult | typeof nothing {
+    if (account.state !== 'refused') return nothing;
+    return html`<span data-refusal>${account.identity ? ' · ' : ''}${refusedEntry}</span>`;
   }
 
   #otherKey(account: Account): TemplateResult | typeof nothing {
@@ -1590,10 +1600,10 @@ export class SliccSettings extends ThemedElement {
     for (const field of account.fields ?? []) this.#bases.delete(`${account.id} ${field.name}`);
   }
 
-  #serverRecords(account: Account, vault: VaultPort): Array<[string, RecordKind]> {
+  #heldRecords(account: Account, vault: VaultPort): string[] {
     const server = serverOf(account);
     const name = recordName(account);
-    const held = (vault.list()?.secrets ?? [])
+    return (vault.list()?.secrets ?? [])
       .filter(
         (secret) =>
           secret.kind === 'mcp' &&
@@ -1601,13 +1611,17 @@ export class SliccSettings extends ThemedElement {
           (secret.server === server || secret.name === name)
       )
       .map((secret) => secret.name);
-    const names = new Set([...(account.auth === 'api-key' ? [name] : []), ...held]);
-    return [...names].map((held): [string, RecordKind] => [held, 'mcp']);
+  }
+
+  #serverRecords(account: Account, vault: VaultPort): Array<[string, RecordKind]> {
+    const token = account.auth === 'api-key' ? [recordName(account)] : [];
+    const names = new Set([...token, ...this.#heldRecords(account, vault)]);
+    return [...names].map((name): [string, RecordKind] => [name, 'mcp']);
   }
 
   #removeServerBody(account: Account): string {
     const vault = this.model?.vault;
-    if (!vault?.remove || !this.#serverRecords(account, vault).length) return serverGone;
+    if (!vault?.remove || !this.#heldRecords(account, vault).length) return serverGone;
     const held = account.auth === 'oauth' ? 'sign-in' : 'token';
     return `Its ${held} is deleted from the vault. ${serverGone}`;
   }
@@ -1616,8 +1630,9 @@ export class SliccSettings extends ThemedElement {
     const vault = model.vault;
     const server = serverOf(account);
     const records = vault?.remove ? this.#serverRecords(account, vault) : [];
+    const held = !!vault?.remove && this.#heldRecords(account, vault).length > 0;
     const pinned = !!this.#pinned(account);
-    const url = registrations()[server] ?? (records.length && !pinned && this.#mcpUrl(account));
+    const url = registrations()[server] ?? (held && !pinned && this.#mcpUrl(account));
     for (const [name, kind] of records) await gone(vault as VaultPort, name, kind);
     if (url) await vault?.endpoints?.({ remove: { mcp: [{ server, url }] } });
     register(server, undefined);
@@ -1662,6 +1677,7 @@ export class SliccSettings extends ThemedElement {
 
   #openServerForm(): void {
     this.serverProblem = null;
+    this.serverToken = false;
     this.serverOpen = true;
     void this.updateComplete.then(() => this.focusOn('[data-server-field=name]'));
   }
@@ -1689,14 +1705,13 @@ export class SliccSettings extends ThemedElement {
       form.querySelector<HTMLInputElement>(`[data-server-field=${field}]`)?.value.trim() as string;
     const name = text('name');
     const url = text('url');
-    const token = form.querySelector('sp-switch') as HTMLElement & { checked: boolean };
     const problem = this.#checkServer(name, url);
     this.serverProblem = problem;
     if (problem) {
       this.focusOn(`[data-server-field=${problem.field}]`);
       return;
     }
-    void this.#addServer(name, token.checked ? { url, token: true } : { url });
+    void this.#addServer(name, this.serverToken ? { url, token: true } : { url });
   }
 
   async #addServer(name: string, entry: { url: string; token?: boolean }): Promise<void> {
@@ -1749,8 +1764,10 @@ export class SliccSettings extends ThemedElement {
         ${this.#serverNote('url')}
       </div>
       <div class="entry">
-        <sp-switch data-server-field="token">Uses a token</sp-switch>
-        <p class="hint">You paste the token when you connect the server. It stays in the vault.</p>
+        <sp-switch data-server-field="token" @change=${(event: Event) => {
+          this.serverToken = this.#checked(event);
+        }}>Uses a token</sp-switch>
+        ${this.serverToken ? html`<p class="hint" data-token-help>You paste the token when you connect the server. It stays in the vault.</p>` : nothing}
       </div>
       ${this.#serverNote('form')}
       <div class="buttons">
