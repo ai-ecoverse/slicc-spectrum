@@ -19,6 +19,8 @@ import type {
   AccountFieldOption,
   AccountStatus,
   ConnectOptions,
+  McpEdit,
+  McpState,
   ProviderAuth,
   ProviderOption,
   RecordKind,
@@ -48,7 +50,22 @@ const accountStatus = {
   'needs-sign-in': ['neutral', 'Needs sign-in'],
   'sign-in-expired': ['notice', 'Sign-in expired'],
   unreachable: ['notice', 'Unreachable'],
+  connecting: ['info', 'Connecting…'],
+  'needs-token': ['neutral', 'Needs a token'],
+  failed: ['negative', 'Couldn’t connect'],
+  disabled: ['neutral', 'Disabled'],
+  refused: ['negative', 'Refused'],
+  removing: ['info', 'Removing…'],
 } as const;
+
+const serverStatus: Partial<Record<McpState, keyof typeof accountStatus>> = {
+  connecting: 'connecting',
+  'needs-secret': 'needs-token',
+  'needs-auth': 'needs-sign-in',
+  failed: 'failed',
+  disabled: 'disabled',
+  refused: 'refused',
+};
 
 const authHints: Record<ProviderAuth, string> = {
   'api-key': 'API key',
@@ -73,6 +90,12 @@ const removeBodies: Partial<Record<string, string>> = {
   oauth: 'Its sign-in is deleted from the vault. Models from it stop working.',
   local: 'Models from it stop working.',
 };
+
+const serverGone = 'Agents can’t use it any more.';
+
+type ServerField = 'name' | 'url' | 'form';
+
+const serverName = /^[A-Za-z0-9_-]+$/;
 
 function draft(option: ProviderOption): Account {
   return {
@@ -133,6 +156,10 @@ function words(message: string, word: string): boolean {
 
 const popup = (account: Account) => account.group === 'mcp' && account.auth === 'oauth';
 
+const signsIn = (account: Account) =>
+  account.group !== 'mcp' ||
+  !(account.auth === 'local' || account.state === 'disabled' || account.state === 'refused');
+
 const dual = (account: Account) => account.auth === 'oauth' && account.secret === 'api-key';
 
 const signInMethod = (account: Account): ConnectOptions | undefined =>
@@ -172,6 +199,10 @@ export class SliccSettings extends ThemedElement {
     filled: { state: true },
     developing: { state: true },
     developerError: { state: true },
+    serverOpen: { state: true },
+    serverBusy: { state: true },
+    serverProblem: { state: true },
+    removing: { state: true },
   };
   declare pending: ReadonlySet<string>;
   declare entering: string | null;
@@ -184,6 +215,10 @@ export class SliccSettings extends ThemedElement {
   declare filled: ReadonlySet<string>;
   declare developing: boolean;
   declare developerError: string | null;
+  declare serverOpen: boolean;
+  declare serverBusy: boolean;
+  declare serverProblem: { field: ServerField; message: string } | null;
+  declare removing: ReadonlySet<string>;
   #waits = new SignInWaits(() => this.requestUpdate());
   #copies = new SignInCopies(() => this.requestUpdate());
   #landing: string | null = null;
@@ -207,6 +242,10 @@ export class SliccSettings extends ThemedElement {
     this.filled = new Set();
     this.developing = false;
     this.developerError = null;
+    this.serverOpen = false;
+    this.serverBusy = false;
+    this.serverProblem = null;
+    this.removing = new Set();
   }
 
   static styles = [
@@ -371,6 +410,9 @@ export class SliccSettings extends ThemedElement {
         align-items: center;
         gap: var(--swc-spacing-75);
       }
+      [data-group='mcp'] .actions {
+        justify-content: flex-end;
+      }
       .notes {
         grid-column: 1 / -1;
         display: grid;
@@ -390,6 +432,16 @@ export class SliccSettings extends ThemedElement {
       .notice swc-icon-alert-triangle {
         flex: none;
         margin-block-start: var(--swc-spacing-50);
+      }
+      .server {
+        display: grid;
+        gap: var(--swc-spacing-200);
+        max-width: 420px;
+        margin-block-start: var(--swc-spacing-300);
+      }
+      .entry {
+        display: grid;
+        gap: var(--swc-spacing-75);
       }
       .other-way {
         justify-self: start;
@@ -570,6 +622,7 @@ export class SliccSettings extends ThemedElement {
       update();
     };
     queueMicrotask(() => settleModels(model));
+    this.removing = new Set();
     if (model.updates !== this.#developerPort) {
       this.#developerPort = model.updates;
       this.#call += 1;
@@ -582,7 +635,10 @@ export class SliccSettings extends ThemedElement {
       ...super.subscribe(model),
       ...(developer && model.updates ? [model.updates.on('items', update)] : []),
       model.settings.on('settings', settle),
-      model.settings.on('accounts', settle),
+      model.settings.on('accounts', () => {
+        this.#settleRemoved(model);
+        settle();
+      }),
       model.settings.on('providers', update),
       ...(model.vault ? [model.vault.on('status', update), model.vault.on('list', update)] : []),
     ];
@@ -1049,7 +1105,7 @@ export class SliccSettings extends ThemedElement {
   #moved(account: Account): string | null {
     const url = this.#mcpUrl(account);
     const old = registrations()[serverOf(account)] ?? this.#pinned(account);
-    return url && old && old !== url ? url : null;
+    return signsIn(account) && url && old && old !== url ? url : null;
   }
 
   async #reconnectMcp(account: Account, url: string): Promise<void> {
@@ -1358,6 +1414,7 @@ export class SliccSettings extends ThemedElement {
     const accounts = this.model?.settings.accounts() ?? [];
     if (accounts.some((account) => this.#signingIn(account))) return 'signing in';
     if (this.entering !== null) return 'a key is being entered';
+    if (this.serverOpen) return 'a server is being added';
     return this.picking ? 'a provider is being added' : null;
   }
 
@@ -1371,7 +1428,8 @@ export class SliccSettings extends ThemedElement {
     );
   }
 
-  #action(account: Account): TemplateResult {
+  #action(account: Account): TemplateResult | typeof nothing {
+    if (!signsIn(account)) return nothing;
     if (this.#signingIn(account) && this.model?.settings.cancel) {
       return html`<swc-button
         size="m"
@@ -1388,6 +1446,7 @@ export class SliccSettings extends ThemedElement {
         data-action="disconnect"
         accessible-label=${`Disconnect ${account.provider}`}
         ?pending=${this.pending.has(account.id)}
+        ?disabled=${this.removing.has(account.id)}
         @click=${() => this.#disconnect(account)}
       >Disconnect</swc-button>`;
     }
@@ -1401,17 +1460,20 @@ export class SliccSettings extends ThemedElement {
       data-action="connect"
       accessible-label=${signs ? `Sign in to ${account.provider}` : `${label} ${account.provider}`}
       ?pending=${busy}
-      ?disabled=${entering || !!account.blocked}
+      ?disabled=${entering || !!account.blocked || this.removing.has(account.id)}
       @click=${() => this.#start(account)}
     >${label}</swc-button>`;
   }
 
   #status(account: Account): keyof typeof accountStatus {
+    if (this.removing.has(account.id)) return 'removing';
     if (this.#signingIn(account)) return 'signing-in';
     if (account.status === 'connected' && account.blocked) return 'unreachable';
     if (account.status === 'expired' && account.auth === 'api-key') return 'rejected';
-    if (popup(account) && account.status === 'disconnected') return 'needs-sign-in';
     if (popup(account) && account.status === 'expired') return 'sign-in-expired';
+    const server = account.state && serverStatus[account.state];
+    if (server) return server;
+    if (popup(account) && account.status === 'disconnected') return 'needs-sign-in';
     return account.status;
   }
 
@@ -1447,39 +1509,46 @@ export class SliccSettings extends ThemedElement {
     return other === nothing ? nothing : html`<div class="notes">${other}</div>`;
   }
 
-  #actions(account: Account): TemplateResult {
+  #actions(account: Account): TemplateResult | typeof nothing {
     const moved = account.status === 'connected' ? this.#moved(account) : null;
-    if (moved)
-      return html`<div class="actions"><swc-button
-          size="m"
-          variant="accent"
-          data-action="reconnect-mcp"
-          accessible-label=${`Reconnect ${account.provider}`}
-          ?pending=${this.pending.has(account.id)}
-          @click=${() => this.#reconnectMcp(account, moved)}
-        >Reconnect</swc-button>${this.#action(account)}</div>`;
-    if (this.#removable(account))
-      return html`<div class="actions">${this.#action(account)}${this.#removeButton(account)}</div>`;
-    return this.#action(account);
+    const removable = this.#removable(account);
+    if (!moved && !removable) return this.#action(account);
+    return html`<div class="actions">${moved ? this.#reconnect(account, moved) : nothing}${this.#action(account)}${removable ? this.#removeButton(account) : nothing}</div>`;
+  }
+
+  #reconnect(account: Account, url: string): TemplateResult {
+    return html`<swc-button
+      size="m"
+      variant="accent"
+      data-action="reconnect-mcp"
+      accessible-label=${`Reconnect ${account.provider}`}
+      ?pending=${this.pending.has(account.id)}
+      ?disabled=${this.removing.has(account.id)}
+      @click=${() => this.#reconnectMcp(account, url)}
+    >Reconnect</swc-button>`;
   }
 
   #removable(account: Account): boolean {
-    return !!this.#offered() && !!this.model?.settings.remove && account.group !== 'mcp';
+    const settings = this.model?.settings;
+    if (account.group === 'mcp') return !!settings?.removeServer;
+    return !!this.#offered() && !!settings?.remove;
   }
 
   #removeButton(account: Account): TemplateResult {
     const id = `remove-${account.id}`;
     const label = `Remove ${account.provider}`;
+    const server = account.group === 'mcp';
+    const removing = this.removing.has(account.id);
     return html`<swc-action-button
         id=${id}
         size="m"
         quiet
-        data-action="remove-account"
+        data-action=${server ? 'remove-server' : 'remove-account'}
         accessible-label=${label}
-        ?disabled=${this.pending.has(account.id)}
-        @click=${() => this.#remove(account)}
+        ?disabled=${this.pending.has(account.id) || removing}
+        @click=${() => (server ? this.#removeServer(account) : this.#remove(account))}
         ><swc-icon-delete slot="icon"></swc-icon-delete></swc-action-button
-      ><swc-tooltip for=${id} placement="top">${label}</swc-tooltip>`;
+      >${removing ? nothing : html`<swc-tooltip for=${id} placement="top">${label}</swc-tooltip>`}`;
   }
 
   async #closeTip(id: string): Promise<void> {
@@ -1519,6 +1588,194 @@ export class SliccSettings extends ThemedElement {
     }
     this.focusOn('[data-action=add-provider]');
     for (const field of account.fields ?? []) this.#bases.delete(`${account.id} ${field.name}`);
+  }
+
+  #serverRecords(account: Account, vault: VaultPort): Array<[string, RecordKind]> {
+    const server = serverOf(account);
+    const name = recordName(account);
+    const held = (vault.list()?.secrets ?? [])
+      .filter(
+        (secret) =>
+          secret.kind === 'mcp' &&
+          secret.state !== 'removed' &&
+          (secret.server === server || secret.name === name)
+      )
+      .map((secret) => secret.name);
+    const names = new Set([...(account.auth === 'api-key' ? [name] : []), ...held]);
+    return [...names].map((held): [string, RecordKind] => [held, 'mcp']);
+  }
+
+  #removeServerBody(account: Account): string {
+    const vault = this.model?.vault;
+    if (!vault?.remove || !this.#serverRecords(account, vault).length) return serverGone;
+    const held = account.auth === 'oauth' ? 'sign-in' : 'token';
+    return `Its ${held} is deleted from the vault. ${serverGone}`;
+  }
+
+  async #clearServer(model: SliccModel, account: Account): Promise<void> {
+    const vault = model.vault;
+    const server = serverOf(account);
+    const records = vault?.remove ? this.#serverRecords(account, vault) : [];
+    const pinned = !!this.#pinned(account);
+    const url = registrations()[server] ?? (records.length && !pinned && this.#mcpUrl(account));
+    for (const [name, kind] of records) await gone(vault as VaultPort, name, kind);
+    if (url) await vault?.endpoints?.({ remove: { mcp: [{ server, url }] } });
+    register(server, undefined);
+  }
+
+  #markRemoving(id: string, on: boolean): void {
+    const rest = [...this.removing].filter((candidate) => candidate !== id);
+    this.removing = new Set(on ? [...rest, id] : rest);
+  }
+
+  #settleRemoved(model: SliccModel): void {
+    const listed = new Set(model.settings.accounts().map((account) => account.id));
+    const left = [...this.removing].filter((id) => listed.has(id));
+    if (left.length !== this.removing.size) this.removing = new Set(left);
+  }
+
+  async #removeServer(account: Account): Promise<void> {
+    const model = this.model as SliccModel;
+    const { id } = account;
+    const title = `Remove ${account.provider}?`;
+    const body = this.#removeServerBody(account);
+    if (!(await confirm({ title, body, action: 'Remove' }))) return;
+    if (this.model !== model) return;
+    clearValues(this.renderRoot);
+    if (this.entering === id) this.entering = null;
+    await this.#closeTip(`remove-${id}`);
+    this.#markRemoving(id, true);
+    this.failure = null;
+    const refused = (message: string) => {
+      this.#markRemoving(id, false);
+      if (this.model === model) this.failure = { id, message };
+    };
+    try {
+      await this.#clearServer(model, account);
+      const edit = (await model.settings.removeServer?.(id)) as McpEdit;
+      if (!edit.ok) refused(edit.reason);
+      else if (this.model === model) this.focusOn('[data-action=add-server]');
+    } catch (error) {
+      refused(failureText(error));
+    }
+  }
+
+  #openServerForm(): void {
+    this.serverProblem = null;
+    this.serverOpen = true;
+    void this.updateComplete.then(() => this.focusOn('[data-server-field=name]'));
+  }
+
+  #closeServerForm(): void {
+    this.serverProblem = null;
+    this.serverOpen = false;
+    void this.updateComplete.then(() => this.focusOn('[data-action=add-server]'));
+  }
+
+  #checkServer(name: string, url: string): { field: ServerField; message: string } | null {
+    if (!name) return { field: 'name', message: 'Name can’t be empty' };
+    if (!serverName.test(name))
+      return { field: 'name', message: 'Use only letters, digits, _ and - in the name.' };
+    if (!url) return { field: 'url', message: 'URL can’t be empty' };
+    if (!this.#baseOf(url)) return { field: 'url', message: 'The URL must use https://.' };
+    return null;
+  }
+
+  #submitServer(event: Event): void {
+    event.preventDefault();
+    if (this.serverBusy) return;
+    const form = event.currentTarget as HTMLElement;
+    const text = (field: string) =>
+      form.querySelector<HTMLInputElement>(`[data-server-field=${field}]`)?.value.trim() as string;
+    const name = text('name');
+    const url = text('url');
+    const token = form.querySelector('sp-switch') as HTMLElement & { checked: boolean };
+    const problem = this.#checkServer(name, url);
+    this.serverProblem = problem;
+    if (problem) {
+      this.focusOn(`[data-server-field=${problem.field}]`);
+      return;
+    }
+    void this.#addServer(name, token.checked ? { url, token: true } : { url });
+  }
+
+  async #addServer(name: string, entry: { url: string; token?: boolean }): Promise<void> {
+    const model = this.model as SliccModel;
+    this.serverBusy = true;
+    try {
+      const edit = (await model.settings.addServer?.(name, entry)) as McpEdit;
+      if (this.model !== model) return;
+      if (edit.ok) this.#closeServerForm();
+      else this.serverProblem = { field: 'form', message: edit.reason };
+    } catch (error) {
+      if (this.model === model) this.serverProblem = { field: 'form', message: failureText(error) };
+    } finally {
+      this.serverBusy = false;
+    }
+  }
+
+  #serverNote(field: ServerField): TemplateResult | typeof nothing {
+    if (this.serverProblem?.field !== field) return nothing;
+    return html`<div class="problem" id=${`server-${field}-problem`} role="alert" data-problem=${field}>
+      <swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>
+      <span>${this.serverProblem.message}</span>
+    </div>`;
+  }
+
+  #serverInput(field: 'name' | 'url', type: string, help: string): TemplateResult {
+    const invalid = this.serverProblem?.field === field;
+    const problem = invalid ? `server-${field}-problem ` : '';
+    return html`<input
+      type=${type}
+      autocomplete="off"
+      spellcheck="false"
+      data-server-field=${field}
+      aria-required="true"
+      aria-invalid=${invalid ? 'true' : nothing}
+      aria-describedby=${`${problem}${help}`}
+    />`;
+  }
+
+  #serverForm(): TemplateResult {
+    return html`<form class="server" data-form="add-server" novalidate @submit=${(event: Event) => this.#submitServer(event)} @keydown=${(event: KeyboardEvent) => this.#submitOnEnter(event)}>
+      <div class="entry">
+        <label class="field"><span>Name</span>${this.#serverInput('name', 'text', 'server-name-help')}</label>
+        <p class="hint" id="server-name-help">Letters, digits, _ and -</p>
+        ${this.#serverNote('name')}
+      </div>
+      <div class="entry">
+        <label class="field"><span>URL</span>${this.#serverInput('url', 'url', 'server-url-help')}</label>
+        <p class="hint" id="server-url-help">The server’s https:// address</p>
+        ${this.#serverNote('url')}
+      </div>
+      <div class="entry">
+        <sp-switch data-server-field="token">Uses a token</sp-switch>
+        <p class="hint">You paste the token when you connect the server. It stays in the vault.</p>
+      </div>
+      ${this.#serverNote('form')}
+      <div class="buttons">
+        <swc-button size="m" variant="accent" data-action="save" ?pending=${this.serverBusy} @click=${(event: Event) => this.#send(event)}>Add</swc-button>
+        <swc-button size="m" variant="secondary" data-action="cancel" ?disabled=${this.serverBusy} @click=${() => this.#closeServerForm()}>Cancel</swc-button>
+      </div>
+    </form>`;
+  }
+
+  #serverList(servers: readonly Account[]): TemplateResult | typeof nothing {
+    const add = !!this.model?.settings.addServer;
+    if (!(servers.length || add)) return nothing;
+    return html`<h2>MCP servers</h2>
+      <div class="accounts" data-group="mcp">${repeat(
+        servers,
+        (account) => account.id,
+        (account) => this.#account(account)
+      )}</div>
+      ${
+        add && this.serverOpen
+          ? this.#serverForm()
+          : add
+            ? html`<div class="add"><swc-action-button size="m" quiet data-action="add-server" @click=${() => this.#openServerForm()}><swc-icon-add slot="icon"></swc-icon-add>Add server</swc-action-button></div>`
+            : nothing
+      }`;
   }
 
   #notice(
@@ -1877,12 +2134,7 @@ export class SliccSettings extends ThemedElement {
       </div>
       <h2 data-section="accounts">Accounts</h2>
       ${this.#providerList(providers)}
-      ${
-        servers.length
-          ? html`<h2>MCP servers</h2>
-              <div class="accounts" data-group="mcp">${servers.map((account) => this.#account(account))}</div>`
-          : nothing
-      }
+      ${this.#serverList(servers)}
       ${this.model?.vault ? html`<slicc-secrets .model=${this.model}></slicc-secrets>` : nothing}
     </div>`;
   }

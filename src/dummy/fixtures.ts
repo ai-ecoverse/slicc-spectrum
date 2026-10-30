@@ -430,6 +430,38 @@ export const accounts: Account[] = [
   },
 ];
 
+const serverRow = (name: string, row: Partial<Account>): Account => ({
+  id: `mcp:${name}`,
+  provider: name,
+  identity: `${name}.example`,
+  url: `https://${name}.example/mcp`,
+  status: 'disconnected',
+  auth: 'local',
+  group: 'mcp',
+  ...row,
+});
+
+export const serverStates: Account[] = [
+  serverRow('atlas', { status: 'connected', state: 'connected' }),
+  serverRow('beacon', { state: 'connecting' }),
+  serverRow('cargo', { state: 'failed' }),
+  serverRow('drift', {
+    auth: 'api-key',
+    secret: 'token',
+    store: 'vault',
+    state: 'needs-secret',
+  }),
+  serverRow('ember', { auth: 'oauth', store: 'vault', state: 'needs-auth' }),
+  serverRow('fathom', {
+    auth: 'api-key',
+    secret: 'token',
+    store: 'vault',
+    state: 'failed',
+  }),
+  serverRow('glacier', { state: 'disabled' }),
+  serverRow('hollow', { identity: '', url: undefined, state: 'refused' }),
+];
+
 export const dualAccount: Account = {
   id: 'lumen',
   provider: 'Lumen AI',

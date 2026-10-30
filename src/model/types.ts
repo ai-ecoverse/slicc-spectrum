@@ -501,6 +501,17 @@ export interface Settings {
 
 export type AccountStatus = 'connected' | 'expired' | 'disconnected' | 'signing-in';
 
+export type McpState =
+  | 'connecting'
+  | 'connected'
+  | 'needs-secret'
+  | 'needs-auth'
+  | 'failed'
+  | 'disabled'
+  | 'refused';
+
+export type McpEdit = { ok: true } | { ok: false; reason: string };
+
 export interface AccountSignIn {
   url: string;
   code?: string;
@@ -527,6 +538,7 @@ export interface Account {
   vaultName?: string;
   url?: string;
   signIn?: AccountSignIn;
+  state?: McpState;
 }
 
 export interface AccountField {
@@ -612,6 +624,8 @@ export interface SettingsPort extends Subscribable<SettingsEvents> {
   cancel?(id: string): void;
   providers?(): readonly ProviderOption[];
   remove?(id: string): Promise<void>;
+  addServer?(name: string, entry: unknown): Promise<McpEdit>;
+  removeServer?(id: string): Promise<McpEdit>;
 }
 
 export type MemoryTag = 'user' | 'feedback' | 'project';
