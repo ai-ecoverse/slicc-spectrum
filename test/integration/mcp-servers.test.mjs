@@ -698,20 +698,29 @@ test('a rejected remove shows in the row and keeps it, with the token and the re
   assert.deepEqual(page.errors, []);
 });
 
-test('a vault that fails after the agent agreed says so below the rows, once the row is gone', async (t) => {
-  const page = await open(t);
-  await registered(page, {});
-  await page.evaluate(() => {
-    window.model.vault.fail('EACCES', 'vault is locked');
-    return true;
-  });
+const removedWith = async (page, line) => {
   await confirmRemove(page, 'mcp:docs');
   await answer(page, true);
   await page.until(() => !window.row('mcp:docs'));
   await page.until(
-    () =>
-      window.settingsPart('[data-failure=servers]')?.textContent.trim() ===
-      'docs is removed, but its vault records stayed. Unlock the vault first'
+    (line) => window.settingsPart('[data-failure=servers]')?.textContent.trim() === line,
+    line
+  );
+};
+
+const failVault = (page, code) =>
+  page.evaluate((code) => {
+    window.model.vault.fail(code, 'the vault failed');
+    return true;
+  }, code);
+
+test('a locked vault after the agent agreed says the token stayed and to unlock, below the rows', async (t) => {
+  const page = await open(t);
+  await registered(page, {});
+  await failVault(page, 'EACCES');
+  await removedWith(
+    page,
+    'docs is removed, but its token stayed in the vault. Unlock the vault, then remove it under Secrets.'
   );
   assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges), [
     { remove: { mcp: [{ server: 'docs', url: docs }] } },
@@ -721,19 +730,70 @@ test('a vault that fails after the agent agreed says so below the rows, once the
   assert.deepEqual(page.errors, []);
 });
 
-test('a vault that keeps the URL after the agent agreed leaves the registration on record', async (t) => {
+test('a vault that keeps the token for another reason points to Secrets', async (t) => {
+  const page = await open(t);
+  await registered(page, {});
+  await failVault(page, 'EINVAL');
+  await removedWith(
+    page,
+    'docs is removed, but its token stayed in the vault. Open Secrets to remove it.'
+  );
+  assert.deepEqual(await stored(page), {});
+  assert.notEqual(await tokenState(page), 'removed');
+  assert.deepEqual(page.errors, []);
+});
+
+test('a vault that keeps the URL says only that, and the next Remove can take it back', async (t) => {
   const page = await open(t, { vault: 'endpoints-fail' });
   await registered(page, { vault: 'endpoints-fail' });
-  await confirmRemove(page, 'mcp:docs');
-  await answer(page, true);
-  await page.until(() => !window.row('mcp:docs'));
-  await page.until(
-    () =>
-      window.settingsPart('[data-failure=servers]')?.textContent.trim() ===
-      'docs is removed, but its vault records stayed. The vault refused that endpoint. Check the address and try again.'
+  await removedWith(
+    page,
+    'docs is removed, but the vault kept its URL. Add the server and remove it again.'
   );
   assert.deepEqual(await stored(page), { docs });
   assert.equal(await tokenState(page), 'removed');
+  assert.deepEqual(page.errors, []);
+});
+
+test('a vault that keeps both names both', async (t) => {
+  const page = await open(t, { vault: 'endpoints-fail' });
+  await registered(page, { vault: 'endpoints-fail' });
+  await failVault(page, 'EINVAL');
+  await removedWith(
+    page,
+    'docs is removed, but its token and URL stayed in the vault. Add the server and remove it again.'
+  );
+  assert.deepEqual(await stored(page), { docs });
+  assert.notEqual(await tokenState(page), 'removed');
+  assert.deepEqual(page.errors, []);
+});
+
+test('a locked vault that keeps the URL says to unlock first', async (t) => {
+  const page = await open(t);
+  await registered(page, {});
+  await page.evaluate(() => {
+    window.model.vault.endpoints = async () => {
+      throw Object.assign(new Error('vault is locked'), { code: 'EACCES' });
+    };
+    return true;
+  });
+  await removedWith(
+    page,
+    'docs is removed, but the vault kept its URL. Unlock the vault, then add the server and remove it again.'
+  );
+  assert.deepEqual(await stored(page), { docs });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a URL the vault kept with no registration on record is written down for the next Remove', async (t) => {
+  const page = await open(t, { vault: 'endpoints-fail' });
+  const { url } = await page.evaluate(() => ({ url: window.account('mcp:docs').url }));
+  assert.ok(url);
+  await removedWith(
+    page,
+    'docs is removed, but the vault kept its URL. Add the server and remove it again.'
+  );
+  assert.deepEqual(await stored(page), { docs: url });
   assert.deepEqual(page.errors, []);
 });
 

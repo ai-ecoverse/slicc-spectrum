@@ -95,6 +95,28 @@ const removeBodies: Partial<Record<string, string>> = {
 const serverGone = 'Agents can’t use it any more.';
 const serversFailure = 'mcp';
 
+type ServerLeft = ['record' | 'url', unknown];
+
+function serverLeft(account: Account, left: readonly ServerLeft[]): string {
+  const url = left.some(([part]) => part === 'url');
+  const record = left.some(([part]) => part === 'record');
+  const held = account.auth === 'oauth' ? 'sign-in' : 'token';
+  const locked = left.some(([, error]) => isVaultFailure(error) && error.code === 'EACCES');
+  const what = !url
+    ? `its ${held} stayed in the vault`
+    : record
+      ? `its ${held} and URL stayed in the vault`
+      : 'the vault kept its URL';
+  const next = url
+    ? locked
+      ? 'Unlock the vault, then add the server and remove it again.'
+      : 'Add the server and remove it again.'
+    : locked
+      ? 'Unlock the vault, then remove it under Secrets.'
+      : 'Open Secrets to remove it.';
+  return `${account.provider} is removed, but ${what}. ${next}`;
+}
+
 const refusedEntry = 'This entry was refused. Remove it and add it again here.';
 
 const urlSecret =
@@ -1650,7 +1672,7 @@ export class SliccSettings extends ThemedElement {
     return `Its ${held} is deleted from the vault. ${serverGone}`;
   }
 
-  #serverClear(model: SliccModel, account: Account): () => Promise<unknown[]> {
+  #serverClear(model: SliccModel, account: Account): () => Promise<ServerLeft[]> {
     const vault = model.vault;
     const server = serverOf(account);
     const records = vault?.remove ? this.#serverRecords(account, vault) : [];
@@ -1658,16 +1680,17 @@ export class SliccSettings extends ThemedElement {
     const pinned = !!this.#pinned(account);
     const url = registrations()[server] ?? (held && !pinned && this.#mcpUrl(account));
     return async () => {
-      const failures: unknown[] = [];
+      const left: ServerLeft[] = [];
       for (const [name, kind] of records)
-        await gone(vault as VaultPort, name, kind).catch((error) => failures.push(error));
+        await gone(vault as VaultPort, name, kind).catch((error) => left.push(['record', error]));
       try {
         if (url) await vault?.endpoints?.({ remove: { mcp: [{ server, url }] } });
         register(server, undefined);
       } catch (error) {
-        failures.push(error);
+        register(server, url as string);
+        left.push(['url', error]);
       }
-      return failures;
+      return left;
     };
   }
 
@@ -1713,13 +1736,9 @@ export class SliccSettings extends ThemedElement {
       const clear = this.#serverClear(model, account);
       const edit = (await model.settings.removeServer?.(id)) as McpEdit;
       if (!edit.ok) return refused(sentence(edit.reason));
-      const failures = await clear();
+      const left = await clear();
       if (this.model !== model) return;
-      if (failures.length)
-        this.failure = {
-          id: serversFailure,
-          message: `${account.provider} is removed, but its vault records stayed. ${failureText(failures[0])}`,
-        };
+      if (left.length) this.failure = { id: serversFailure, message: serverLeft(account, left) };
       this.focusOn('[data-action=add-server]');
     } catch (error) {
       refused(failureText(error));
