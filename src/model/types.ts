@@ -1280,6 +1280,7 @@ export type ErrorCode =
 export interface VaultError {
   code: ErrorCode;
   message: string;
+  cause?: 'policy-paused';
 }
 
 export type VaultFailure = Error & VaultError;
@@ -1355,6 +1356,15 @@ export interface ScrubState {
 
 export type BackupReminder = 'due' | 'dismissed' | null;
 
+export interface PolicyFileState {
+  path: string;
+  sha256: string | null;
+  accepted: boolean;
+  warnings: string[];
+  absent?: true;
+  paused?: true;
+}
+
 export interface VaultStatus {
   version: string;
   protocol: 1;
@@ -1366,6 +1376,7 @@ export interface VaultStatus {
   notices?: number;
   exportedAt?: number | null;
   backupReminder?: BackupReminder;
+  policy?: PolicyFileState[];
 }
 
 export type Availability = 'connecting' | 'waiting' | 'locked' | 'ready';

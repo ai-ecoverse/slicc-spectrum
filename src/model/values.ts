@@ -15,10 +15,18 @@ export function nameProblem(name: string): string | null {
     : "Names use A to Z, 0 to 9 and _, and don't start with a digit";
 }
 
-export function vaultFailure(code: ErrorCode, message: string): VaultFailure {
-  return Object.assign(new Error(message), { code });
+export function vaultFailure(
+  code: ErrorCode,
+  message: string,
+  cause?: VaultFailure['cause']
+): VaultFailure {
+  return Object.assign(new Error(message), { code }, cause ? { cause } : {}) as VaultFailure;
 }
 
 export function isVaultFailure(error: unknown): error is VaultFailure {
   return error instanceof Error && typeof (error as Partial<VaultFailure>).code === 'string';
+}
+
+export function isPolicyPaused(error: unknown): boolean {
+  return isVaultFailure(error) && error.cause === 'policy-paused';
 }

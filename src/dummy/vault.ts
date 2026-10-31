@@ -23,6 +23,7 @@ import type {
   SecretView,
   VaultButton,
   VaultEndpointChange,
+  VaultError,
   VaultEvents,
   VaultList,
   VaultPort,
@@ -37,6 +38,7 @@ export type VaultScenario =
   | 'policy'
   | 'notice'
   | 'locked'
+  | 'paused'
   | 'request'
   | 'backup'
   | 'waiting'
@@ -447,6 +449,42 @@ export function vaultPolicy(now = Date.now()): AuditEntry {
   };
 }
 
+export function vaultPaused(now = Date.now()): AuditEntry[] {
+  const entry = {
+    type: 'policy' as const,
+    accepted: true,
+    changes: [],
+  };
+  return [
+    {
+      ...entry,
+      seq: 15,
+      id: 'audit-15',
+      at: now - minute,
+      file: '/etc/slicc/secrets-policy.toml',
+      sha256: null,
+      absent: true,
+    },
+    {
+      ...entry,
+      seq: 14,
+      id: 'audit-14',
+      at: now - 2 * minute,
+      file: '/etc/fnox/config.toml',
+      sha256: 'a87ff679a2f3e71d9181a67b7542122c',
+    },
+    {
+      ...entry,
+      seq: 13,
+      id: 'audit-13',
+      at: now - 3 * minute,
+      file: '/etc/fnox/config.toml',
+      sha256: null,
+      absent: true,
+    },
+  ];
+}
+
 export function vaultNotice(now = Date.now()): PolicyNotice {
   return {
     id: 'notice-widened',
@@ -504,6 +542,7 @@ export function vaultFixtures(
   const empty = scenario === 'empty';
   const policy = scenario === 'policy' || scenario === 'notice';
   const backup = scenario === 'backup';
+  const paused = scenario === 'paused';
   const status: VaultStatus = {
     version: '0.1.0',
     protocol: 1,
@@ -513,6 +552,26 @@ export function vaultFixtures(
     scrub: { needed: !empty, version: 3, ready: scenario !== 'locked' },
     waiting: waiting(scenario, now),
     ...(backup ? { backupReminder: 'due' as const, exportedAt: null } : {}),
+    ...(paused
+      ? {
+          policy: [
+            {
+              path: '/etc/fnox/config.toml',
+              sha256: 'a87ff679a2f3e71d9181a67b7542122c',
+              accepted: true,
+              warnings: [],
+            },
+            {
+              path: '/etc/slicc/secrets-policy.toml',
+              sha256: null,
+              accepted: true,
+              warnings: [],
+              absent: true as const,
+              paused: true as const,
+            },
+          ],
+        }
+      : {}),
   };
   const quay = { domain: 'quay.harbor.example', header: 'Authorization', methods: [], paths: [] };
   const secrets = (empty ? [] : vaultSecrets(now)).map((secret) =>
@@ -527,6 +586,7 @@ export function vaultFixtures(
       ? []
       : [
           ...(policy ? [vaultPolicy(now)] : []),
+          ...(paused ? vaultPaused(now) : []),
           ...(scenario === 'purged' ? [vaultPinned(now), vaultPurged(now)] : []),
           ...(scenario === 'session' ? vaultSessions(now) : []),
           ...vaultAudit(now),
@@ -631,7 +691,7 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
   #status: VaultStatus;
   #list: VaultList;
   #available: Availability;
-  #fail: { code: ErrorCode; message: string } | null = null;
+  #fail: VaultError | null = null;
   #time: Clock;
   #older: AuditEntry[] = vaultOlder();
   #serial = 0;
@@ -702,14 +762,14 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
     this.emit('list', this.#list);
   }
 
-  fail(code: ErrorCode, message: string): void {
-    this.#fail = { code, message };
+  fail(code: ErrorCode, message: string, cause?: VaultError['cause']): void {
+    this.#fail = { code, message, cause };
   }
 
   #failed(): void {
     const fail = this.#fail;
     this.#fail = null;
-    if (fail) throw vaultFailure(fail.code, fail.message);
+    if (fail) throw vaultFailure(fail.code, fail.message, fail.cause);
   }
 
   async acknowledge(notice: string): Promise<void> {

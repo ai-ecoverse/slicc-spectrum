@@ -32,7 +32,7 @@ import type {
   VaultEndpointChange,
   VaultPort,
 } from '../model/types.ts';
-import { isVaultFailure, valueProblem } from '../model/values.ts';
+import { isPolicyPaused, isVaultFailure, valueProblem } from '../model/values.ts';
 import { chatModels, speech, ThemedElement } from './base.ts';
 import { confirm, dialogFrame } from './confirm.ts';
 import { forgetSwitch, modelSwitch, settleModels } from './models.ts';
@@ -97,11 +97,13 @@ const serversFailure = 'mcp';
 
 type ServerLeft = ['record' | 'url', unknown];
 
-function serverLeft(account: Account, left: readonly ServerLeft[]): string {
+export function serverLeft(account: Account, left: readonly ServerLeft[]): string {
   const url = left.some(([part]) => part === 'url');
   const record = left.some(([part]) => part === 'record');
   const held = account.auth === 'oauth' ? 'sign-in' : 'token';
-  const locked = left.some(([, error]) => isVaultFailure(error) && error.code === 'EACCES');
+  const locked = left.some(
+    ([, error]) => isVaultFailure(error) && error.code === 'EACCES' && !isPolicyPaused(error)
+  );
   const what = !url
     ? `its ${held} stayed in the vault`
     : record
