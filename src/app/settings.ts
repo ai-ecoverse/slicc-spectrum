@@ -93,6 +93,29 @@ const removeBodies: Partial<Record<string, string>> = {
 };
 
 const serverGone = 'Agents can’t use it any more.';
+const serversFailure = 'mcp';
+
+type ServerLeft = ['record' | 'url', unknown];
+
+function serverLeft(account: Account, left: readonly ServerLeft[]): string {
+  const url = left.some(([part]) => part === 'url');
+  const record = left.some(([part]) => part === 'record');
+  const held = account.auth === 'oauth' ? 'sign-in' : 'token';
+  const locked = left.some(([, error]) => isVaultFailure(error) && error.code === 'EACCES');
+  const what = !url
+    ? `its ${held} stayed in the vault`
+    : record
+      ? `its ${held} and URL stayed in the vault`
+      : 'the vault kept its URL';
+  const next = url
+    ? locked
+      ? 'Unlock the vault, then add the server and remove it again.'
+      : 'Add the server and remove it again.'
+    : locked
+      ? 'Unlock the vault, then remove it under Secrets.'
+      : 'Open Secrets to remove it.';
+  return `${account.provider} is removed, but ${what}. ${next}`;
+}
 
 const refusedEntry = 'This entry was refused. Remove it and add it again here.';
 
@@ -647,6 +670,7 @@ export class SliccSettings extends ThemedElement {
     queueMicrotask(() => settleModels(model));
     this.removing = new Set();
     this.refusals = {};
+    if (this.failure?.id === serversFailure) this.failure = null;
     void this.#readRefusals(model);
     if (model.updates !== this.#developerPort) {
       this.#developerPort = model.updates;
@@ -1648,16 +1672,26 @@ export class SliccSettings extends ThemedElement {
     return `Its ${held} is deleted from the vault. ${serverGone}`;
   }
 
-  async #clearServer(model: SliccModel, account: Account): Promise<void> {
+  #serverClear(model: SliccModel, account: Account): () => Promise<ServerLeft[]> {
     const vault = model.vault;
     const server = serverOf(account);
     const records = vault?.remove ? this.#serverRecords(account, vault) : [];
     const held = !!vault?.remove && this.#heldRecords(account, vault).length > 0;
     const pinned = !!this.#pinned(account);
     const url = registrations()[server] ?? (held && !pinned && this.#mcpUrl(account));
-    for (const [name, kind] of records) await gone(vault as VaultPort, name, kind);
-    if (url) await vault?.endpoints?.({ remove: { mcp: [{ server, url }] } });
-    register(server, undefined);
+    return async () => {
+      const left: ServerLeft[] = [];
+      for (const [name, kind] of records)
+        await gone(vault as VaultPort, name, kind).catch((error) => left.push(['record', error]));
+      try {
+        if (url) await vault?.endpoints?.({ remove: { mcp: [{ server, url }] } });
+        register(server, undefined);
+      } catch (error) {
+        register(server, url as string);
+        left.push(['url', error]);
+      }
+      return left;
+    };
   }
 
   #markRemoving(id: string, on: boolean): void {
@@ -1699,10 +1733,13 @@ export class SliccSettings extends ThemedElement {
       if (this.model === model) this.failure = { id, message };
     };
     try {
-      await this.#clearServer(model, account);
+      const clear = this.#serverClear(model, account);
       const edit = (await model.settings.removeServer?.(id)) as McpEdit;
-      if (!edit.ok) refused(sentence(edit.reason));
-      else if (this.model === model) this.focusOn('[data-action=add-server]');
+      if (!edit.ok) return refused(sentence(edit.reason));
+      const left = await clear();
+      if (this.model !== model) return;
+      if (left.length) this.failure = { id: serversFailure, message: serverLeft(account, left) };
+      this.focusOn('[data-action=add-server]');
     } catch (error) {
       refused(failureText(error));
     }
@@ -1817,13 +1854,18 @@ export class SliccSettings extends ThemedElement {
 
   #serverList(servers: readonly Account[]): TemplateResult | typeof nothing {
     const add = !!this.model?.settings.addServer;
-    if (!(servers.length || add)) return nothing;
+    const failed = this.failure?.id === serversFailure;
+    if (!(servers.length || add || failed)) return nothing;
     return html`<h2>MCP servers</h2>
       <div class="accounts" data-group="mcp">${repeat(
         servers,
         (account) => account.id,
         (account) => this.#account(account)
-      )}</div>
+      )}${
+        failed
+          ? html`<div class="failure" role="alert" data-failure="servers"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.failure?.message}</span></div>`
+          : nothing
+      }</div>
       ${
         add && this.serverOpen
           ? this.#serverForm()
