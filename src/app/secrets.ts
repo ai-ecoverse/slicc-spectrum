@@ -1473,7 +1473,7 @@ export class SliccSecrets extends ThemedElement {
         <h2 id="secrets">Secrets</h2>
         ${this.#header(vault, status)}
       </div>
-      <p class="muted">Agents and programs use secrets by name. SLICC sends each value only where its rules allow, so agents never see it.</p>
+      <p class="muted">Agents never see these values. Programs can use a secret through fnox exec. Using one by name in a web request isn't supported yet.</p>
       ${this.#availability()}
       ${this.#feedback()}
       ${this.failure ? this.#error(this.failure, 'vault') : nothing}

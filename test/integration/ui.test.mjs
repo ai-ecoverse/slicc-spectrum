@@ -8982,6 +8982,15 @@ async function views(page, name, target, setup) {
   }
 }
 
+test('the secrets intro says what agents and programs can do', async (t) => {
+  const page = await secretsPage(t, { vault: 'secrets' });
+  assert.equal(
+    await page.evaluate(() => window.settingsPart('slicc-secrets', '.head + p').textContent),
+    "Agents never see these values. Programs can use a secret through fnox exec. Using one by name in a web request isn't supported yet."
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('settings list the secrets by name, with rules, exits and reveals, but no values', async (t) => {
   const page = await secretsPage(t, { vault: 'secrets' });
   assert.deepEqual(
