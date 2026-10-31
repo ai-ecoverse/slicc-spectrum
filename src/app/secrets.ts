@@ -206,10 +206,31 @@ const sessionProtocol = (protocol: string): string =>
 const sessionTrusted = (verifiedBy: string | undefined): string =>
   verifiedBy && Object.hasOwn(sessionTrust, verifiedBy) ? `${sessionTrust[verifiedBy]}, ` : '';
 
+export function returned(entries: readonly AuditEntry[]): Map<number, boolean> {
+  const paused = new Set<string>();
+  const back = new Map<number, boolean>();
+  for (const entry of [...entries].reverse()) {
+    if (entry.type !== 'policy') continue;
+    if (entry.absent) paused.add(entry.file);
+    else if (entry.accepted && paused.delete(entry.file)) back.set(entry.seq, paused.size === 0);
+  }
+  return back;
+}
+
+function policyHead(entry: PolicyEntry, running?: boolean): string {
+  if (entry.absent) return 'was removed. Secrets are paused until it’s back.';
+  if (running !== undefined)
+    return running
+      ? 'is back. Secrets are running again.'
+      : 'is back. Secrets stay paused until the other file is back.';
+  return entry.accepted ? 'changed' : 'changed and was refused';
+}
+
 export function auditLine(
   entry: AuditEntry,
   devices: readonly LinkedDevice[],
-  named?: (provider: string) => string
+  named?: (provider: string) => string,
+  back: ReadonlyMap<number, boolean> = new Map()
 ): TemplateResult {
   switch (entry.type) {
     case 'inject':
@@ -234,7 +255,7 @@ export function auditLine(
         ? html`Refreshed automatically with the sign-in <code>${entry.grant}</code>`
         : html`Refreshed automatically`;
     default:
-      return html`<code>${entry.file}</code> ${entry.accepted ? 'changed' : 'changed and was refused'}${changes(entry, devices).map(([kind, line]) => html`<span class="change" data-change=${kind}>${line}</span>`)}${entry.warning ? html`<span class="warning" data-warning>${entry.warning}</span>` : nothing}${entry.accepted ? html`<span class="hint" data-hint>If you didn’t mean this, change the file back with sudo.</span>` : nothing}`;
+      return html`<code>${entry.file}</code> ${policyHead(entry, back.get(entry.seq))}${changes(entry, devices).map(([kind, line]) => html`<span class="change" data-change=${kind}>${line}</span>`)}${entry.warning ? html`<span class="warning" data-warning>${entry.warning}</span>` : nothing}${entry.accepted && !entry.absent && !back.has(entry.seq) ? html`<span class="hint" data-hint>If you didn’t mean this, change the file back with sudo.</span>` : nothing}`;
   }
 }
 
@@ -1357,13 +1378,14 @@ export class SliccSecrets extends ThemedElement {
     entry: AuditEntry,
     devices: readonly LinkedDevice[],
     vault?: VaultPort,
-    all: readonly AuditEntry[] = []
+    all: readonly AuditEntry[] = [],
+    back?: ReadonlyMap<number, boolean>
   ): TemplateResult {
     const date = new Date(entry.at);
     const name = entry.type === 'policy' || entry.type === 'endpoints' ? null : entry.name;
     return html`<li data-seq=${entry.seq} data-type=${entry.type}>
       <time datetime=${date.toISOString()} title=${date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}>${since(entry.at)}</time>
-      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices, (provider) => this.#provider(provider))}${entry.type === 'policy' || entry.type === 'refresh' || entry.type === 'endpoints' ? nothing : html` <span class="by">by ${who(entry)}</span>`}${entry.type === 'endpoints' && vault ? this.#unpin(vault, entry, all) : nothing}</span>
+      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices, (provider) => this.#provider(provider), back)}${entry.type === 'policy' || entry.type === 'refresh' || entry.type === 'endpoints' ? nothing : html` <span class="by">by ${who(entry)}</span>`}${entry.type === 'endpoints' && vault ? this.#unpin(vault, entry, all) : nothing}</span>
     </li>`;
   }
 
@@ -1375,6 +1397,7 @@ export class SliccSecrets extends ThemedElement {
   ): TemplateResult {
     const shown = this.reveals ? entries.filter((entry) => entry.type === 'materialize') : entries;
     const more = this.more ?? list.auditMore;
+    const back = returned(entries);
     return html`<div class="audit-head">
         <h3 id="secrets-audit">Activity</h3>
         <sp-switch size="s" data-action="reveals" .checked=${this.reveals} @change=${(
@@ -1385,7 +1408,7 @@ export class SliccSecrets extends ThemedElement {
       </div>
       ${
         shown.length
-          ? html`<ol class="audit" aria-labelledby="secrets-audit">${shown.map((entry) => this.#entry(entry, devices, vault, entries))}</ol>`
+          ? html`<ol class="audit" aria-labelledby="secrets-audit">${shown.map((entry) => this.#entry(entry, devices, vault, entries, back))}</ol>`
           : html`<p class="muted" data-audit-empty>${this.reveals ? (more ? 'No reveals in the activity loaded so far.' : 'No program has been given a secret.') : 'Nothing has used a secret yet.'}</p>`
       }
       ${
@@ -1424,11 +1447,17 @@ export class SliccSecrets extends ThemedElement {
     </div>`;
   }
 
+  #paused(status: VaultStatus): TemplateResult | typeof nothing {
+    const [first, ...rest] = (status.policy ?? []).filter((file) => file.paused);
+    if (!first) return nothing;
+    return html`<swc-status-light size="m" variant="notice" data-paused>Paused: <code>${first.path}</code> ${rest.length ? `and ${rest.length} more are` : 'is'} missing</swc-status-light>`;
+  }
+
   #header(vault: VaultPort, status: VaultStatus | null): TemplateResult | typeof nothing {
     if (!status) return nothing;
     if (this.#offline)
       return html`<swc-status-light size="m" variant="neutral">Waiting</swc-status-light>`;
-    return html`<swc-status-light size="m" variant=${status.locked ? 'notice' : 'positive'}>${status.locked ? 'Locked' : 'Unlocked'}</swc-status-light><span class="muted">${lockModes[status.lock]}</span>
+    return html`<swc-status-light size="m" variant=${status.locked ? 'notice' : 'positive'}>${status.locked ? 'Locked' : 'Unlocked'}</swc-status-light>${this.#paused(status)}<span class="muted">${lockModes[status.lock]}</span>
       <span class="controls">${
         status.locked
           ? html`${status.scrub?.needed && !status.scrub.ready ? html`<span class="availability" role="status" data-availability="unlock"><swc-icon-info-circle size="s" aria-hidden="true"></swc-icon-info-circle><span>Unlock the vault to continue</span></span>` : nothing}${this.#button({ intent: { kind: 'unlock' }, label: 'Unlock', variant: 'accent' }, 'unlock')}`

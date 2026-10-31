@@ -89,6 +89,7 @@ export {
   vaultFixtures,
   vaultNotice,
   vaultOlder,
+  vaultPaused,
   vaultPinned,
   vaultPolicy,
   vaultPurged,

@@ -9397,6 +9397,139 @@ test('refused rules and policy changes show in Secrets and its activity log', as
   assert.deepEqual(page.errors, []);
 });
 
+const policyLine = (seq) =>
+  window
+    .settingsPart('slicc-secrets', `.audit li[data-seq="${seq}"] .what`)
+    ?.textContent.replace(/\s+/g, ' ')
+    .trim();
+
+test('a removed policy file shows as paused next to Unlocked, and Activity tells removed from back', async (t) => {
+  const page = await secretsPage(t, { vault: 'paused' });
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-paused]'));
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      vault: window.settingsPart('slicc-secrets', 'section').dataset.vault,
+      lights: [
+        ...window
+          .settingsPart('slicc-secrets')
+          .shadowRoot.querySelectorAll('.head swc-status-light'),
+      ].map((light) => [
+        light.getAttribute('variant'),
+        light.textContent.replace(/\s+/g, ' ').trim(),
+      ]),
+      unlock: !!window.settingsPart('slicc-secrets', '.head [data-action=unlock]'),
+      lock: !!window.settingsPart('slicc-secrets', '.head [data-action=lock]'),
+    })),
+    {
+      vault: 'unlocked',
+      lights: [
+        ['positive', 'Unlocked'],
+        ['notice', 'Paused: /etc/slicc/secrets-policy.toml is missing'],
+      ],
+      unlock: false,
+      lock: true,
+    }
+  );
+  assert.equal(
+    await page.evaluate(policyLine, 15),
+    '/etc/slicc/secrets-policy.toml was removed. Secrets are paused until it’s back.'
+  );
+  assert.equal(
+    await page.evaluate(policyLine, 14),
+    '/etc/fnox/config.toml is back. Secrets are running again.'
+  );
+  assert.equal(
+    await page.evaluate(policyLine, 13),
+    '/etc/fnox/config.toml was removed. Secrets are paused until it’s back.'
+  );
+  await views(page, 'secrets-paused', '.head');
+  assert.equal(
+    await page.evaluate(() => {
+      const light = window.settingsPart('slicc-secrets', '[data-paused]').getBoundingClientRect();
+      return light.right <= window.innerWidth && light.left >= 0;
+    }),
+    true
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('with both policy files missing the status names the first and how many more', async (t) => {
+  const page = await secretsPage(t, { vault: 'paused' });
+  await page.evaluate(() => {
+    const { vault } = window.model;
+    const next = {
+      ...vault.status(),
+      policy: vault
+        .status()
+        .policy.map((file) => ({ ...file, sha256: null, absent: true, paused: true })),
+    };
+    vault.status = () => next;
+    vault.emit('status', next);
+    return true;
+  });
+  await page.until(
+    (line) =>
+      window
+        .settingsPart('slicc-secrets', '[data-paused]')
+        ?.textContent.replace(/\s+/g, ' ')
+        .trim() === line,
+    'Paused: /etc/fnox/config.toml and 1 more are missing'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a file back while the other is missing, or refused on return, does not say secrets run', async (t) => {
+  const page = await secretsPage(t, { vault: 'paused' });
+  await page.evaluate(() => {
+    const { vault } = window.model;
+    const base = { type: 'policy', accepted: true, changes: [], at: Date.now() };
+    const fnox = '/etc/fnox/config.toml';
+    const extra = '/etc/slicc/secrets-policy.toml';
+    const next = {
+      ...vault.list(),
+      audit: [
+        { ...base, seq: 24, id: 'a24', file: extra, sha256: 'hash-extra' },
+        { ...base, seq: 23, id: 'a23', file: fnox, sha256: 'hash-fnox' },
+        { ...base, seq: 22, id: 'a22', file: extra, sha256: 'hash-bad', accepted: false },
+        { ...base, seq: 21, id: 'a21', file: extra, sha256: null, absent: true },
+        { ...base, seq: 20, id: 'a20', file: fnox, sha256: null, absent: true },
+      ],
+    };
+    vault.list = () => next;
+    vault.emit('list', next);
+    return true;
+  });
+  await page.until(() => !!window.settingsPart('slicc-secrets', '.audit li[data-seq="24"]'));
+  assert.equal(
+    await page.evaluate(policyLine, 22),
+    '/etc/slicc/secrets-policy.toml changed and was refused'
+  );
+  assert.equal(
+    await page.evaluate(policyLine, 23),
+    '/etc/fnox/config.toml is back. Secrets stay paused until the other file is back.'
+  );
+  assert.equal(
+    await page.evaluate(policyLine, 24),
+    '/etc/slicc/secrets-policy.toml is back. Secrets are running again.'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a paused refusal is not worded as a locked vault', async (t) => {
+  const page = await secretsPage(t, { vault: 'paused' });
+  await page.evaluate(() => {
+    window.model.vault.fail('EACCES', 'policy file missing: paused', 'policy-paused');
+    return true;
+  });
+  await save(page, 'tide_token', sample);
+  assert.equal(
+    await page.evaluate(said, '[data-error=form]'),
+    'Secrets are paused until the missing policy file is back'
+  );
+  await clean(page);
+  assert.deepEqual(page.errors, []);
+});
+
 test('the secrets activity log lists uses and reveals, pages back and filters to reveals', async (t) => {
   const page = await secretsPage(t, { vault: 'secrets' });
   const seqs = () =>

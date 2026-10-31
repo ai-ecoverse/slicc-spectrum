@@ -15,7 +15,7 @@ import type {
   VaultPort,
   Widening,
 } from '../model/types.ts';
-import { isVaultFailure } from '../model/values.ts';
+import { isPolicyPaused, isVaultFailure } from '../model/values.ts';
 
 const exitNames: Record<string, string> = {
   page: 'This page',
@@ -112,6 +112,7 @@ export function widening(change: Widening, devices: readonly LinkedDevice[]): st
 }
 
 export function failureText(error: unknown): string {
+  if (isPolicyPaused(error)) return 'Secrets are paused until the missing policy file is back';
   const text = isVaultFailure(error) ? codeTexts[error.code] : undefined;
   return text ?? (error instanceof Error ? error.message : 'The vault did not answer');
 }
