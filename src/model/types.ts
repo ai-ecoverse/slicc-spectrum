@@ -1491,7 +1491,8 @@ export interface PolicyEntry {
   id: string;
   at: number;
   file: PolicyFile;
-  sha256: string;
+  sha256: string | null;
+  absent?: true;
   accepted: boolean;
   widened?: Widening[];
   changes?: PolicyChange[];
