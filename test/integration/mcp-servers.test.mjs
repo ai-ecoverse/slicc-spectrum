@@ -536,7 +536,7 @@ test('a view-only seat reads the plain line on a refused row', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
-test('Remove asks first, then clears the token and the registration before the agent, and waits for the row to go', async (t) => {
+test('Remove asks first, then lets the agent decide before it clears the token and the registration, and waits for the row to go', async (t) => {
   const page = await open(t);
   await page.evaluate(
     ([key, docs]) => {
@@ -556,10 +556,11 @@ test('Remove asks first, then clears the token and the registration before the a
   await confirmRemove(page, 'mcp:docs');
   await answer(page, true);
   await page.until(() => !window.row('mcp:docs'));
+  await page.until(() => window.order.length === 3);
   assert.deepEqual(await page.evaluate(() => window.order), [
+    'removeServer',
     'remove',
     'endpoints',
-    'removeServer',
   ]);
   assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges), [
     { remove: { mcp: [{ server: 'docs', url: docs }] } },
@@ -643,8 +644,32 @@ test('every trash button is named after its server for assistive technology', as
   assert.deepEqual(page.errors, []);
 });
 
-test('an agent’s refusal to remove shows in the row and keeps it', async (t) => {
+const registered = async (page, params) => {
+  await page.evaluate(
+    ([key, docs]) => {
+      localStorage.setItem(key, JSON.stringify({ docs }));
+      return true;
+    },
+    [registrations, docs]
+  );
+  await visit(page, params);
+};
+
+const tokenState = (page) =>
+  page.evaluate(
+    () => window.model.vault.list().secrets.find((secret) => secret.name === 'MCP_DOCS_TOKEN').state
+  );
+
+const assertKept = async (page) => {
+  assert.deepEqual(await page.evaluate(() => window.order), ['removeServer']);
+  assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges), []);
+  assert.deepEqual(await stored(page), { docs });
+  assert.notEqual(await tokenState(page), 'removed');
+};
+
+test('an agent’s refusal to remove shows in the row and keeps it, with the token and the registration', async (t) => {
   const page = await open(t, { servers: 'refuse' });
+  await registered(page, { servers: 'refuse' });
   await confirmRemove(page, 'mcp:docs');
   await answer(page, true);
   await page.until(
@@ -654,6 +679,61 @@ test('an agent’s refusal to remove shows in the row and keeps it', async (t) =
   );
   assert.equal(await page.evaluate(() => !!window.row('mcp:docs')), true);
   assert.equal((await rowParts(page, 'mcp:docs')).label, 'Connected');
+  await assertKept(page);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a rejected remove shows in the row and keeps it, with the token and the registration', async (t) => {
+  const page = await open(t, { servers: 'fail' });
+  await registered(page, { servers: 'fail' });
+  await confirmRemove(page, 'mcp:docs');
+  await answer(page, true);
+  await page.until(
+    () =>
+      window.settingsPart('.account[data-id="mcp:docs"] ~ .failure')?.textContent.trim() ===
+      'The agent did not answer.'
+  );
+  assert.equal((await rowParts(page, 'mcp:docs')).label, 'Connected');
+  await assertKept(page);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a vault that fails after the agent agreed says so below the rows, once the row is gone', async (t) => {
+  const page = await open(t);
+  await registered(page, {});
+  await page.evaluate(() => {
+    window.model.vault.fail('EACCES', 'vault is locked');
+    return true;
+  });
+  await confirmRemove(page, 'mcp:docs');
+  await answer(page, true);
+  await page.until(() => !window.row('mcp:docs'));
+  await page.until(
+    () =>
+      window.settingsPart('[data-failure=servers]')?.textContent.trim() ===
+      'docs is removed, but its vault records stayed. Unlock the vault first'
+  );
+  assert.deepEqual(await page.evaluate(() => window.model.vault.endpointChanges), [
+    { remove: { mcp: [{ server: 'docs', url: docs }] } },
+  ]);
+  assert.deepEqual(await stored(page), {});
+  assert.notEqual(await tokenState(page), 'removed');
+  assert.deepEqual(page.errors, []);
+});
+
+test('a vault that keeps the URL after the agent agreed leaves the registration on record', async (t) => {
+  const page = await open(t, { vault: 'endpoints-fail' });
+  await registered(page, { vault: 'endpoints-fail' });
+  await confirmRemove(page, 'mcp:docs');
+  await answer(page, true);
+  await page.until(() => !window.row('mcp:docs'));
+  await page.until(
+    () =>
+      window.settingsPart('[data-failure=servers]')?.textContent.trim() ===
+      'docs is removed, but its vault records stayed. The vault refused that endpoint. Check the address and try again.'
+  );
+  assert.deepEqual(await stored(page), { docs });
+  assert.equal(await tokenState(page), 'removed');
   assert.deepEqual(page.errors, []);
 });
 
