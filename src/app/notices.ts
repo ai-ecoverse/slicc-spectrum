@@ -94,8 +94,7 @@ export class SliccNotices extends ModelElement {
       display: flex;
       align-items: flex-start;
       gap: var(--swc-spacing-75);
-      color: var(--swc-negative-content-color-default);
-      --swc-icon-color: var(--swc-negative-content-color-default);
+      --swc-icon-color: var(--tone);
     }
   `;
 
