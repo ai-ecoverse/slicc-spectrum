@@ -912,7 +912,7 @@ Later backed by: BIOS.
 `list()` returns `Notice`s for quiet, dismissible in-line notices at the top of every chat panel, above the transcript, in list order: `id`, `tone` (`info` reads as informative, `warning` as a notice), `title`, a plain-text `body` and `actions` (`{ id, label }`).
 Title, body and labels are text only.
 Notices use `role="status"` and never take focus.
-An action is a secondary button that stays pending until `act(id, action)` settles; a rejection shows its message under the body.
+An action is a secondary button that stays pending until `act(id, action)` settles; a rejection shows its message under the body (`[data-error]`), in the notice's text colour after a warning icon in the notice's tone.
 The close button, labelled "Dismiss: <title>", hides the notice at once and calls `dismiss(id)` synchronously; it shows again only if the port drops the notice from `list()` and brings it back later.
 Emit `notices` whenever they change.
 A notice with `dismissible: false` has no close button and stays until the port drops it.
@@ -1037,7 +1037,7 @@ New join URL changes the URL, and `model.network.setLinks()` switches scenarios.
 `guestsFixtures`, `guestsPolicy`, `guestsUnavailable`, `guestsRefused` and `DummyGuests` are exported from `/dummy`.
 `createDummyModel({ changes: 'files' | 'git' | 'nogit' })` (or `?changes=` on `/ui/`, default `files`) adds a git `changes` port: `git` lists the pending changes under `/workspace/harbor` and `/workspace/skills` with their `repo` and no author, and `nogit` reports git as unavailable.
 `DummyChanges` is exported from `/dummy`.
-`createDummyModel({ notices: 'storage' | 'mixed' | 'fail' | 'off' })` (or `?notices=` on `/ui/`, off by default) adds an invented storage warning with Try again, which clears it after a short wait (`mixed` adds an informative notice without actions, and `fail` makes Try again fail).
+`createDummyModel({ notices: 'storage' | 'mixed' | 'fail' | 'off' })` (or `?notices=` on `/ui/`, off by default) adds an invented storage warning with Try again, which clears it after a short wait (`mixed` adds an informative notice without actions, and `fail` adds an informative backup notice with Download and makes both actions fail).
 `noticeFixtures` and `DummyNotices` are exported from `/dummy`.
 `createDummyModel({ browser: 'idle' | 'driving' | 'off' })` (or `?browser=` on `/ui/`, default `idle`) sets the dummy browser: `idle` has a history of invented actions (about 180 on harbor's tab, enough for Show more) and no driven tab, `driving` has harbor and quiet-otter driving two tabs, with harbor's last click still running and frames every 500 ms while watched, and `off` has no tabs.
 Stopping an agent releases its tabs.

@@ -9,7 +9,10 @@ export const readOnlyText =
 
 export const startingText = 'Seven is installing its agent.';
 
-export const noticeFixtures: Record<'storage' | 'welcome' | 'readonly' | 'starting', Notice> = {
+export const noticeFixtures: Record<
+  'storage' | 'welcome' | 'backup' | 'readonly' | 'starting',
+  Notice
+> = {
   storage: {
     id: 'storage',
     tone: 'warning',
@@ -23,6 +26,13 @@ export const noticeFixtures: Record<'storage' | 'welcome' | 'readonly' | 'starti
     title: 'Everything stays in this browser',
     body: 'Seven keeps your files and chats on this computer. Nothing is uploaded unless you send it.',
     actions: [],
+  },
+  backup: {
+    id: 'backup',
+    tone: 'info',
+    title: 'A backup of your chats is ready',
+    body: 'Seven saved a copy of your files and chats. Download it to keep one outside this browser.',
+    actions: [{ id: 'download', label: 'Download' }],
   },
   readonly: {
     id: 'readonly',
@@ -56,7 +66,9 @@ export class DummyNotices extends Emitter<{ notices: readonly Notice[] }> implem
         ? [noticeFixtures.storage, noticeFixtures.welcome]
         : scenario === 'readonly' || scenario === 'starting'
           ? [noticeFixtures[scenario]]
-          : [noticeFixtures.storage];
+          : scenario === 'fail'
+            ? [noticeFixtures.storage, noticeFixtures.backup]
+            : [noticeFixtures.storage];
   }
 
   list(): readonly Notice[] {
@@ -66,7 +78,11 @@ export class DummyNotices extends Emitter<{ notices: readonly Notice[] }> implem
   async act(id: string, action: string): Promise<void> {
     await this.#time.sleep(10);
     if (this.#scenario === 'fail') {
-      throw new Error('The browser declined again. Bookmark this page, then try again.');
+      throw new Error(
+        id === 'backup'
+          ? 'The browser blocked the download. Allow downloads for this page, then try again.'
+          : 'The browser declined again. Bookmark this page, then try again.'
+      );
     }
     if (id === 'storage' && action === 'retry') this.#remove(id);
   }

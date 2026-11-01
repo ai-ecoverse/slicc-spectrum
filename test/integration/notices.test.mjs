@@ -108,3 +108,72 @@ test('a failed action shows inline and keeps the notice', async (t) => {
   await shot(page, 'notices-failed');
   assert.deepEqual(page.errors, []);
 });
+
+for (const color of ['light', 'dark']) {
+  test(`a failure line reads in the notice text colour with a tone icon in ${color}`, async (t) => {
+    const page = await open(t, 'fail', color);
+    await page.until(() => !!window.notice('storage') && !!window.notice('backup'));
+    await page.evaluate(() => {
+      window.notice('storage', 'swc-button[data-action=retry]').click();
+      window.notice('backup', 'swc-button[data-action=download]').click();
+      return true;
+    });
+    await page.until(
+      () => !!window.notice('storage', '[data-error]') && !!window.notice('backup', '[data-error]')
+    );
+    await page.until(
+      () =>
+        !!window
+          .notice('storage', '[data-error] swc-icon-alert-triangle')
+          ?.shadowRoot?.querySelector('svg') &&
+        !!window
+          .notice('backup', '[data-error] swc-icon-alert-triangle')
+          ?.shadowRoot?.querySelector('svg')
+    );
+    const lines = await page.evaluate(() =>
+      ['storage', 'backup'].map((id) => {
+        const notice = window.notice(id);
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--swc-negative-content-color-default)';
+        notice.append(probe);
+        const negative = getComputedStyle(probe).color;
+        probe.remove();
+        const fill = (icon) => getComputedStyle(icon.shadowRoot.querySelector('svg')).fill;
+        const line = notice.querySelector('[data-error]');
+        const text = getComputedStyle(line.querySelector('span')).color;
+        return {
+          id,
+          tone: notice.dataset.tone,
+          text: text === getComputedStyle(notice.querySelector('p')).color,
+          negative: text === negative,
+          icon:
+            fill(line.querySelector('swc-icon-alert-triangle')) === fill(notice.firstElementChild),
+          iconNegative: fill(line.querySelector('swc-icon-alert-triangle')) === negative,
+          words: line.textContent.trim().length > 0,
+        };
+      })
+    );
+    assert.deepEqual(lines, [
+      {
+        id: 'storage',
+        tone: 'warning',
+        text: true,
+        negative: false,
+        icon: true,
+        iconNegative: false,
+        words: true,
+      },
+      {
+        id: 'backup',
+        tone: 'info',
+        text: true,
+        negative: false,
+        icon: true,
+        iconNegative: false,
+        words: true,
+      },
+    ]);
+    await shot(page, `notices-failure-tone-${color}`);
+    assert.deepEqual(page.errors, []);
+  });
+}
