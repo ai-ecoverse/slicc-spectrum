@@ -76,7 +76,7 @@ test('a guest chat shows only the cone, its transcript and a plain composer', as
       ].filter((selector) => window.box(selector)),
       stop: !!field.shadowRoot.querySelector('.swc-PromptField-stop'),
       upload: !!leading && leading.inert,
-      send: field.getAttribute('send-label'),
+      send: field.getAttribute('send-accessible-label'),
       keys: window.box('#keys').textContent,
       note: window.box('[data-seat-note]').textContent,
       decide: !!window.part('[data-action=allow], [data-action=deny]'),

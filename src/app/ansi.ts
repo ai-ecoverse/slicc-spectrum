@@ -237,7 +237,9 @@ function on(rgb: string): string {
     const v = Number(value) / 255;
     return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
   }) as [number, number, number];
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.179 ? 'var(--swc-black)' : 'var(--swc-white)';
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.179
+    ? 'var(--swc-static-black-text-color)'
+    : 'var(--swc-static-white-text-color)';
 }
 
 type Rgb = [number, number, number];

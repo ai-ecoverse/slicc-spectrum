@@ -209,7 +209,7 @@ export class SliccAgents extends ModelElement {
       min-inline-size: var(--swc-spacing-300);
       block-size: var(--swc-spacing-300);
       padding-inline: var(--swc-spacing-75);
-      color: var(--swc-white);
+      color: var(--swc-static-white-text-color);
       font-size: var(--swc-font-size-50);
       font-variant-numeric: tabular-nums;
       font-weight: var(--swc-bold-font-weight);

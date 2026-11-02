@@ -229,7 +229,7 @@ export const shared = css`
     box-sizing: border-box;
     border-radius: var(--swc-component-height-50);
     background: var(--swc-accent-background-color-default);
-    color: var(--swc-white);
+    color: var(--swc-static-white-text-color);
     font-size: var(--swc-font-size-75);
     font-weight: var(--swc-bold-font-weight);
     line-height: var(--swc-component-height-50);

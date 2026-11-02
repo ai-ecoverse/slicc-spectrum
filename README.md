@@ -179,6 +179,8 @@ Components Gen2 doesn't ship yet stay on 1.12 inside a scoped `<sp-theme system=
 It runs against a typed model, not against the kernel, the agent or the browser directly.
 `dist/slicc-dummy.js` provides a dummy model that streams replies and tool calls with timers, and `dist/slicc-kernel-model.js` a real one for files and terminals on slicc-kernel (see [Kernel model](#kernel-model)).
 
+Static black and white content uses `--swc-static-black-text-color` and `--swc-static-white-text-color`; beta.6 no longer ships the old `--swc-black` / `--swc-white` tokens.
+
 ```html
 <slicc-app></slicc-app>
 <script type="module">
@@ -338,7 +340,7 @@ Renders nothing without the port.
 
 #### `<slicc-composer>`
 
-The message box.
+The message box uses Spectrum Web Components 2.0.0-beta.6. Its explicit accessible names stay "Message" for the textarea, "Send" ("Steer" while busy) for send, "Add" for upload and "Stop" for stop, using `accessible-label`, `send-accessible-label`, `upload-accessible-label` and `stop-accessible-label`. Attachment navigation stays "Show previous attachments" / "Show more attachments", and the strip stays "Uploaded assets strip", through their `*-accessible-label` attributes.
 <kbd>Enter</kbd> sends, or steers a running reply: the message joins after the current tool round, without interrupting; <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Enter</kbd> queues a follow-up that runs after the reply and can be withdrawn; <kbd>Shift</kbd>+<kbd>Enter</kbd> adds a line; <kbd>Tab</kbd> takes the suggested follow-up; <kbd>↑</kbd>/<kbd>↓</kbd> at the start or end walk this agent's history; <kbd>Esc</kbd> stops.
 `/` completes commands (`/clear`, `/compact`, `/model`, `/thinking`, `/scoop`, `/stop`, `/freeze` when the port can freeze, `/theme`) and their arguments, `@` mentions agents and files.
 Attach from the computer, from SLICC's files, a browser screenshot or a shared secret (with a `vault.put`, the popup takes the value too, checks it like Settings › Secrets, puts it in the vault and attaches the name, showing errors inline and clearing the field; an empty value shares a name the vault already has, and a new value for one asks before it replaces it; while the vault is away (`availability()` `connecting` or `waiting`) or locked, it takes no value and says so; without one, it attaches the name and says to add the value in Settings › Secrets), or paste and drop files (25 MB each; a dropped folder, told apart by its drag entry, becomes a “Folders can’t be attached” chip, and a file that can't be read a “Could not read the file” chip, instead of an attachment).

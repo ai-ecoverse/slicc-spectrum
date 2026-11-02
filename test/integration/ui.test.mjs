@@ -332,7 +332,9 @@ test('sending a message streams a reply with a tool call', async (t) => {
       'slicc-composer',
       'swc-prompt-field'
     );
-    return field.hasAttribute('generating') && field.getAttribute('stop-label') === 'Stop';
+    return (
+      field.hasAttribute('generating') && field.getAttribute('stop-accessible-label') === 'Stop'
+    );
   });
   await shot(page, 'chat-streaming');
   await page.until(
@@ -4326,7 +4328,9 @@ test('the composer runs commands, mentions, attaches, queues and steers', async 
       'slicc-composer',
       'swc-prompt-field'
     );
-    return field.getAttribute('send-label') === 'Steer' && !field.hasAttribute('generating');
+    return (
+      field.getAttribute('send-accessible-label') === 'Steer' && !field.hasAttribute('generating')
+    );
   });
   await shot(page, 'composer-steer');
   await page.press('Enter');
