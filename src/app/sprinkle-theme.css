@@ -285,7 +285,7 @@
 
 .sprinkle-btn--primary {
   background: var(--s2-accent);
-  color: var(--swc-white);
+  color: var(--swc-static-white-text-color);
   border-color: transparent;
   border-radius: var(--s2-radius-pill);
   box-shadow: none;
@@ -309,7 +309,7 @@
 
 .sprinkle-btn--negative {
   background: var(--s2-negative);
-  color: var(--swc-white);
+  color: var(--swc-static-white-text-color);
   border-color: transparent;
   border-radius: var(--s2-radius-pill);
   box-shadow: none;
@@ -348,23 +348,23 @@
 
 .sprinkle-badge--positive {
   background: var(--s2-positive);
-  color: var(--swc-white);
+  color: var(--swc-static-white-text-color);
 }
 .sprinkle-badge--negative {
   background: var(--s2-negative);
-  color: var(--swc-white);
+  color: var(--swc-static-white-text-color);
 }
 .sprinkle-badge--notice {
   background: var(--s2-notice);
-  color: var(--swc-black);
+  color: var(--swc-static-black-text-color);
 }
 .sprinkle-badge--informative {
   background: var(--s2-informative);
-  color: var(--swc-white);
+  color: var(--swc-static-white-text-color);
 }
 .sprinkle-badge--accent {
   background: var(--s2-accent);
-  color: var(--swc-white);
+  color: var(--swc-static-white-text-color);
 }
 
 .sprinkle-badge--subtle {
@@ -802,8 +802,8 @@ body
   content: "";
   width: 8px;
   height: 5px;
-  border-left: var(--swc-border-width-200) solid var(--swc-white);
-  border-bottom: var(--swc-border-width-200) solid var(--swc-white);
+  border-left: var(--swc-border-width-200) solid var(--swc-static-white-text-color);
+  border-bottom: var(--swc-border-width-200) solid var(--swc-static-white-text-color);
   transform: rotate(-45deg) translateY(-1px);
 }
 

@@ -1733,10 +1733,13 @@ export class SliccComposer extends ThemedElement {
             : nothing
         }
         <swc-prompt-field
-          label="Message"
+          accessible-label="Message"
           collapsed
           loader=${this.#loader(false)}
-          send-label="Send"
+          send-accessible-label="Send"
+          attachment-scroll-prev-accessible-label="Show previous attachments"
+          attachment-scroll-next-accessible-label="Show more attachments"
+          attachment-strip-accessible-label="Uploaded assets strip"
           max-rows="10"
           placeholder=${`Message ${cone}`}
           .value=${live(this.value)}
@@ -1772,11 +1775,14 @@ export class SliccComposer extends ThemedElement {
         ${this.#queue()}
         ${this.#popup()}
         <swc-prompt-field
-          label="Message"
+          accessible-label="Message"
           loader=${this.#loader(busy)}
-          upload-label="Add"
-          stop-label="Stop"
-          send-label=${busy ? 'Steer' : 'Send'}
+          upload-accessible-label="Add"
+          stop-accessible-label="Stop"
+          send-accessible-label=${busy ? 'Steer' : 'Send'}
+          attachment-scroll-prev-accessible-label="Show previous attachments"
+          attachment-scroll-next-accessible-label="Show more attachments"
+          attachment-strip-accessible-label="Uploaded assets strip"
           max-rows="10"
           ?generating=${busy && !canSend}
           ?disabled=${!!held}
