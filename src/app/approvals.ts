@@ -839,8 +839,8 @@ export class SliccApprovals extends ModelElement {
       html`<sp-alert-dialog variant="warning" data-approval-kind=${approval.kind}>
           <h2 id="title" slot="heading">${title(approval)}</h2>
           ${this.#request(approval, true)}
-          ${this.#verdict(approval)}
           ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${commandText(approval.cwd, false)}</p>` : nothing}
+          ${this.#verdict(approval)}
           ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${verdict.certain ? html`<strong>This changes secret rules.</strong> It names <code>${commandText(rules, false)}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${commandText(rules, false)}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>` : nothing}
           ${hint ? html`<p class="hint">${hint}</p>` : nothing}
           ${!failure && gate ? html`<p class="hint" data-allow-hint>${gate}</p>` : nothing}

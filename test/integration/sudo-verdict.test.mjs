@@ -92,12 +92,21 @@ test('denied sudo keeps the secret-rules notice and denies normally', async (t) 
       ...approval,
       id: 'sudo-denied-rules',
       command: 'cp harbor.toml /etc/fnox/config.toml',
+      cwd: '/home/cone/harbor',
       always: true,
     });
     return true;
   });
   await page.until(() => !!window.approvals().shadowRoot.querySelector('[data-secret-rules]'));
   assert.deepEqual(await page.evaluate(() => window.card()), { ...denied, rules: true });
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.approvals().shadowRoot.querySelectorAll('.command, .cwd, .verdict, .rules')].map(
+        (node) => node.className
+      )
+    ),
+    ['command', 'cwd', 'verdict', 'rules']
+  );
   await page.press('Escape');
   await page.until(() => window.model.approvals.decisions.length === 1);
   assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
