@@ -67,6 +67,12 @@ test('the real secret rule changes are still flagged', async (t) => {
       ['xxd /etc/slicc /tmp/x', '/tmp'],
       ['base64 -o /tmp/x /etc', '/tmp'],
       ['tree -o /tmp/x /etc', '/tmp'],
+      ["sort '--output=/etc' f", '/tmp'],
+      ["sort '-T/etc' f", '/tmp'],
+      ["yq '--split-exp-file=e' /etc", '/tmp'],
+      ['tree -R -H . /etc', '/tmp'],
+      ['uniq -- -a /etc', '/tmp'],
+      ["grep '--file=/etc/fnox/config.toml' x", '/tmp'],
     ]),
     [
       certain('/etc/slicc/secrets-policy.toml'),
@@ -88,6 +94,12 @@ test('the real secret rule changes are still flagged', async (t) => {
       certain('/etc/slicc'),
       certain('/etc'),
       certain('/etc'),
+      certain('/etc'),
+      certain('/etc'),
+      certain('/etc'),
+      certain('/etc'),
+      certain('/etc'),
+      certain('/etc/fnox/config.toml'),
     ]
   );
   assert.deepEqual(
@@ -103,7 +115,7 @@ test('the real secret rule changes are still flagged', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
-test('the sudo dialog offers Always allow for the read-only jq command and not for a rules change', async (t) => {
+test('the sudo dialog offers Always allow for read-only commands and not for a write flag that reaches the rules', async (t) => {
   const page = await open(t);
   const ask = async (id, command) => {
     await page.evaluate(
@@ -139,14 +151,32 @@ test('the sudo dialog offers Always allow for the read-only jq command and not f
       };
     });
   };
-  assert.deepEqual(await ask('sudo-mcp', mcp), {
-    rules: null,
-    actions: ['deny', 'always', 'once'],
-  });
-  await page.evaluate(() => window.model.approvals.end('sudo-mcp', 'withdrawn'));
-  assert.deepEqual(await ask('sudo-policy', 'tee /etc/slicc/secrets-policy.toml'), {
-    rules: '/etc/slicc/secrets-policy.toml',
-    actions: ['deny', 'once'],
-  });
+  const policy = '/etc/slicc/secrets-policy.toml';
+  const cases = [
+    [mcp, null, true],
+    ['sort notes.txt | uniq', null, true],
+    ['find . -name x', null, true],
+    ['tee /etc/slicc/secrets-policy.toml', policy, false],
+    [`sort --output=${policy} notes.txt`, policy, false],
+    [`sort --out=${policy} notes.txt`, policy, false],
+    [`sort -o${policy} notes.txt`, policy, false],
+    [`sort '--output=${policy}' notes.txt`, policy, false],
+    ["sort '--out=/etc' notes.txt", '/etc', false],
+    [`yq '--split-exp="/etc/" + .name' f.yaml`, '/etc', false],
+    ["yq '--inplace=true' . /etc/slicc", '/etc/slicc', false],
+    ['yq --inplace . /etc/slicc', '/etc/slicc', false],
+    ['yq -i.bak . /etc/slicc', '/etc/slicc', false],
+    [`base64 --output=${policy} notes.txt`, policy, false],
+    ["base64 '--output=/etc' notes.txt", '/etc', false],
+  ];
+  for (const [index, [command, rules, always]] of cases.entries()) {
+    const id = `sudo-${index}`;
+    assert.deepEqual(
+      await ask(id, command),
+      { rules, actions: always ? ['deny', 'always', 'once'] : ['deny', 'once'] },
+      command
+    );
+    await page.evaluate((id) => window.model.approvals.end(id, 'withdrawn'), id);
+  }
   assert.deepEqual(page.errors, []);
 });

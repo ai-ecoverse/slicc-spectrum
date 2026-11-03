@@ -114,12 +114,15 @@ const readOnly = [
 const flag = (short: string, long: string[]) => (args: string[]) =>
   args.some((arg) => {
     if (!arg.startsWith('--')) return /^-[^-]/.test(arg) && [...short].some((c) => arg.includes(c));
-    const name = arg.slice(2);
+    const [name] = arg.slice(2).split('=');
     return !!name && long.some((option) => option.startsWith(name));
   });
 
-const operands = (args: string[]) =>
-  args.filter((arg) => arg === '-' || !arg.startsWith('-')).length > 1;
+const operands = (args: string[]) => {
+  const end = args.includes('--') ? args.indexOf('--') : args.length;
+  const named = args.slice(0, end).filter((arg) => arg === '-' || !arg.startsWith('-'));
+  return named.length + args.slice(end + 1).length > 1;
+};
 
 const writes: Record<string, (args: string[]) => boolean> = {
   base64: flag('o', ['output']),
@@ -127,15 +130,16 @@ const writes: Record<string, (args: string[]) => boolean> = {
   find: (args) =>
     args.some((arg) => /^-(?:delete|exec|execdir|ok|okdir|fls|fprint0?|fprintf)$/.test(arg)),
   sort: flag('oT', ['output', 'temporary-directory', 'compress-program']),
-  tree: flag('o', []),
+  tree: flag('oR', []),
   uniq: operands,
   xxd: operands,
-  yq: flag('is', ['inplace', 'in-place', 'split-exp']),
+  yq: flag('is', ['inplace', 'in-place', 'split-exp', 'split-exp-file']),
 };
 
 function candidates(word: string): string[] {
   if (word === '--') return [];
-  if (word.startsWith('--')) return [word];
+  if (word.startsWith('--'))
+    return word.includes('=') ? [word, word.split('=').slice(1).join('=')] : [word];
   if (!word.startsWith('-')) return [word];
   const slash = word.indexOf('/');
   const cluster = Array.from(word.slice(2), (_, index) => word.slice(index + 2));
