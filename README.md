@@ -1123,6 +1123,7 @@ app.model = createKernelModel({ kernel, root, storage: localStorage, files: { sk
 ```
 
 - **`KernelFiles`** lists the OPFS root as the tree, reads and writes files through the OPFS API, and removes them recursively.
+  Each write or removal, once it has committed, posts one `postFsNotice` from `@ai-ecoverse/slicc-kernel/meta`, so the kernels on that root and their watches hear it: a write names the file and, for every directory or file it had to create, that name and its parent; removing a file names it and its parent; removing a folder names the folder in `trees` and its parent in `paths`. A write that fails partway names what it did create. `metadata` is the kernel's `metadata` option (default `slicc-kernel`). The paths are the tree's, so `root` must be the kernel's root.
   Directories in `skip` show up but aren't scanned; paths in `hide` (and everything under them) don't show up at all.
   `start()` rescans when a `FileSystemObserver` record touches something the tree shows: at once after a quiet `interval` (default 2000 ms), then at most once per `interval`. Records only inside `hide` paths or below `skip` folders start no rescan. Where the browser can't observe OPFS, it rescans every `interval` ms. A rescan that finds changes emits `files` and a `file` per changed file, so open tabs follow what the terminal writes.
   Without an agent there are no pending changes.

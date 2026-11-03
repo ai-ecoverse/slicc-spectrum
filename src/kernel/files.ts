@@ -1,3 +1,4 @@
+import { postFsNotice } from '@ai-ecoverse/slicc-kernel/meta';
 import { Emitter } from '../model/emitter.ts';
 import type { Change, FileEntry, FileEvents, FilePort } from '../model/types.ts';
 
@@ -5,6 +6,7 @@ export interface KernelFilesOptions {
   skip?: readonly string[];
   hide?: readonly string[];
   interval?: number;
+  metadata?: string;
 }
 
 interface Observer {
@@ -24,6 +26,29 @@ function split(path: string): string[] {
   return path.split('/').filter(Boolean);
 }
 
+function child(dir: string, name: string): string {
+  return dir === '/' ? `/${name}` : `${dir}/${name}`;
+}
+
+function parentOf(path: string): string {
+  return path.slice(0, path.lastIndexOf('/')) || '/';
+}
+
+async function opened<T>(
+  changed: string[],
+  path: string,
+  parent: string,
+  open: (create: boolean) => Promise<T>
+): Promise<T> {
+  try {
+    return await open(false);
+  } catch {
+    const made = await open(true);
+    changed.push(path, parent);
+    return made;
+  }
+}
+
 function same(a: FileEntry | undefined, b: FileEntry): boolean {
   return a?.kind === b.kind && a.size === b.size && a.modified === b.modified;
 }
@@ -33,6 +58,7 @@ export class KernelFiles extends Emitter<FileEvents> implements FilePort {
   #skip: Set<string>;
   #hide: Set<string>;
   #interval: number;
+  #metadata: string | undefined;
   #entries = new Map<string, FileEntry>();
   #scanned = false;
   #running: Promise<void> | null = null;
@@ -44,10 +70,11 @@ export class KernelFiles extends Emitter<FileEvents> implements FilePort {
 
   constructor(
     root: FileSystemDirectoryHandle,
-    { skip = [], hide = [], interval = 2000 }: KernelFilesOptions = {}
+    { skip = [], hide = [], interval = 2000, metadata }: KernelFilesOptions = {}
   ) {
     super();
     this.#root = root;
+    this.#metadata = metadata;
     this.#skip = new Set(skip);
     this.#hide = new Set(hide);
     this.#interval = interval;
@@ -179,18 +206,23 @@ export class KernelFiles extends Emitter<FileEvents> implements FilePort {
     return this.#list();
   }
 
-  async #parent(path: string, create: boolean): Promise<[FileSystemDirectoryHandle, string]> {
+  async #parent(path: string): Promise<[FileSystemDirectoryHandle, string]> {
     const parts = split(path);
     const name = parts.pop();
     if (!name) throw new Error(`EISDIR: ${path}`);
     let dir = this.#root;
-    for (const part of parts) dir = await dir.getDirectoryHandle(part, { create });
+    for (const part of parts) dir = await dir.getDirectoryHandle(part);
     return [dir, name];
+  }
+
+  #notice(paths: readonly string[], trees: readonly string[] = []): void {
+    if (paths.length + trees.length === 0) return;
+    postFsNotice({ paths, trees }, { metadata: this.#metadata });
   }
 
   async read(path: string): Promise<string> {
     try {
-      const [dir, name] = await this.#parent(path, false);
+      const [dir, name] = await this.#parent(path);
       return await (await (await dir.getFileHandle(name)).getFile()).text();
     } catch {
       throw new Error(`ENOENT: ${path}`);
@@ -198,20 +230,51 @@ export class KernelFiles extends Emitter<FileEvents> implements FilePort {
   }
 
   async write(path: string, text: string): Promise<void> {
-    const [dir, name] = await this.#parent(path, true);
-    const writable = await (await dir.getFileHandle(name, { create: true })).createWritable();
-    await writable.write(text);
-    await writable.close();
+    const parts = split(path);
+    const name = parts.pop();
+    if (!name) throw new Error(`EISDIR: ${path}`);
+    const changed: string[] = [];
+    try {
+      let dir = this.#root;
+      let at = '/';
+      for (const part of parts) {
+        const parent = dir;
+        const next = child(at, part);
+        dir = await opened(changed, next, at, (create) =>
+          parent.getDirectoryHandle(part, { create })
+        );
+        at = next;
+      }
+      const file = child(at, name);
+      const handle = await opened(changed, file, at, (create) =>
+        dir.getFileHandle(name, { create })
+      );
+      const writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+      changed.push(file);
+    } finally {
+      this.#notice([...new Set(changed)]);
+    }
     await this.refresh();
   }
 
   async remove(path: string): Promise<void> {
+    let target: string;
+    let tree: boolean;
     try {
-      const [dir, name] = await this.#parent(path, false);
+      const [dir, name] = await this.#parent(path);
+      target = `/${split(path).join('/')}`;
+      tree = await dir.getFileHandle(name).then(
+        () => false,
+        () => true
+      );
       await dir.removeEntry(name, { recursive: true });
     } catch {
       throw new Error(`ENOENT: ${path}`);
     }
+    if (tree) this.#notice([parentOf(target)], [target]);
+    else this.#notice([target, parentOf(target)]);
     await this.refresh();
   }
 
