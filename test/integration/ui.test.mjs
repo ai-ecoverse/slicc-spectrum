@@ -120,13 +120,14 @@ test('the shell renders the default layout from the dummy model', async (t) => {
       const header = window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'header');
       return [
         window.$('slicc-app', 'footer'),
-        header.querySelector('swc-status-light').textContent,
+        header.querySelector('swc-status-light'),
+        /Idle|Working|Thinking/.test(header.textContent),
         [...header.querySelectorAll('sp-picker')].map((picker) => picker.getAttribute('label')),
         header.querySelector('swc-meter').getAttribute('value'),
         /sliccy/.test(header.textContent),
       ];
     }),
-    [null, 'Idle', ['Model', 'Thinking'], '21', false]
+    [null, null, false, ['Model', 'Thinking'], '21', false]
   );
   assert.deepEqual(
     await page.evaluate(() =>
@@ -7766,6 +7767,40 @@ test('the chat header lists chat models with their provider and starts a new cha
     }, id),
     [frozen + 1, true]
   );
+  assert.deepEqual(page.errors, []);
+});
+
+test('the chat header leaves the status to the agent dot, so its pickers stay put while the agent works', async (t) => {
+  const page = await open(t);
+  const header = () => {
+    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    const head = chat.shadowRoot.querySelector('header');
+    return {
+      light: !!head.querySelector('swc-status-light'),
+      word: /Idle|Working|Thinking|Waiting|Error/.test(head.textContent),
+      left: Math.round(head.querySelector('sp-picker[label=Model]').getBoundingClientRect().left),
+    };
+  };
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat')
+        ?.shadowRoot.querySelector('header sp-picker[label=Model]')
+  );
+  const idle = await page.evaluate(header);
+  assert.deepEqual([idle.light, idle.word], [false, false]);
+  for (const status of ['working', 'thinking', 'waiting', 'error']) {
+    await page.evaluate((status) => {
+      const active = window.model.agent.active();
+      const list = window.model.agent.list.bind(window.model.agent);
+      window.model.agent.list = () =>
+        list().map((agent) => (agent.id === active ? { ...agent, status } : agent));
+      const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+      chat.requestUpdate();
+      return chat.updateComplete.then(() => true);
+    }, status);
+    assert.deepEqual(await page.evaluate(header), idle, status);
+  }
   assert.deepEqual(page.errors, []);
 });
 
