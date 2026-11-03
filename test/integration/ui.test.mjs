@@ -7841,6 +7841,81 @@ for (const width of [1280, 420]) {
   });
 }
 
+for (const width of [1280, 420]) {
+  test(`in forced colours the chat header's status dot stays visible in a system colour, at ${width}`, async (t) => {
+    const page = await open(t);
+    await page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height: 860,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await page.send('Emulation.setEmulatedMedia', {
+      features: [{ name: 'forced-colors', value: 'active' }],
+    });
+    t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+    t.after(() => page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {}));
+    await page.until(() => matchMedia('(forced-colors: active)').matches);
+    if (width < 600) await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+    await page.until(
+      () =>
+        !!window
+          .$('slicc-app', 'slicc-dock', 'slicc-chat')
+          ?.shadowRoot.querySelector('header [data-agent-status]')
+    );
+    const seen = [];
+    for (const status of ['idle', 'working', 'thinking', 'waiting', 'error']) {
+      seen.push(
+        await page.evaluate((status) => {
+          const active = window.model.agent.active();
+          const list = window.model.agent.list.bind(window.model.agent);
+          window.model.agent.list = () =>
+            list().map((agent) => (agent.id === active ? { ...agent, status } : agent));
+          const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+          chat.requestUpdate();
+          return chat.updateComplete.then(() => {
+            const probe = document.createElement('span');
+            probe.style.color = 'CanvasText';
+            document.body.append(probe);
+            const text = getComputedStyle(probe).color;
+            probe.remove();
+            const head = chat.shadowRoot.querySelector('header');
+            const dot = head.querySelector('[data-agent-status]');
+            const style = getComputedStyle(dot);
+            const box = dot.getBoundingClientRect();
+            return {
+              status: dot.dataset.agentStatus,
+              adjust: style.forcedColorAdjust,
+              paint: style.backgroundColor === text,
+              apart: style.backgroundColor !== getComputedStyle(head).backgroundColor,
+              shown: box.width > 0 && box.height > 0,
+              label: dot.getAttribute('aria-label'),
+            };
+          });
+        }, status)
+      );
+    }
+    assert.deepEqual(
+      seen,
+      [
+        ['idle', 'Idle'],
+        ['working', 'Working'],
+        ['thinking', 'Thinking'],
+        ['waiting', 'Waiting'],
+        ['error', 'Error'],
+      ].map(([status, label]) => ({
+        status,
+        adjust: 'none',
+        paint: true,
+        apart: true,
+        shown: true,
+        label,
+      }))
+    );
+    assert.deepEqual(page.errors, []);
+  });
+}
+
 test('the chat header refreshes its models once the first provider connects, on one row at 1280 and 420', async (t) => {
   const page = await open(t, { providers: 'none' });
   const viewport = (width) =>
