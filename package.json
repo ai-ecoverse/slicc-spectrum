@@ -72,7 +72,7 @@
     "@fontsource/source-code-pro": "5.3.1",
     "@happy-dom/global-registrator": "21.0.4",
     "@pierre/diffs": "1.6.2",
-    "@pierre/highlights": "0.2.0",
+    "@pierre/highlights": "0.3.0",
     "@pierre/trees": "1.0.0-beta.6",
     "@spectrum-web-components/action-menu": "1.12.5",
     "@spectrum-web-components/alert-dialog": "1.12.5",
