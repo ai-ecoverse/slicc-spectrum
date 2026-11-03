@@ -40,6 +40,25 @@ for (const [scenario, control, shown] of [
         hint: 'Always allow lets docs-pass run exactly this command with sudo without asking again.',
       }
     );
+    assert.deepEqual(
+      await page.evaluate(() => {
+        const chip = window.approvals().querySelector('pre.command .control');
+        return [
+          chip.textContent,
+          chip.getAttribute('role'),
+          chip.getAttribute('aria-label'),
+          chip.title,
+          getComputedStyle(chip, '::after').content,
+        ];
+      }),
+      [
+        shown.trimEnd(),
+        'img',
+        scenario === 'controls-cr' ? 'carriage return (U+000D)' : 'line feed (U+000A)',
+        scenario === 'controls-cr' ? 'carriage return (U+000D)' : 'line feed (U+000A)',
+        scenario === 'controls-cr' ? '"CR"' : '"LF"',
+      ]
+    );
     await page.until(() => !!window.approvals().querySelector('[data-action=always]'));
     await page.evaluate(() => {
       const port = window.model.approvals;
@@ -88,7 +107,16 @@ test('control characters in a full command are shown', async (t) => {
     await page.evaluate(() => window.approvals().querySelector('pre.command').textContent),
     `sudo ${expected}`
   );
-  await page.evaluate(() => window.approvals().querySelector('[data-action=full-command]').click());
+  await page.until(() => window.approvals().querySelector('dialog').getAnimations().length === 0);
+  const { x, y } = await page.evaluate(() => {
+    const box = window
+      .approvals()
+      .querySelector('[data-action=full-command]')
+      .getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  });
+  for (const type of ['mousePressed', 'mouseReleased'])
+    await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
   await page.until(
     () =>
       window
@@ -123,6 +151,61 @@ for (const scenario of ['agent', 'long']) {
       }),
       ['pre-wrap', true]
     );
+    assert.deepEqual(page.errors, []);
+  });
+}
+
+for (const scenario of ['controls-place', 'controls-cwd']) {
+  test(`control characters are shown for ${scenario}`, async (t) => {
+    const page = await open(t, scenario);
+    const result = await page.evaluate(() => {
+      const root = window.approvals();
+      const approval = window.model.approvals.list()[0];
+      return {
+        asking: root.querySelector('#asking').textContent,
+        command: root.querySelector('pre.command').textContent,
+        cwd: root.querySelector('.cwd')?.textContent,
+        hint: root.querySelector('.hint:not([data-allow-hint])')?.textContent,
+        labels: [...root.querySelectorAll('.control')].map((chip) =>
+          chip.getAttribute('aria-label')
+        ),
+        original: [
+          approval.requester.name,
+          approval.requester.where,
+          approval.cwd,
+          approval.target,
+        ],
+      };
+    });
+    if (scenario === 'controls-place') {
+      assert.equal(result.asking, 'docs␍pass wants to run this with sudo in harbor␍terminal␊seat:');
+      assert.equal(result.command, 'sudo -u harbor␍user apt install jq');
+      assert.equal(
+        result.hint,
+        'Always allow lets docs␍pass run exactly this command with sudo without asking again.'
+      );
+      assert.deepEqual(result.original, [
+        'docs\rpass',
+        'harbor\rterminal\nseat',
+        '/home/cone/harbor',
+        'harbor\ruser',
+      ]);
+    } else {
+      assert.equal(result.asking, 'You ran this with sudo in harbor␍terminal␊seat (as co␍ne):');
+      assert.equal(result.cwd, 'In /home/cone/harbor␍ferry␊schedule');
+      assert.equal(
+        result.hint,
+        'Always allow lets co␍ne run exactly this command with sudo, in /home/cone/harbor␍ferry␊schedule, without asking again.'
+      );
+      assert.deepEqual(result.original, [
+        'co\rne',
+        'harbor\rterminal\nseat',
+        '/home/cone/harbor\rferry\nschedule',
+        null,
+      ]);
+    }
+    assert.ok(result.labels.includes('carriage return (U+000D)'));
+    assert.ok(result.labels.includes('line feed (U+000A)'));
     assert.deepEqual(page.errors, []);
   });
 }
