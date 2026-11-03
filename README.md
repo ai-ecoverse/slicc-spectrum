@@ -678,18 +678,20 @@ const name = await prompt({ title: 'New cone', label: 'Name', action: 'Create', 
 ### Secret rules check
 
 `secretRules(command, cwd)`, exported from `dist/slicc-ui.js` (`@ai-ecoverse/slicc-spectrum/ui`), is the check behind the sudo dialog's secret-rules warning.
-It takes a sudo request's command (without `sudo` and its options) and working folder, and returns `{ certain, maybe }`:
+It takes a sudo request's command (without `sudo` and its options) and working folder, and returns `{ certain, maybe, once }`:
 
 - `certain` is an absolute path when the command names a file or folder holding SLICC's secret rules (`/etc/fnox`, `/etc/fnox/config.toml`, `/etc/slicc/secrets-policy.toml`), a folder above them it changes as a whole (`/`, `/etc`, `/etc/slicc`), a glob or brace that matches one, or a file named like them (`fnox`, `secrets-policy`) anywhere, as `/tmp/fnox/config.toml`.
   It sees through quotes, backslashes, `$'…'` and `$"…"`, `cd` and `pushd` (also inside `bash -c`), relative paths and `..`, extglobs, `/proc/self/root` and `/proc/self/cwd`, option clusters like `-t/etc/fnox`, and comma lists.
   When every command in it is read-only and nothing in it expands, quoted text is data: a jq or yq program such as `'.a // .b | {x: .y}'` isn't split into paths, and `*`, `?`, `[` and `{` in quotes (and `$` in single quotes) are literal, as the shell treats them. Other commands, such as `sh -c '…'`, are still looked into.
 - `maybe` is the token when the command may reach one of them and the check can't tell where it leads: an expansion (`$X`, `$(…)`, backticks), a `~user/..`, `~+` or `~-` path, a `/proc/<pid>/cwd` or `/dev/fd` path, or a command over 4096 characters (its first 40 followed by `…`).
   It's also set when an explicit write names its target from data the check can't see: `yq -s`, `--split-exp` or `--split-exp-file` (`yq -s`), or `xargs` running a command that can write or run others, such as `xargs rm < list` (`xargs rm`). `xargs` running a read-only command (`xargs cat < list`, `xargs grep x -- < list`, `xargs --replace=X cat X < list`, and `xargs sort`, `xargs find`, `xargs uniq -c` or `xargs yq .` with no write flag in the command; with `--replace` or `--eof` split from its value, both readings must be read-only) is a plain read and stays clean.
+- `once` is set, when the other two are `null`, to `xargs` and the program when `xargs` runs a program that's read-only only without its write flags (`sort`, `find`, `file`, `tree`, `base64`, `uniq`, `xxd`, `yq`) and shows none: `xargs sort < list` gives `once: 'xargs sort'`. The command is a plain read, but `xargs` adds arguments from its input, which could be a write flag (`printf -- '-o\n/etc/slicc/secrets-policy.toml\n' | xargs sort`) or, for `uniq` and `xxd`, an output file. So it can be allowed once but not always. `xargs cat`, `xargs grep` and other programs without write flags leave it `null`. No other read-only program takes arguments from data.
   Leading assignments and the wrappers `command`, `env`, `exec`, `ionice`, `nice`, `nohup`, `setsid`, `stdbuf`, `time` and `timeout`, with their options, don't hide `xargs` or `yq` (`command xargs rm < list`, `env -i A=1 nice -n 5 xargs rm < list`); `command -v xargs` runs nothing.
 
-Both are `null` for a clean command, and at most one is set.
+All three are `null` for a clean command, and at most one is set.
 The dialog shows "This changes secret rules" for `certain` and "This may change secret rules" for `maybe`, and offers no Always allow for either.
-An embedder that records "always" decisions itself, such as slicc-bios, must refuse "always" (answer "once" at most) whenever either is set, so a decision sent without the dialog can't add a rule that runs it unasked.
+For `once` it shows no notice and offers no Always allow, with "Always allow isn’t offered: xargs adds arguments from its input, and they could include a write flag." (`[data-once-only]`, the program in the attribute) when the request has `always`.
+An embedder that records "always" decisions itself, such as slicc-bios, must refuse "always" (answer "once" at most) whenever any of the three is set, so a decision sent without the dialog can't add a rule that runs it unasked.
 
 ```js
 import { secretRules } from './dist/slicc-ui.js';
@@ -698,7 +700,7 @@ secretRules("bash -c 'rm /etc/fn\\ox/config.toml'");
 secretRules('rm -rf $TARGET', '/home/cone');
 ```
 
-The first gives `{ certain: '/etc/fnox/config.toml', maybe: null }`, the second `{ certain: null, maybe: '$TARGET' }`. The result's type is `SecretRulesVerdict`.
+The first gives `{ certain: '/etc/fnox/config.toml', maybe: null, once: null }`, the second `{ certain: null, maybe: '$TARGET', once: null }`. The result's type is `SecretRulesVerdict`.
 
 ### Sprinkle bridge
 
@@ -974,7 +976,7 @@ In a command made only of read-only commands and with no live expansion, the quo
 `/proc/<pid>/root` counts as `/` and `/proc/self/cwd` as `cwd`.
 Otherwise a command with a parameter expansion or command substitution (`$…`, backticks), a `~+` or `~-` path or a `~` path that climbs with `..`, a path through another process's `/proc/<pid>/cwd`, `fd` or `map_files` or through `/dev/fd`, an explicit write whose target comes from data (`yq -s`, `--split-exp`, `--split-exp-file`, or `xargs` running a command that isn't read-only), or more than 4096 characters, gets "This may change secret rules." with the first such part in the attribute.
 Other symlinks aren't followed.
-Either way there's no Always allow, even when `always` is `true` (`decide(id, 'always')` isn't called for it), so each change to the rules is asked for.
+Either way there's no Always allow, even when `always` is `true` (`decide(id, 'always')` isn't called for it), so each change to the rules is asked for. The same goes for `xargs` running a gated read-only program (`once`), which shows no notice but says why Always allow isn’t offered.
 For half a second after a request shows, only Deny works, so a double-click can't approve it.
 A rejected `decide` shows its message in the dialog (`[data-error]`, `dialog[data-rejected]`) in place of the countdown, with only **Close** (`data-action="close"`, focused; Escape also closes), which moves on to the next waiting request or closes the dialog.
 Pass `decide` in every tab: the first decision wins.

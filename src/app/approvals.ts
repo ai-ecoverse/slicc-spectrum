@@ -269,16 +269,44 @@ function unwrap(words: string[], from: number): number {
   return index;
 }
 
-function blind(segments: string[][]): string | null {
+function commands(
+  segments: string[][],
+  pick: (name: string, args: string[]) => string | null | undefined
+): string | null {
   for (const words of segments)
     for (const [index, word] of words.entries()) {
       if (index && word !== '-c') continue;
       const start = unwrap(words, index && index + 1);
-      const name = command(words[start] ?? '');
-      const found = Object.hasOwn(unseen, name) && unseen[name](words.slice(start + 1));
-      if (found) return `${name} ${found}`;
+      const found = pick(command(words[start] ?? ''), words.slice(start + 1));
+      if (found) return found;
     }
   return null;
+}
+
+const blind = (segments: string[][]) =>
+  commands(segments, (name, args) => {
+    const found = Object.hasOwn(unseen, name) && unseen[name](args);
+    return found ? `${name} ${found}` : null;
+  });
+
+const fed = (segments: string[][]) =>
+  commands(segments, (name, args) => {
+    if (name !== 'xargs') return null;
+    const gated = launched(args)
+      .map(([run = 'echo']) => plainly(run))
+      .find((run) => Object.hasOwn(writes, run));
+    return gated && `xargs ${gated}`;
+  });
+
+function lines(text: string): string[][] {
+  const argv = (parts: string[]) => parts.map((part) => quoted(part, true).filter(Boolean));
+  const run = argv(shield(text).split(separators).map(unshield));
+  const blunt = argv(text.split(separators).map((part) => part.replace(/['"\\]/g, '')));
+  const shells = run.some(
+    (words) =>
+      words.length && !trusted(words) && !Object.hasOwn(unseen, words[0].split('/').pop() as string)
+  );
+  return shells ? [...run, ...blunt] : run;
 }
 
 const expansion = /\$\([^)]*\)?|\$\{[^}]*\}?|\$[\w@*#?$!-]*|`[^`]*`?/;
@@ -458,14 +486,7 @@ function reach(command: string, cwd?: string | null): string | null {
   if (named) return absolute([...cwds].pop() ?? start, named);
   const home = segments.flat().find((word) => /^~(?:[+-](?:\/|$)|.*\/\.\.(?:\/|$))/.test(word));
   if (home) return home;
-  const argv = (parts: string[]) => parts.map((part) => quoted(part, true).filter(Boolean));
-  const run = argv(shield(text).split(separators).map(unshield));
-  const blunt = argv(text.split(separators).map((part) => part.replace(/['"\\]/g, '')));
-  const shells = run.some(
-    (words) =>
-      words.length && !trusted(words) && !Object.hasOwn(unseen, words[0].split('/').pop() as string)
-  );
-  const data = blind(shells ? [...run, ...blunt] : run);
+  const data = blind(lines(text));
   if (data) return data;
   return segments.flat().some((word) => word.includes('$')) || text.includes('`')
     ? (text.match(expansion) as RegExpMatchArray)[0]
@@ -475,12 +496,19 @@ function reach(command: string, cwd?: string | null): string | null {
 export interface SecretRulesVerdict {
   certain: string | null;
   maybe: string | null;
+  once: string | null;
 }
 
 export function secretRules(command: string, cwd?: string | null): SecretRulesVerdict {
   const found = reach(command, cwd);
   const hit = found && unmark(found);
-  return hit && certain(hit) ? { certain: hit, maybe: null } : { certain: null, maybe: hit };
+  if (hit && certain(hit)) return { certain: hit, maybe: null, once: null };
+  if (hit) return { certain: null, maybe: hit, once: null };
+  return {
+    certain: null,
+    maybe: null,
+    once: fed(lines(unglob(ansi(command.replace(/\\\n/g, ''))))),
+  };
 }
 
 function origin(): HTMLElement | null {
@@ -553,7 +581,12 @@ export function guestWaiting(approval: GuestMessageApproval | GuestToolApproval)
     : `${approval.agentName ?? 'This cone'} wants to run ${approval.tool} for ${approval.requester.name}, which waits for the owner's approval.`;
 }
 
-const clear: SecretRulesVerdict = { certain: null, maybe: null };
+const onceOnly = ({ once }: SecretRulesVerdict) =>
+  once
+    ? html`<p class="hint" data-once-only=${once}>Always allow isn’t offered: xargs adds arguments from its input, and they could include a write flag.</p>`
+    : nothing;
+
+const clear: SecretRulesVerdict = { certain: null, maybe: null, once: null };
 
 function rulesOf(approval: Approval): SecretRulesVerdict {
   return approval.kind === 'sudo' ? secretRules(approval.command, approval.cwd) : clear;
@@ -815,7 +848,7 @@ export class SliccApprovals extends ModelElement {
     const always = approval.kind === 'sudo' || (approval.kind !== 'tray' && approval.always);
     if (
       decision === 'always' &&
-      (!always || deniedSudo(approval) || verdict.certain || verdict.maybe)
+      (!always || deniedSudo(approval) || verdict.certain || verdict.maybe || verdict.once)
     )
       return;
     this.busy = decision;
@@ -994,6 +1027,10 @@ export class SliccApprovals extends ModelElement {
       ${whole ? this.#button(approval, 'once', deniedSudo(approval) ? 'Allow anyway (once)' : 'Allow once', 'accent') : nothing}`;
   }
 
+  #offered(approval: Approval, rules: string | null): boolean {
+    return approval.kind !== 'tray' && approval.always && !deniedSudo(approval) && !rules;
+  }
+
   render(): unknown {
     if (this.gone) {
       const { approval, reason } = this.gone;
@@ -1015,7 +1052,8 @@ export class SliccApprovals extends ModelElement {
     const failure = this.failure?.id === approval.id ? this.failure.message : '';
     const verdict = rulesOf(approval);
     const rules = verdict.certain ?? verdict.maybe;
-    const always = approval.kind !== 'tray' && approval.always && !deniedSudo(approval) && !rules;
+    const offered = this.#offered(approval, rules);
+    const always = offered && !verdict.once;
     const gate = this.#gate(approval);
     const hint = always && this.#whole(approval) ? hintOf(approval) : '';
     return this.#dialog(
@@ -1027,6 +1065,7 @@ export class SliccApprovals extends ModelElement {
           ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${commandText(approval.cwd, false)}</p>` : nothing}
           ${this.#verdict(approval)}
           ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${verdict.certain ? html`<strong>This changes secret rules.</strong> It names <code>${commandText(rules, false)}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${commandText(rules, false)}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>` : nothing}
+          ${offered ? onceOnly(verdict) : nothing}
           ${hint ? html`<p class="hint">${hint}</p>` : nothing}
           ${!failure && gate ? html`<p class="hint" data-allow-hint>${gate}</p>` : nothing}
           ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : html`<p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>`}

@@ -17,7 +17,17 @@ async function open(t) {
 async function verdicts(page, cases) {
   return page.evaluate(async (cases) => {
     const { secretRules } = await import('/dist/slicc-ui.js');
-    return cases.map(([command, cwd]) => secretRules(command, cwd));
+    return cases.map(([command, cwd]) => {
+      const { certain, maybe } = secretRules(command, cwd);
+      return { certain, maybe };
+    });
+  }, cases);
+}
+
+async function onces(page, cases) {
+  return page.evaluate(async (cases) => {
+    const { secretRules } = await import('/dist/slicc-ui.js');
+    return cases.map(([command, cwd]) => secretRules(command, cwd).once);
   }, cases);
 }
 
@@ -321,6 +331,32 @@ test('xargs running a read-only program is clean unless a write flag shows in th
     rows.map(([command], index) => [command, found[index]]),
     rows.map(([command, token]) => [command, { certain: null, maybe: token }])
   );
+  const fed = [
+    ['xargs sort < list', 'xargs sort'],
+    ['xargs find -name x < list', 'xargs find'],
+    ['xargs file < list', 'xargs file'],
+    ['xargs tree < list', 'xargs tree'],
+    ['xargs base64 < list', 'xargs base64'],
+    ['xargs uniq -c < list', 'xargs uniq'],
+    ['xargs xxd < list', 'xargs xxd'],
+    ['xargs yq . < list', 'xargs yq'],
+    ['nice xargs sort < list', 'xargs sort'],
+    ["sh -c 'xargs sort < list'", 'xargs sort'],
+    ['xargs cat < list', null],
+    ['xargs grep x < list', null],
+    ['xargs --replace=sort cat < list', null],
+    ['sort notes.txt', null],
+    ['xargs sort -o out < list', null],
+    ['xargs rm < list', null],
+  ];
+  const once = await onces(
+    page,
+    fed.map(([command]) => [command, '/tmp'])
+  );
+  assert.deepEqual(
+    fed.map(([command], index) => [command, once[index]]),
+    fed
+  );
   assert.deepEqual(page.errors, []);
 });
 
@@ -357,6 +393,7 @@ test('the sudo dialog offers Always allow for read-only commands and not for a w
       return {
         rules: root.querySelector('[data-secret-rules]')?.dataset.secretRules ?? null,
         notice: root.querySelector('[data-secret-rules] strong')?.textContent ?? null,
+        onceOnly: root.querySelector('[data-once-only]')?.textContent ?? null,
         actions: [...root.querySelectorAll('[slot=button]')].map((button) => button.dataset.action),
       };
     });
@@ -367,6 +404,8 @@ test('the sudo dialog offers Always allow for read-only commands and not for a w
     ['sort notes.txt | uniq', null, true],
     ['find . -name x', null, true],
     ['xargs cat < list', null, true],
+    ['xargs sort < list', null, false, true],
+    ['find . -name x | xargs file', null, false, true],
     ['xargs grep x -- < list', null, true],
     ["find /etc -name '*.conf' | xargs grep x", null, true],
     ['yq -s .a f.yaml', 'yq -s', false],
@@ -394,14 +433,21 @@ test('the sudo dialog offers Always allow for read-only commands and not for a w
     ["base64 '--output=/etc' notes.txt", '/etc', false],
   ];
   const unseen = /^(?:xargs|yq) /;
-  for (const [index, [command, rules, always]] of cases.entries()) {
+  const onceOnly =
+    'Always allow isn’t offered: xargs adds arguments from its input, and they could include a write flag.';
+  for (const [index, [command, rules, always, once]] of cases.entries()) {
     const id = `sudo-${index}`;
     let notice = null;
     if (rules)
       notice = unseen.test(rules) ? 'This may change secret rules.' : 'This changes secret rules.';
     assert.deepEqual(
       await ask(id, command),
-      { rules, notice, actions: always ? ['deny', 'always', 'once'] : ['deny', 'once'] },
+      {
+        rules,
+        notice,
+        onceOnly: once ? onceOnly : null,
+        actions: always ? ['deny', 'always', 'once'] : ['deny', 'once'],
+      },
       command
     );
     await page.evaluate((id) => window.model.approvals.end(id, 'withdrawn'), id);
