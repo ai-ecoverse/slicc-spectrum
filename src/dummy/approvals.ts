@@ -19,6 +19,7 @@ export type ApprovalScenario =
   | 'elsewhere'
   | 'withdrawn'
   | 'secrets'
+  | 'judge-denied'
   | 'guest'
   | 'guest-follower'
   | 'guest-always'
@@ -191,6 +192,16 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
     expiresAt: now + 5 * minutes,
     always: false,
   };
+  if (scenario === 'judge-denied')
+    return [
+      {
+        ...user,
+        id: 'sudo-judge-denied',
+        createdAt: now,
+        always: false,
+        verdict: { decision: 'deny', reason: 'it looks high-risk.' },
+      },
+    ];
   if (scenario === 'secrets')
     return [
       {
