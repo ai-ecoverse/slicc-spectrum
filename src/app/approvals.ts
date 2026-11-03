@@ -170,33 +170,50 @@ const command = (word: string) => word.split('/').pop() ?? '';
 
 const plainly = (word: string) => word.replace(/^\/(?:usr\/)?bin\/(?=[^/]+$)/, '');
 
-const valued = ['arg-file', 'delimiter', 'max-args', 'max-chars', 'max-procs', 'process-slot-var'];
+const valued = [
+  'arg-file',
+  'delimiter',
+  'max-args',
+  'max-chars',
+  'max-lines',
+  'max-procs',
+  'process-slot-var',
+];
 
-function launched(args: string[]): string[] {
-  for (let index = 0; index < args.length; index++) {
+function launched(args: string[], from = 0): string[][] {
+  for (let index = from; index < args.length; index++) {
     const arg = args[index];
-    if (arg === '--') return args.slice(index + 1);
+    if (arg === '--') return [args.slice(index + 1)];
     if (arg.startsWith('--')) {
-      if (valued.some((option) => option.startsWith(arg.slice(2)))) index++;
+      const name = arg.slice(2);
+      if (['eof', 'replace'].some((option) => option.startsWith(name)))
+        return [...launched(args, index + 1), ...launched(args, index + 2)];
+      if (valued.some((option) => option.startsWith(name))) index++;
     } else if (/^-./.test(arg)) {
       const rest = arg.slice(1);
       const at = rest.search(/[adEILnPseil]/);
       if (at === rest.length - 1 && /[adEILnPs]/.test(rest[at])) index++;
-    } else return args.slice(index);
+    } else return [args.slice(index)];
   }
-  return [];
+  return [[]];
 }
+
+const runs = ([run = 'echo', ...rest]: string[]): boolean => {
+  const name = plainly(run);
+  return readOnly.includes(name) && !Object.hasOwn(writes, name) && trusted([run, ...rest]);
+};
 
 const trusted = ([word, ...args]: string[]): boolean => {
   const name = plainly(word);
   if (name !== 'xargs') return readOnly.includes(name) && !writes[name]?.(args);
-  const [run = 'echo', ...rest] = launched(args);
-  const runs = plainly(run);
-  return readOnly.includes(runs) && !Object.hasOwn(writes, runs) && trusted([run, ...rest]);
+  return launched(args).every(runs);
 };
 
 const unseen: Record<string, (args: string[]) => string | undefined> = {
-  xargs: (args) => (trusted(['xargs', ...args]) ? undefined : command(launched(args)[0] as string)),
+  xargs: (args) => {
+    const run = launched(args).find((words) => !runs(words));
+    return run && command(run[0] as string);
+  },
   yq: (args) => flag('s', ['split-exp', 'split-exp-file'])(args)?.split('=')[0],
 };
 
@@ -205,7 +222,9 @@ function blind(segments: string[][]): string | null {
     for (const [index, word] of words.entries()) {
       const name = command(word);
       const found =
-        (index === 0 || words[index - 1] === '-c') &&
+        words
+          .slice(words.slice(0, index).lastIndexOf('-c') + 1, index)
+          .every((before) => /^[A-Za-z_]\w*=/.test(before)) &&
         Object.hasOwn(unseen, name) &&
         unseen[name](words.slice(index + 1));
       if (found) return `${name} ${found}`;
@@ -333,7 +352,7 @@ function quoted(segment: string, drop = false): string[] {
       if (/^\d+$/.test(word)) word = '';
       push();
       target = true;
-    } else if (/[\s<>=]/.test(char)) push();
+    } else if (/[\s<>]/.test(char) || (!drop && char === '=')) push();
     else word += char;
   }
   push();

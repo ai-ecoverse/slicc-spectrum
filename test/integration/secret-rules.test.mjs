@@ -137,6 +137,10 @@ test('a write whose target comes from data may change secret rules, and a read t
       ['xargs -- rm < list', '/tmp'],
       ['xargs --null rm < list', '/tmp'],
       ["bash -c 'cd /srv; xargs rm < list'", '/tmp'],
+      ['xargs --replace=cat rm < list', '/tmp'],
+      ['xargs --eof=cat rm < list', '/tmp'],
+      ['FOO=1 xargs rm < list', '/tmp'],
+      ["sh -c 'A=1 xargs rm < list'", '/tmp'],
     ]),
     [
       maybe('yq -s'),
@@ -149,6 +153,10 @@ test('a write whose target comes from data may change secret rules, and a read t
       maybe('xargs sort'),
       maybe('xargs sh'),
       maybe('xargs xargs'),
+      maybe('xargs rm'),
+      maybe('xargs rm'),
+      maybe('xargs rm'),
+      maybe('xargs rm'),
       maybe('xargs rm'),
       maybe('xargs rm'),
       maybe('xargs rm'),
@@ -170,8 +178,12 @@ test('a write whose target comes from data may change secret rules, and a read t
       ["xargs cat 2>/dev/null < 'a b'", '/tmp'],
       ["find /etc -name '*.conf' | xargs grep x", '/tmp'],
       ['sh -c \'xargs cat < "a b"\'', '/tmp'],
+      ['xargs --max-lines 1 cat < list', '/tmp'],
+      ['xargs --max-lines=1 cat < list', '/tmp'],
+      ['xargs --replace=X cat X < list', '/tmp'],
+      ['xargs --replace cat < list', '/tmp'],
     ]),
-    Array(11).fill(clean)
+    Array(15).fill(clean)
   );
   assert.deepEqual(
     await verdicts(page, [
