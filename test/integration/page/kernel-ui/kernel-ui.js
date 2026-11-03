@@ -61,6 +61,7 @@ window.boot = async () => {
     .filter((item) => item.id in open)
     .map((item) => ({ ...item, open: open[item.id] }));
   app.model = model;
+  window.kernel = kernel;
   window.model = model;
   window.app = app;
   await app.updateComplete;
