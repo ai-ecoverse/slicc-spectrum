@@ -203,6 +203,10 @@ export function statusLight(status: AgentStatus): TemplateResult {
   return html`<swc-status-light size="s" variant=${statusVariant[status]}>${statusLabel[status]}</swc-status-light>`;
 }
 
+export function statusDot(status: AgentStatus): TemplateResult {
+  return html`<span class="dot" data-agent-status=${status} data-variant=${statusVariant[status]} role="img" aria-label=${statusLabel[status]} title=${statusLabel[status]}></span>`;
+}
+
 export const shared = css`
   .dot {
     display: inline-block;

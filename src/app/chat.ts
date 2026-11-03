@@ -22,7 +22,7 @@ import type {
   UserMessage,
 } from '../model/types.ts';
 import { readSurface } from './ansi.ts';
-import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
+import { chatModels, meterVariant, shared, statusDot, statusLight, ThemedElement } from './base.ts';
 import { Cuts, clampCss } from './command.ts';
 import { fade, folders, limit, type SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
@@ -335,7 +335,8 @@ export class SliccChat extends ThemedElement {
       header swc-action-button {
         flex: none;
       }
-      header swc-status-light {
+      header swc-status-light,
+      header .dot {
         align-self: center;
       }
       header swc-meter {
@@ -1164,17 +1165,19 @@ export class SliccChat extends ThemedElement {
     }
     if (watchOnly(model)) {
       const label = model.settings.models().find((option) => option.id === agent.model)?.label;
-      return html`<span class="model" data-model>${label ?? agent.model}</span>
+      return html`${statusDot(agent.status)}
+        <span class="model" data-model>${label ?? agent.model}</span>
         ${meter}`;
     }
     const offered = chatModels(model.settings.models());
-    return html`${
-      offered.length
-        ? html`<sp-picker size="s" quiet label="Model" value=${agent.model} @change=${(event: Event) => model.agent.setModel(agent.id, (event.target as HTMLInputElement).value)} @sp-opened=${this.#modelFilter.opened} @sp-closed=${this.#modelFilter.closed} @keydown=${this.#modelFilter.keys}>
+    return html`${statusDot(agent.status)}
+      ${
+        offered.length
+          ? html`<sp-picker size="s" quiet label="Model" value=${agent.model} @change=${(event: Event) => model.agent.setModel(agent.id, (event.target as HTMLInputElement).value)} @sp-opened=${this.#modelFilter.opened} @sp-closed=${this.#modelFilter.closed} @keydown=${this.#modelFilter.keys}>
         ${this.#modelFilter.items(offered)}
       </sp-picker>`
-        : html`<swc-action-button size="s" quiet data-action="set-up-model" @click=${() => this.#action('settings')}>Set up a model</swc-action-button>`
-    }
+          : html`<swc-action-button size="s" quiet data-action="set-up-model" @click=${() => this.#action('settings')}>Set up a model</swc-action-button>`
+      }
       <sp-picker size="s" quiet label="Thinking" value=${model.settings.get().thinking} @change=${(event: Event) => model.settings.update({ thinking: (event.target as HTMLInputElement).value as Thinking })}>
         <sp-menu-item value="off">No thinking</sp-menu-item>
         <sp-menu-item value="low">Think a little</sp-menu-item>

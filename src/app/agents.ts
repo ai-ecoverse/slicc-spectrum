@@ -597,11 +597,8 @@ export class SliccAgents extends ModelElement {
     >
       ${this.#disclosure(agent, scoops, open)}
       <div class="head">
-        ${
-          unread
-            ? html`<span class="marker unread" data-status=${agent.status} aria-hidden="true">${unreadCount(unread)}</span>`
-            : html`<span class="marker status" data-status=${agent.status} aria-hidden="true"></span>`
-        }
+        <span class="marker status" data-status=${agent.status} aria-hidden="true"></span>
+        ${unread ? html`<span class="marker unread" data-status=${agent.status} aria-hidden="true">${unreadCount(unread)}</span>` : nothing}
         <span class="name">${agent.name}</span>
       </div>
       ${

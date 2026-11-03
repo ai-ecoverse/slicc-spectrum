@@ -7770,39 +7770,76 @@ test('the chat header lists chat models with their provider and starts a new cha
   assert.deepEqual(page.errors, []);
 });
 
-test('the chat header leaves the status to the agent dot, so its pickers stay put while the agent works', async (t) => {
-  const page = await open(t);
-  const header = () => {
-    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
-    const head = chat.shadowRoot.querySelector('header');
-    return {
-      light: !!head.querySelector('swc-status-light'),
-      word: /Idle|Working|Thinking|Waiting|Error/.test(head.textContent),
-      left: Math.round(head.querySelector('sp-picker[label=Model]').getBoundingClientRect().left),
-    };
-  };
-  await page.until(
-    () =>
-      !!window
-        .$('slicc-app', 'slicc-dock', 'slicc-chat')
-        ?.shadowRoot.querySelector('header sp-picker[label=Model]')
-  );
-  const idle = await page.evaluate(header);
-  assert.deepEqual([idle.light, idle.word], [false, false]);
-  for (const status of ['working', 'thinking', 'waiting', 'error']) {
-    await page.evaluate((status) => {
-      const active = window.model.agent.active();
-      const list = window.model.agent.list.bind(window.model.agent);
-      window.model.agent.list = () =>
-        list().map((agent) => (agent.id === active ? { ...agent, status } : agent));
+for (const width of [1280, 420]) {
+  test(`the chat header shows the status as a dot without a word, so its pickers stay put while the agent works, at ${width}`, async (t) => {
+    const page = await open(t);
+    await page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height: 860,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+    if (width < 600) await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+    const header = () => {
       const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
-      chat.requestUpdate();
-      return chat.updateComplete.then(() => true);
-    }, status);
-    assert.deepEqual(await page.evaluate(header), idle, status);
-  }
-  assert.deepEqual(page.errors, []);
-});
+      const head = chat.shadowRoot.querySelector('header');
+      const dot = head.querySelector('[data-agent-status]');
+      const box = dot.getBoundingClientRect();
+      return {
+        light: !!head.querySelector('swc-status-light'),
+        word: /Idle|Working|Thinking|Waiting|Error/.test(head.textContent),
+        status: dot.dataset.agentStatus,
+        label: [
+          dot.getAttribute('role'),
+          dot.getAttribute('aria-label'),
+          dot.getAttribute('title'),
+        ],
+        first: head.firstElementChild === dot,
+        size: [Math.round(box.width), Math.round(box.height)],
+        color: getComputedStyle(dot).backgroundColor,
+        left: Math.round(head.querySelector('sp-picker[label=Model]').getBoundingClientRect().left),
+      };
+    };
+    await page.until(
+      () =>
+        !!window
+          .$('slicc-app', 'slicc-dock', 'slicc-chat')
+          ?.shadowRoot.querySelector('header sp-picker[label=Model]')
+    );
+    const idle = await page.evaluate(header);
+    assert.deepEqual(
+      [idle.light, idle.word, idle.status, idle.label, idle.first],
+      [false, false, 'idle', ['img', 'Idle', 'Idle'], true]
+    );
+    const colors = new Set([idle.color]);
+    for (const [status, word] of [
+      ['working', 'Working'],
+      ['thinking', 'Thinking'],
+      ['waiting', 'Waiting'],
+      ['error', 'Error'],
+    ]) {
+      await page.evaluate((status) => {
+        const active = window.model.agent.active();
+        const list = window.model.agent.list.bind(window.model.agent);
+        window.model.agent.list = () =>
+          list().map((agent) => (agent.id === active ? { ...agent, status } : agent));
+        const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+        chat.requestUpdate();
+        return chat.updateComplete.then(() => true);
+      }, status);
+      const now = await page.evaluate(header);
+      colors.add(now.color);
+      assert.deepEqual(
+        { ...now, color: undefined },
+        { ...idle, color: undefined, status, label: ['img', word, word] },
+        status
+      );
+    }
+    assert.equal(colors.size, 4);
+    assert.deepEqual(page.errors, []);
+  });
+}
 
 test('the chat header refreshes its models once the first provider connects, on one row at 1280 and 420', async (t) => {
   const page = await open(t, { providers: 'none' });
