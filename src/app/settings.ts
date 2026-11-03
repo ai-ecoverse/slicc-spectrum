@@ -35,6 +35,7 @@ import type {
 import { isPolicyPaused, isVaultFailure, valueProblem } from '../model/values.ts';
 import { chatModels, speech, ThemedElement } from './base.ts';
 import { confirm, dialogFrame } from './confirm.ts';
+import { ModelFilter, modelFilterCss } from './model-picker.ts';
 import { forgetSwitch, modelSwitch, settleModels } from './models.ts';
 import { recordKind, recordName, serverOf, upper as upperName } from './records.ts';
 import { search, searchCss } from './search.ts';
@@ -266,6 +267,7 @@ export class SliccSettings extends ThemedElement {
   declare removing: ReadonlySet<string>;
   #waits = new SignInWaits(() => this.requestUpdate());
   #copies = new SignInCopies(() => this.requestUpdate());
+  #modelFilter = new ModelFilter(this);
   #landing: string | null = null;
   #away = false;
   #bases = new Map<string, string>();
@@ -300,6 +302,7 @@ export class SliccSettings extends ThemedElement {
     fieldStyles,
     dialogFrame,
     searchCss,
+    modelFilterCss,
     unsafeCSS(link),
     signInCss,
     css`
@@ -2200,8 +2203,8 @@ export class SliccSettings extends ThemedElement {
       <div class="rows">
       <div class="row">
         <span class="label" id="model">Model for new cones</span>
-        <sp-picker size="m" label="Model" aria-labelledby="model" value=${value.model} @change=${(e: Event) => this.#pickModel(e)}>
-          ${chatModels(settings.models()).map((option) => html`<sp-menu-item value=${option.id}>${option.label}<span slot="description">${option.provider}</span></sp-menu-item>`)}
+        <sp-picker size="m" label="Model" aria-labelledby="model" value=${value.model} @change=${(e: Event) => this.#pickModel(e)} @sp-opened=${this.#modelFilter.opened} @sp-closed=${this.#modelFilter.closed} @keydown=${this.#modelFilter.keys}>
+          ${this.#modelFilter.items(chatModels(settings.models()))}
         </sp-picker>
         ${this.#switched(value.model)}
       </div>

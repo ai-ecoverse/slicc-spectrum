@@ -49,6 +49,7 @@ import {
   user,
   waiting,
 } from './messages.ts';
+import { ModelFilter, modelFilterCss } from './model-picker.ts';
 import { settleModels } from './models.ts';
 import { SignInCopies, SignInWaits, signInCss, signInWait } from './sign-in.ts';
 import { connecting } from './tabs.ts';
@@ -290,6 +291,7 @@ export class SliccChat extends ThemedElement {
 
   static styles = [
     shared,
+    modelFilterCss,
     fade,
     markdownCss,
     messageCss,
@@ -533,6 +535,7 @@ export class SliccChat extends ThemedElement {
     `,
   ];
 
+  #modelFilter = new ModelFilter(this);
   #licks = new ViewSet(this, 'chat:licks');
   #runs = new ViewSet(this, 'chat:runs');
   #details = new Set<string>();
@@ -1169,8 +1172,8 @@ export class SliccChat extends ThemedElement {
     return html`${statusLight(agent.status)}
       ${
         offered.length
-          ? html`<sp-picker size="s" quiet label="Model" value=${agent.model} @change=${(event: Event) => model.agent.setModel(agent.id, (event.target as HTMLInputElement).value)}>
-        ${offered.map((option) => html`<sp-menu-item value=${option.id}>${option.label}<span slot="description">${option.provider}</span></sp-menu-item>`)}
+          ? html`<sp-picker size="s" quiet label="Model" value=${agent.model} @change=${(event: Event) => model.agent.setModel(agent.id, (event.target as HTMLInputElement).value)} @sp-opened=${this.#modelFilter.opened} @sp-closed=${this.#modelFilter.closed} @keydown=${this.#modelFilter.keys}>
+        ${this.#modelFilter.items(offered)}
       </sp-picker>`
           : html`<swc-action-button size="s" quiet data-action="set-up-model" @click=${() => this.#action('settings')}>Set up a model</swc-action-button>`
       }
