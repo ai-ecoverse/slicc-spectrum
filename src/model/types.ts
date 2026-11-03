@@ -1159,6 +1159,7 @@ export interface SudoApproval {
   expiresAt: number;
   always: boolean;
   alwaysScope?: 'cwd';
+  verdict?: ApprovalVerdict;
 }
 
 export interface GuestMessageApproval {

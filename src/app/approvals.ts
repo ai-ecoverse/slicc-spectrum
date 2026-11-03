@@ -357,6 +357,9 @@ function hintOf(approval: Approval): string | Array<string | TemplateResult> {
     : guestAlwaysHint(approval as GuestMessageApproval | GuestToolApproval);
 }
 
+const deniedSudo = (approval: Approval): boolean =>
+  approval.kind === 'sudo' && approval.verdict?.decision === 'deny';
+
 const tooLong = 'This request is too long to show in full, so it can’t be allowed.';
 
 export function guestWaiting(approval: GuestMessageApproval | GuestToolApproval): string {
@@ -625,7 +628,11 @@ export class SliccApprovals extends ModelElement {
       return;
     const verdict = rulesOf(approval);
     const always = approval.kind === 'sudo' || (approval.kind !== 'tray' && approval.always);
-    if (decision === 'always' && (!always || verdict.certain || verdict.maybe)) return;
+    if (
+      decision === 'always' &&
+      (!always || deniedSudo(approval) || verdict.certain || verdict.maybe)
+    )
+      return;
     this.busy = decision;
     this.failure = null;
     this.#pending.add(approval.id);
@@ -787,8 +794,7 @@ export class SliccApprovals extends ModelElement {
   }
 
   #verdict(approval: Approval): TemplateResult | typeof nothing {
-    const verdict =
-      approval.kind === 'sudo' || approval.kind === 'tray' ? undefined : approval.verdict;
+    const verdict = approval.kind === 'tray' ? undefined : approval.verdict;
     return verdict
       ? html`<p class="verdict" data-verdict=${verdict.decision}>${verdict.decision === 'unsure' ? 'The automatic check wasn’t sure' : `The automatic check would ${verdict.decision} this`}: ${verdict.reason}</p>`
       : nothing;
@@ -800,7 +806,7 @@ export class SliccApprovals extends ModelElement {
     const whole = this.#whole(approval);
     return html`${this.#button(approval, 'deny', 'Deny', 'secondary')}
       ${whole && always ? this.#button(approval, 'always', inCwd(approval) ? 'Always allow in this directory' : 'Always allow', 'secondary') : nothing}
-      ${whole ? this.#button(approval, 'once', 'Allow once', 'accent') : nothing}`;
+      ${whole ? this.#button(approval, 'once', deniedSudo(approval) ? 'Allow anyway (once)' : 'Allow once', 'accent') : nothing}`;
   }
 
   render(): unknown {
@@ -824,7 +830,7 @@ export class SliccApprovals extends ModelElement {
     const failure = this.failure?.id === approval.id ? this.failure.message : '';
     const verdict = rulesOf(approval);
     const rules = verdict.certain ?? verdict.maybe;
-    const always = approval.kind !== 'tray' && approval.always && !rules;
+    const always = approval.kind !== 'tray' && approval.always && !deniedSudo(approval) && !rules;
     const gate = this.#gate(approval);
     const hint = always && this.#whole(approval) ? hintOf(approval) : '';
     return this.#dialog(
