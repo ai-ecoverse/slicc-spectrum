@@ -16,6 +16,7 @@ import type {
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
 import { Cuts, clampCss, Ends, fullCommand, toScroll, toShow } from './command.ts';
+import { commandText } from './command-display.ts';
 import { dialogStyles, focused } from './confirm.ts';
 import { size } from './messages.ts';
 
@@ -350,9 +351,9 @@ export function truncated(approval: Approval): boolean {
   return approval.kind === 'guest-tool' && !approval.summary.trim() && !!approval.argsTruncated;
 }
 
-function hintOf(approval: Approval): string {
+function hintOf(approval: Approval): string | Array<string | TemplateResult> {
   return approval.kind === 'sudo'
-    ? alwaysHint(approval)
+    ? commandText(alwaysHint(approval), false)
     : guestAlwaysHint(approval as GuestMessageApproval | GuestToolApproval);
 }
 
@@ -472,6 +473,20 @@ export class SliccApprovals extends ModelElement {
         font-size: var(--swc-font-size-100);
         white-space: pre-wrap;
         overflow-wrap: anywhere;
+      }
+      .control {
+        display: inline-flex;
+        align-items: baseline;
+        gap: var(--swc-spacing-50);
+        padding-inline: var(--swc-spacing-50);
+        border-radius: var(--swc-corner-radius-75);
+        background: var(--swc-gray-300);
+        color: var(--swc-gray-900);
+        font-size: var(--swc-font-size-100);
+        font-weight: var(--swc-bold-font-weight);
+      }
+      .control[data-label]:not([data-label=''])::after {
+        content: attr(data-label);
       }
       .command .lines:not([data-clamp]) {
         display: block;
@@ -754,13 +769,13 @@ export class SliccApprovals extends ModelElement {
     const full = !pending || this.#full.has(id);
     const toggle =
       pending && (full || this.#cuts.get(id)) ? fullCommand(full, () => this.#expand(id)) : nothing;
-    return html`<pre class="command" data-command=${approval.kind === 'sudo' ? '' : nothing} data-summary=${approval.kind === 'sudo' ? nothing : ''}><span class="lines" data-clamp=${full ? nothing : id}>${text}${pending ? html`<span class="end" data-end=${id}></span>` : nothing}</span></pre>${toggle}`;
+    return html`<pre class="command" data-command=${approval.kind === 'sudo' ? '' : nothing} data-summary=${approval.kind === 'sudo' ? nothing : ''}><span class="lines" data-clamp=${full ? nothing : id}>${approval.kind === 'sudo' ? commandText(text) : text}${pending ? html`<span class="end" data-end=${id}></span>` : nothing}</span></pre>${toggle}`;
   }
 
   #request(approval: Approval, pending = false): TemplateResult {
     if (approval.kind === 'tray') return html`<p id="asking">${trayAsking(approval)}</p>`;
     if (approval.kind === 'sudo')
-      return html`<p id="asking">${asking(approval)}:</p>
+      return html`<p id="asking">${commandText(asking(approval), false)}:</p>
         ${this.#command(approval, pending)}`;
     if (approval.kind === 'guest-tool')
       return html`<p id="asking">${guestAsking(approval)}</p>
@@ -819,8 +834,8 @@ export class SliccApprovals extends ModelElement {
           <h2 id="title" slot="heading">${title(approval)}</h2>
           ${this.#request(approval, true)}
           ${this.#verdict(approval)}
-          ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${approval.cwd}</p>` : nothing}
-          ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${verdict.certain ? html`<strong>This changes secret rules.</strong> It names <code>${rules}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${rules}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>` : nothing}
+          ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${commandText(approval.cwd, false)}</p>` : nothing}
+          ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${verdict.certain ? html`<strong>This changes secret rules.</strong> It names <code>${commandText(rules, false)}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${commandText(rules, false)}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>` : nothing}
           ${hint ? html`<p class="hint">${hint}</p>` : nothing}
           ${!failure && gate ? html`<p class="hint" data-allow-hint>${gate}</p>` : nothing}
           ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : html`<p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>`}

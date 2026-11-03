@@ -23,6 +23,10 @@ export type ApprovalScenario =
   | 'guest-follower'
   | 'guest-always'
   | 'long'
+  | 'controls-cr'
+  | 'controls-lf'
+  | 'controls-place'
+  | 'controls-cwd'
   | 'guest-args'
   | 'guest-empty'
   | 'guest-truncated'
@@ -206,6 +210,30 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
   if (scenario.startsWith('guest-')) return [guestCall(scenario, now)];
   if (scenario === 'none') return [];
   if (scenario === 'long') return [{ ...agent, id: 'sudo-release', command: longCommand }];
+  if (scenario === 'controls-cr' || scenario === 'controls-lf')
+    return [
+      {
+        ...agent,
+        command: `printf '%s' 'harbor${scenario === 'controls-cr' ? '\r' : '\n'}schedule'`,
+      },
+    ];
+  if (scenario === 'controls-place')
+    return [
+      {
+        ...agent,
+        requester: { ...agent.requester, name: 'docs\rpass', where: 'harbor\rterminal\nseat' },
+        target: 'harbor\ruser',
+      },
+    ];
+  if (scenario === 'controls-cwd')
+    return [
+      {
+        ...user,
+        requester: { ...user.requester, name: 'co\rne', where: 'harbor\rterminal\nseat' },
+        cwd: '/home/cone/harbor\rferry\nschedule',
+        alwaysScope: 'cwd',
+      },
+    ];
   if (scenario === 'user') return [user];
   if (scenario === 'many') return [agent, user, cache];
   if (scenario === 'elsewhere' || scenario === 'withdrawn') return [agent, user];
