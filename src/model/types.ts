@@ -1307,10 +1307,41 @@ export type ErrorCode =
   | 'ENOTCONN'
   | 'ENOTSUP';
 
+export type ErrorCause =
+  | 'policy-paused'
+  | 'no-placeholder'
+  | 'url-invalid'
+  | 'placeholder-in-url'
+  | 'placeholder-in-header-name'
+  | 'url-credentials'
+  | 'insecure-destination'
+  | 'path-ambiguous'
+  | 'exit-encoded-bodies'
+  | 'record-removed'
+  | 'record-kind'
+  | 'record-expired'
+  | 'vault-locked'
+  | 'no-rule'
+  | 'rule-domain'
+  | 'rule-request'
+  | 'rule-exit'
+  | 'placeholder-repeated'
+  | 'mcp-server'
+  | 'exit-follows-redirects'
+  | 'value-overlaps'
+  | 'basic-invalid'
+  | 'basic-user'
+  | 'header-unsafe'
+  | 'users-off'
+  | 'endpoint-protected'
+  | 'endpoint-model'
+  | 'mcp-body-framing'
+  | 'changed';
+
 export interface VaultError {
   code: ErrorCode;
   message: string;
-  cause?: 'policy-paused';
+  cause?: ErrorCause;
 }
 
 export type VaultFailure = Error & VaultError;
