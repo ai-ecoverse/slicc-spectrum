@@ -5465,7 +5465,7 @@ test('SLICC sprinkles run sandboxed with Lucide icons and lick their cone, and t
     await page.evaluate(() =>
       window.welcome().shadowRoot.querySelector('iframe').getAttribute('sandbox')
     ),
-    'allow-scripts'
+    'allow-scripts allow-forms'
   );
   assert.equal(
     await page.evaluate(

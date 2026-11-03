@@ -754,7 +754,36 @@ export interface SprinkleEvents {
   sprinkles: readonly Sprinkle[];
 }
 
-export type SprinkleMethod = 'readFile' | 'exists' | 'getState' | 'setState';
+export type SprinkleMethod =
+  | 'readFile'
+  | 'exists'
+  | 'getState'
+  | 'setState'
+  | 'cgi'
+  | 'cgiRead'
+  | 'cgiClose';
+
+export type SprinkleCgiHeaders = Array<[string, string]>;
+
+export interface SprinkleCgiRequest {
+  method: string;
+  path: string;
+  query: string;
+  headers: SprinkleCgiHeaders;
+  body: string | null;
+}
+
+export interface SprinkleCgiChunk {
+  body: string;
+  done: boolean;
+}
+
+export interface SprinkleCgiReply extends SprinkleCgiChunk {
+  status: number;
+  statusText: string;
+  headers: SprinkleCgiHeaders;
+  stream: string | null;
+}
 
 export interface SprinklePort extends Subscribable<SprinkleEvents> {
   list(): readonly Sprinkle[];

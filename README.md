@@ -560,10 +560,10 @@ A rejection shows the error card with its sentence (a check without a `preview` 
 
 A SLICC sprinkle (`.shtml`), as a panel or, with `inline`, as a dip in the chat that grows to fit, even when it loads out of view (the frame measures itself on load, after icons and fonts arrive, and on every resize).
 A dip has a tab-like handle: drag it into the dock (or onto a rail, or use its open-as-panel button, `data-action="detach-sprinkle"`, an extra-small action button whose tap target pads out to 24 × 24 px on a coarse pointer while it looks the same) and it lives on as a sprinkle panel, with a note in the chat where it was and a **Show** button (`data-action="show-sprinkle"`) that brings the panel forward; which dips are out is saved in `slicc-ui.dips`.
-It runs in a sandboxed frame (`allow-scripts` only) with SLICC's sprinkle theme (the `--s2-*` tokens and `.sprinkle-*` classes), the app's fonts, and Lucide icons (`<i data-lucide>`, `LucideIcons.render()`).
-It talks back through `slicc.lick({ action, data })`, which reaches the owning cone as a `sprinkle` lick, and, when the port has `call`, reads files and keeps state (see [Sprinkle bridge](#sprinkle-bridge)).
+It runs in a sandboxed frame (`allow-scripts allow-forms`) with SLICC's sprinkle theme (the `--s2-*` tokens and `.sprinkle-*` classes), the app's fonts, and Lucide icons (`<i data-lucide>`, `LucideIcons.render()`).
+It talks back through `slicc.lick({ action, data })`, which reaches the owning cone as a `sprinkle` lick, and, when the port has `call`, reads files, keeps state and runs its own `cgi-bin/` scripts (see [Sprinkle bridge](#sprinkle-bridge)).
 Panel sprinkles sit at the top of the right rail with their Lucide icon.
-On a guest's page (the model's `seat` set), every sprinkle, inline or panel, is view only: its frame is inert, it says "View only on this device", and its licks and `setState` calls go nowhere.
+On a guest's page (the model's `seat` set), every sprinkle, inline or panel, is view only: its frame is inert, it says "View only on this device", its licks and `setState` calls go nowhere, and its `cgi-bin/` answers every request with a `403`.
 
 #### `<slicc-network>`
 
@@ -714,6 +714,25 @@ A refusal or a missing file rejects with an `Error`.
 There is no `exec`: a sprinkle that needs a command asks its cone with `slicc.lick()`.
 Without `call`, none of the four exist, so guard them (`typeof slicc.readFile === 'function'`) and fall back.
 
+#### `cgi-bin/`
+
+A sprinkle's `fetch()` of a URL under `new URL('cgi-bin/', document.baseURI)` runs the sprinkle's own script through the port's `cgi`, so `fetch('cgi-bin/items')` answers with what `<sprinkle>/cgi-bin/items` prints, CGI/1.1 style.
+Every other URL goes to the frame's own `fetch`, unchanged.
+The answer is a real `Response`: `status`, `statusText`, `headers`, `url`, and a body that streams as the script prints, so `json()`, `text()` and `body.getReader()` all work; a `HEAD` and a `101`, `103`, `204`, `205` or `304` have no body.
+The request goes as `{ method, path, query, headers, body }`, as the `Request` constructor made it (a string body gets `text/plain;charset=UTF-8`, a `FormData` its multipart boundary), with `Accept: */*` and the browser's `Accept-Language` when the sprinkle set none; `path` is what follows `cgi-bin/`, still percent-encoded, `query` has no `?`, and the body is base64.
+A `301`, `302`, `303`, `307` or `308` with `Location` is followed as `fetch` follows redirects (a `303`, or a `301` or `302` after a `POST`, turns into a `GET` without a body), up to 20; `redirect: 'manual'` returns the redirect itself and `redirect: 'error'` rejects.
+Aborting the `fetch` (its `signal`) or cancelling the body stops the script (`cgiClose`); a failed `cgi` or `cgiRead` rejects with a `TypeError`, as a network error does.
+
+A form never navigates the frame: the bridge cancels every `submit` (except `method="dialog"`) and `form.submit()`.
+A form whose action (or its submitter's `formaction`) is under `cgi-bin/` goes the same way, with its `formmethod`, and as `enctype` says: `application/x-www-form-urlencoded` by default, `multipart/form-data` or `text/plain`; a `GET` form replaces the action's query.
+The bridge cancels the browser's own `submit` before any page handler runs and stops it there, then dispatches a copy (a `SubmitEvent` with the same `submitter`, so `isTrusted` is `false`) to the form, so stopping the copy's propagation can't navigate the frame.
+A handler that calls `preventDefault()` on that copy, on the form or above it, or an `onsubmit` that returns `false`, keeps the bridge from sending it.
+The form then gets a cancelable `slicc-cgi` event with `detail.response` (or `detail.error`); unless it's cancelled, an answer with `Location` rebuilds the sprinkle, with its latest state.
+
+The element sends `cgi` with its own sprinkle id, never one from the frame, posts the head as soon as the port answers, then calls `cgiRead` until `done`.
+A guest seat gets a `403` for every request, a frame without `call` a `404`, and a read-only, watch-only or frozen frame may `GET` and `HEAD`; any other method gets a `403` without reaching the port.
+The port does every other check (paths, ownership, limits).
+
 ### Panel command
 
 `panelCommand(app, argv, caller)`, exported from `dist/slicc-ui.js`, runs `panel` for an agent or a terminal, so the agent can arrange the UI.
@@ -833,8 +852,9 @@ Sprinkles (`inline` ones show as dips in the chat, not in the rail) and `send`, 
 The rail groups sprinkles by their `agentId`: the selected cone's come first, then the other cones' in the agents list's order, each group set apart by a line (`.rail .cones`) and each button carrying `data-cone`.
 A sprinkle of another cone reads `{cone name} / {title}` in its tooltip, its label and the tab it opens; the name comes from the agents list, so give each sprinkle an `id` that stays stable when a cone is renamed, such as `{coneId}/{name}`.
 The optional `call(id, method, args)` serves the [sprinkle bridge](#sprinkle-bridge) for sprinkle `id`: `readFile` and `exists` (`[path]`) resolve with a string and a boolean, `getState` (`[]`) with the saved value or `null`, and `setState` (`[value]`) once it is saved.
-The adapter owns path policy and keeps state per sprinkle; `<slicc-sprinkle>` awaits `getState` before it builds a frame, mirrors what the frame saves, and forwards only these four methods from its own frame.
-The dummy keeps state in memory and maps `/shared/x` to `/home/x` in its files, refusing anything outside `/home`.
+`cgi` (`[{ method, path, query, headers, body }]`, with `headers` as `[name, value]` pairs and `body` base64 or `null`) resolves once the script's CGI headers are in, with `{ status, statusText, headers, body, done, stream }`; `cgiRead` (`[stream]`) long-polls for `{ body, done }`, and `cgiClose` (`[stream]`) stops the script (see [`cgi-bin/`](#cgi-bin)).
+The adapter owns path policy and keeps state per sprinkle; `<slicc-sprinkle>` awaits `getState` before it builds a frame, mirrors what the frame saves, and forwards only the first four methods from its own frame's `slicc-call`; the `cgi` ones only through its `fetch` and forms.
+The dummy keeps state in memory and maps `/shared/x` to `/home/x` in its files, refusing anything outside `/home`; it answers every `cgi` with a canned `200` `application/json` (`X-Slicc-Cgi: dummy`) that echoes the method, path, query, content type and body, in two chunks.
 
 #### `tray`
 

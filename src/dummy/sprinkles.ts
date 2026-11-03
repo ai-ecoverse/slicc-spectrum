@@ -2,6 +2,8 @@ import { Emitter } from '../model/emitter.ts';
 import type {
   FilePort,
   Sprinkle,
+  SprinkleCgiChunk,
+  SprinkleCgiReply,
   SprinkleEvents,
   SprinkleMethod,
   SprinklePort,
@@ -17,11 +19,32 @@ export function homePath(path: unknown): string {
   return mapped;
 }
 
+const base64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
+
+const unbase64 = (text: string) =>
+  new TextDecoder().decode(Uint8Array.from(atob(text), (char) => char.charCodeAt(0)));
+
+export function cannedCgi(request: unknown): string {
+  const given = (request ?? {}) as Record<string, unknown>;
+  const headers = Array.isArray(given.headers) ? (given.headers as [string, string][]) : [];
+  const type = headers.find(([name]) => String(name).toLowerCase() === 'content-type');
+  return `${JSON.stringify({
+    ok: true,
+    method: given.method ?? 'GET',
+    path: given.path ?? '',
+    query: given.query ?? '',
+    type: type?.[1] ?? null,
+    body: typeof given.body === 'string' ? unbase64(given.body) : null,
+  })}\n`;
+}
+
 export class DummySprinkles extends Emitter<SprinkleEvents> implements SprinklePort {
   #sprinkles: Sprinkle[];
   #agent: DummyAgent;
   #files: FilePort;
   #state = new Map<string, unknown>();
+  #streams = new Map<string, Uint8Array>();
+  #next = 0;
 
   constructor(sprinkles: readonly Sprinkle[], agent: DummyAgent, files: FilePort) {
     super();
@@ -53,8 +76,39 @@ export class DummySprinkles extends Emitter<SprinkleEvents> implements SprinkleP
       this.#state.set(id, structuredClone(args[0] ?? null));
       return undefined;
     }
+    if (method === 'cgi') return this.#cgi(args[0]);
+    if (method === 'cgiRead') return this.#read(String(args[0]));
+    if (method === 'cgiClose') {
+      this.#streams.delete(String(args[0]));
+      return null;
+    }
     const path = homePath(args[0]);
     if (method === 'exists') return (await this.#files.list()).some((entry) => entry.path === path);
     return this.#files.read(path);
+  }
+
+  #cgi(request: unknown): SprinkleCgiReply {
+    const bytes = new TextEncoder().encode(cannedCgi(request));
+    const half = Math.ceil(bytes.length / 2);
+    const stream = `dummy-cgi-${++this.#next}`;
+    this.#streams.set(stream, bytes.subarray(half));
+    return {
+      status: 200,
+      statusText: 'OK',
+      headers: [
+        ['Content-Type', 'application/json'],
+        ['X-Slicc-Cgi', 'dummy'],
+      ],
+      body: base64(bytes.subarray(0, half)),
+      done: false,
+      stream,
+    };
+  }
+
+  #read(stream: string): SprinkleCgiChunk {
+    const rest = this.#streams.get(stream);
+    if (rest === undefined) throw new Error(`there is no cgi-bin stream ${stream}`);
+    this.#streams.delete(stream);
+    return { body: base64(rest), done: true };
   }
 }
