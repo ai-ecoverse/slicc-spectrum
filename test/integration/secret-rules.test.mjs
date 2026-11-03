@@ -128,7 +128,6 @@ test('a write whose target comes from data may change secret rules, and a read t
       ['xargs rm < list', '/tmp'],
       ['xargs tee < list', '/tmp'],
       ['xargs sort -o out < list', '/tmp'],
-      ['xargs sort < list', '/tmp'],
       ["xargs sh -c 'rm x'", '/tmp'],
       ['xargs xargs < list', '/tmp'],
       ['xargs -n 1 /bin/rm < list', '/tmp'],
@@ -149,7 +148,6 @@ test('a write whose target comes from data may change secret rules, and a read t
       maybe('yq -Ps'),
       maybe('xargs rm'),
       maybe('xargs tee'),
-      maybe('xargs sort'),
       maybe('xargs sort'),
       maybe('xargs sh'),
       maybe('xargs xargs'),
@@ -276,6 +274,44 @@ test('a wrapper does not hide xargs or yq writing a target from data', async (t)
     ['nice yq -s .a f.yaml', 'yq -s'],
     ['xargs --replace=cat rm < list', 'xargs rm'],
     ['yq -Ps .a f.yaml', 'yq -Ps'],
+  ];
+  const found = await verdicts(
+    page,
+    rows.map(([command]) => [command, '/tmp'])
+  );
+  assert.deepEqual(
+    rows.map(([command], index) => [command, found[index]]),
+    rows.map(([command, token]) => [command, { certain: null, maybe: token }])
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('xargs running a read-only program is clean unless a write flag shows in the command', async (t) => {
+  const page = await open(t);
+  const rows = [
+    ['xargs sort < list', null],
+    ['xargs sort -r < list', null],
+    ['xargs sort -o out < list', 'xargs sort'],
+    ['xargs find < list', null],
+    ['xargs find -name x < list', null],
+    ['xargs find -delete < list', 'xargs find'],
+    ['xargs find -exec rm {} + < list', 'xargs find'],
+    ['xargs file < list', null],
+    ['xargs file -C < list', 'xargs file'],
+    ['xargs tree < list', null],
+    ['xargs tree -o out < list', 'xargs tree'],
+    ['xargs base64 < list', null],
+    ['xargs base64 -o out < list', 'xargs base64'],
+    ['xargs uniq -c < list', null],
+    ['xargs uniq in out < list', 'xargs uniq'],
+    ['xargs xxd < list', null],
+    ['xargs xxd in out < list', 'xargs xxd'],
+    ['xargs yq . < list', null],
+    ['xargs yq -o=json . < list', null],
+    ['xargs yq -i . < list', 'xargs yq'],
+    ['xargs yq -s .a < list', 'xargs yq'],
+    ['xargs xargs cat < list', 'xargs xargs'],
+    ['xargs cp -t /tmp < list', 'xargs cp'],
   ];
   const found = await verdicts(
     page,

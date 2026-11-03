@@ -210,10 +210,8 @@ function launched(args: string[], from = 0): string[][] {
   return [[]];
 }
 
-const runs = ([run = 'echo', ...rest]: string[]): boolean => {
-  const name = plainly(run);
-  return readOnly.includes(name) && !Object.hasOwn(writes, name) && trusted([run, ...rest]);
-};
+const runs = ([run = 'echo', ...rest]: string[]): boolean =>
+  plainly(run) !== 'xargs' && trusted([run, ...rest]);
 
 const trusted = ([word, ...args]: string[]): boolean => {
   const name = plainly(word);
