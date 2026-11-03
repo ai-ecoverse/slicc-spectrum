@@ -684,6 +684,7 @@ It takes a sudo request's command (without `sudo` and its options) and working f
   It sees through quotes, backslashes, `$'…'` and `$"…"`, `cd` and `pushd` (also inside `bash -c`), relative paths and `..`, extglobs, `/proc/self/root` and `/proc/self/cwd`, option clusters like `-t/etc/fnox`, and comma lists.
   When every command in it is read-only and nothing in it expands, quoted text is data: a jq or yq program such as `'.a // .b | {x: .y}'` isn't split into paths, and `*`, `?`, `[` and `{` in quotes (and `$` in single quotes) are literal, as the shell treats them. Other commands, such as `sh -c '…'`, are still looked into.
 - `maybe` is the token when the command may reach one of them and the check can't tell where it leads: an expansion (`$X`, `$(…)`, backticks), a `~user/..`, `~+` or `~-` path, a `/proc/<pid>/cwd` or `/dev/fd` path, or a command over 4096 characters (its first 40 followed by `…`).
+  It's also set when an explicit write names its target from data the check can't see: `yq -s`, `--split-exp` or `--split-exp-file` (`yq -s`), or `xargs` running a command that can write or run others, such as `xargs rm < list` (`xargs rm`). `xargs` running a read-only command (`xargs cat < list`, `xargs grep x -- < list`; one whose write flags are gated, like `sort`, doesn't count, since the arguments it adds could be those flags) is a plain read and stays clean.
 
 Both are `null` for a clean command, and at most one is set.
 The dialog shows "This changes secret rules" for `certain` and "This may change secret rules" for `maybe`, and offers no Always allow for either.
@@ -970,7 +971,7 @@ A command that names `/etc/fnox` (or anything in it) or `/etc/slicc/secrets-poli
 Read-only commands count only by bare name or from `/bin` and `/usr/bin`.
 In a command made only of read-only commands and with no live expansion, the quoted words count whole: `jq '.a // .b' f` doesn't name `/`, and `jq '{a: .b}' f` in `/etc` isn't a brace that could lead to the rules.
 `/proc/<pid>/root` counts as `/` and `/proc/self/cwd` as `cwd`.
-Otherwise a command with a parameter expansion or command substitution (`$…`, backticks), a `~+` or `~-` path or a `~` path that climbs with `..`, a path through another process's `/proc/<pid>/cwd`, `fd` or `map_files` or through `/dev/fd`, or more than 4096 characters, gets "This may change secret rules." with the first such part in the attribute.
+Otherwise a command with a parameter expansion or command substitution (`$…`, backticks), a `~+` or `~-` path or a `~` path that climbs with `..`, a path through another process's `/proc/<pid>/cwd`, `fd` or `map_files` or through `/dev/fd`, an explicit write whose target comes from data (`yq -s`, `--split-exp`, `--split-exp-file`, or `xargs` running a command that isn't read-only), or more than 4096 characters, gets "This may change secret rules." with the first such part in the attribute.
 Other symlinks aren't followed.
 Either way there's no Always allow, even when `always` is `true` (`decide(id, 'always')` isn't called for it), so each change to the rules is asked for.
 For half a second after a request shows, only Deny works, so a double-click can't approve it.

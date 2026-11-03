@@ -115,6 +115,79 @@ test('the real secret rule changes are still flagged', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
+test('a write whose target comes from data may change secret rules, and a read through xargs stays clean', async (t) => {
+  const page = await open(t);
+  const clean = { certain: null, maybe: null };
+  const maybe = (token) => ({ certain: null, maybe: token });
+  assert.deepEqual(
+    await verdicts(page, [
+      ['yq -s .a f.yaml', '/tmp'],
+      ['yq --split-exp=.a f.yaml', '/tmp'],
+      ["yq '--split-exp-file=e' f.yaml", '/tmp'],
+      ['/usr/bin/yq -Ps .a f.yaml', '/tmp'],
+      ['xargs rm < list', '/tmp'],
+      ['xargs tee < list', '/tmp'],
+      ['xargs sort -o out < list', '/tmp'],
+      ['xargs sort < list', '/tmp'],
+      ["xargs sh -c 'rm x'", '/tmp'],
+      ['xargs xargs < list', '/tmp'],
+      ['xargs -n 1 /bin/rm < list', '/tmp'],
+      ['xargs -in rm < list', '/tmp'],
+      ['xargs --max-args 1 rm < list', '/tmp'],
+      ['xargs -- rm < list', '/tmp'],
+      ['xargs --null rm < list', '/tmp'],
+      ["bash -c 'cd /srv; xargs rm < list'", '/tmp'],
+    ]),
+    [
+      maybe('yq -s'),
+      maybe('yq --split-exp'),
+      maybe('yq --split-exp-file'),
+      maybe('yq -Ps'),
+      maybe('xargs rm'),
+      maybe('xargs tee'),
+      maybe('xargs sort'),
+      maybe('xargs sort'),
+      maybe('xargs sh'),
+      maybe('xargs xargs'),
+      maybe('xargs rm'),
+      maybe('xargs rm'),
+      maybe('xargs rm'),
+      maybe('xargs rm'),
+      maybe('xargs rm'),
+      maybe('xargs rm'),
+    ]
+  );
+  assert.deepEqual(
+    await verdicts(page, [
+      ['yq -i . f.yaml', '/tmp'],
+      ["yq '.a' f.yaml", '/tmp'],
+      ['xargs cat < list', '/tmp'],
+      ['xargs grep x -- < list', '/tmp'],
+      ['xargs sha256sum -a list', '/tmp'],
+      ['xargs < list', '/tmp'],
+      ["xargs < 'my list'", '/tmp'],
+      ['xargs -n1 -I{} cat {} < list', '/tmp'],
+      ["xargs cat 2>/dev/null < 'a b'", '/tmp'],
+      ["find /etc -name '*.conf' | xargs grep x", '/tmp'],
+      ['sh -c \'xargs cat < "a b"\'', '/tmp'],
+    ]),
+    Array(11).fill(clean)
+  );
+  assert.deepEqual(
+    await verdicts(page, [
+      ['yq -s .a /etc/fnox/x.yaml', '/tmp'],
+      ['yq -s \'"/etc/" + .name\' f.yaml', '/tmp'],
+      ['echo /etc/slicc | xargs rm -rf', '/tmp'],
+    ]),
+    [
+      { certain: '/etc/fnox/x.yaml', maybe: null },
+      { certain: '/etc', maybe: null },
+      { certain: '/etc/slicc', maybe: null },
+    ]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('the sudo dialog offers Always allow for read-only commands and not for a write flag that reaches the rules', async (t) => {
   const page = await open(t);
   const ask = async (id, command) => {
@@ -156,6 +229,11 @@ test('the sudo dialog offers Always allow for read-only commands and not for a w
     [mcp, null, true],
     ['sort notes.txt | uniq', null, true],
     ['find . -name x', null, true],
+    ['xargs cat < list', null, true],
+    ['xargs grep x -- < list', null, true],
+    ["find /etc -name '*.conf' | xargs grep x", null, true],
+    ['yq -s .a f.yaml', 'yq -s', false],
+    ['xargs rm < list', 'xargs rm', false],
     ['tee /etc/slicc/secrets-policy.toml', policy, false],
     [`sort --output=${policy} notes.txt`, policy, false],
     [`sort --out=${policy} notes.txt`, policy, false],
