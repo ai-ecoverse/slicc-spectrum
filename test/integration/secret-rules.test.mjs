@@ -62,6 +62,7 @@ test('the real secret rule changes are still flagged', async (t) => {
       ['rm -rf /etc/fnox', '/tmp'],
       ["sh -c 'cd /etc; rm -r slicc'", '/tmp'],
       ["bash -lc 'cd /etc; rm -r slicc'", '/tmp'],
+      ['if cd /etc; then rm -r slicc; fi', '/tmp'],
       ['sh -c \'jq ".a // .b" x\'', '/tmp'],
       ["jq '.a' x > /etc/slicc/secrets-policy.toml", '/tmp'],
       ['jq . /etc/fnox/config.toml', '/tmp'],
@@ -88,6 +89,7 @@ test('the real secret rule changes are still flagged', async (t) => {
     [
       certain('/etc/slicc/secrets-policy.toml'),
       certain('/etc/fnox'),
+      certain('/etc/slicc'),
       certain('/etc/slicc'),
       certain('/etc/slicc'),
       certain('/'),
@@ -297,6 +299,12 @@ test('a wrapper does not hide xargs or yq writing a target from data', async (t)
     ["bash -lc 'xargs rm < list'", 'xargs rm'],
     ['A+=1 xargs rm < list', 'xargs rm'],
     ['a[1]=x xargs rm < list', 'xargs rm'],
+    ['if xargs rm < list; then :; fi', 'xargs rm'],
+    ['! xargs rm < list', 'xargs rm'],
+    ['{ xargs rm < list; }', 'xargs rm'],
+    ['while xargs rm < list; do :; done', 'xargs rm'],
+    ['for f in a; do xargs rm < list; done', 'xargs rm'],
+    ['coproc xargs rm < list', 'xargs rm'],
   ];
   const found = await verdicts(
     page,
@@ -358,6 +366,7 @@ test('xargs running a read-only program is clean unless a write flag shows in th
     ["env -S'xargs sort' < list", 'xargs sort'],
     ['xargs uniq input < list', 'xargs uniq'],
     ['xargs xxd input < list', 'xargs xxd'],
+    ['until false; do xargs sort < list; done', 'xargs sort'],
     ['xargs cat < list', null],
     ['xargs grep x < list', null],
     ['xargs --replace=sort cat < list', null],

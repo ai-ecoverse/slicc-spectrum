@@ -227,6 +227,8 @@ const unseen: Record<string, (args: string[]) => string | undefined> = {
   yq: (args) => flag('s', ['split-exp', 'split-exp-file'], 'fIop')(args)?.split('=')[0],
 };
 
+const keyword = /^(?:!|\{|if|then|else|elif|do|while|until|coproc)$/;
+
 const wrappers: Record<string, [string, string[], number]> = {
   command: ['', [], 0],
   env: ['CPu', ['chdir', 'unset'], 0],
@@ -280,7 +282,8 @@ function walk(words: string[], from: number, out: string[][]): void {
   let index = from;
   while (assignment.test(words[index] ?? '')) index++;
   const name = command(words[index] ?? '');
-  if (Object.hasOwn(wrappers, name)) options(words, index + 1, name, out);
+  if (keyword.test(words[index] ?? '')) walk(words, index + 1, out);
+  else if (Object.hasOwn(wrappers, name)) options(words, index + 1, name, out);
   else out.push(words.slice(index));
 }
 
@@ -464,7 +467,7 @@ function scan(words: string[], cwds: Set<string>, whole: boolean): string | null
   let cd = false;
   for (const [index, word] of words.entries()) {
     let hit: string | null = null;
-    if (index === 0 || shell(words[index - 1])) {
+    if (index === 0 || shell(words[index - 1]) || keyword.test(words[index - 1])) {
       cd = ['cd', 'pushd'].includes(command(word));
       hit = touched(cwds, word, whole);
     } else if (!cd) hit = touched(cwds, word, whole);
