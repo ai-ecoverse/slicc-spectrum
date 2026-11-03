@@ -227,46 +227,61 @@ const unseen: Record<string, (args: string[]) => string | undefined> = {
   yq: (args) => flag('s', ['split-exp', 'split-exp-file'], 'fIop')(args)?.split('=')[0],
 };
 
-const wrappers: Record<string, [string, RegExp, number]> = {
-  command: ['', /^$/, 0],
-  env: ['CPu', /^--(?:ch|chd|chdi|chdir|u|un|uns|unse|unset)$/, 0],
-  exec: ['a', /^$/, 0],
-  ionice: ['cnpPu', /^--(?:class|classdata|pid|pgid|uid)$/, 0],
-  nice: ['n', /^--adj\w*$/, 0],
-  nohup: ['', /^$/, 0],
-  setsid: ['', /^$/, 0],
-  stdbuf: ['ioe', /^--(?:input|output|error)$/, 0],
-  time: ['fo', /^--(?:format|output)$/, 0],
-  timeout: ['ks', /^--(?:kill-after|signal)$/, 1],
+const wrappers: Record<string, [string, string[], number]> = {
+  command: ['', [], 0],
+  env: ['CPu', ['chdir', 'unset'], 0],
+  exec: ['a', [], 0],
+  ionice: ['cnpPu', ['class', 'classdata', 'pid', 'pgid', 'uid'], 0],
+  nice: ['n', ['adjustment'], 0],
+  nohup: ['', [], 0],
+  setsid: ['', [], 0],
+  stdbuf: ['ioe', ['input', 'output', 'error'], 0],
+  time: ['fo', ['format', 'output'], 0],
+  timeout: ['ks', ['kill-after', 'signal'], 1],
 };
 
-function unwrap(words: string[], from: number): number {
+const assignment = /^[A-Za-z_]\w*(?:\[[^\]]*\])?\+?=/;
+
+const shell = (word: string) => /^-[A-Za-z]*c[A-Za-z]*$/.test(word);
+
+function split(arg: string, next: string | undefined): string | undefined {
+  const short = arg.match(/^-[^-S]*S(.*)$/);
+  if (short) return short[1] || next;
+  const [name, ...value] = arg.slice(2).split('=');
+  if (!arg.startsWith('--') || !name || !'split-string'.startsWith(name)) return undefined;
+  return value.length ? value.join('=') : next;
+}
+
+function options(words: string[], from: number, name: string, out: string[][]): void {
+  const [takes, long, positional] = wrappers[name];
   let index = from;
-  while (index < words.length) {
-    if (/^[A-Za-z_]\w*=/.test(words[index])) {
+  for (; words[index]?.startsWith('-') && words[index] !== '-'; index++) {
+    const arg = words[index];
+    if (arg === '--') {
       index++;
-      continue;
+      break;
     }
-    const name = command(words[index]);
-    if (!Object.hasOwn(wrappers, name)) return index;
-    const [takes, long, positional] = wrappers[name];
-    index++;
-    for (; words[index]?.startsWith('-') && words[index] !== '-'; index++) {
-      const arg = words[index];
-      if (arg === '--') {
-        index++;
-        break;
-      }
-      if (name === 'command' && /^-[^-]*[vV]/.test(arg)) return words.length;
-      if (name === 'env' && /^(?:-[^-]*S|--split-string)$/.test(arg)) {
-        index++;
-        break;
-      }
-      if (long.test(arg) || (/^-[^-]/.test(arg) && takes.includes(arg.slice(-1)))) index++;
+    if (name === 'command' && /^-[^-]*[vV]/.test(arg)) return;
+    const string = name === 'env' ? split(arg, words[index + 1]) : undefined;
+    if (string !== undefined) {
+      const rest = words.slice(index + (string === words[index + 1] ? 2 : 1));
+      walk([...quoted(string, true).filter(Boolean), ...rest], 0, out);
+      return;
     }
-    index += positional;
+    if (arg.startsWith('--')) {
+      const option = arg.slice(2);
+      if (long.some((each) => each.startsWith(option))) options(words, index + 2, name, out);
+    } else if (takes.includes(arg.slice(-1))) index++;
   }
-  return index;
+  walk(words, index + positional, out);
+}
+
+function walk(words: string[], from: number, out: string[][]): void {
+  let index = from;
+  while (assignment.test(words[index] ?? '')) index++;
+  const name = command(words[index] ?? '');
+  if (Object.hasOwn(wrappers, name)) options(words, index + 1, name, out);
+  else out.push(words.slice(index));
 }
 
 function commands(
@@ -275,10 +290,13 @@ function commands(
 ): string | null {
   for (const words of segments)
     for (const [index, word] of words.entries()) {
-      if (index && word !== '-c') continue;
-      const start = unwrap(words, index && index + 1);
-      const found = pick(command(words[start] ?? ''), words.slice(start + 1));
-      if (found) return found;
+      if (index && !shell(word)) continue;
+      const out: string[][] = [];
+      walk(words, index && index + 1, out);
+      for (const [run = '', ...args] of out) {
+        const found = pick(command(run), args);
+        if (found) return found;
+      }
     }
   return null;
 }
@@ -446,7 +464,7 @@ function scan(words: string[], cwds: Set<string>, whole: boolean): string | null
   let cd = false;
   for (const [index, word] of words.entries()) {
     let hit: string | null = null;
-    if (index === 0 || words[index - 1] === '-c') {
+    if (index === 0 || shell(words[index - 1])) {
       cd = ['cd', 'pushd'].includes(command(word));
       hit = touched(cwds, word, whole);
     } else if (!cd) hit = touched(cwds, word, whole);
