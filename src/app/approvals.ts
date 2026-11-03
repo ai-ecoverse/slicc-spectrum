@@ -16,6 +16,7 @@ import type {
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
 import { Cuts, clampCss, Ends, fullCommand, toScroll, toShow } from './command.ts';
+import { displayCommand } from './command-display.ts';
 import { dialogStyles, focused } from './confirm.ts';
 import { size } from './messages.ts';
 
@@ -749,7 +750,7 @@ export class SliccApprovals extends ModelElement {
 
   #command(approval: Approval, pending: boolean): TemplateResult {
     const { id } = approval;
-    const text = approved(approval);
+    const text = approval.kind === 'sudo' ? displayCommand(approved(approval)) : approved(approval);
     if (!text) return html`<p class="hint" data-id="no-details">This request has no details.</p>`;
     const full = !pending || this.#full.has(id);
     const toggle =

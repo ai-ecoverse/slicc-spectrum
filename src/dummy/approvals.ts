@@ -23,6 +23,8 @@ export type ApprovalScenario =
   | 'guest-follower'
   | 'guest-always'
   | 'long'
+  | 'controls-cr'
+  | 'controls-lf'
   | 'guest-args'
   | 'guest-empty'
   | 'guest-truncated'
@@ -206,6 +208,13 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
   if (scenario.startsWith('guest-')) return [guestCall(scenario, now)];
   if (scenario === 'none') return [];
   if (scenario === 'long') return [{ ...agent, id: 'sudo-release', command: longCommand }];
+  if (scenario === 'controls-cr' || scenario === 'controls-lf')
+    return [
+      {
+        ...agent,
+        command: `printf '%s' 'harbor${scenario === 'controls-cr' ? '\r' : '\n'}schedule'`,
+      },
+    ];
   if (scenario === 'user') return [user];
   if (scenario === 'many') return [agent, user, cache];
   if (scenario === 'elsewhere' || scenario === 'withdrawn') return [agent, user];
