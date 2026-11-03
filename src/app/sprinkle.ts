@@ -234,22 +234,16 @@ export const bridge = `(() => {
       (error) => tell({ error }),
     );
   };
+  const copies = new WeakSet();
   addEventListener('submit', (event) => {
+    if (copies.has(event)) return;
     const form = event.composedPath()[0];
     if (!(form instanceof HTMLFormElement) || formOf(form, event.submitter).method === 'dialog') return;
-    const late = (seen) => {
-      form.removeEventListener('submit', late);
-      if (seen !== event || event.defaultPrevented) return;
-      event.preventDefault();
-      let canceled = false;
-      Object.defineProperties(event, {
-        preventDefault: { value: () => { canceled = true; } },
-        defaultPrevented: { get: () => canceled },
-        returnValue: { get: () => !canceled, set: (value) => { canceled = canceled || !value; } },
-      });
-      setTimeout(() => canceled || submitted(form, event.submitter));
-    };
-    form.addEventListener('submit', late);
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const copy = new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: event.submitter });
+    copies.add(copy);
+    if (form.dispatchEvent(copy)) submitted(form, event.submitter);
   }, true);
   const submit = HTMLFormElement.prototype.submit;
   HTMLFormElement.prototype.submit = function () {

@@ -725,7 +725,8 @@ Aborting the `fetch` (its `signal`) or cancelling the body stops the script (`cg
 
 A form never navigates the frame: the bridge cancels every `submit` (except `method="dialog"`) and `form.submit()`.
 A form whose action (or its submitter's `formaction`) is under `cgi-bin/` goes the same way, with its `formmethod`, and as `enctype` says: `application/x-www-form-urlencoded` by default, `multipart/form-data` or `text/plain`; a `GET` form replaces the action's query.
-A handler that calls `preventDefault()`, on the form or above it, or an `onsubmit` that returns `false`, keeps the bridge from sending it.
+The bridge cancels the browser's own `submit` before any page handler runs and stops it there, then dispatches a copy (a `SubmitEvent` with the same `submitter`, so `isTrusted` is `false`) to the form, so stopping the copy's propagation can't navigate the frame.
+A handler that calls `preventDefault()` on that copy, on the form or above it, or an `onsubmit` that returns `false`, keeps the bridge from sending it.
 The form then gets a cancelable `slicc-cgi` event with `detail.response` (or `detail.error`); unless it's cancelled, an answer with `Location` rebuilds the sprinkle, with its latest state.
 
 The element sends `cgi` with its own sprinkle id, never one from the frame, posts the head as soon as the port answers, then calls `cgiRead` until `done`.

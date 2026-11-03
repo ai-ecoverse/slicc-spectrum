@@ -13,6 +13,8 @@ const probeHtml = `<!DOCTYPE html><html><head></head><body>
 <form id="away" action="https://example.invalid/away" method="post"><input name="x" value="1"><button id="away-go">Away</button></form>
 <form id="mine" action="cgi-bin/mine" method="post" onsubmit="return false"><button id="mine-go">Mine</button></form>
 <form id="delegated" action="cgi-bin/delegated" method="post"><button id="delegated-go">Delegated</button></form>
+<form id="stopped" action="cgi-bin/stopped" method="post"><input name="kept" value="yes"><button id="stopped-go">Stopped</button></form>
+<form id="halted" action="https://example.invalid/halted" method="post"><button id="halted-go">Halted</button></form>
 <form id="override" action="https://example.invalid/away"><button id="override-go" formaction="cgi-bin/override" formmethod="post">Override</button></form>
 <script>
   window.loaded = Math.random().toString(36).slice(2);
@@ -24,6 +26,8 @@ const probeHtml = `<!DOCTYPE html><html><head></head><body>
   document.addEventListener('submit', (event) => {
     if (event.target.id === 'delegated') event.preventDefault();
   });
+  document.getElementById('stopped').addEventListener('submit', (event) => event.stopImmediatePropagation());
+  document.getElementById('halted').addEventListener('submit', (event) => event.stopPropagation());
   addEventListener('message', async (event) => {
     if (event.source !== parent || event.data?.type !== 'cgi-probe') return;
     let answer;
@@ -140,6 +144,7 @@ async function open(t, params = {}) {
       search: () => text(200, 'found'),
       plain: () => text(200, 'noted'),
       override: () => text(200, 'overridden'),
+      stopped: () => text(200, 'kept'),
     };
     const call = sprinkles.call.bind(sprinkles);
     sprinkles.call = async (id, method, args) => {
@@ -428,6 +433,28 @@ test('forms under cgi-bin/ post through the bridge, and no form navigates the fr
       .filter((path) => ['mine', 'delegated', 'away'].includes(path)),
     []
   );
+
+  await run(`
+    document.getElementById('halted-go').click();
+    document.getElementById('stopped-go').click();`);
+  assert.deepEqual(await request('stopped'), {
+    method: 'POST',
+    query: '',
+    type: 'application/x-www-form-urlencoded',
+    body: 'kept=yes',
+  });
+  await page.until(
+    async () => (await window.probe(window.probeElement, 'return replies.length'))?.value === 6
+  );
+  assert.deepEqual(await run('return replies.at(-1);'), {
+    form: 'stopped',
+    status: 200,
+    text: 'kept',
+    error: null,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(await run('return window.loaded;'), loaded);
+  assert.ok(!(await log('cgi')).some((entry) => entry.args[0].path.startsWith('halted')));
 
   const frame = await page.evaluate(() => {
     window.oldFrame = window.probeElement.shadowRoot.querySelector('iframe');
