@@ -70,7 +70,7 @@ test('the Freezer lists conversations under Live and Frozen, with no badges or s
   );
 });
 
-test('a Freezer row leads with the conversation title and folds name, kind, age, model and size into one meta line', async (t) => {
+test('a Freezer row is the conversation title over one meta line of kind, age and size, with no name or model', async (t) => {
   const page = await open(t);
   await page.until(() => !!window.row('scoop-tide-check'));
   const rows = await page.evaluate(() => {
@@ -92,16 +92,16 @@ test('a Freezer row leads with the conversation title and folds name, kind, age,
   assert.equal(rows.scoop.title, 'Check the tide tables against the harbor feed');
   assert.match(
     rows.scoop.meta,
-    /^tide-check · Scoop · (today|yesterday|\d+ days ago|\d+ weeks ago) · Claude Haiku 4\.5 · 9 messages$/
+    /^Scoop · (today|yesterday|\d+ days ago|\d+ weeks ago) · 9 messages$/
   );
-  assert.deepEqual(rows.scoop.keys, ['name', 'kind', 'when', 'model', 'messages']);
-  assert.deepEqual(rows.agent.keys, ['name', 'kind', 'when', 'model', 'messages']);
-  assert.match(rows.agent.meta, /^nightly-digest · Agent run · /);
-  assert.deepEqual(rows.live.keys, ['name', 'model', 'messages']);
+  assert.deepEqual(rows.scoop.keys, ['kind', 'when', 'messages']);
+  assert.deepEqual(rows.agent.keys, ['kind', 'when', 'messages']);
+  assert.match(rows.agent.meta, /^Agent run · /);
+  assert.deepEqual(rows.live.keys, ['messages']);
   assert.deepEqual(rows.same, {
     title: 'inbox-triage',
-    meta: 'Claude Sonnet 5.5 · 4 messages',
-    keys: ['model', 'messages'],
+    meta: '4 messages',
+    keys: ['messages'],
   });
 });
 
@@ -165,3 +165,46 @@ test('Freezer rows sit flat on the panel layer, with no card fill, and fit a 320
   assert.notEqual(seen.list, 'rgba(0, 0, 0, 0)');
   assert.deepEqual([seen.overflow, seen.rowFits], [true, true]);
 });
+
+for (const width of [1280, 420, 320]) {
+  test(`every Freezer row has the same height at ${width}, with title and meta on one line each`, async (t) => {
+    const page = await open(t);
+    await viewport(page, width);
+    await page.evaluate(() => {
+      window.app.show('freezer');
+      return true;
+    });
+    await page.until(() => window.row('scoop-tide-check')?.getBoundingClientRect().width > 0);
+    const seen = await page.evaluate(() => {
+      const rows = window.allInFreezer('.row');
+      const lines = (node) => {
+        const style = getComputedStyle(node);
+        return Math.round(
+          node.getBoundingClientRect().height / Number.parseFloat(style.lineHeight)
+        );
+      };
+      return {
+        heights: [...new Set(rows.map((row) => row.getBoundingClientRect().height))],
+        lines: [
+          ...new Set(
+            rows.flatMap((row) => [
+              lines(row.querySelector('.title')),
+              lines(row.querySelector('.meta')),
+            ])
+          ),
+        ],
+        cut: rows
+          .map((row) => row.querySelector('.title'))
+          .filter((title) => title.scrollWidth > title.clientWidth)
+          .every(
+            (title) =>
+              getComputedStyle(title).textOverflow === 'ellipsis' &&
+              title.title === title.textContent
+          ),
+      };
+    });
+    assert.equal(seen.heights.length, 1, JSON.stringify(seen.heights));
+    assert.deepEqual(seen.lines, [1]);
+    assert.equal(seen.cut, true);
+  });
+}

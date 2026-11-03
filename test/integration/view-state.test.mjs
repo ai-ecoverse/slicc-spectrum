@@ -23,7 +23,7 @@ async function open(t, params = {}) {
 }
 
 async function shelve() {
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 24; i++) {
     await window.model.agent.send('cone-harbor', `Check tide gauge ${i}`);
     window.model.agent.clear('cone-harbor');
   }

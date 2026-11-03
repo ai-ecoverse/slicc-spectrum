@@ -195,26 +195,20 @@ export class SliccFreezer extends ModelElement {
         gap: var(--swc-spacing-25);
         min-width: 0;
       }
-      .title {
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2;
+      .title,
+      .meta {
         overflow: hidden;
         text-overflow: ellipsis;
-        overflow-wrap: anywhere;
+        white-space: nowrap;
+        line-height: var(--swc-line-height-100);
+      }
+      .title {
         font-size: var(--swc-font-size-100);
         font-weight: var(--swc-bold-font-weight);
-        line-height: var(--swc-line-height-100);
         color: var(--swc-neutral-content-color-default);
       }
       .meta {
-        line-height: var(--swc-line-height-100);
         color: var(--swc-neutral-subdued-content-color-default);
-        overflow-wrap: anywhere;
-      }
-      .meta span {
-        display: inline-block;
-        max-width: 100%;
       }
       .actions {
         display: flex;
@@ -369,18 +363,12 @@ export class SliccFreezer extends ModelElement {
     return html`<div class="actions">${this.#action(cone, 'thaw', 'Thaw', html`<swc-icon-play slot="icon"></swc-icon-play>`, () => model.agent.thaw(cone.id))}${this.#action(cone, 'remove', 'Remove', html`<swc-icon-delete slot="icon"></swc-icon-delete>`, (trigger) => void this.#remove(cone, trigger))}</div>`;
   }
 
-  #meta(cone: FrozenCone, heading: string): TemplateResult[] {
-    const model = this.model as SliccModel;
+  #meta(cone: FrozenCone): TemplateResult[] {
     const kind = cone.kind ?? 'cone';
-    const label =
-      model.settings.models().find((option) => option.id === cone.model)?.label ?? cone.model;
     const parts: Array<readonly [string, string] | false> = [
-      heading !== cone.name && ['name', cone.name],
       kind !== 'cone' && ['kind', frozenKinds[kind]],
       !cone.live && ['when', ago(cone.frozenAt)],
-      ['model', label],
       ['messages', `${cone.messages} ${cone.messages === 1 ? 'message' : 'messages'}`],
-      !!cone.v6 && ['v6', 'from SLICC 6'],
       cone.thawedAs ? ['thawed', `thawed as ${this.#thawedAs(cone.thawedAs)}`] : false,
     ];
     return parts
@@ -395,7 +383,7 @@ export class SliccFreezer extends ModelElement {
     return html`<li class="row" tabindex="-1" data-id=${cone.id} data-kind=${cone.kind ?? 'cone'} ?data-live=${cone.live} ?data-v6=${cone.v6}>
       <div class="text">
         <span class="title" title=${heading}>${heading}</span>
-        <span class="meta">${this.#meta(cone, heading)}</span>
+        <span class="meta">${this.#meta(cone)}</span>
       </div>
       ${this.#actions(cone)}
     </li>`;
