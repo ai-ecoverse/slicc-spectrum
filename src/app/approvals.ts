@@ -112,29 +112,41 @@ const readOnly = [
   'yq',
 ];
 
-const flag = (short: string, long: string[]) => (args: string[]) =>
-  args.find((arg) => {
-    if (!arg.startsWith('--')) return /^-[^-]/.test(arg) && [...short].some((c) => arg.includes(c));
-    const [name] = arg.slice(2).split('=');
-    return !!name && long.some((option) => option.startsWith(name));
-  });
+function letter(arg: string, short: string, takes: string): boolean {
+  for (const char of arg.slice(1)) {
+    if (short.includes(char)) return true;
+    if (char === '=' || takes.includes(char)) return false;
+  }
+  return false;
+}
 
-const operands = (args: string[]) => {
+const flag =
+  (short: string, long: string[], takes = '') =>
+  (args: string[]) =>
+    args.find((arg) => {
+      if (!arg.startsWith('--')) return /^-[^-]/.test(arg) && letter(arg, short, takes);
+      const [name] = arg.slice(2).split('=');
+      return !!name && long.some((option) => option.startsWith(name));
+    });
+
+const operands = (valued: RegExp) => (args: string[]) => {
   const end = args.includes('--') ? args.indexOf('--') : args.length;
-  const named = args.slice(0, end).filter((arg) => arg === '-' || !arg.startsWith('-'));
+  const named = args
+    .slice(0, end)
+    .filter((arg, index) => (arg === '-' || !arg.startsWith('-')) && !valued.test(args[index - 1]));
   return named.length + args.slice(end + 1).length > 1;
 };
 
 const writes: Record<string, (args: string[]) => unknown> = {
-  base64: flag('o', ['output']),
-  file: flag('C', ['compile']),
+  base64: flag('o', ['output'], 'bwi'),
+  file: flag('C', ['compile'], 'efFmP'),
   find: (args) =>
     args.some((arg) => /^-(?:delete|exec|execdir|ok|okdir|fls|fprint0?|fprintf)$/.test(arg)),
-  sort: flag('oT', ['output', 'temporary-directory', 'compress-program']),
-  tree: flag('oR', []),
-  uniq: operands,
-  xxd: operands,
-  yq: flag('is', ['inplace', 'in-place', 'split-exp', 'split-exp-file']),
+  sort: flag('oT', ['output', 'temporary-directory', 'compress-program'], 'kSt'),
+  tree: flag('oR', [], 'HILPT'),
+  uniq: operands(/^(?:-[^-]*[fsw]|--(?:s|sk|ski|skip|skip-|skip-[fc]\w*|c|ch\w*))$/),
+  xxd: operands(/^-(?:[cglnosR]|cols|groupsize|len|name|offset|seek)$/),
+  yq: flag('is', ['inplace', 'in-place', 'split-exp', 'split-exp-file'], 'fIop'),
 };
 
 function candidates(word: string): string[] {
@@ -214,19 +226,58 @@ const unseen: Record<string, (args: string[]) => string | undefined> = {
     const run = launched(args).find((words) => !runs(words));
     return run && command(run[0] as string);
   },
-  yq: (args) => flag('s', ['split-exp', 'split-exp-file'])(args)?.split('=')[0],
+  yq: (args) => flag('s', ['split-exp', 'split-exp-file'], 'fIop')(args)?.split('=')[0],
 };
+
+const wrappers: Record<string, [string, RegExp, number]> = {
+  command: ['', /^$/, 0],
+  env: ['CPu', /^--(?:ch|chd|chdi|chdir|u|un|uns|unse|unset)$/, 0],
+  exec: ['a', /^$/, 0],
+  ionice: ['cnpPu', /^--(?:class|classdata|pid|pgid|uid)$/, 0],
+  nice: ['n', /^--adj\w*$/, 0],
+  nohup: ['', /^$/, 0],
+  setsid: ['', /^$/, 0],
+  stdbuf: ['ioe', /^--(?:input|output|error)$/, 0],
+  time: ['fo', /^--(?:format|output)$/, 0],
+  timeout: ['ks', /^--(?:kill-after|signal)$/, 1],
+};
+
+function unwrap(words: string[], from: number): number {
+  let index = from;
+  while (index < words.length) {
+    if (/^[A-Za-z_]\w*=/.test(words[index])) {
+      index++;
+      continue;
+    }
+    const name = command(words[index]);
+    if (!Object.hasOwn(wrappers, name)) return index;
+    const [takes, long, positional] = wrappers[name];
+    index++;
+    for (; words[index]?.startsWith('-') && words[index] !== '-'; index++) {
+      const arg = words[index];
+      if (arg === '--') {
+        index++;
+        break;
+      }
+      if (name === 'command' && /^-[^-]*[vV]/.test(arg)) return words.length;
+      if (name === 'env' && /^(?:-[^-]*S|--split-string)$/.test(arg)) {
+        index++;
+        break;
+      }
+      if (long.test(arg) || (/^-[^-]/.test(arg) && takes.includes(arg.slice(-1)))) index++;
+    }
+    index += positional;
+  }
+  return index;
+}
 
 function blind(segments: string[][]): string | null {
   for (const words of segments)
     for (const [index, word] of words.entries()) {
-      const name = command(word);
-      const found =
-        words
-          .slice(words.slice(0, index).lastIndexOf('-c') + 1, index)
-          .every((before) => /^[A-Za-z_]\w*=/.test(before)) &&
-        Object.hasOwn(unseen, name) &&
-        unseen[name](words.slice(index + 1));
+      if (index && word !== '-c') continue;
+      const start = unwrap(words, index && index + 1);
+      const name = command(words[start] ?? '');
+      const found = Object.hasOwn(unseen, name) && unseen[name](words.slice(start + 1));
       if (found) return `${name} ${found}`;
     }
   return null;

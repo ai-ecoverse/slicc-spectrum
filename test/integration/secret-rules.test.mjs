@@ -200,6 +200,94 @@ test('a write whose target comes from data may change secret rules, and a read t
   assert.deepEqual(page.errors, []);
 });
 
+test('ordinary reads and read-only pipelines never may change secret rules', async (t) => {
+  const page = await open(t);
+  const clean = { certain: null, maybe: null };
+  const rows = [
+    ['jq ".x // ." file', '/tmp'],
+    ['jq ".x // ." file', '/'],
+    ['jq ".x // ." file', '/etc'],
+    ['cat f | jq .x', '/tmp'],
+    ['yq -o=json . f.yaml', '/tmp'],
+    ['yq -ojson . f.yaml', '/tmp'],
+    ['yq -p=csv . f.csv', '/tmp'],
+    ['yq -o json . f.yaml', '/tmp'],
+    ['yq -P -o=props . f.yaml', '/tmp'],
+    ['yq -r=false .a f.yaml', '/tmp'],
+    ['yq -os . f.yaml', '/tmp'],
+    ["yq '.a' f.yaml", '/tmp'],
+    ["yq e '.a' f.yaml", '/tmp'],
+    ['yq -i . f.yaml', '/tmp'],
+    ['sort f | uniq -c', '/tmp'],
+    ['find . -name x | xargs grep y', '/tmp'],
+    ['xargs -I{} cat {} < list', '/tmp'],
+    ['xargs wc -l < list', '/tmp'],
+    ['xargs --max-lines=1 cat < list', '/tmp'],
+    ['xargs --max-lines 1 cat < list', '/tmp'],
+    ['env xargs cat < list', '/tmp'],
+    ['command -v xargs', '/tmp'],
+    ['ls | wc -l', '/tmp'],
+    ['tar tf x.tar', '/tmp'],
+    ['unzip -l x.zip', '/tmp'],
+    ['grep -r x . | head', '/tmp'],
+    ['cut -d, -f1 f', '/tmp'],
+    ['sort -to /etc', '/tmp'],
+    ['sort -t o /etc', '/tmp'],
+    ["tree -P '*.o' /etc", '/tmp'],
+    ['tree -P*.o /etc', '/tmp'],
+    ['base64 -w0 /etc', '/tmp'],
+    ['file -m magic /etc', '/tmp'],
+    ['uniq -f 1 /etc', '/tmp'],
+    ['xxd -l 16 /etc', '/tmp'],
+    ['xxd -s 4 /etc', '/tmp'],
+  ];
+  const seen = await verdicts(page, rows);
+  assert.deepEqual(
+    rows.map(([command], index) => [command, seen[index]]),
+    rows.map(([command]) => [command, clean])
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a wrapper does not hide xargs or yq writing a target from data', async (t) => {
+  const page = await open(t);
+  const rows = [
+    ['command xargs rm < list', 'xargs rm'],
+    ['command -p xargs rm < list', 'xargs rm'],
+    ['exec xargs rm < list', 'xargs rm'],
+    ['exec -a x xargs rm < list', 'xargs rm'],
+    ['env xargs rm < list', 'xargs rm'],
+    ['env -i VAR=x xargs rm < list', 'xargs rm'],
+    ['env -u HOME xargs rm < list', 'xargs rm'],
+    ["env -S 'xargs rm' < list", 'xargs rm'],
+    ['nice xargs rm < list', 'xargs rm'],
+    ['nice -n 5 xargs rm < list', 'xargs rm'],
+    ['nice -10 xargs rm < list', 'xargs rm'],
+    ['nohup xargs rm < list', 'xargs rm'],
+    ['time xargs rm < list', 'xargs rm'],
+    ['time -p env FOO=1 nice xargs rm < list', 'xargs rm'],
+    ['timeout 5 xargs rm < list', 'xargs rm'],
+    ['timeout -s KILL 5 xargs rm < list', 'xargs rm'],
+    ['stdbuf -oL xargs rm < list', 'xargs rm'],
+    ['stdbuf -o L xargs rm < list', 'xargs rm'],
+    ['setsid xargs rm < list', 'xargs rm'],
+    ['ionice -c 3 xargs rm < list', 'xargs rm'],
+    ["sh -c 'nohup xargs rm < list'", 'xargs rm'],
+    ['nice yq -s .a f.yaml', 'yq -s'],
+    ['xargs --replace=cat rm < list', 'xargs rm'],
+    ['yq -Ps .a f.yaml', 'yq -Ps'],
+  ];
+  const found = await verdicts(
+    page,
+    rows.map(([command]) => [command, '/tmp'])
+  );
+  assert.deepEqual(
+    rows.map(([command], index) => [command, found[index]]),
+    rows.map(([command, token]) => [command, { certain: null, maybe: token }])
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('the sudo dialog offers Always allow for read-only commands and not for a write flag that reaches the rules', async (t) => {
   const page = await open(t);
   const ask = async (id, command) => {
@@ -232,6 +320,7 @@ test('the sudo dialog offers Always allow for read-only commands and not for a w
       const root = window.$('slicc-app', 'slicc-approvals').shadowRoot;
       return {
         rules: root.querySelector('[data-secret-rules]')?.dataset.secretRules ?? null,
+        notice: root.querySelector('[data-secret-rules] strong')?.textContent ?? null,
         actions: [...root.querySelectorAll('[slot=button]')].map((button) => button.dataset.action),
       };
     });
@@ -246,6 +335,15 @@ test('the sudo dialog offers Always allow for read-only commands and not for a w
     ["find /etc -name '*.conf' | xargs grep x", null, true],
     ['yq -s .a f.yaml', 'yq -s', false],
     ['xargs rm < list', 'xargs rm', false],
+    ['xargs sh -c \'rm "$1"\' _ < list', 'xargs sh', false],
+    ['xargs tee out < list', 'xargs tee', false],
+    ['yq --split-exp-file=x f.yaml', 'yq --split-exp-file', false],
+    ['command xargs rm < list', 'xargs rm', false],
+    ['yq -o=json . f.yaml', null, true],
+    ['cat f | jq .x', null, true],
+    ['xargs wc -l < list', null, true],
+    ['tar tf x.tar', null, true],
+    ['unzip -l x.zip', null, true],
     ['tee /etc/slicc/secrets-policy.toml', policy, false],
     [`sort --output=${policy} notes.txt`, policy, false],
     [`sort --out=${policy} notes.txt`, policy, false],
@@ -259,11 +357,15 @@ test('the sudo dialog offers Always allow for read-only commands and not for a w
     [`base64 --output=${policy} notes.txt`, policy, false],
     ["base64 '--output=/etc' notes.txt", '/etc', false],
   ];
+  const unseen = /^(?:xargs|yq) /;
   for (const [index, [command, rules, always]] of cases.entries()) {
     const id = `sudo-${index}`;
+    let notice = null;
+    if (rules)
+      notice = unseen.test(rules) ? 'This may change secret rules.' : 'This changes secret rules.';
     assert.deepEqual(
       await ask(id, command),
-      { rules, actions: always ? ['deny', 'always', 'once'] : ['deny', 'once'] },
+      { rules, notice, actions: always ? ['deny', 'always', 'once'] : ['deny', 'once'] },
       command
     );
     await page.evaluate((id) => window.model.approvals.end(id, 'withdrawn'), id);
