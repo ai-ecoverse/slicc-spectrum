@@ -1,3 +1,4 @@
+import { type FsNotice, postFsNotice } from '@ai-ecoverse/slicc-kernel/meta';
 import { Emitter } from '../model/emitter.ts';
 import type { Change, FileEntry, FileEvents, FilePort } from '../model/types.ts';
 
@@ -184,8 +185,25 @@ export class KernelFiles extends Emitter<FileEvents> implements FilePort {
     const name = parts.pop();
     if (!name) throw new Error(`EISDIR: ${path}`);
     let dir = this.#root;
-    for (const part of parts) dir = await dir.getDirectoryHandle(part, { create });
+    let prefix = '';
+    for (const part of parts) {
+      const parent = prefix || '/';
+      prefix += `/${part}`;
+      try {
+        dir = await dir.getDirectoryHandle(part);
+      } catch (error) {
+        if (!create || (error as DOMException).name !== 'NotFoundError') throw error;
+        dir = await dir.getDirectoryHandle(part, { create: true });
+        this.#notice({ paths: [prefix, parent] });
+      }
+    }
     return [dir, name];
+  }
+
+  #notice(notice: FsNotice): void {
+    try {
+      postFsNotice(notice);
+    } catch {}
   }
 
   async read(path: string): Promise<string> {
@@ -199,16 +217,33 @@ export class KernelFiles extends Emitter<FileEvents> implements FilePort {
 
   async write(path: string, text: string): Promise<void> {
     const [dir, name] = await this.#parent(path, true);
-    const writable = await (await dir.getFileHandle(name, { create: true })).createWritable();
+    const absolute = `/${split(path).join('/')}`;
+    const paths = [absolute];
+    const handle = await dir.getFileHandle(name).catch((error: DOMException) => {
+      if (error.name !== 'NotFoundError') throw error;
+      paths.push(absolute.slice(0, absolute.lastIndexOf('/')) || '/');
+      return dir.getFileHandle(name, { create: true });
+    });
+    const writable = await handle.createWritable();
     await writable.write(text);
     await writable.close();
+    this.#notice({ paths });
     await this.refresh();
   }
 
   async remove(path: string): Promise<void> {
     try {
       const [dir, name] = await this.#parent(path, false);
+      const directory = await dir.getDirectoryHandle(name).then(
+        () => true,
+        () => false
+      );
       await dir.removeEntry(name, { recursive: true });
+      const absolute = `/${split(path).join('/')}`;
+      this.#notice({
+        paths: [absolute, absolute.slice(0, absolute.lastIndexOf('/')) || '/'],
+        ...(directory ? { trees: [absolute] } : {}),
+      });
     } catch {
       throw new Error(`ENOENT: ${path}`);
     }

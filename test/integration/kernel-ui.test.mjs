@@ -54,6 +54,9 @@ test('terminals and files run on slicc-kernel and OPFS, and keep across a reload
   await page.until(() => window.code('file:/home/notes.txt').includes('sum 42'));
 
   await page.evaluate(() => {
+    window.fsNotices = [];
+    window.fsNoticeChannel = new BroadcastChannel('slicc-kernel-dirs:slicc-kernel');
+    window.fsNoticeChannel.onmessage = ({ data }) => window.fsNotices.push(data);
     const view = window.content('file:/home/notes.txt');
     [...view.shadowRoot.querySelectorAll('swc-action-button, swc-button')]
       .find((button) => button.textContent.trim() === 'Edit')
@@ -70,6 +73,11 @@ test('terminals and files run on slicc-kernel and OPFS, and keep across a reload
   });
   await page.press('s', 'ctrl');
   await page.until(() => window.code('file:/home/notes.txt').includes('edited in a tab'));
+  await page.until(() => window.fsNotices.length > 0);
+  assert.deepEqual(await page.evaluate(() => window.fsNotices), [
+    { paths: ['/home/notes.txt'], trees: [] },
+  ]);
+  await page.evaluate(() => window.fsNoticeChannel.close());
   await run(page, 'cat notes.txt', 'edited in a tab');
 
   await run(page, 'echo "from bash" >> notes.txt; echo appended', 'appended');

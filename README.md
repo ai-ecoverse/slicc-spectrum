@@ -378,6 +378,7 @@ A quiet line under it (`[data-seat-note]`) says who reviews ("The host reviews w
 The file system as a `<slicc-file-tree>`, with pending changes as git status.
 It starts with the folders of the pending changes open; once the user opens or closes a folder, every view of Files on the same model shows the same folders open, a rebuilt one included.
 Opening a file opens it in a tab.
+With the kernel model, saving a file posts a file-system notice after the write closes. The notice names the file, and its parent folder when the file is new. Each parent folder created along the way posts its own notice naming the folder and its parent after creation succeeds. Removing a file or folder posts its path and parent after removal succeeds; removing a folder also names the removed tree. Failed mutations post no notice, and a notice failure does not prevent a successful file operation.
 With `files.mountFolder`, **Mount a folder…** (`data-action="mount-folder"`) mounts a local folder, then selects and expands it in the tree; with `files.mounts`, a **Mounted** strip lists the mount points (with `files.mountInfo`, each mount with a `source` reads `/mnt/proj · ref-node/proj`, `data-source` on its `.path`), each with **Eject** (`data-action="eject"`, `data-path` the mount point) when the port has `eject`.
 With `files.needsFolder`, a **Needs a folder** section lists the mount points waiting for a folder, each with **Insert folder…** (`data-action="insert-folder"`, `data-id` the mount point), which calls `mountFolder(path)`.
 A failed mount, insert or eject shows its message under the bar.
@@ -1121,7 +1122,7 @@ app.surfaces = surfaces.filter((item) => item.id === 'files' || item.id === 'ter
 app.model = createKernelModel({ kernel, root, storage: localStorage, files: { skip: ['/node_modules'] } });
 ```
 
-- **`KernelFiles`** lists the OPFS root as the tree, reads and writes files through the OPFS API, and removes them recursively.
+- **`KernelFiles`** lists the OPFS root as the tree, reads and writes files through the OPFS API, and removes them recursively. Successful writes, folder creations and removals post file-system notices through slicc-kernel's `/meta` export (available in the pinned 1.172.2); the dummy model does not post them.
   Directories in `skip` show up but aren't scanned; paths in `hide` (and everything under them) don't show up at all.
   `start()` rescans when a `FileSystemObserver` record touches something the tree shows: at once after a quiet `interval` (default 2000 ms), then at most once per `interval`. Records only inside `hide` paths or below `skip` folders start no rescan. Where the browser can't observe OPFS, it rescans every `interval` ms. A rescan that finds changes emits `files` and a `file` per changed file, so open tabs follow what the terminal writes.
   Without an agent there are no pending changes.
