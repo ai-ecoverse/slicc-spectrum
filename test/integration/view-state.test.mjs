@@ -22,6 +22,14 @@ async function open(t, params = {}) {
   return page;
 }
 
+async function shelve() {
+  for (let i = 0; i < 12; i++) {
+    await window.model.agent.send('cone-harbor', `Check tide gauge ${i}`);
+    window.model.agent.clear('cone-harbor');
+  }
+  return true;
+}
+
 async function viewport(page, width) {
   await page.send('Emulation.setDeviceMetricsOverride', {
     width,
@@ -666,13 +674,20 @@ const lists = [
       return true;
     },
   },
-  { name: 'Freezer keeps its end', id: 'freezer', scroller: '.list', rows: '.card[data-id]' },
   {
-    name: 'Freezer keeps the card it was on',
+    name: 'Freezer keeps its end',
     id: 'freezer',
     scroller: '.list',
-    rows: '.card[data-id]',
+    rows: '.row[data-id]',
+    before: shelve,
+  },
+  {
+    name: 'Freezer keeps the row it was on',
+    id: 'freezer',
+    scroller: '.list',
+    rows: '.row[data-id]',
     stop: 500,
+    before: shelve,
   },
   {
     name: 'Settings keeps its end',

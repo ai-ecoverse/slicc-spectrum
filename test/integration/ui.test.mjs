@@ -5225,7 +5225,7 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
   await page.evaluate(() => window.$('slicc-app', '.rail.left [data-surface=freezer]').click());
   await page.until(
     () =>
-      window.$('slicc-app', 'slicc-dock').content('freezer')?.shadowRoot.querySelectorAll('.card')
+      window.$('slicc-app', 'slicc-dock').content('freezer')?.shadowRoot.querySelectorAll('.row')
         .length === window.model.agent.frozen().length
   );
   assert.deepEqual(
@@ -5234,26 +5234,23 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
         ...window
           .$('slicc-app', 'slicc-dock')
           .content('freezer')
-          .shadowRoot.querySelectorAll('.card:not([data-live])'),
-      ].map((card) => [card.dataset.kind, card.querySelector('[data-badge=kind]').textContent])
+          .shadowRoot.querySelectorAll('.row:not([data-live])'),
+      ].map((row) => [row.dataset.kind, row.querySelector('[data-meta=kind]')?.textContent ?? null])
     ),
     [
       ['scoop', 'Scoop'],
-      ['cone', 'Cone'],
+      ['cone', null],
       ['agent', 'Agent run'],
-      ['cone', 'Cone'],
-      ['cone', 'Cone'],
+      ['cone', null],
+      ['cone', null],
     ]
   );
   await shot(page, 'freezer-light');
   await page.evaluate(() =>
-    [
-      ...window
-        .$('slicc-app', 'slicc-dock')
-        .content('freezer')
-        .shadowRoot.querySelectorAll('.card[data-id=cone-kv-spike] swc-action-button'),
-    ]
-      .find((button) => button.textContent.trim() === 'Thaw')
+    window
+      .$('slicc-app', 'slicc-dock')
+      .content('freezer')
+      .shadowRoot.querySelector('.row[data-id=cone-kv-spike] [data-action=thaw]')
       .click()
   );
   await page.until(() => window.model.agent.active() === 'cone-kv-spike');
@@ -5263,13 +5260,13 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
       !!window
         .$('slicc-app', 'slicc-dock')
         .content('freezer')
-        .shadowRoot.querySelector('.card[data-id=cone-kv-spike][data-live] [data-action=open]')
+        .shadowRoot.querySelector('.row[data-id=cone-kv-spike][data-live] [data-action=open]')
   );
   await page.evaluate(() =>
     window
       .$('slicc-app', 'slicc-dock')
       .content('freezer')
-      .shadowRoot.querySelector('.card[data-id=scoop-tide-check] [data-action=thaw]')
+      .shadowRoot.querySelector('.row[data-id=scoop-tide-check] [data-action=thaw]')
       .click()
   );
   await page.until(() => window.model.agent.active() === 'scoop-tide-check-thaw-1');
@@ -5278,7 +5275,7 @@ test('memory, monitor and the freezer open from the rails and work', async (t) =
       window
         .$('slicc-app', 'slicc-dock')
         .content('freezer')
-        .shadowRoot.querySelector('.card[data-id=scoop-tide-check] .meta').textContent
+        .shadowRoot.querySelector('.row[data-id=scoop-tide-check] .meta').textContent
     )
   );
   await page.evaluate(() => window.app.show('agents'));

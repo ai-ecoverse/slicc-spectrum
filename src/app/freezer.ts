@@ -1,12 +1,14 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
-import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/dropzone/swc-dropzone.js';
-import '@adobe/spectrum-wc/components/status-light/swc-status-light.js';
 import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-close.js';
+import '@adobe/spectrum-wc-icons/swc-icon-delete.js';
 import '@adobe/spectrum-wc-icons/swc-icon-import.js';
+import '@adobe/spectrum-wc-icons/swc-icon-open-in.js';
+import '@adobe/spectrum-wc-icons/swc-icon-play.js';
 import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
+import { repeat } from 'lit/directives/repeat.js';
 import type { Agent, FrozenCone, FrozenKind, SliccModel } from '../model/types.ts';
 import { ModelElement, shared } from './base.ts';
 import { carriesFiles } from './chat.ts';
@@ -42,11 +44,13 @@ export async function deleteCone(
   return allowed;
 }
 
-export const frozenKinds: Record<FrozenKind, readonly ['indigo' | 'seafoam' | 'purple', string]> = {
-  cone: ['indigo', 'Cone'],
-  scoop: ['seafoam', 'Scoop'],
-  agent: ['purple', 'Agent run'],
+export const frozenKinds: Record<FrozenKind, string> = {
+  cone: 'Cone',
+  scoop: 'Scoop',
+  agent: 'Agent run',
 };
+
+type Tooltip = HTMLElement & { triggerElement: HTMLElement | null };
 
 export const zipTypes = ['application/zip', 'application/x-zip-compressed'];
 
@@ -70,7 +74,7 @@ export class SliccFreezer extends ModelElement {
   declare refused: boolean;
   #scroll = new ViewScroll(this, 'freezer:scroll', {
     scroller: () => this.renderRoot.querySelector<HTMLElement>('.list'),
-    rows: '.card[data-id]',
+    rows: '.row[data-id]',
   });
   constructor() {
     super();
@@ -144,32 +148,52 @@ export class SliccFreezer extends ModelElement {
         flex: 1;
         min-height: 0;
         overflow-y: auto;
-        padding: var(--swc-spacing-100);
-        display: grid;
-        grid-template-columns: minmax(0, 1fr);
-        align-content: start;
-        gap: var(--swc-spacing-100);
-      }
-      .card {
-        display: grid;
-        gap: var(--swc-spacing-50);
-        border-radius: var(--swc-corner-radius-medium-default);
-        padding: var(--swc-spacing-100) var(--swc-spacing-200);
+        display: flex;
+        flex-direction: column;
+        gap: var(--swc-spacing-300);
+        padding: var(--swc-spacing-100) 0;
         background: var(--swc-background-layer-1-color);
       }
-      .card:focus {
+      section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--swc-spacing-50);
+      }
+      h3 {
+        margin: 0;
+        padding: 0 var(--swc-spacing-200);
+        font-size: var(--swc-font-size-75);
+        font-weight: var(--swc-bold-font-weight);
+        line-height: var(--swc-line-height-100);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      ul {
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: start;
+        column-gap: var(--swc-spacing-100);
+        padding: var(--swc-spacing-100) var(--swc-spacing-100) var(--swc-spacing-100) var(--swc-spacing-200);
+        border-radius: var(--swc-corner-radius-medium-default);
+      }
+      .row:focus {
         outline: none;
       }
-      .card:focus-visible {
+      .row:focus-visible {
         outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
-        outline-offset: var(--swc-focus-ring-gap);
+        outline-offset: calc(-1 * var(--swc-focus-indicator-thickness));
       }
-      .name {
+      .text {
         display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: var(--swc-spacing-75) var(--swc-spacing-100);
-        font-weight: var(--swc-bold-font-weight);
+        flex-direction: column;
+        gap: var(--swc-spacing-25);
+        min-width: 0;
       }
       .title {
         display: -webkit-box;
@@ -178,18 +202,22 @@ export class SliccFreezer extends ModelElement {
         overflow: hidden;
         text-overflow: ellipsis;
         overflow-wrap: anywhere;
+        font-size: var(--swc-font-size-100);
+        font-weight: var(--swc-bold-font-weight);
         line-height: var(--swc-line-height-100);
+        color: var(--swc-neutral-content-color-default);
       }
       .meta {
+        line-height: var(--swc-line-height-100);
         color: var(--swc-neutral-subdued-content-color-default);
+        overflow-wrap: anywhere;
       }
-      .name swc-status-light {
-        font-weight: normal;
+      .meta span {
+        display: inline-block;
+        max-width: 100%;
       }
       .actions {
         display: flex;
-        gap: var(--swc-spacing-75);
-        margin-inline-start: calc(-1 * var(--swc-spacing-100));
       }
     `,
   ];
@@ -210,7 +238,7 @@ export class SliccFreezer extends ModelElement {
   }
 
   focus(): void {
-    this.focusOn('.card swc-action-button', 'swc-action-button');
+    this.focusOn('.row swc-action-button', 'swc-action-button');
   }
 
   get importable(): boolean {
@@ -288,11 +316,11 @@ export class SliccFreezer extends ModelElement {
     const first = outcome?.cones[0];
     if (!first) return;
     await this.updateComplete;
-    const card = [...this.renderRoot.querySelectorAll<HTMLElement>('.card[data-id]')].find(
-      (row) => row.dataset.id === first
+    const row = [...this.renderRoot.querySelectorAll<HTMLElement>('.row[data-id]')].find(
+      (item) => item.dataset.id === first
     );
-    card?.scrollIntoView({ block: 'nearest' });
-    card?.focus();
+    row?.scrollIntoView({ block: 'nearest' });
+    row?.focus();
   }
 
   async #remove(cone: FrozenCone, trigger: HTMLElement): Promise<void> {
@@ -320,32 +348,79 @@ export class SliccFreezer extends ModelElement {
     );
   }
 
-  #actions(cone: FrozenCone): TemplateResult {
-    const model = this.model as SliccModel;
-    if (cone.live) {
-      return html`<swc-action-button size="s" quiet data-action="open" accessible-label=${`Open ${this.#named(cone)}`} @click=${() => model.agent.select(cone.id)}>Open</swc-action-button>`;
-    }
-    if (watchOnly(model)) return html``;
-    return html`<swc-action-button size="s" quiet data-action="thaw" accessible-label=${`Thaw ${this.#named(cone)}`} @click=${() => model.agent.thaw(cone.id)}>Thaw</swc-action-button>
-      <swc-action-button size="s" quiet data-action="remove" accessible-label=${`Remove ${this.#named(cone)}`} @click=${(event: Event) => this.#remove(cone, event.currentTarget as HTMLElement)}>Remove</swc-action-button>`;
+  #action(
+    cone: FrozenCone,
+    action: string,
+    label: string,
+    icon: TemplateResult,
+    run: (trigger: HTMLElement) => void
+  ): TemplateResult {
+    const id = `${action}-${cone.id}`;
+    const named = `${label} ${this.#named(cone)}`;
+    return html`<swc-action-button id=${id} size="s" quiet data-action=${action} accessible-label=${named} @click=${(event: Event) => run(event.currentTarget as HTMLElement)}>${icon}</swc-action-button><swc-tooltip for=${id} placement="top">${named}</swc-tooltip>`;
   }
 
-  #card(cone: FrozenCone): TemplateResult {
+  #actions(cone: FrozenCone): TemplateResult | typeof nothing {
     const model = this.model as SliccModel;
+    if (cone.live) {
+      return html`<div class="actions">${this.#action(cone, 'open', 'Open', html`<swc-icon-open-in slot="icon"></swc-icon-open-in>`, () => model.agent.select(cone.id))}</div>`;
+    }
+    if (watchOnly(model)) return nothing;
+    return html`<div class="actions">${this.#action(cone, 'thaw', 'Thaw', html`<swc-icon-play slot="icon"></swc-icon-play>`, () => model.agent.thaw(cone.id))}${this.#action(cone, 'remove', 'Remove', html`<swc-icon-delete slot="icon"></swc-icon-delete>`, (trigger) => void this.#remove(cone, trigger))}</div>`;
+  }
+
+  #meta(cone: FrozenCone, heading: string): TemplateResult[] {
+    const model = this.model as SliccModel;
+    const kind = cone.kind ?? 'cone';
     const label =
       model.settings.models().find((option) => option.id === cone.model)?.label ?? cone.model;
-    const kind = frozenKinds[cone.kind ?? 'cone'];
-    const meta = [
-      `${cone.messages} ${cone.messages === 1 ? 'message' : 'messages'}`,
-      ...(cone.live ? [] : [`frozen ${ago(cone.frozenAt)}`]),
-      ...(cone.thawedAs ? [`thawed as ${this.#thawedAs(cone.thawedAs)}`] : []),
+    const parts: Array<readonly [string, string] | false> = [
+      heading !== cone.name && ['name', cone.name],
+      kind !== 'cone' && ['kind', frozenKinds[kind]],
+      !cone.live && ['when', ago(cone.frozenAt)],
+      ['model', label],
+      ['messages', `${cone.messages} ${cone.messages === 1 ? 'message' : 'messages'}`],
+      !!cone.v6 && ['v6', 'from SLICC 6'],
+      cone.thawedAs ? ['thawed', `thawed as ${this.#thawedAs(cone.thawedAs)}`] : false,
     ];
-    return html`<div class="card" tabindex="-1" data-id=${cone.id} data-kind=${cone.kind ?? 'cone'} ?data-live=${cone.live} ?data-v6=${cone.v6}>
-      <div class="name">${cone.name}<swc-badge size="s" variant=${kind[0]} subtle data-badge="kind">${kind[1]}</swc-badge>${cone.v6 ? html`<swc-badge size="s" variant="neutral" outline data-badge="v6">SLICC 6</swc-badge>` : nothing}<swc-badge size="s" variant="neutral" subtle>${label}</swc-badge>${cone.live ? html`<swc-status-light size="s" variant="positive" data-live>Live</swc-status-light>` : nothing}</div>
-      <div class="title" title=${cone.title}>${cone.title}</div>
-      <div class="meta">${meta.join(' · ')}</div>
-      <div class="actions">${this.#actions(cone)}</div>
-    </div>`;
+    return parts
+      .filter((part) => part !== false)
+      .map(
+        ([key, text], index) => html`${index ? ' · ' : ''}<span data-meta=${key}>${text}</span>`
+      );
+  }
+
+  #row(cone: FrozenCone): TemplateResult {
+    const heading = cone.title.trim() || cone.name;
+    return html`<li class="row" tabindex="-1" data-id=${cone.id} data-kind=${cone.kind ?? 'cone'} ?data-live=${cone.live} ?data-v6=${cone.v6}>
+      <div class="text">
+        <span class="title" title=${heading}>${heading}</span>
+        <span class="meta">${this.#meta(cone, heading)}</span>
+      </div>
+      ${this.#actions(cone)}
+    </li>`;
+  }
+
+  #section(
+    id: string,
+    heading: string,
+    rows: readonly FrozenCone[]
+  ): TemplateResult | typeof nothing {
+    if (!rows.length) return nothing;
+    return html`<section data-section=${id} aria-labelledby=${`${id}-heading`}>
+      <h3 id=${`${id}-heading`}>${heading}</h3>
+      <ul>${repeat(
+        rows,
+        (cone) => cone.id,
+        (cone) => this.#row(cone)
+      )}</ul>
+    </section>`;
+  }
+
+  protected updated(): void {
+    for (const tip of this.renderRoot.querySelectorAll<Tooltip>('swc-tooltip')) {
+      tip.triggerElement = tip.previousElementSibling as HTMLElement;
+    }
   }
 
   render(): TemplateResult {
@@ -364,7 +439,19 @@ export class SliccFreezer extends ModelElement {
           : nothing
       }</div>
       <div class="list">
-        ${rows.length ? rows.map((cone) => this.#card(cone)) : html`<div class="note">No conversations yet. A new conversation or a deleted cone leaves the old one here.</div>`}
+        ${
+          rows.length
+            ? html`${this.#section(
+                'live',
+                'Live',
+                rows.filter((cone) => cone.live)
+              )}${this.#section(
+                'frozen',
+                'Frozen',
+                rows.filter((cone) => !cone.live)
+              )}`
+            : html`<div class="note">No conversations yet. A new conversation or a deleted cone leaves the old one here.</div>`
+        }
       </div>
       ${this.dropping ? html`<swc-dropzone dragged size="l" aria-label="Import from SLICC 6" dragged-message="Drop to import"><p>Drop to import</p></swc-dropzone>` : nothing}`;
   }
