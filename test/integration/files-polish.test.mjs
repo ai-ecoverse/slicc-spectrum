@@ -227,7 +227,7 @@ const wrap =
   'Wrap the upstream fetch in src/routes/forecast.ts with three retries and exponential backoff.';
 
 for (const width of [1000, 420]) {
-  test(`a long Freezer title at ${width} keeps its whole text, clamps with an ellipsis and has its full title`, async (t) => {
+  test(`a long Freezer title at ${width} keeps its whole text, ends in an ellipsis on one line and has its full title`, async (t) => {
     const page = await open(t);
     await viewport(page, width);
     await page.evaluate(() => {
@@ -246,18 +246,18 @@ for (const width of [1000, 420]) {
         text: title.textContent,
         title: title.title,
         ellipsis: style.textOverflow,
-        clamp: style.webkitLineClamp,
+        wrap: style.whiteSpace,
         overflow: style.overflow,
-        overflows: title.scrollHeight > title.clientHeight,
+        overflows: title.scrollWidth > title.clientWidth,
       };
     });
     assert.deepEqual(seen, {
       text: wrap,
       title: wrap,
       ellipsis: 'ellipsis',
-      clamp: '2',
+      wrap: 'nowrap',
       overflow: 'hidden',
-      overflows: width === 1000,
+      overflows: true,
     });
     assert.deepEqual(page.errors, []);
   });

@@ -188,7 +188,7 @@ test('every destructive action asks first and acts only on confirm', async (t) =
   await page.until(() => window.model.files.changes().length === 3);
 
   await page.evaluate(() => window.app.show('freezer'));
-  await page.until(() => !!window.part('freezer', '.card'));
+  await page.until(() => !!window.part('freezer', '.row'));
   const frozen = await page.evaluate(() => window.model.agent.frozen().length);
   const discard = () => window.part('freezer', '[data-action=remove]').click();
   await page.evaluate(discard);

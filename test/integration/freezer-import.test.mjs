@@ -33,7 +33,7 @@ async function open(t, params = {}) {
     window.app.show('freezer');
     return true;
   });
-  await page.until(() => !!window.freezer()?.shadowRoot?.querySelector('.card'));
+  await page.until(() => !!window.freezer()?.shadowRoot?.querySelector('.row'));
   return page;
 }
 
@@ -43,7 +43,7 @@ async function shot(page, name) {
   await page.screenshot(new URL(`${name}.png`, page.dir));
 }
 
-test('freezer import: pick, preview, import with progress, then done with badged rows and focus on the first', async (t) => {
+test('freezer import: pick, preview, import with progress, then done with the imported rows and focus on the first', async (t) => {
   const page = await open(t, { import: 'v6', delay: '40' });
   assert.deepEqual(
     await page.evaluate(() => {
@@ -175,16 +175,15 @@ test('freezer import: pick, preview, import with progress, then done with badged
   );
   assert.deepEqual(
     await page.evaluate(() =>
-      [...window.freezer().shadowRoot.querySelectorAll('.card[data-v6]')].map((card) => [
-        card.dataset.id,
-        card.querySelector('[data-badge=v6]').textContent,
-        card.querySelector('[data-badge=v6]').getAttribute('variant'),
+      [...window.freezer().shadowRoot.querySelectorAll('.row[data-v6]')].map((row) => [
+        row.dataset.id,
+        row.querySelector('.title').textContent,
       ])
     ),
     [
-      ['cone-v6-lighthouse', 'SLICC 6', 'neutral'],
-      ['cone-v6-pantry', 'SLICC 6', 'neutral'],
-      ['cone-v6-ferry', 'SLICC 6', 'neutral'],
+      ['cone-v6-lighthouse', 'Plan the lighthouse open day'],
+      ['cone-v6-pantry', 'Sort the pantry inventory and print the labels'],
+      ['cone-v6-ferry', 'Check the ferry timetable changes every morning'],
     ]
   );
   await shot(page, 'import-rows');
@@ -475,12 +474,12 @@ test('freezer import: no button or drop on a guest seat', async (t) => {
       button: !!element.shadowRoot.querySelector('[data-action=import-v6]'),
       input: !!element.shadowRoot.querySelector('input[type=file]'),
       prevented: event.defaultPrevented,
-      cards: element.shadowRoot.querySelectorAll('.card').length > 0,
+      rows: element.shadowRoot.querySelectorAll('.row').length > 0,
     };
     element.remove();
     return result;
   });
-  assert.deepEqual(guest, { button: false, input: false, prevented: false, cards: true });
+  assert.deepEqual(guest, { button: false, input: false, prevented: false, rows: true });
 });
 
 test('freezer import: a page that turns watch-only while the preview is open imports nothing', async (t) => {
@@ -696,40 +695,30 @@ test('freezer import: the mounts note’s text lines up with the notes that have
 });
 
 for (const color of ['light', 'dark']) {
-  test(`freezer import: the SLICC 6 badge doesn’t look like the model badge (${color})`, async (t) => {
+  test(`freezer import: SLICC 6 rows look like every other row, with no badge or origin text (${color})`, async (t) => {
     const page = await open(t, { import: 'v6', color });
     await page.evaluate(() => window.pick());
     await page.until(() => window.stage() === 'preview');
     await page.evaluate(() => window.press('import-confirm'));
     await page.until(() => window.stage() === 'done', { timeout: 15000 });
     await page.evaluate(() => window.press('import-done'));
-    await page.until(() => !!window.inFreezer('.card[data-v6] [data-badge=v6]'));
+    await page.until(() => !!window.inFreezer('.row[data-v6]'));
     const look = await page.evaluate(() => {
-      const card = window.inFreezer('.card[data-v6]');
-      const style = (badge) => {
-        const inner = badge.shadowRoot.querySelector('.swc-Badge');
-        const computed = getComputedStyle(inner);
-        return {
-          background: computed.backgroundColor,
-          border: computed.borderTopColor,
-          width: Number.parseFloat(computed.borderTopWidth),
-          text: badge.textContent.trim(),
-        };
+      const imported = window.inFreezer('.row[data-v6]');
+      const other = window.inFreezer('section[data-section=frozen] .row:not([data-v6])');
+      return {
+        badges: imported.querySelectorAll('swc-badge').length,
+        origin: imported.textContent.includes('SLICC 6'),
+        keys: [...imported.querySelectorAll('[data-meta]')].map((part) => part.dataset.meta),
+        height: imported.getBoundingClientRect().height === other.getBoundingClientRect().height,
       };
-      const badges = [...card.querySelectorAll('.name swc-badge')];
-      const model = badges.find((badge) => !badge.dataset.badge);
-      const probe = document.createElement('div');
-      probe.style.color = 'var(--swc-neutral-visual-color)';
-      card.append(probe);
-      const outline = getComputedStyle(probe).color;
-      probe.remove();
-      return { v6: style(card.querySelector('[data-badge=v6]')), model: style(model), outline };
     });
-    assert.equal(look.v6.text, 'SLICC 6');
-    assert.notEqual(look.v6.background, look.model.background);
-    assert.ok(look.v6.width > 0);
-    assert.equal(look.v6.border, look.outline);
-    assert.notEqual(look.model.border, look.outline);
+    assert.deepEqual(look, {
+      badges: 0,
+      origin: false,
+      keys: ['when', 'messages'],
+      height: true,
+    });
   });
 }
 
