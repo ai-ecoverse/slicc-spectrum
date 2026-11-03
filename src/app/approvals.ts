@@ -73,24 +73,65 @@ export const certain = (rules: string) =>
   rules.startsWith('/') && !opaque.test(rules) && !rules.endsWith('…');
 
 const readOnly = [
+  'b2sum',
+  'base64',
   'cat',
   'cd',
+  'cksum',
+  'cut',
   'df',
   'diff',
   'du',
   'echo',
   'file',
+  'find',
   'grep',
   'head',
+  'jq',
   'ls',
+  'md5sum',
+  'nl',
+  'od',
   'pwd',
   'readlink',
   'realpath',
+  'sha1sum',
+  'sha224sum',
+  'sha256sum',
+  'sha384sum',
+  'sha512sum',
+  'sort',
   'stat',
+  'tac',
   'tail',
   'tree',
+  'uniq',
   'wc',
+  'xxd',
+  'yq',
 ];
+
+const flag = (short: string, long: string[]) => (args: string[]) =>
+  args.some((arg) => {
+    if (!arg.startsWith('--')) return /^-[^-]/.test(arg) && [...short].some((c) => arg.includes(c));
+    const name = arg.slice(2);
+    return !!name && long.some((option) => option.startsWith(name));
+  });
+
+const operands = (args: string[]) =>
+  args.filter((arg) => arg === '-' || !arg.startsWith('-')).length > 1;
+
+const writes: Record<string, (args: string[]) => boolean> = {
+  base64: flag('o', ['output']),
+  file: flag('C', ['compile']),
+  find: (args) =>
+    args.some((arg) => /^-(?:delete|exec|execdir|ok|okdir|fls|fprint0?|fprintf)$/.test(arg)),
+  sort: flag('oT', ['output', 'temporary-directory', 'compress-program']),
+  tree: flag('o', []),
+  uniq: operands,
+  xxd: operands,
+  yq: flag('is', ['inplace', 'in-place', 'split-exp']),
+};
 
 function candidates(word: string): string[] {
   if (word === '--') return [];
@@ -122,8 +163,10 @@ function protects(path: string, whole: boolean): boolean {
 
 const command = (word: string) => word.split('/').pop() ?? '';
 
-const trusted = (word: string) =>
-  readOnly.includes(word.replace(/^\/(?:usr\/)?bin\/(?=[^/]+$)/, ''));
+const trusted = ([word, ...args]: string[]) => {
+  const name = word.replace(/^\/(?:usr\/)?bin\/(?=[^/]+$)/, '');
+  return readOnly.includes(name) && !writes[name]?.(args);
+};
 
 const expansion = /\$\([^)]*\)?|\$\{[^}]*\}?|\$[\w@*#?$!-]*|`[^`]*`?/;
 
@@ -214,6 +257,14 @@ function shield(text: string): string {
   return out;
 }
 
+const literal = (char: string, quote: string) =>
+  /[*?[{]/.test(char) || (quote === "'" && char === '$')
+    ? String.fromCharCode(0xe100 + char.charCodeAt(0))
+    : char;
+
+const unmark = (path: string) =>
+  path.replace(/[\ue100-\ue17f]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xe100));
+
 function quoted(segment: string): string[] {
   const words: string[] = [];
   let word = '';
@@ -224,7 +275,7 @@ function quoted(segment: string): string[] {
       word += segment[++index];
     else if (quote) {
       if (char === quote) quote = '';
-      else word += char;
+      else word += literal(char, quote);
     } else if (char === "'" || char === '"') quote = char;
     else if (char === '\\') word += segment[++index] ?? '';
     else if (/[\s<>=]/.test(char)) {
@@ -270,8 +321,11 @@ function reach(command: string, cwd?: string | null): string | null {
   const aware = shield(text)
     .split(separators)
     .map((segment) => commas(quoted(unshield(segment))));
-  const segments = JSON.stringify(aware) === JSON.stringify(plain) ? plain : [...plain, ...aware];
-  const whole = segments.some((words) => words.length > 0 && !trusted(words[0]));
+  const live = text.includes('`') || aware.flat().some((word) => word.includes('$'));
+  const inert = !live && aware.every((words) => !words.length || trusted(words));
+  const segments =
+    inert || JSON.stringify(aware) === JSON.stringify(plain) ? aware : [...plain, ...aware];
+  const whole = !inert && segments.some((words) => words.length > 0 && !trusted(words));
   for (const words of segments) {
     const hit = scan(words, cwds, whole);
     if (hit) return hit;
@@ -293,7 +347,8 @@ export interface SecretRulesVerdict {
 }
 
 export function secretRules(command: string, cwd?: string | null): SecretRulesVerdict {
-  const hit = reach(command, cwd);
+  const found = reach(command, cwd);
+  const hit = found && unmark(found);
   return hit && certain(hit) ? { certain: hit, maybe: null } : { certain: null, maybe: hit };
 }
 
