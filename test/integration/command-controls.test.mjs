@@ -117,12 +117,8 @@ test('control characters in a full command are shown', async (t) => {
   });
   for (const type of ['mousePressed', 'mouseReleased'])
     await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
-  await page.until(
-    () =>
-      window
-        .approvals()
-        .querySelector('[data-action=full-command]')
-        ?.getAttribute('aria-expanded') === 'true'
+  await page.until(() =>
+    window.approvals().querySelector('[data-action=full-command]')?.hasAttribute('data-shown')
   );
   assert.equal(
     await page.evaluate(() => window.approvals().querySelector('pre.command').textContent),
