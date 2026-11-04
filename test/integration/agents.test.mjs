@@ -865,41 +865,59 @@ test('Under forced colors, the dots, segments, unread circle and selection bar k
         const style = getComputedStyle(node, pseudo);
         return [style.forcedColorAdjust, style.backgroundColor];
       };
-      const dot = window.agentRow('cone-kitchen').querySelector('.marker.status');
-      const segment = window.agentRow('cone-sliccy').querySelector('.segment');
-      const unread = window.agentRow('cone-release').querySelector('.marker.unread');
-      const bar = window.agentRow('cone-sliccy');
-      const style = getComputedStyle(dot);
-      const empty =
-        style.backgroundColor === 'rgba(0, 0, 0, 0)' || style.backgroundColor === 'transparent';
-      const ink = empty
-        ? style.borderColor.includes(system('CanvasText')) ||
-          style.outlineColor.includes(system('CanvasText')) ||
-          style.color === system('CanvasText')
-        : style.backgroundColor === system('CanvasText');
-      return [
-        [style.forcedColorAdjust, ink],
-        paint(segment),
-        [...paint(unread), getComputedStyle(unread).color],
-        paint(bar, '::before'),
-      ].map((value) =>
-        value.map((part) =>
-          part === 'none'
-            ? part
-            : part === true || part === false
+      const list = window.model.agent.list.bind(window.model.agent);
+      const statuses = {
+        'cone-kitchen': 'thinking',
+        'cone-harbor': 'waiting',
+        'cone-triage': 'error',
+        'cone-sliccy': 'idle',
+      };
+      window.model.agent.list = () =>
+        list().map((agent) =>
+          statuses[agent.id] ? { ...agent, status: statuses[agent.id] } : agent
+        );
+      const agents = window.agents();
+      agents.requestUpdate();
+      return agents.updateComplete.then(() => {
+        const mark = (id) => window.agentRow(id).querySelector('.marker.status');
+        const text = system('CanvasText');
+        const thinking = getComputedStyle(mark('cone-kitchen'));
+        const waiting = getComputedStyle(mark('cone-harbor'));
+        const error = getComputedStyle(mark('cone-triage'));
+        const idle = getComputedStyle(mark('cone-sliccy'));
+        const segment = window.agentRow('cone-sliccy').querySelector('.segment');
+        const unread = window.agentRow('cone-release').querySelector('.marker.unread');
+        const bar = window.agentRow('cone-sliccy');
+        return [
+          [
+            thinking.forcedColorAdjust,
+            thinking.borderTopColor === text,
+            waiting.borderTopColor === text,
+            error.color === text,
+            idle.backgroundColor === text,
+          ],
+          paint(segment),
+          [...paint(unread), getComputedStyle(unread).color],
+          paint(bar, '::before'),
+        ].map((value) =>
+          value.map((part) =>
+            part === 'none'
               ? part
-              : part === system('CanvasText')
-                ? 'CanvasText'
-                : part === system('Highlight')
-                  ? 'Highlight'
-                  : part === system('HighlightText')
-                    ? 'HighlightText'
-                    : part
-        )
-      );
+              : part === true || part === false
+                ? part
+                : part === system('CanvasText')
+                  ? 'CanvasText'
+                  : part === system('Highlight')
+                    ? 'Highlight'
+                    : part === system('HighlightText')
+                      ? 'HighlightText'
+                      : part
+          )
+        );
+      });
     }),
     [
-      ['none', true],
+      ['none', true, true, true, true],
       ['none', 'CanvasText'],
       ['none', 'Highlight', 'HighlightText'],
       ['none', 'Highlight'],

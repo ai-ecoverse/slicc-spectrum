@@ -236,7 +236,6 @@ export const shared = css`
     box-sizing: border-box;
     width: var(--swc-spacing-100);
     height: var(--swc-spacing-100);
-    margin-inline: var(--swc-border-width-200);
     border: var(--swc-border-width-200) solid transparent;
     border-radius: var(--swc-corner-radius-full);
     background: var(--swc-neutral-visual-color);
@@ -261,6 +260,9 @@ export const shared = css`
     background: var(--swc-negative-visual-color);
     color: var(--swc-negative-visual-color);
   }
+  .dot[data-agent-status] {
+    margin-inline: var(--swc-border-width-200);
+  }
   .dot[data-agent-status='thinking'] {
     background: transparent;
     border-style: dashed;
@@ -272,8 +274,8 @@ export const shared = css`
   }
   .dot[data-agent-status='working'] {
     box-shadow: 0 0 0 var(--swc-border-width-200) var(--swc-informative-visual-color);
-    animation: status-working var(--swc-animation-duration-600) var(--swc-animation-ease-in-out)
-      infinite;
+    animation: status-working calc(var(--swc-animation-duration-600) * 4)
+      var(--swc-animation-ease-in-out) infinite;
   }
   .dot[data-agent-status='error'] {
     width: var(--swc-spacing-200);
@@ -308,8 +310,8 @@ export const shared = css`
   }
   .marker.status[data-status='working'] {
     box-shadow: 0 0 0 var(--swc-border-width-200) var(--status-color);
-    animation: status-working var(--swc-animation-duration-600) var(--swc-animation-ease-in-out)
-      infinite;
+    animation: status-working calc(var(--swc-animation-duration-600) * 4)
+      var(--swc-animation-ease-in-out) infinite;
   }
   .marker.status[data-status='error'] {
     border: none;
@@ -332,7 +334,7 @@ export const shared = css`
   }
   @media (forced-colors: active) {
     .dot[data-agent-status],
-    .marker.status {
+    .marker.status[data-status] {
       forced-color-adjust: none;
       background: CanvasText;
       color: CanvasText;
@@ -349,7 +351,9 @@ export const shared = css`
     }
     .dot[data-agent-status='working'],
     .marker.status[data-status='working'] {
-      box-shadow: 0 0 0 var(--swc-border-width-200) CanvasText;
+      box-shadow:
+        0 0 0 var(--swc-border-width-100) Canvas,
+        0 0 0 calc(var(--swc-border-width-100) + var(--swc-border-width-200)) CanvasText;
     }
     .dot:focus-visible {
       outline-color: Highlight;

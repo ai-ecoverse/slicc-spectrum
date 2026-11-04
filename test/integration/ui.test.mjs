@@ -7890,9 +7890,9 @@ for (const width of [1280, 420]) {
               style.backgroundColor === 'rgba(0, 0, 0, 0)' ||
               style.backgroundColor === 'transparent';
             const ink = empty
-              ? style.borderColor.includes(text) ||
-                style.outlineColor.includes(text) ||
-                style.color === text
+              ? status === 'error'
+                ? style.color === text
+                : style.borderTopColor === text
               : style.backgroundColor === text;
             return {
               status: dot.dataset.agentStatus,
