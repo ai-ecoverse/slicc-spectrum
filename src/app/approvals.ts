@@ -190,23 +190,60 @@ const option =
       return !!name && long.some((each) => each.startsWith(name));
     });
 
-const outputs = (valued: RegExp) => (args: string[]) => {
+const outputs = (valued: (arg: string) => boolean) => (args: string[]) => {
   const end = args.includes('--') ? args.indexOf('--') : args.length;
   const named = args
     .slice(0, end)
-    .filter((arg, index) => (arg === '-' || !arg.startsWith('-')) && !valued.test(args[index - 1]));
+    .filter(
+      (arg, index) => (arg === '-' || !arg.startsWith('-')) && !valued(args[index - 1] ?? '')
+    );
   return named.length + args.slice(end + 1).length > 1;
 };
 
+const uniqValue = (arg: string) =>
+  arg.startsWith('--')
+    ? /^--(?:s|sk|ski|skip|skip-|skip-[fc][\w-]*|c|ch[\w-]*)$/.test(arg)
+    : /^-[^-]/.test(arg) && arg.slice(1).search(/[fsw]/) === arg.length - 2;
+
+const xxdValue: Record<string, string> = {
+  c: 'ols',
+  g: 'roup',
+  l: 'en',
+  n: 'ame',
+  o: 'ffset',
+};
+
+function valuedXxd(letter: string, rest: string): boolean {
+  if (letter === 'c' && rest.startsWith('apitalize')) return false;
+  if (letter === 'R') return !rest;
+  if (letter === 's') return !rest || rest.startsWith('kip') || rest.startsWith('eek');
+  return Object.hasOwn(xxdValue, letter) && (!rest || rest.startsWith(xxdValue[letter]));
+}
+
+function xxd(args: string[]): boolean {
+  let index = 0;
+  for (; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === '--') {
+      index++;
+      break;
+    }
+    if (!/^-./.test(arg)) break;
+    const pp = arg.startsWith('--') && arg.length > 2 ? arg.slice(1) : arg;
+    if (valuedXxd(pp[1], pp.slice(2))) index++;
+  }
+  return args.length - index > 1;
+}
+
 const gates: Record<string, (args: string[]) => unknown> = {
-  base64: option('o', ['output'], 'bwi'),
+  base64: option('o', ['output'], 'w'),
   file: option('C', ['compile'], 'efFmP'),
   find: (args) =>
     args.some((arg) => /^-(?:delete|exec|execdir|ok|okdir|fls|fprint0?|fprintf)$/.test(arg)),
   sort: option('oT', ['output', 'temporary-directory', 'compress-program'], 'kSt'),
-  tree: option('oR', [], 'HILPT'),
-  uniq: outputs(/^(?:-[^-]*[fsw]|--(?:s|sk|ski|skip|skip-|skip-[fc]\w*|c|ch\w*))$/),
-  xxd: outputs(/^-(?:[cglnosR]|cols|groupsize|len|name|offset|seek)$/),
+  tree: option('oR', []),
+  uniq: outputs(uniqValue),
+  xxd,
   yq: option('is', ['inplace', 'in-place', 'split-exp', 'split-exp-file'], 'fIop'),
 };
 
