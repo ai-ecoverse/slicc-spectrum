@@ -85,7 +85,7 @@
     "@spectrum-web-components/textfield": "1.12.5",
     "@spectrum-web-components/theme": "1.12.5",
     "@types/mdast": "4.0.4",
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "@wterm/core": "0.5.6",
     "@wterm/dom": "0.5.6",
     "@wterm/ghostty": "0.5.7",
