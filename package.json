@@ -88,7 +88,7 @@
     "@types/node": "26.6.5",
     "@wterm/core": "0.5.6",
     "@wterm/dom": "0.5.6",
-    "@wterm/ghostty": "0.5.6",
+    "@wterm/ghostty": "0.5.7",
     "dockview-core": "8.7.1",
     "esbuild": "0.28.2",
     "happy-dom": "21.0.4",
