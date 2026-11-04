@@ -804,6 +804,21 @@ function leveled(approval: Judged): ApprovalLevel | null {
   return level && Object.hasOwn(levels, level) ? level : null;
 }
 
+function legacyClean(approval: Judged): boolean {
+  if (approval.kind !== 'sudo') return true;
+  if (approval.verdict?.decision === 'deny') return false;
+  const { certain, maybe, once } = secretRules(approval.command, approval.cwd);
+  return !certain && !maybe && !once;
+}
+
+export function offersAlways(approval: Approval): boolean {
+  return (
+    approval.kind !== 'tray' &&
+    approval.always &&
+    (approval.verdict?.level !== undefined || legacyClean(approval))
+  );
+}
+
 export function verdictNote(approval: Judged): string {
   if (approval.kind !== 'sudo' || approval.always) return '';
   const level = leveled(approval);
@@ -1092,7 +1107,7 @@ export class SliccApprovals extends ModelElement {
       (decision !== 'deny' && (!this.#armed || !this.#whole(approval)))
     )
       return;
-    if (decision === 'always' && (approval.kind === 'tray' || !approval.always)) return;
+    if (decision === 'always' && !offersAlways(approval)) return;
     this.busy = decision;
     this.failure = null;
     this.#pending.add(approval.id);
@@ -1287,7 +1302,7 @@ export class SliccApprovals extends ModelElement {
     const [approval, ...rest] = held ? [held, ...list.filter(({ id }) => id !== held.id)] : list;
     if (!approval) return nothing;
     const failure = this.failure?.id === approval.id ? this.failure.message : '';
-    const always = approval.kind !== 'tray' && approval.always;
+    const always = offersAlways(approval);
     const gate = this.#gate(approval);
     const hint = always && this.#whole(approval) ? hintOf(approval) : '';
     return this.#dialog(
