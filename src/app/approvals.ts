@@ -173,6 +173,242 @@ const trusted = ([word, ...args]: string[]) => {
   return readOnly.includes(name) && !writes[name]?.(args);
 };
 
+function letter(arg: string, short: string, takes: string): boolean {
+  for (const char of arg.slice(1)) {
+    if (short.includes(char)) return true;
+    if (char === '=' || takes.includes(char)) return false;
+  }
+  return false;
+}
+
+const option =
+  (short: string, long: string[], takes = '') =>
+  (args: string[]) =>
+    args.find((arg) => {
+      if (!arg.startsWith('--')) return /^-[^-]/.test(arg) && letter(arg, short, takes);
+      const [name] = arg.slice(2).split('=');
+      return !!name && long.some((each) => each.startsWith(name));
+    });
+
+const outputs = (valued: RegExp) => (args: string[]) => {
+  const end = args.includes('--') ? args.indexOf('--') : args.length;
+  const named = args
+    .slice(0, end)
+    .filter((arg, index) => (arg === '-' || !arg.startsWith('-')) && !valued.test(args[index - 1]));
+  return named.length + args.slice(end + 1).length > 1;
+};
+
+const gates: Record<string, (args: string[]) => unknown> = {
+  base64: option('o', ['output'], 'bwi'),
+  file: option('C', ['compile'], 'efFmP'),
+  find: writes.find,
+  sort: option('oT', ['output', 'temporary-directory', 'compress-program'], 'kSt'),
+  tree: option('oR', [], 'HILPT'),
+  uniq: outputs(/^(?:-[^-]*[fsw]|--(?:s|sk|ski|skip|skip-|skip-[fc]\w*|c|ch\w*))$/),
+  xxd: outputs(/^-(?:[cglnosR]|cols|groupsize|len|name|offset|seek)$/),
+  yq: option('is', ['inplace', 'in-place', 'split-exp', 'split-exp-file'], 'fIop'),
+};
+
+const plainly = (word: string) => word.replace(/^\/(?:usr\/)?bin\/(?=[^/]+$)/, '');
+
+const valued = [
+  'arg-file',
+  'delimiter',
+  'max-args',
+  'max-chars',
+  'max-lines',
+  'max-procs',
+  'process-slot-var',
+];
+
+function from(args: string[], start: number, next: (index: number) => void): string[] {
+  for (let index = start; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === '--') return args.slice(index + 1);
+    if (arg.startsWith('--')) {
+      const name = arg.slice(2);
+      if (['eof', 'replace'].some((option) => option.startsWith(name))) {
+        next(index + 1);
+        next(index + 2);
+        return [];
+      }
+      if (valued.some((option) => option.startsWith(name))) index++;
+    } else if (/^-./.test(arg)) {
+      const rest = arg.slice(1);
+      const at = rest.search(/[adEILnPseil]/);
+      if (at === rest.length - 1 && /[adEILnPs]/.test(rest[at])) index++;
+    } else return args.slice(index);
+  }
+  return [];
+}
+
+function launched(args: string[]): string[][] {
+  const seen = new Set<number>();
+  const queue = [0];
+  const found: string[][] = [];
+  const next = (index: number) => {
+    if (!seen.has(index)) queue.push(index);
+    seen.add(index);
+  };
+  seen.add(0);
+  while (queue.length) {
+    let branched = false;
+    const words = from(args, queue.pop() as number, (index) => {
+      branched = true;
+      next(index);
+    });
+    if (!branched) found.push(words);
+  }
+  return found;
+}
+
+const runs = ([run = 'echo', ...rest]: string[]): boolean =>
+  plainly(run) !== 'xargs' && safe([run, ...rest]);
+
+const safe = ([word, ...args]: string[]): boolean => {
+  const name = plainly(word);
+  return readOnly.includes(name) && !gates[name]?.(args);
+};
+
+const unseen: Record<string, (args: string[]) => string | undefined> = {
+  xargs: (args) => {
+    const run = launched(args).find((words) => !runs(words));
+    return run && command(run[0] as string);
+  },
+  yq: (args) => option('s', ['split-exp', 'split-exp-file'], 'fIop')(args)?.split('=')[0],
+};
+
+const keyword = /^(?:!|\{|if|then|else|elif|do|while|until|coproc)$/;
+
+const wrappers: Record<string, [string, string[], number]> = {
+  command: ['', [], 0],
+  env: ['CPu', ['chdir', 'unset'], 0],
+  exec: ['a', [], 0],
+  ionice: ['cnpPu', ['class', 'classdata', 'pid', 'pgid', 'uid'], 0],
+  nice: ['n', ['adjustment'], 0],
+  nohup: ['', [], 0],
+  setsid: ['', [], 0],
+  stdbuf: ['ioe', ['input', 'output', 'error'], 0],
+  time: ['fo', ['format', 'output'], 0],
+  timeout: ['ks', ['kill-after', 'signal'], 1],
+};
+
+const assignment = /^[A-Za-z_]\w*(?:\[[^\]]*\])?\+?=/;
+
+const shells = ['sh', 'bash', 'dash', 'zsh', 'ksh', 'fish'];
+
+function shell(words: string[], index: number): boolean {
+  const flag = words[index - 1] === '--' ? index - 2 : index - 1;
+  return (
+    /^-[A-Za-z]*c[A-Za-z]*$/.test(words[flag] ?? '') &&
+    words.slice(0, flag).some((word) => shells.includes(command(word)))
+  );
+}
+
+const escaped = /[\\$\ue124]/;
+
+function split(arg: string, next: string | undefined): string | undefined {
+  const short = arg.match(/^-[^-S]*S(.*)$/);
+  if (short) return short[1] || next;
+  const [name, ...value] = arg.slice(2).split('=');
+  if (!arg.startsWith('--') || !name || !'split-string'.startsWith(name)) return undefined;
+  return value.length ? value.join('=') : next;
+}
+
+interface Walk {
+  words: string[];
+  seen: Set<string>;
+  out: string[][];
+}
+
+function options(at: Walk, start: number, name: string): void {
+  if (at.seen.has(`${name} ${start}`)) return;
+  at.seen.add(`${name} ${start}`);
+  const { words } = at;
+  const [takes, long, positional] = wrappers[name];
+  let index = start;
+  for (; words[index]?.startsWith('-') && (words[index] !== '-' || name === 'env'); index++) {
+    const arg = words[index];
+    if (arg === '--') {
+      index++;
+      break;
+    }
+    if (name === 'command' && /^-[^-]*[vV]/.test(arg)) return;
+    const string = name === 'env' ? split(arg, words[index + 1]) : undefined;
+    if (string !== undefined) {
+      const rest = words.slice(index + (string === words[index + 1] ? 2 : 1));
+      if (escaped.test(string)) at.out.push(['env -S']);
+      else walk({ words: [...tokens(string), ...rest], seen: new Set(), out: at.out }, 0);
+      return;
+    }
+    if (arg.startsWith('--')) {
+      const option = arg.slice(2);
+      if (long.some((each) => each.startsWith(option))) options(at, index + 2, name);
+    } else if (takes.includes(arg.slice(-1))) index++;
+  }
+  walk(at, index + positional);
+}
+
+function walk(at: Walk, start: number): void {
+  if (at.seen.has(`${start}`)) return;
+  at.seen.add(`${start}`);
+  const { words } = at;
+  let index = start;
+  while (assignment.test(words[index] ?? '')) index++;
+  const name = command(words[index] ?? '');
+  if (words[index] === 'function') walk(at, index + 2);
+  else if (keyword.test(words[index] ?? '') || name === 'eval') walk(at, index + 1);
+  else if (Object.hasOwn(wrappers, name)) options(at, index + 1, name);
+  else at.out.push(words.slice(index));
+}
+
+function commands(
+  segments: string[][],
+  pick: (name: string, args: string[]) => string | null | undefined
+): string | null {
+  for (const words of segments)
+    for (const index of words.keys()) {
+      if (index && !shell(words, index)) continue;
+      const out: string[][] = [];
+      walk({ words, seen: new Set(), out }, index);
+      for (const [run = '', ...args] of out) {
+        const found = pick(command(run), args);
+        if (found) return found;
+      }
+    }
+  return null;
+}
+
+const blind = (segments: string[][]) =>
+  commands(segments, (name, args) => {
+    if (name === 'env -S') return name;
+    const found = Object.hasOwn(unseen, name) && unseen[name](args);
+    return found ? `${name} ${found}` : null;
+  });
+
+const fed = (segments: string[][]) =>
+  commands(segments, (name, args) => {
+    if (name !== 'xargs') return null;
+    const gated = launched(args)
+      .map(([run = 'echo']) => plainly(run))
+      .find((run) => Object.hasOwn(gates, run));
+    return gated && `xargs ${gated}`;
+  });
+
+function lines(text: string): string[][] {
+  const run = shield(text).split(separators).map(unshield).map(tokens);
+  const blunt = text.split(separators).map((part) => tokens(part.replace(/['"\\]/g, '')));
+  const nested = run.some((words) =>
+    words.some(
+      (word, index) =>
+        command(word) === 'eval' ||
+        shell(words, index) ||
+        (command(word) === 'env' && /^(?:-[^-]*S|--s)/.test(words[index + 1] ?? ''))
+    )
+  );
+  return nested ? [...run, ...blunt] : run;
+}
+
 const expansion = /\$\([^)]*\)?|\$\{[^}]*\}?|\$[\w@*#?$!-]*|`[^`]*`?/;
 
 function moved(cwds: Set<string>, word: string): string | null {
@@ -291,6 +527,36 @@ function quoted(segment: string): string[] {
   return [...words, word];
 }
 
+function tokens(segment: string): string[] {
+  const words: string[] = [];
+  let word = '';
+  let quote = '';
+  let target = false;
+  const push = () => {
+    if (!(target && word)) words.push(word);
+    else target = false;
+    word = '';
+  };
+  for (let index = 0; index < segment.length; index++) {
+    const char = segment[index];
+    if (quote === '"' && char === '\\' && /["\\$`\n]/.test(segment[index + 1] ?? ''))
+      word += segment[++index];
+    else if (quote) {
+      if (char === quote) quote = '';
+      else word += literal(char, quote);
+    } else if (char === "'" || char === '"') quote = char;
+    else if (char === '\\') word += segment[++index] ?? '';
+    else if (/[<>]/.test(char)) {
+      if (/^\d+$/.test(word)) word = '';
+      push();
+      target = true;
+    } else if (/\s/.test(char)) push();
+    else word += char;
+  }
+  push();
+  return words.filter(Boolean);
+}
+
 function commas(words: string[]): string[] {
   return words
     .flatMap((word) => (word.includes(',') ? [word, ...word.split(',')] : [word]))
@@ -349,12 +615,17 @@ function reach(command: string, cwd?: string | null): string | null {
 export interface SecretRulesVerdict {
   certain: string | null;
   maybe: string | null;
+  once: string | null;
 }
 
 export function secretRules(command: string, cwd?: string | null): SecretRulesVerdict {
-  const found = reach(command, cwd);
+  const base = reach(command, cwd);
+  const argv = base ? [] : lines(unglob(ansi(command.replace(/\\\n/g, ''))));
+  const found = base ?? blind(argv);
   const hit = found && unmark(found);
-  return hit && certain(hit) ? { certain: hit, maybe: null } : { certain: null, maybe: hit };
+  if (hit && certain(hit)) return { certain: hit, maybe: null, once: null };
+  if (hit) return { certain: null, maybe: hit, once: null };
+  return { certain: null, maybe: null, once: fed(argv) };
 }
 
 function origin(): HTMLElement | null {
@@ -427,7 +698,12 @@ export function guestWaiting(approval: GuestMessageApproval | GuestToolApproval)
     : `${approval.agentName ?? 'This cone'} wants to run ${approval.tool} for ${approval.requester.name}, which waits for the owner's approval.`;
 }
 
-const clear: SecretRulesVerdict = { certain: null, maybe: null };
+const onceOnly = ({ once }: SecretRulesVerdict) =>
+  once
+    ? html`<p class="hint" data-once-only=${once}>Always allow isn’t offered: xargs adds arguments from its input, and they could include a write flag.</p>`
+    : nothing;
+
+const clear: SecretRulesVerdict = { certain: null, maybe: null, once: null };
 
 function rulesOf(approval: Approval): SecretRulesVerdict {
   return approval.kind === 'sudo' ? secretRules(approval.command, approval.cwd) : clear;
@@ -689,7 +965,7 @@ export class SliccApprovals extends ModelElement {
     const always = approval.kind === 'sudo' || (approval.kind !== 'tray' && approval.always);
     if (
       decision === 'always' &&
-      (!always || deniedSudo(approval) || verdict.certain || verdict.maybe)
+      (!always || deniedSudo(approval) || verdict.certain || verdict.maybe || verdict.once)
     )
       return;
     this.busy = decision;
@@ -868,6 +1144,10 @@ export class SliccApprovals extends ModelElement {
       ${whole ? this.#button(approval, 'once', deniedSudo(approval) ? 'Allow anyway (once)' : 'Allow once', 'accent') : nothing}`;
   }
 
+  #offered(approval: Approval, rules: string | null): boolean {
+    return approval.kind !== 'tray' && approval.always && !deniedSudo(approval) && !rules;
+  }
+
   render(): unknown {
     if (this.gone) {
       const { approval, reason } = this.gone;
@@ -889,7 +1169,8 @@ export class SliccApprovals extends ModelElement {
     const failure = this.failure?.id === approval.id ? this.failure.message : '';
     const verdict = rulesOf(approval);
     const rules = verdict.certain ?? verdict.maybe;
-    const always = approval.kind !== 'tray' && approval.always && !deniedSudo(approval) && !rules;
+    const offered = this.#offered(approval, rules);
+    const always = offered && !verdict.once;
     const gate = this.#gate(approval);
     const hint = always && this.#whole(approval) ? hintOf(approval) : '';
     return this.#dialog(
@@ -901,6 +1182,7 @@ export class SliccApprovals extends ModelElement {
           ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${commandText(approval.cwd, false)}</p>` : nothing}
           ${this.#verdict(approval)}
           ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${verdict.certain ? html`<strong>This changes secret rules.</strong> It names <code>${commandText(rules, false)}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${commandText(rules, false)}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>` : nothing}
+          ${offered ? onceOnly(verdict) : nothing}
           ${hint ? html`<p class="hint">${hint}</p>` : nothing}
           ${!failure && gate ? html`<p class="hint" data-allow-hint>${gate}</p>` : nothing}
           ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : html`<p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>`}
