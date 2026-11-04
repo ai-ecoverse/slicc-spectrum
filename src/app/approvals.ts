@@ -356,7 +356,8 @@ function walk(at: Walk, start: number): void {
   let index = start;
   while (assignment.test(words[index] ?? '')) index++;
   const name = command(words[index] ?? '');
-  if (keyword.test(words[index] ?? '') || name === 'eval') walk(at, index + 1);
+  if (words[index] === 'function') walk(at, index + 2);
+  else if (keyword.test(words[index] ?? '') || name === 'eval') walk(at, index + 1);
   else if (Object.hasOwn(wrappers, name)) options(at, index + 1, name);
   else at.out.push(words.slice(index));
 }

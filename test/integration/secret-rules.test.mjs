@@ -421,6 +421,9 @@ test('the data-write detector never clears or changes what the base check finds'
     ['env - xargs cat < list', clean],
     ["bash -c -- 'xargs rm < list'", { certain: null, maybe: 'xargs rm' }],
     ["bash -c -- 'xargs cat < list'", clean],
+    ['function f { xargs rm < list; }; f', { certain: null, maybe: 'xargs rm' }],
+    ['function f { xargs cat < list; }; f', clean],
+    ['f() { xargs rm < list; }; f', { certain: null, maybe: 'xargs rm' }],
   ];
   const found = await verdicts(
     page,
