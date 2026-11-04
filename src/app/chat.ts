@@ -22,7 +22,7 @@ import type {
   UserMessage,
 } from '../model/types.ts';
 import { readSurface } from './ansi.ts';
-import { chatModels, meterVariant, shared, statusLight, ThemedElement } from './base.ts';
+import { chatModels, meterVariant, shared, statusDot, statusLight, ThemedElement } from './base.ts';
 import { Cuts, clampCss } from './command.ts';
 import { fade, folders, limit, type SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
@@ -335,8 +335,15 @@ export class SliccChat extends ThemedElement {
       header swc-action-button {
         flex: none;
       }
-      header swc-status-light {
+      header swc-status-light,
+      header .dot {
         align-self: center;
+      }
+      @media (forced-colors: active) {
+        header .dot[data-agent-status] {
+          forced-color-adjust: none;
+          background: CanvasText;
+        }
       }
       header swc-meter {
         flex: 0 1 calc(var(--swc-spacing-400) * 6);
@@ -1164,12 +1171,12 @@ export class SliccChat extends ThemedElement {
     }
     if (watchOnly(model)) {
       const label = model.settings.models().find((option) => option.id === agent.model)?.label;
-      return html`${statusLight(agent.status)}
+      return html`${statusDot(agent.status)}
         <span class="model" data-model>${label ?? agent.model}</span>
         ${meter}`;
     }
     const offered = chatModels(model.settings.models());
-    return html`${statusLight(agent.status)}
+    return html`${statusDot(agent.status)}
       ${
         offered.length
           ? html`<sp-picker size="s" quiet label="Model" value=${agent.model} @change=${(event: Event) => model.agent.setModel(agent.id, (event.target as HTMLInputElement).value)} @sp-opened=${this.#modelFilter.opened} @sp-closed=${this.#modelFilter.closed} @keydown=${this.#modelFilter.keys}>

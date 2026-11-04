@@ -389,7 +389,7 @@ test('The strip has its own column: it never covers the text, the fill or the fo
   assert.deepEqual(page.errors, []);
 });
 
-test('An unread count takes the status circle, and caps at 99+ with the exact count in its name and tooltip', async (t) => {
+test('An unread count sits beside the status dot, and caps at 99+ with the exact count in its name and tooltip', async (t) => {
   const page = await open(t);
   await page.until(() => Boolean(window.agentRow('cone-release')));
   await page.evaluate(() => {
@@ -404,7 +404,7 @@ test('An unread count takes the status circle, and caps at 99+ with the exact co
   );
   assert.deepEqual(
     await page.evaluate(() => {
-      const unread = window.agentRow('cone-release').querySelector('.marker');
+      const unread = window.agentRow('cone-release').querySelector('.marker.unread');
       const dot = window.agentRow('cone-sliccy').querySelector('.marker');
       const many = window.agentRow('cone-triage');
       const size = (node) => {
@@ -414,17 +414,17 @@ test('An unread count takes the status circle, and caps at 99+ with the exact co
       return [
         unread.classList.contains('unread'),
         unread.textContent.trim(),
-        window.agentRow('cone-release').querySelector('.status'),
+        window.agentRow('cone-release').querySelector('.head .marker').classList.contains('status'),
         dot.classList.contains('status'),
         size(unread),
         size(dot),
         Number.parseFloat(getComputedStyle(unread).fontSize) >= 11,
-        many.querySelector('.marker').textContent,
+        many.querySelector('.marker.unread').textContent,
         /140 unread/.test(many.getAttribute('aria-label')),
         /140 unread/.test(many.getAttribute('title')),
       ];
     }),
-    [true, '1', null, true, [16, 16], [12, 12], true, '99+', true, true]
+    [true, '1', true, true, [16, 16], [12, 12], true, '99+', true, true]
   );
   assert.deepEqual(page.errors, []);
 });
@@ -447,18 +447,18 @@ for (const color of ['light', 'dark']) {
     );
     assert.deepEqual(
       await page.evaluate(() => {
-        const marker = window.agentRow('cone-release').querySelector('.marker');
-        const triage = window.agentRow('cone-triage').querySelector('.marker');
+        const marker = window.agentRow('cone-release').querySelector('.marker.unread');
+        const triage = window.agentRow('cone-triage').querySelector('.marker.unread');
         const style = getComputedStyle(marker);
         return [
           style.backgroundColor === window.token('--swc-negative-background-color-default'),
           getComputedStyle(triage).backgroundColor ===
             window.token('--swc-accent-background-color-default'),
           window.contrast(style.color, style.backgroundColor) >= 4.5,
-          window.agentRow('cone-release').querySelector('.state').textContent,
+          window.agentRow('cone-release').getAttribute('aria-label').split(',')[0],
         ];
       }),
-      [true, true, true, 'Error']
+      [true, true, true, 'release-notes: Error']
     );
     assert.deepEqual(page.errors, []);
   });
@@ -1123,14 +1123,13 @@ test('A cone is a disclosure in a tree: arrows expand and collapse it without se
 });
 
 for (const color of ['light', 'dark']) {
-  test(`An unread count never hides the status: the word stays on the row and in its name, ${color}`, async (t) => {
+  test(`An unread count never hides the status: the dot stays beside it, ${color}`, async (t) => {
     const page = await open(t, color);
-    await page.until(() => Boolean(window.agentRow('cone-release')?.querySelector('.unread')));
+    await page.until(() => Boolean(window.agentRow('cone-triage')?.querySelector('.unread')));
     const result = await page.evaluate(() => {
-      const row = window.agentRow('cone-release');
-      const marker = row.querySelector('.marker');
-      const state = row.querySelector('.state');
-      const box = state.getBoundingClientRect();
+      const row = (id) => window.agentRow(id);
+      const paint = (id, selector) =>
+        getComputedStyle(row(id).querySelector(selector)).backgroundColor;
       const rgb = (value) =>
         value
           .match(/[\d.]+/g)
@@ -1143,28 +1142,80 @@ for (const color of ['light', 'dark']) {
         });
         return 0.2126 * r + 0.7152 * g + 0.0722 * b;
       };
-      const style = getComputedStyle(marker);
-      const [a, b] = [lum(style.color), lum(style.backgroundColor)].sort((x, y) => y - x);
+      const marker = getComputedStyle(row('cone-release').querySelector('.marker.unread'));
+      const [a, b] = [lum(marker.color), lum(marker.backgroundColor)].sort((x, y) => y - x);
+      const order = (id) =>
+        [...row(id).querySelector('.head').children].map(
+          (node) => node.classList[1] ?? node.className
+        );
       return {
-        count: marker.textContent.trim(),
-        dot: row.querySelector('.status'),
-        word: state.textContent,
-        shown: box.width > 0 && box.height > 0 && getComputedStyle(state).visibility === 'visible',
-        label: row.getAttribute('aria-label'),
+        order: [order('cone-release'), order('cone-triage')],
+        status: [
+          row('cone-release').querySelector('.marker.status').dataset.status,
+          row('cone-triage').querySelector('.marker.status').dataset.status,
+        ],
+        counts: paint('cone-release', '.marker.unread') === paint('cone-triage', '.marker.unread'),
+        dots: paint('cone-release', '.marker.status') !== paint('cone-triage', '.marker.status'),
+        waiting: paint('cone-triage', '.marker.status') === window.token('--swc-notice-color-900'),
+        label: row('cone-release').getAttribute('aria-label'),
         contrast: (a + 0.05) / (b + 0.05) >= 4.5,
       };
     });
     assert.deepEqual(result, {
-      count: '1',
-      dot: null,
-      word: 'Idle',
-      shown: true,
+      order: [
+        ['status', 'unread', 'name'],
+        ['status', 'unread', 'name'],
+      ],
+      status: ['idle', 'waiting'],
+      counts: true,
+      dots: true,
+      waiting: true,
       label: 'release-notes: Idle, 70% context, 1 unread',
       contrast: true,
     });
     assert.deepEqual(page.errors, []);
   });
 }
+
+test('Rows leave the status to the dot: no status word in the description, and it keeps its width as the agent works', async (t) => {
+  const page = await open(t);
+  await page.until(() => Boolean(window.agentRow('cone-release')));
+  await page.evaluate(() => {
+    window.width = () =>
+      window.agentRow('cone-release').querySelector('.title').getBoundingClientRect().width;
+    window.before = window.width();
+    return true;
+  });
+  const idle = await page.evaluate(() => ({
+    state: !!window.agentRow('cone-release').querySelector('.state'),
+    text: window.agentRow('cone-release').querySelector('.title').textContent.trim(),
+    label: window.agentRow('cone-release').getAttribute('aria-label').split(',')[0],
+  }));
+  assert.equal(idle.state, false);
+  assert.doesNotMatch(idle.text, /^(Idle|Working|Thinking|Waiting|Error)\b/);
+  assert.equal(idle.label, 'release-notes: Idle');
+  await page.evaluate(() => {
+    const list = window.model.agent.list.bind(window.model.agent);
+    window.model.agent.list = () =>
+      list().map((agent) =>
+        agent.id === 'cone-release' ? { ...agent, status: 'working' } : agent
+      );
+    window.model.agent.select('cone-tides');
+    return true;
+  });
+  await page.until(
+    () => window.agentRow('cone-release')?.querySelector('.marker').dataset.status === 'working'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.agentRow('cone-release').querySelector('.title').textContent.trim(),
+      window.agentRow('cone-release').getAttribute('aria-label').split(',')[0],
+      window.width() === window.before,
+    ]),
+    [idle.text, 'release-notes: Working', true]
+  );
+  assert.deepEqual(page.errors, []);
+});
 
 test('The drop strip is reachable by keyboard: Tab from the selected row shows it, and Shift+Tab goes back', async (t) => {
   const page = await open(t);

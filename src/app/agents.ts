@@ -240,9 +240,6 @@ export class SliccAgents extends ModelElement {
       font-size: var(--swc-font-size-75);
       color: var(--swc-neutral-subdued-content-color-default);
     }
-    .state {
-      color: var(--swc-neutral-content-color-default);
-    }
     .ribbon {
       grid-area: ribbon;
       display: flex;
@@ -600,11 +597,8 @@ export class SliccAgents extends ModelElement {
     >
       ${this.#disclosure(agent, scoops, open)}
       <div class="head">
-        ${
-          unread
-            ? html`<span class="marker unread" data-status=${agent.status} aria-hidden="true">${unreadCount(unread)}</span>`
-            : html`<span class="marker status" data-status=${agent.status} aria-hidden="true"></span>`
-        }
+        <span class="marker status" data-status=${agent.status} aria-hidden="true"></span>
+        ${unread ? html`<span class="marker unread" data-status=${agent.status} aria-hidden="true">${unreadCount(unread)}</span>` : nothing}
         <span class="name">${agent.name}</span>
       </div>
       ${
@@ -612,7 +606,7 @@ export class SliccAgents extends ModelElement {
           ? html`<span class="fill" data-variant=${meterVariant(agent.contextFill)}>${percent(agent.contextFill)}</span>`
           : nothing
       }
-      <span class="title"><span class="state">${statusLabel[agent.status]}</span> · ${title || untitled}</span>
+      <span class="title">${title || untitled}</span>
       ${this.#ribbon(scoops)}
       ${this.#dropButton(agent, selected)}
       ${this.#deleteButton(agent, selected)}
