@@ -484,6 +484,49 @@ test('repeated options that may take a value are parsed in linear time', async (
   assert.deepEqual(page.errors, []);
 });
 
+test('pure output programs are read-only, alone and through xargs', async (t) => {
+  const page = await open(t);
+  const clean = { certain: null, maybe: null };
+  const rows = [
+    ['ls | xargs -n1 basename', clean],
+    ['ls | xargs dirname', clean],
+    ['seq 3 | xargs printf x', clean],
+    ['printf %s /etc', clean],
+    ['basename /etc/slicc', clean],
+    ['pr /etc', clean],
+    ['join /etc a', clean],
+    ['paste /etc/slicc a', clean],
+    ['fold /etc', clean],
+    ['id; uname -a; nproc; whoami; printenv', clean],
+    [
+      'dirname /etc/slicc/secrets-policy.toml',
+      { certain: '/etc/slicc/secrets-policy.toml', maybe: null },
+    ],
+    [
+      'tr a b < /etc/slicc/secrets-policy.toml',
+      { certain: '/etc/slicc/secrets-policy.toml', maybe: null },
+    ],
+    [
+      'printf x > /etc/slicc/secrets-policy.toml',
+      { certain: '/etc/slicc/secrets-policy.toml', maybe: null },
+    ],
+    ['basename x > /etc/fnox/config.toml', { certain: '/etc/fnox/config.toml', maybe: null }],
+    ['xargs basename < /etc/fnox/list', { certain: '/etc/fnox/list', maybe: null }],
+    ['xargs rm < list', { certain: null, maybe: 'xargs rm' }],
+    ['xargs tee < list', { certain: null, maybe: 'xargs tee' }],
+    ['command xargs rm < list', { certain: null, maybe: 'xargs rm' }],
+  ];
+  const found = await verdicts(
+    page,
+    rows.map(([command]) => [command, '/tmp'])
+  );
+  assert.deepEqual(
+    rows.map(([command], index) => [command, found[index]]),
+    rows
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('the sudo dialog offers Always allow for read-only commands and not for a write flag that reaches the rules', async (t) => {
   const page = await open(t);
   const ask = async (id, command) => {
@@ -542,6 +585,7 @@ test('the sudo dialog offers Always allow for read-only commands and not for a w
     ['yq -o=json . f.yaml', null, true],
     ['cat f | jq .x', null, true],
     ['xargs wc -l < list', null, true],
+    ['ls | xargs -n1 basename', null, true],
     ['tar tf x.tar', null, true],
     ['unzip -l x.zip', null, true],
     ['tee /etc/slicc/secrets-policy.toml', policy, false],
