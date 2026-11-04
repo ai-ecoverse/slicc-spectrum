@@ -221,22 +221,45 @@ const valued = [
   'process-slot-var',
 ];
 
-function launched(args: string[], from = 0): string[][] {
-  for (let index = from; index < args.length; index++) {
+function from(args: string[], start: number, next: (index: number) => void): string[] {
+  for (let index = start; index < args.length; index++) {
     const arg = args[index];
-    if (arg === '--') return [args.slice(index + 1)];
+    if (arg === '--') return args.slice(index + 1);
     if (arg.startsWith('--')) {
       const name = arg.slice(2);
-      if (['eof', 'replace'].some((option) => option.startsWith(name)))
-        return [...launched(args, index + 1), ...launched(args, index + 2)];
+      if (['eof', 'replace'].some((option) => option.startsWith(name))) {
+        next(index + 1);
+        next(index + 2);
+        return [];
+      }
       if (valued.some((option) => option.startsWith(name))) index++;
     } else if (/^-./.test(arg)) {
       const rest = arg.slice(1);
       const at = rest.search(/[adEILnPseil]/);
       if (at === rest.length - 1 && /[adEILnPs]/.test(rest[at])) index++;
-    } else return [args.slice(index)];
+    } else return args.slice(index);
   }
-  return [[]];
+  return [];
+}
+
+function launched(args: string[]): string[][] {
+  const seen = new Set<number>();
+  const queue = [0];
+  const found: string[][] = [];
+  const next = (index: number) => {
+    if (!seen.has(index)) queue.push(index);
+    seen.add(index);
+  };
+  seen.add(0);
+  while (queue.length) {
+    let branched = false;
+    const words = from(args, queue.pop() as number, (index) => {
+      branched = true;
+      next(index);
+    });
+    if (!branched) found.push(words);
+  }
+  return found;
 }
 
 const runs = ([run = 'echo', ...rest]: string[]): boolean =>
@@ -274,9 +297,13 @@ const assignment = /^[A-Za-z_]\w*(?:\[[^\]]*\])?\+?=/;
 
 const shells = ['sh', 'bash', 'dash', 'zsh', 'ksh', 'fish'];
 
-const shell = (words: string[], index: number) =>
-  /^-[A-Za-z]*c[A-Za-z]*$/.test(words[index - 1] ?? '') &&
-  words.slice(0, index - 1).some((word) => shells.includes(command(word)));
+function shell(words: string[], index: number): boolean {
+  const flag = words[index - 1] === '--' ? index - 2 : index - 1;
+  return (
+    /^-[A-Za-z]*c[A-Za-z]*$/.test(words[flag] ?? '') &&
+    words.slice(0, flag).some((word) => shells.includes(command(word)))
+  );
+}
 
 const escaped = /[\\$\ue124]/;
 
@@ -288,10 +315,19 @@ function split(arg: string, next: string | undefined): string | undefined {
   return value.length ? value.join('=') : next;
 }
 
-function options(words: string[], from: number, name: string, out: string[][]): void {
+interface Walk {
+  words: string[];
+  seen: Set<string>;
+  out: string[][];
+}
+
+function options(at: Walk, start: number, name: string): void {
+  if (at.seen.has(`${name} ${start}`)) return;
+  at.seen.add(`${name} ${start}`);
+  const { words } = at;
   const [takes, long, positional] = wrappers[name];
-  let index = from;
-  for (; words[index]?.startsWith('-') && words[index] !== '-'; index++) {
+  let index = start;
+  for (; words[index]?.startsWith('-') && (words[index] !== '-' || name === 'env'); index++) {
     const arg = words[index];
     if (arg === '--') {
       index++;
@@ -301,25 +337,28 @@ function options(words: string[], from: number, name: string, out: string[][]): 
     const string = name === 'env' ? split(arg, words[index + 1]) : undefined;
     if (string !== undefined) {
       const rest = words.slice(index + (string === words[index + 1] ? 2 : 1));
-      if (escaped.test(string)) out.push(['env -S']);
-      else walk([...tokens(string), ...rest], 0, out);
+      if (escaped.test(string)) at.out.push(['env -S']);
+      else walk({ words: [...tokens(string), ...rest], seen: new Set(), out: at.out }, 0);
       return;
     }
     if (arg.startsWith('--')) {
       const option = arg.slice(2);
-      if (long.some((each) => each.startsWith(option))) options(words, index + 2, name, out);
+      if (long.some((each) => each.startsWith(option))) options(at, index + 2, name);
     } else if (takes.includes(arg.slice(-1))) index++;
   }
-  walk(words, index + positional, out);
+  walk(at, index + positional);
 }
 
-function walk(words: string[], from: number, out: string[][]): void {
-  let index = from;
+function walk(at: Walk, start: number): void {
+  if (at.seen.has(`${start}`)) return;
+  at.seen.add(`${start}`);
+  const { words } = at;
+  let index = start;
   while (assignment.test(words[index] ?? '')) index++;
   const name = command(words[index] ?? '');
-  if (keyword.test(words[index] ?? '') || name === 'eval') walk(words, index + 1, out);
-  else if (Object.hasOwn(wrappers, name)) options(words, index + 1, name, out);
-  else out.push(words.slice(index));
+  if (keyword.test(words[index] ?? '') || name === 'eval') walk(at, index + 1);
+  else if (Object.hasOwn(wrappers, name)) options(at, index + 1, name);
+  else at.out.push(words.slice(index));
 }
 
 function commands(
@@ -330,7 +369,7 @@ function commands(
     for (const index of words.keys()) {
       if (index && !shell(words, index)) continue;
       const out: string[][] = [];
-      walk(words, index, out);
+      walk({ words, seen: new Set(), out }, index);
       for (const [run = '', ...args] of out) {
         const found = pick(command(run), args);
         if (found) return found;

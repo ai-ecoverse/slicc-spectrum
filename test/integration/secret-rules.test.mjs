@@ -417,6 +417,10 @@ test('the data-write detector never clears or changes what the base check finds'
     ["bash -lc 'xargs rm < list'", { certain: null, maybe: 'xargs rm' }],
     ["nice sh -c 'xargs rm < list'", { certain: null, maybe: 'xargs rm' }],
     ['rm -rf $X; xargs rm < list', { certain: null, maybe: '$X' }],
+    ['env - xargs rm < list', { certain: null, maybe: 'xargs rm' }],
+    ['env - xargs cat < list', clean],
+    ["bash -c -- 'xargs rm < list'", { certain: null, maybe: 'xargs rm' }],
+    ["bash -c -- 'xargs cat < list'", clean],
   ];
   const found = await verdicts(
     page,
@@ -425,6 +429,54 @@ test('the data-write detector never clears or changes what the base check finds'
   assert.deepEqual(
     rows.map(([command], index) => [command, found[index]]),
     rows
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('repeated options that may take a value are parsed in linear time', async (t) => {
+  const page = await open(t);
+  const timed = await page.evaluate(async () => {
+    const { secretRules } = await import('/dist/slicc-ui.js');
+    const rows = [];
+    for (const count of [40, 200])
+      for (const [prefix, option, tail] of [
+        ['xargs', '--e', 'cat < list'],
+        ['xargs', '--r', 'rm < list'],
+        ['nice', '--a', 'cat'],
+        ['nice', '--a', 'xargs rm < list'],
+        ['timeout', '--sig', '5 xargs rm < list'],
+        ['env', '--u', 'xargs rm < list'],
+      ]) {
+        const command = `${prefix} ${`${option} `.repeat(count)}${tail}`;
+        const start = performance.now();
+        const { certain, maybe } = secretRules(command, '/tmp');
+        rows.push([count, prefix, option, performance.now() - start < 50, { certain, maybe }]);
+      }
+    return rows;
+  });
+  const clean = { certain: null, maybe: null };
+  const rm = { certain: null, maybe: 'xargs rm' };
+  const expected = [clean, rm, clean, rm, rm, rm];
+  assert.deepEqual(
+    timed,
+    [40, 200].flatMap((count) =>
+      [
+        ['xargs', '--e'],
+        ['xargs', '--r'],
+        ['nice', '--a'],
+        ['nice', '--a'],
+        ['timeout', '--sig'],
+        ['env', '--u'],
+      ].map(([prefix, option], index) => [count, prefix, option, true, expected[index]])
+    )
+  );
+  assert.deepEqual(
+    await verdicts(page, [
+      ['xargs --replace=X cat X < list', '/tmp'],
+      ['xargs --replace=cat rm < list', '/tmp'],
+      ['xargs --replace cat < list', '/tmp'],
+    ]),
+    [clean, rm, clean]
   );
   assert.deepEqual(page.errors, []);
 });
