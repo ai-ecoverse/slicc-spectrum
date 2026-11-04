@@ -9983,48 +9983,72 @@ for (const [color, width] of [['light'], ['dark'], ['light', 420]]) {
   });
 }
 
-async function secretRulesDialog(t, color, width) {
-  const page = await open(t, { approvals: 'secrets', color });
+const verdictShots = {
+  'level-1': {
+    verdict: 'routine',
+    text: 'Routine. It reads a file and changes nothing. It fits what you asked for.',
+    actions: ['deny', 'always', 'once'],
+  },
+  'level-2': {
+    verdict: 'permissions',
+    text: 'Changes permissions. It changes which secrets programs may use and where they may be sent. It fits what you asked for.',
+    actions: ['deny', 'once'],
+  },
+  'level-3': {
+    verdict: 'harm',
+    text: 'Could harm the system. It deletes system files, and that is hard to undo. It isn’t clear it serves what you asked for.',
+    actions: ['deny', 'once'],
+  },
+  checking: { verdict: 'checking', text: 'Checking…', actions: ['deny', 'once'] },
+  'no-verdict': {
+    verdict: 'none',
+    text: 'No verdict: The check didn’t answer in time.',
+    actions: ['deny', 'once'],
+  },
+};
+
+async function verdictDialog(t, scenario, color, width) {
+  const page = await open(t, { approvals: scenario, color });
   if (width)
     await page.send('Emulation.setDeviceMetricsOverride', {
       width,
-      height: 800,
+      height: 860,
       deviceScaleFactor: 1,
       mobile: false,
     });
-  await page.until(() => !!window.$('slicc-app', 'slicc-approvals', '[data-secret-rules]'));
-  await new Promise((resolve) => setTimeout(resolve, 400));
+  await page.until(() => !!window.$('slicc-app', 'slicc-approvals', '[data-action=once]'));
+  await new Promise((resolve) => setTimeout(resolve, 600));
   const dialog = await page.evaluate(() => {
     const root = window.$('slicc-app', 'slicc-approvals').shadowRoot;
-    const box = root.querySelector('[data-secret-rules]').getBoundingClientRect();
+    const block = root.querySelector('.judged');
+    const box = root.querySelector('sp-alert-dialog').getBoundingClientRect();
     return {
-      notice: root.querySelector('[data-secret-rules]').dataset.secretRules,
-      always: window.model.approvals.list()[0].always,
+      verdict: block.dataset.verdict,
+      text: block.textContent.trim(),
       actions: [...root.querySelectorAll('swc-button')].map((button) => button.dataset.action),
       inside: box.left >= 0 && box.right <= innerWidth,
+      width: innerWidth,
     };
   });
   assert.deepEqual(dialog, {
-    notice: '/etc/fnox/config.toml',
-    always: true,
-    actions: ['deny', 'once'],
+    ...verdictShots[scenario],
     inside: true,
+    width: width || dialog.width,
   });
-  await shot(page, `sudo-secret-rules-${color}${width ? `-${width}` : ''}`);
+  await shot(page, `sudo-${scenario}-${color}${width ? `-${width}` : ''}`);
   assert.deepEqual(page.errors, []);
 }
 
-test('a sudo request that changes secret rules is flagged, in light', async (t) => {
-  await secretRulesDialog(t, 'light');
-});
-
-test('a sudo request that changes secret rules is flagged, in dark', async (t) => {
-  await secretRulesDialog(t, 'dark');
-});
-
-test('the secret rules flag fits a narrow window', async (t) => {
-  await secretRulesDialog(t, 'light', 420);
-});
+for (const scenario of Object.keys(verdictShots)) {
+  for (const [color, width] of [
+    ['light', 0],
+    ['dark', 0],
+    ['light', 420],
+  ])
+    test(`the ${scenario} sudo dialog renders in ${color}${width ? ` at ${width}` : ''}`, async (t) => {
+      await verdictDialog(t, scenario, color, width);
+    });
+}
 
 async function sudoFromTerminal(t) {
   const page = await open(t, { approvals: 'none' });

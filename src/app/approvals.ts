@@ -7,6 +7,7 @@ import type {
   Approval,
   ApprovalDecision,
   ApprovalEnd,
+  ApprovalLevel,
   ApprovalsPort,
   GuestMessageApproval,
   GuestToolApproval,
@@ -775,9 +776,6 @@ function hintOf(approval: Approval): string | Array<string | TemplateResult> {
     : guestAlwaysHint(approval as GuestMessageApproval | GuestToolApproval);
 }
 
-const deniedSudo = (approval: Approval): boolean =>
-  approval.kind === 'sudo' && approval.verdict?.decision === 'deny';
-
 const tooLong = 'This request is too long to show in full, so it can’t be allowed.';
 
 export function guestWaiting(approval: GuestMessageApproval | GuestToolApproval): string {
@@ -786,15 +784,48 @@ export function guestWaiting(approval: GuestMessageApproval | GuestToolApproval)
     : `${approval.agentName ?? 'This cone'} wants to run ${approval.tool} for ${approval.requester.name}, which waits for the owner's approval.`;
 }
 
-const onceOnly = ({ once }: SecretRulesVerdict) =>
-  once
-    ? html`<p class="hint" data-once-only=${once}>Always allow isn’t offered: xargs adds arguments from its input, and they could include a write flag.</p>`
-    : nothing;
+const levels: Record<ApprovalLevel, { name: string; label: string }> = {
+  1: { name: 'routine', label: 'Routine.' },
+  2: { name: 'permissions', label: 'Changes permissions.' },
+  3: { name: 'harm', label: 'Could harm the system.' },
+};
 
-const clear: SecretRulesVerdict = { certain: null, maybe: null, once: null };
+type Judged = GuestMessageApproval | GuestToolApproval | SudoApproval;
 
-function rulesOf(approval: Approval): SecretRulesVerdict {
-  return approval.kind === 'sudo' ? secretRules(approval.command, approval.cwd) : clear;
+const fits = (aligned: boolean | undefined): string =>
+  aligned === undefined
+    ? ''
+    : aligned
+      ? ' It fits what you asked for.'
+      : ' It isn’t clear it serves what you asked for.';
+
+function leveled(approval: Judged): ApprovalLevel | null {
+  const level = approval.verdict?.level;
+  return level && Object.hasOwn(levels, level) ? level : null;
+}
+
+export function verdictNote(approval: Judged): string {
+  if (approval.kind !== 'sudo' || approval.always) return '';
+  const level = leveled(approval);
+  if (level === 2) return 'Always allow isn’t offered for permission changes.';
+  if (!level && !approval.judging && !approval.verdict && approval.verdictError)
+    return 'Always allow appears only with a level 1 verdict.';
+  return '';
+}
+
+function judged(approval: Judged): TemplateResult | typeof nothing {
+  const { verdict, judging, verdictError } = approval;
+  const level = leveled(approval);
+  if (verdict && level) {
+    const { name, label } = levels[level];
+    return html`<div class="judged" data-verdict=${name} data-level=${level}>${level === 3 ? html`<swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>` : nothing}<p><strong>${label}</strong>${verdict.reason ? ` ${verdict.reason}` : ''}${fits(verdict.aligned)}</p></div>`;
+  }
+  if (judging) return html`<div class="judged" data-verdict="checking"><p>Checking…</p></div>`;
+  if (verdict?.decision)
+    return html`<p class="verdict" data-verdict=${verdict.decision}>${verdict.decision === 'unsure' ? 'The automatic check wasn’t sure' : `The automatic check would ${verdict.decision} this`}: ${verdict.reason}</p>`;
+  if (verdictError)
+    return html`<div class="judged" data-verdict="none"><p><strong>No verdict:</strong> ${verdictError}</p></div>`;
+  return nothing;
 }
 
 export function waiting(model: SliccModel | null, now: number): Approval[] {
@@ -960,26 +991,38 @@ export class SliccApprovals extends ModelElement {
         margin-block-start: var(--swc-spacing-300);
         font-variant-numeric: tabular-nums;
       }
-      .rules {
+      .judged {
         display: flex;
         align-items: flex-start;
         gap: var(--swc-spacing-100);
         margin-block-start: var(--swc-spacing-200);
         padding: var(--swc-spacing-200) var(--swc-spacing-300);
         border-radius: var(--swc-corner-radius-medium-default);
-        background: var(--swc-notice-subtle-background-color-default);
-        --swc-icon-color: var(--swc-icon-color-notice);
+        background: var(--swc-neutral-subtle-background-color-default);
+        color: var(--swc-neutral-content-color-default);
+        font-size: var(--swc-font-size-75);
+        overflow-wrap: anywhere;
       }
-      .rules swc-icon-alert-triangle {
+      .judged[data-verdict='checking'],
+      .judged[data-verdict='none'] {
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .judged[data-level='1'] {
+        background: var(--swc-positive-subtle-background-color-default);
+      }
+      .judged[data-level='2'] {
+        background: var(--swc-notice-subtle-background-color-default);
+      }
+      .judged[data-level='3'] {
+        background: var(--swc-negative-subtle-background-color-default);
+        --swc-icon-color: var(--swc-icon-color-negative);
+      }
+      .judged swc-icon-alert-triangle {
         flex: none;
         margin-block-start: 0.15em;
       }
-      .rules p {
+      .judged p {
         margin: 0;
-      }
-      .rules code {
-        font-family: var(--swc-code-font-family-stack);
-        overflow-wrap: anywhere;
       }
       .problem {
         display: flex;
@@ -1049,13 +1092,7 @@ export class SliccApprovals extends ModelElement {
       (decision !== 'deny' && (!this.#armed || !this.#whole(approval)))
     )
       return;
-    const verdict = rulesOf(approval);
-    const always = approval.kind === 'sudo' || (approval.kind !== 'tray' && approval.always);
-    if (
-      decision === 'always' &&
-      (!always || deniedSudo(approval) || verdict.certain || verdict.maybe || verdict.once)
-    )
-      return;
+    if (decision === 'always' && (approval.kind === 'tray' || !approval.always)) return;
     this.busy = decision;
     this.failure = null;
     this.#pending.add(approval.id);
@@ -1217,10 +1254,9 @@ export class SliccApprovals extends ModelElement {
   }
 
   #verdict(approval: Approval): TemplateResult | typeof nothing {
-    const verdict = approval.kind === 'tray' ? undefined : approval.verdict;
-    return verdict
-      ? html`<p class="verdict" data-verdict=${verdict.decision}>${verdict.decision === 'unsure' ? 'The automatic check wasn’t sure' : `The automatic check would ${verdict.decision} this`}: ${verdict.reason}</p>`
-      : nothing;
+    if (approval.kind === 'tray') return nothing;
+    const note = verdictNote(approval);
+    return html`<div class="judge" aria-live="polite">${judged(approval)}${note ? html`<p class="hint" data-verdict-note>${note}</p>` : nothing}</div>`;
   }
 
   #actions(approval: Approval, rejected: boolean, always: boolean): TemplateResult {
@@ -1229,11 +1265,7 @@ export class SliccApprovals extends ModelElement {
     const whole = this.#whole(approval);
     return html`${this.#button(approval, 'deny', 'Deny', 'secondary')}
       ${whole && always ? this.#button(approval, 'always', inCwd(approval) ? 'Always allow in this directory' : 'Always allow', 'secondary') : nothing}
-      ${whole ? this.#button(approval, 'once', deniedSudo(approval) ? 'Allow anyway (once)' : 'Allow once', 'accent') : nothing}`;
-  }
-
-  #offered(approval: Approval, rules: string | null): boolean {
-    return approval.kind !== 'tray' && approval.always && !deniedSudo(approval) && !rules;
+      ${whole ? this.#button(approval, 'once', 'Allow once', 'accent') : nothing}`;
   }
 
   render(): unknown {
@@ -1255,10 +1287,7 @@ export class SliccApprovals extends ModelElement {
     const [approval, ...rest] = held ? [held, ...list.filter(({ id }) => id !== held.id)] : list;
     if (!approval) return nothing;
     const failure = this.failure?.id === approval.id ? this.failure.message : '';
-    const verdict = rulesOf(approval);
-    const rules = verdict.certain ?? verdict.maybe;
-    const offered = this.#offered(approval, rules);
-    const always = offered && !verdict.once;
+    const always = approval.kind !== 'tray' && approval.always;
     const gate = this.#gate(approval);
     const hint = always && this.#whole(approval) ? hintOf(approval) : '';
     return this.#dialog(
@@ -1269,8 +1298,6 @@ export class SliccApprovals extends ModelElement {
           ${this.#request(approval, true)}
           ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${commandText(approval.cwd, false)}</p>` : nothing}
           ${this.#verdict(approval)}
-          ${rules ? html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${verdict.certain ? html`<strong>This changes secret rules.</strong> It names <code>${commandText(rules, false)}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${commandText(rules, false)}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>` : nothing}
-          ${offered ? onceOnly(verdict) : nothing}
           ${hint ? html`<p class="hint">${hint}</p>` : nothing}
           ${!failure && gate ? html`<p class="hint" data-allow-hint>${gate}</p>` : nothing}
           ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : html`<p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>`}
