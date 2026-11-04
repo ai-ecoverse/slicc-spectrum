@@ -575,15 +575,41 @@ function commas(words: string[]): string[] {
     .filter(Boolean);
 }
 
+function ahead(words: string[], test: (word: string) => boolean): number[] {
+  const next = Array<number>(words.length + 1).fill(words.length);
+  for (let index = words.length - 1; index >= 0; index--)
+    next[index] = test(words[index]) ? next[index + 1] : index;
+  return next;
+}
+
 function positions(words: string[]): boolean[] {
+  const skip = ahead(
+    words,
+    (word) =>
+      assignment.test(word) || Object.hasOwn(wrappers, command(word)) || /^-|^\d+$/.test(word)
+  );
+  const dashes = ahead(words, (word) => word.startsWith('-'));
   const at: boolean[] = [];
-  for (const index of words.keys())
-    at.push(
+  let [runner, options] = [-1, -1];
+  for (const index of words.keys()) {
+    const flag = words[index - 1] === '--' ? index - 2 : index - 1;
+    const start =
       index === 0 ||
-        shell(words, index) ||
-        (at[index - 1] && keyword.test(words[index - 1])) ||
-        (at[index - 2] === true && words[index - 2] === 'function')
-    );
+      (words[index] !== '--' &&
+        ((words[index - 1] === '-c' && shell(words, index)) ||
+          (flag > runner &&
+            runner >= 0 &&
+            index <= options &&
+            /^-[A-Za-z]*c[A-Za-z]*$/.test(words[flag])))) ||
+      (at[index - 1] && keyword.test(words[index - 1])) ||
+      (at[index - 2] === true && words[index - 2] === 'function');
+    at.push(start);
+    if (start) {
+      runner = skip[index];
+      options = dashes[runner + 1] ?? -1;
+      if (!shells.includes(command(words[runner] ?? ''))) runner = -1;
+    }
+  }
   return at;
 }
 
