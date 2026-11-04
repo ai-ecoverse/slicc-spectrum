@@ -20,6 +20,12 @@ export type ApprovalScenario =
   | 'withdrawn'
   | 'secrets'
   | 'judge-denied'
+  | 'level-1'
+  | 'level-2'
+  | 'level-3'
+  | 'checking'
+  | 'no-verdict'
+  | 'legacy'
   | 'guest'
   | 'guest-follower'
   | 'guest-always'
@@ -162,6 +168,82 @@ function trayFixtures(scenario: ApprovalScenario, now: number): Approval[] {
   return all.filter((approval) => approval.id === id);
 }
 
+function levelFixture(scenario: ApprovalScenario, now: number): Approval {
+  const base = {
+    id: `sudo-${scenario}`,
+    kind: 'sudo',
+    createdAt: now,
+    expiresAt: now + 5 * minutes,
+    always: false,
+  } as const;
+  const docs = { kind: 'agent', name: 'docs-pass', agentId: 'scoop-docs' } as const;
+  const cone = { kind: 'user', name: 'cone', where: 'Terminal 2' } as const;
+  if (scenario === 'level-1')
+    return {
+      ...base,
+      requester: docs,
+      command: 'jq .rules /etc/slicc/secrets-policy.toml',
+      cwd: '/',
+      always: true,
+      verdict: {
+        level: 1,
+        aligned: true,
+        decision: 'allow',
+        reason: 'It reads a file and changes nothing.',
+      },
+    };
+  if (scenario === 'level-2')
+    return {
+      ...base,
+      requester: cone,
+      command: 'nano /etc/slicc/secrets-policy.toml',
+      cwd: '/home/cone/harbor',
+      verdict: {
+        level: 2,
+        aligned: true,
+        decision: 'unsure',
+        reason: 'It changes which secrets programs may use and where they may be sent.',
+      },
+    };
+  if (scenario === 'level-3')
+    return {
+      ...base,
+      requester: { kind: 'agent', name: 'quiet-otter', agentId: 'scoop-otter' },
+      command: 'rm -rf /',
+      cwd: '/home/cone/harbor',
+      verdict: {
+        level: 3,
+        aligned: false,
+        decision: 'deny',
+        reason: 'It deletes system files, and that is hard to undo.',
+      },
+    };
+  if (scenario === 'legacy')
+    return {
+      ...base,
+      requester: docs,
+      command: 'cp harbor.toml /etc/fnox/config.toml',
+      cwd: '/home/cone/harbor',
+      always: true,
+      verdict: { decision: 'unsure', reason: 'it isn’t clear it serves what the owner asked for.' },
+    };
+  if (scenario === 'checking')
+    return {
+      ...base,
+      requester: cone,
+      command: 'chown -R cone /home/cone/harbor',
+      cwd: '/home/cone',
+      judging: true,
+    };
+  return {
+    ...base,
+    requester: cone,
+    command: 'xargs -a list.txt sort',
+    cwd: '/home/cone/harbor',
+    verdictError: 'The check didn’t answer in time.',
+  };
+}
+
 export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): Approval[] {
   const agent: Approval = {
     id: 'sudo-jq',
@@ -202,6 +284,8 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
         verdict: { decision: 'deny', reason: 'it looks high-risk.' },
       },
     ];
+  if (['checking', 'no-verdict', 'legacy'].includes(scenario) || scenario.startsWith('level-'))
+    return [levelFixture(scenario, now)];
   if (scenario === 'secrets')
     return [
       {
@@ -274,7 +358,7 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
   }
 
   raise(approval: Approval): void {
-    this.#approvals = [...this.#approvals, approval];
+    this.#approvals = [...this.#approvals.filter(({ id }) => id !== approval.id), approval];
     this.emit('approvals', this.list());
   }
 

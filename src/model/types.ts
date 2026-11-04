@@ -1172,8 +1172,12 @@ export interface ApprovalRequester {
   where?: string;
 }
 
+export type ApprovalLevel = 1 | 2 | 3;
+
 export interface ApprovalVerdict {
-  decision: 'allow' | 'deny' | 'unsure';
+  level?: ApprovalLevel;
+  aligned?: boolean;
+  decision?: 'allow' | 'deny' | 'unsure';
   reason: string;
 }
 
@@ -1189,6 +1193,8 @@ export interface SudoApproval {
   always: boolean;
   alwaysScope?: 'cwd';
   verdict?: ApprovalVerdict;
+  judging?: boolean;
+  verdictError?: string;
 }
 
 export interface GuestMessageApproval {
@@ -1203,6 +1209,8 @@ export interface GuestMessageApproval {
   expiresAt: number;
   always: boolean;
   verdict?: ApprovalVerdict;
+  judging?: boolean;
+  verdictError?: string;
 }
 
 export interface GuestToolApproval {
@@ -1219,6 +1227,8 @@ export interface GuestToolApproval {
   expiresAt: number;
   always: boolean;
   verdict?: ApprovalVerdict;
+  judging?: boolean;
+  verdictError?: string;
 }
 
 export interface TrayApproval {
