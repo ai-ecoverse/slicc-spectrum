@@ -112,41 +112,29 @@ const readOnly = [
   'yq',
 ];
 
-function letter(arg: string, short: string, takes: string): boolean {
-  for (const char of arg.slice(1)) {
-    if (short.includes(char)) return true;
-    if (char === '=' || takes.includes(char)) return false;
-  }
-  return false;
-}
+const flag = (short: string, long: string[]) => (args: string[]) =>
+  args.some((arg) => {
+    if (!arg.startsWith('--')) return /^-[^-]/.test(arg) && [...short].some((c) => arg.includes(c));
+    const [name] = arg.slice(2).split('=');
+    return !!name && long.some((option) => option.startsWith(name));
+  });
 
-const flag =
-  (short: string, long: string[], takes = '') =>
-  (args: string[]) =>
-    args.find((arg) => {
-      if (!arg.startsWith('--')) return /^-[^-]/.test(arg) && letter(arg, short, takes);
-      const [name] = arg.slice(2).split('=');
-      return !!name && long.some((option) => option.startsWith(name));
-    });
-
-const operands = (valued: RegExp) => (args: string[]) => {
+const operands = (args: string[]) => {
   const end = args.includes('--') ? args.indexOf('--') : args.length;
-  const named = args
-    .slice(0, end)
-    .filter((arg, index) => (arg === '-' || !arg.startsWith('-')) && !valued.test(args[index - 1]));
+  const named = args.slice(0, end).filter((arg) => arg === '-' || !arg.startsWith('-'));
   return named.length + args.slice(end + 1).length > 1;
 };
 
-const writes: Record<string, (args: string[]) => unknown> = {
-  base64: flag('o', ['output'], 'bwi'),
-  file: flag('C', ['compile'], 'efFmP'),
+const writes: Record<string, (args: string[]) => boolean> = {
+  base64: flag('o', ['output']),
+  file: flag('C', ['compile']),
   find: (args) =>
     args.some((arg) => /^-(?:delete|exec|execdir|ok|okdir|fls|fprint0?|fprintf)$/.test(arg)),
-  sort: flag('oT', ['output', 'temporary-directory', 'compress-program'], 'kSt'),
-  tree: flag('oR', [], 'HILPT'),
-  uniq: operands(/^(?:-[^-]*[fsw]|--(?:s|sk|ski|skip|skip-|skip-[fc]\w*|c|ch\w*))$/),
-  xxd: operands(/^-(?:[cglnosR]|cols|groupsize|len|name|offset|seek)$/),
-  yq: flag('is', ['inplace', 'in-place', 'split-exp', 'split-exp-file'], 'fIop'),
+  sort: flag('oT', ['output', 'temporary-directory', 'compress-program']),
+  tree: flag('oR', []),
+  uniq: operands,
+  xxd: operands,
+  yq: flag('is', ['inplace', 'in-place', 'split-exp', 'split-exp-file']),
 };
 
 function candidates(word: string): string[] {
@@ -180,6 +168,47 @@ function protects(path: string, whole: boolean): boolean {
 
 const command = (word: string) => word.split('/').pop() ?? '';
 
+const trusted = ([word, ...args]: string[]) => {
+  const name = word.replace(/^\/(?:usr\/)?bin\/(?=[^/]+$)/, '');
+  return readOnly.includes(name) && !writes[name]?.(args);
+};
+
+function letter(arg: string, short: string, takes: string): boolean {
+  for (const char of arg.slice(1)) {
+    if (short.includes(char)) return true;
+    if (char === '=' || takes.includes(char)) return false;
+  }
+  return false;
+}
+
+const option =
+  (short: string, long: string[], takes = '') =>
+  (args: string[]) =>
+    args.find((arg) => {
+      if (!arg.startsWith('--')) return /^-[^-]/.test(arg) && letter(arg, short, takes);
+      const [name] = arg.slice(2).split('=');
+      return !!name && long.some((each) => each.startsWith(name));
+    });
+
+const outputs = (valued: RegExp) => (args: string[]) => {
+  const end = args.includes('--') ? args.indexOf('--') : args.length;
+  const named = args
+    .slice(0, end)
+    .filter((arg, index) => (arg === '-' || !arg.startsWith('-')) && !valued.test(args[index - 1]));
+  return named.length + args.slice(end + 1).length > 1;
+};
+
+const gates: Record<string, (args: string[]) => unknown> = {
+  base64: option('o', ['output'], 'bwi'),
+  file: option('C', ['compile'], 'efFmP'),
+  find: writes.find,
+  sort: option('oT', ['output', 'temporary-directory', 'compress-program'], 'kSt'),
+  tree: option('oR', [], 'HILPT'),
+  uniq: outputs(/^(?:-[^-]*[fsw]|--(?:s|sk|ski|skip|skip-|skip-[fc]\w*|c|ch\w*))$/),
+  xxd: outputs(/^-(?:[cglnosR]|cols|groupsize|len|name|offset|seek)$/),
+  yq: option('is', ['inplace', 'in-place', 'split-exp', 'split-exp-file'], 'fIop'),
+};
+
 const plainly = (word: string) => word.replace(/^\/(?:usr\/)?bin\/(?=[^/]+$)/, '');
 
 const valued = [
@@ -211,12 +240,11 @@ function launched(args: string[], from = 0): string[][] {
 }
 
 const runs = ([run = 'echo', ...rest]: string[]): boolean =>
-  plainly(run) !== 'xargs' && trusted([run, ...rest]);
+  plainly(run) !== 'xargs' && safe([run, ...rest]);
 
-const trusted = ([word, ...args]: string[]): boolean => {
+const safe = ([word, ...args]: string[]): boolean => {
   const name = plainly(word);
-  if (name !== 'xargs') return readOnly.includes(name) && !writes[name]?.(args);
-  return launched(args).every(runs);
+  return readOnly.includes(name) && !gates[name]?.(args);
 };
 
 const unseen: Record<string, (args: string[]) => string | undefined> = {
@@ -224,7 +252,7 @@ const unseen: Record<string, (args: string[]) => string | undefined> = {
     const run = launched(args).find((words) => !runs(words));
     return run && command(run[0] as string);
   },
-  yq: (args) => flag('s', ['split-exp', 'split-exp-file'], 'fIop')(args)?.split('=')[0],
+  yq: (args) => option('s', ['split-exp', 'split-exp-file'], 'fIop')(args)?.split('=')[0],
 };
 
 const keyword = /^(?:!|\{|if|then|else|elif|do|while|until|coproc)$/;
@@ -244,7 +272,13 @@ const wrappers: Record<string, [string, string[], number]> = {
 
 const assignment = /^[A-Za-z_]\w*(?:\[[^\]]*\])?\+?=/;
 
-const shell = (word: string) => /^-[A-Za-z]*c[A-Za-z]*$/.test(word);
+const shells = ['sh', 'bash', 'dash', 'zsh', 'ksh', 'fish'];
+
+const shell = (words: string[], index: number) =>
+  /^-[A-Za-z]*c[A-Za-z]*$/.test(words[index - 1] ?? '') &&
+  words.slice(0, index - 1).some((word) => shells.includes(command(word)));
+
+const escaped = /[\\$\ue124]/;
 
 function split(arg: string, next: string | undefined): string | undefined {
   const short = arg.match(/^-[^-S]*S(.*)$/);
@@ -267,7 +301,8 @@ function options(words: string[], from: number, name: string, out: string[][]): 
     const string = name === 'env' ? split(arg, words[index + 1]) : undefined;
     if (string !== undefined) {
       const rest = words.slice(index + (string === words[index + 1] ? 2 : 1));
-      walk([...quoted(string, true).filter(Boolean), ...rest], 0, out);
+      if (escaped.test(string)) out.push(['env -S']);
+      else walk([...tokens(string), ...rest], 0, out);
       return;
     }
     if (arg.startsWith('--')) {
@@ -282,7 +317,7 @@ function walk(words: string[], from: number, out: string[][]): void {
   let index = from;
   while (assignment.test(words[index] ?? '')) index++;
   const name = command(words[index] ?? '');
-  if (keyword.test(words[index] ?? '')) walk(words, index + 1, out);
+  if (keyword.test(words[index] ?? '') || name === 'eval') walk(words, index + 1, out);
   else if (Object.hasOwn(wrappers, name)) options(words, index + 1, name, out);
   else out.push(words.slice(index));
 }
@@ -292,10 +327,10 @@ function commands(
   pick: (name: string, args: string[]) => string | null | undefined
 ): string | null {
   for (const words of segments)
-    for (const [index, word] of words.entries()) {
-      if (index && !shell(word)) continue;
+    for (const index of words.keys()) {
+      if (index && !shell(words, index)) continue;
       const out: string[][] = [];
-      walk(words, index && index + 1, out);
+      walk(words, index, out);
       for (const [run = '', ...args] of out) {
         const found = pick(command(run), args);
         if (found) return found;
@@ -306,6 +341,7 @@ function commands(
 
 const blind = (segments: string[][]) =>
   commands(segments, (name, args) => {
+    if (name === 'env -S') return name;
     const found = Object.hasOwn(unseen, name) && unseen[name](args);
     return found ? `${name} ${found}` : null;
   });
@@ -315,19 +351,22 @@ const fed = (segments: string[][]) =>
     if (name !== 'xargs') return null;
     const gated = launched(args)
       .map(([run = 'echo']) => plainly(run))
-      .find((run) => Object.hasOwn(writes, run));
+      .find((run) => Object.hasOwn(gates, run));
     return gated && `xargs ${gated}`;
   });
 
 function lines(text: string): string[][] {
-  const argv = (parts: string[]) => parts.map((part) => quoted(part, true).filter(Boolean));
-  const run = argv(shield(text).split(separators).map(unshield));
-  const blunt = argv(text.split(separators).map((part) => part.replace(/['"\\]/g, '')));
-  const shells = run.some(
-    (words) =>
-      words.length && !trusted(words) && !Object.hasOwn(unseen, words[0].split('/').pop() as string)
+  const run = shield(text).split(separators).map(unshield).map(tokens);
+  const blunt = text.split(separators).map((part) => tokens(part.replace(/['"\\]/g, '')));
+  const nested = run.some((words) =>
+    words.some(
+      (word, index) =>
+        command(word) === 'eval' ||
+        shell(words, index) ||
+        (command(word) === 'env' && /^(?:-[^-]*S|--s)/.test(words[index + 1] ?? ''))
+    )
   );
-  return shells ? [...run, ...blunt] : run;
+  return nested ? [...run, ...blunt] : run;
 }
 
 const expansion = /\$\([^)]*\)?|\$\{[^}]*\}?|\$[\w@*#?$!-]*|`[^`]*`?/;
@@ -427,7 +466,28 @@ const literal = (char: string, quote: string) =>
 const unmark = (path: string) =>
   path.replace(/[\ue100-\ue17f]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xe100));
 
-function quoted(segment: string, drop = false): string[] {
+function quoted(segment: string): string[] {
+  const words: string[] = [];
+  let word = '';
+  let quote = '';
+  for (let index = 0; index < segment.length; index++) {
+    const char = segment[index];
+    if (quote === '"' && char === '\\' && /["\\$`\n]/.test(segment[index + 1] ?? ''))
+      word += segment[++index];
+    else if (quote) {
+      if (char === quote) quote = '';
+      else word += literal(char, quote);
+    } else if (char === "'" || char === '"') quote = char;
+    else if (char === '\\') word += segment[++index] ?? '';
+    else if (/[\s<>=]/.test(char)) {
+      words.push(word);
+      word = '';
+    } else word += char;
+  }
+  return [...words, word];
+}
+
+function tokens(segment: string): string[] {
   const words: string[] = [];
   let word = '';
   let quote = '';
@@ -446,15 +506,15 @@ function quoted(segment: string, drop = false): string[] {
       else word += literal(char, quote);
     } else if (char === "'" || char === '"') quote = char;
     else if (char === '\\') word += segment[++index] ?? '';
-    else if (drop && /[<>]/.test(char)) {
+    else if (/[<>]/.test(char)) {
       if (/^\d+$/.test(word)) word = '';
       push();
       target = true;
-    } else if (/[\s<>]/.test(char) || (!drop && char === '=')) push();
+    } else if (/\s/.test(char)) push();
     else word += char;
   }
   push();
-  return words;
+  return words.filter(Boolean);
 }
 
 function commas(words: string[]): string[] {
@@ -467,7 +527,7 @@ function scan(words: string[], cwds: Set<string>, whole: boolean): string | null
   let cd = false;
   for (const [index, word] of words.entries()) {
     let hit: string | null = null;
-    if (index === 0 || shell(words[index - 1]) || keyword.test(words[index - 1])) {
+    if (index === 0 || words[index - 1] === '-c') {
       cd = ['cd', 'pushd'].includes(command(word));
       hit = touched(cwds, word, whole);
     } else if (!cd) hit = touched(cwds, word, whole);
@@ -507,8 +567,6 @@ function reach(command: string, cwd?: string | null): string | null {
   if (named) return absolute([...cwds].pop() ?? start, named);
   const home = segments.flat().find((word) => /^~(?:[+-](?:\/|$)|.*\/\.\.(?:\/|$))/.test(word));
   if (home) return home;
-  const data = blind(lines(text));
-  if (data) return data;
   return segments.flat().some((word) => word.includes('$')) || text.includes('`')
     ? (text.match(expansion) as RegExpMatchArray)[0]
     : null;
@@ -521,15 +579,13 @@ export interface SecretRulesVerdict {
 }
 
 export function secretRules(command: string, cwd?: string | null): SecretRulesVerdict {
-  const found = reach(command, cwd);
+  const base = reach(command, cwd);
+  const argv = base ? [] : lines(unglob(ansi(command.replace(/\\\n/g, ''))));
+  const found = base ?? blind(argv);
   const hit = found && unmark(found);
   if (hit && certain(hit)) return { certain: hit, maybe: null, once: null };
   if (hit) return { certain: null, maybe: hit, once: null };
-  return {
-    certain: null,
-    maybe: null,
-    once: fed(lines(unglob(ansi(command.replace(/\\\n/g, ''))))),
-  };
+  return { certain: null, maybe: null, once: fed(argv) };
 }
 
 function origin(): HTMLElement | null {

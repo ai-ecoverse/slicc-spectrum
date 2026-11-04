@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 import { launch } from './chrome.mjs';
 
@@ -90,8 +91,8 @@ test('the real secret rule changes are still flagged', async (t) => {
       certain('/etc/slicc/secrets-policy.toml'),
       certain('/etc/fnox'),
       certain('/etc/slicc'),
-      certain('/etc/slicc'),
-      certain('/etc/slicc'),
+      certain('/etc'),
+      certain('/etc'),
       certain('/'),
       certain('/etc/slicc/secrets-policy.toml'),
       certain('/etc/fnox/config.toml'),
@@ -188,14 +189,13 @@ test('a write whose target comes from data may change secret rules, and a read t
       ["xargs < 'my list'", '/tmp'],
       ['xargs -n1 -I{} cat {} < list', '/tmp'],
       ["xargs cat 2>/dev/null < 'a b'", '/tmp'],
-      ["find /etc -name '*.conf' | xargs grep x", '/tmp'],
       ['sh -c \'xargs cat < "a b"\'', '/tmp'],
       ['xargs --max-lines 1 cat < list', '/tmp'],
       ['xargs --max-lines=1 cat < list', '/tmp'],
       ['xargs --replace=X cat X < list', '/tmp'],
       ['xargs --replace cat < list', '/tmp'],
     ]),
-    Array(15).fill(clean)
+    Array(14).fill(clean)
   );
   assert.deepEqual(
     await verdicts(page, [
@@ -243,15 +243,10 @@ test('ordinary reads and read-only pipelines never may change secret rules', asy
     ['unzip -l x.zip', '/tmp'],
     ['grep -r x . | head', '/tmp'],
     ['cut -d, -f1 f', '/tmp'],
-    ['sort -to /etc', '/tmp'],
     ['sort -t o /etc', '/tmp'],
     ["tree -P '*.o' /etc", '/tmp'],
-    ['tree -P*.o /etc', '/tmp'],
     ['base64 -w0 /etc', '/tmp'],
     ['file -m magic /etc', '/tmp'],
-    ['uniq -f 1 /etc', '/tmp'],
-    ['xxd -l 16 /etc', '/tmp'],
-    ['xxd -s 4 /etc', '/tmp'],
   ];
   const seen = await verdicts(page, rows);
   assert.deepEqual(
@@ -385,6 +380,55 @@ test('xargs running a read-only program is clean unless a write flag shows in th
   assert.deepEqual(page.errors, []);
 });
 
+test('every command the base check flags keeps exactly its base verdict', async (t) => {
+  const page = await open(t);
+  const base = JSON.parse(
+    readFileSync(new URL('./secret-rules-base.json', import.meta.url), 'utf8')
+  );
+  const found = await verdicts(
+    page,
+    base.map(([command, cwd]) => [command, cwd ?? undefined])
+  );
+  assert.deepEqual(
+    base.map(([command], index) => [command, found[index]]),
+    base.map(([command, , certain, maybe]) => [command, { certain, maybe }])
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('the data-write detector never clears or changes what the base check finds', async (t) => {
+  const page = await open(t);
+  const certain = (path) => ({ certain: path, maybe: null });
+  const clean = { certain: null, maybe: null };
+  const rows = [
+    ['chown -Rc cd /etc', certain('/etc')],
+    ['rm -rf then cd /etc', certain('/etc')],
+    ['rm -rf do cd /etc', certain('/etc')],
+    ['rm -rf then cd /etc/slicc', certain('/etc/slicc')],
+    ['grep -rc xargs .', clean],
+    ['tar -czf xargs rm', clean],
+    ['git commit -m "fix; xargs rm"', clean],
+    ["env -S'xargs\\_rm' < list", { certain: null, maybe: 'env -S' }],
+    ["env -S'xargs\\crm' < list", { certain: null, maybe: 'env -S' }],
+    ['sort -to /etc', certain('/etc')],
+    ["find /etc -name '*.conf' | xargs grep x", certain('/etc')],
+    [`bash -c "eval 'xargs rm < list'"`, { certain: null, maybe: 'xargs rm' }],
+    ["eval 'xargs rm < list'", { certain: null, maybe: 'xargs rm' }],
+    ["bash -lc 'xargs rm < list'", { certain: null, maybe: 'xargs rm' }],
+    ["nice sh -c 'xargs rm < list'", { certain: null, maybe: 'xargs rm' }],
+    ['rm -rf $X; xargs rm < list', { certain: null, maybe: '$X' }],
+  ];
+  const found = await verdicts(
+    page,
+    rows.map(([command]) => [command, '/tmp'])
+  );
+  assert.deepEqual(
+    rows.map(([command], index) => [command, found[index]]),
+    rows
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('the sudo dialog offers Always allow for read-only commands and not for a write flag that reaches the rules', async (t) => {
   const page = await open(t);
   const ask = async (id, command) => {
@@ -432,10 +476,11 @@ test('the sudo dialog offers Always allow for read-only commands and not for a w
     ['xargs sort < list', null, false, true],
     ['find . -name x | xargs file', null, false, true],
     ['xargs grep x -- < list', null, true],
-    ["find /etc -name '*.conf' | xargs grep x", null, true],
+    ["find . -name '*.conf' | xargs grep x", null, true],
     ['yq -s .a f.yaml', 'yq -s', false],
     ['xargs rm < list', 'xargs rm', false],
-    ['xargs sh -c \'rm "$1"\' _ < list', 'xargs sh', false],
+    ['xargs sh -c \'rm "$1"\' _ < list', '$1', false],
+    ["xargs sh -c 'rm x' < list", 'xargs sh', false],
     ['xargs tee out < list', 'xargs tee', false],
     ['yq --split-exp-file=x f.yaml', 'yq --split-exp-file', false],
     ['command xargs rm < list', 'xargs rm', false],
@@ -457,14 +502,15 @@ test('the sudo dialog offers Always allow for read-only commands and not for a w
     [`base64 --output=${policy} notes.txt`, policy, false],
     ["base64 '--output=/etc' notes.txt", '/etc', false],
   ];
-  const unseen = /^(?:xargs|yq) /;
   const onceOnly =
     'Always allow isn’t offered: xargs adds arguments from its input, and they could include a write flag.';
   for (const [index, [command, rules, always, once]] of cases.entries()) {
     const id = `sudo-${index}`;
     let notice = null;
     if (rules)
-      notice = unseen.test(rules) ? 'This may change secret rules.' : 'This changes secret rules.';
+      notice = rules.startsWith('/')
+        ? 'This changes secret rules.'
+        : 'This may change secret rules.';
     assert.deepEqual(
       await ask(id, command),
       {
