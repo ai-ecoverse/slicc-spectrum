@@ -859,8 +859,16 @@ test('Under forced colors, the dots, segments, unread circle and selection bar k
       const segment = window.agentRow('cone-sliccy').querySelector('.segment');
       const unread = window.agentRow('cone-release').querySelector('.marker.unread');
       const bar = window.agentRow('cone-sliccy');
+      const style = getComputedStyle(dot);
+      const empty =
+        style.backgroundColor === 'rgba(0, 0, 0, 0)' || style.backgroundColor === 'transparent';
+      const ink = empty
+        ? style.borderColor.includes(system('CanvasText')) ||
+          style.outlineColor.includes(system('CanvasText')) ||
+          style.color === system('CanvasText')
+        : style.backgroundColor === system('CanvasText');
       return [
-        paint(dot),
+        [style.forcedColorAdjust, ink],
         paint(segment),
         [...paint(unread), getComputedStyle(unread).color],
         paint(bar, '::before'),
@@ -868,23 +876,114 @@ test('Under forced colors, the dots, segments, unread circle and selection bar k
         value.map((part) =>
           part === 'none'
             ? part
-            : part === system('CanvasText')
-              ? 'CanvasText'
-              : part === system('Highlight')
-                ? 'Highlight'
-                : part === system('HighlightText')
-                  ? 'HighlightText'
-                  : part
+            : part === true || part === false
+              ? part
+              : part === system('CanvasText')
+                ? 'CanvasText'
+                : part === system('Highlight')
+                  ? 'Highlight'
+                  : part === system('HighlightText')
+                    ? 'HighlightText'
+                    : part
         )
       );
     }),
     [
-      ['none', 'CanvasText'],
+      ['none', true],
       ['none', 'CanvasText'],
       ['none', 'Highlight', 'HighlightText'],
       ['none', 'Highlight'],
     ]
   );
+  assert.deepEqual(page.errors, []);
+});
+
+for (const width of [1280, 420]) {
+  for (const forced of [false, true]) {
+    test(`Agents status markers stay pairwise distinct${forced ? ' in forced colours' : ''} at ${width}`, async (t) => {
+      const page = await open(t);
+      await page.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 860,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+      if (forced) {
+        await page.send('Emulation.setEmulatedMedia', {
+          features: [{ name: 'forced-colors', value: 'active' }],
+        });
+        t.after(() => page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {}));
+        await page.until(() => matchMedia('(forced-colors: active)').matches);
+      }
+      if (width < 600)
+        await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+      await page.until(() =>
+        Boolean(window.agentRow('cone-sliccy')?.querySelector('.marker.status'))
+      );
+      const cues = {};
+      for (const status of ['idle', 'working', 'thinking', 'waiting', 'error']) {
+        cues[status] = await page.evaluate((status) => {
+          const list = window.model.agent.list.bind(window.model.agent);
+          window.model.agent.list = () =>
+            list().map((agent) => (agent.id === 'cone-sliccy' ? { ...agent, status } : agent));
+          const agents = window.agents();
+          agents.requestUpdate();
+          return agents.updateComplete.then(() => {
+            const marker = window.agentRow('cone-sliccy').querySelector('.marker.status');
+            const style = getComputedStyle(marker);
+            const empty =
+              style.backgroundColor === 'rgba(0, 0, 0, 0)' ||
+              style.backgroundColor === 'transparent';
+            return [
+              empty ? 'empty' : 'solid',
+              style.borderStyle,
+              Number.parseFloat(style.outlineWidth) > 0 ? 'ring' : 'flat',
+              marker.querySelector('swc-icon-alert-triangle') ? 'alert' : 'none',
+              style.animationName !== 'none' && style.animationName !== '' ? 'pulse' : 'still',
+            ].join('|');
+          });
+        }, status);
+      }
+      assert.deepEqual(cues, {
+        idle: 'solid|solid|flat|none|still',
+        working: 'solid|solid|ring|none|pulse',
+        thinking: 'empty|dashed|flat|none|still',
+        waiting: 'empty|solid|flat|none|still',
+        error: 'empty|solid|flat|alert|still',
+      });
+      assert.equal(new Set(Object.values(cues)).size, 5);
+      assert.deepEqual(page.errors, []);
+    });
+  }
+}
+
+test('working keeps its ring when motion is reduced, so it still differs from idle', async (t) => {
+  const page = await open(t);
+  await page.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+  });
+  t.after(() => page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {}));
+  await page.until(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const cues = await page.evaluate(() => {
+    const list = window.model.agent.list.bind(window.model.agent);
+    const stamp = (status) => {
+      window.model.agent.list = () =>
+        list().map((agent) => (agent.id === 'cone-sliccy' ? { ...agent, status } : agent));
+      const agents = window.agents();
+      agents.requestUpdate();
+      return agents.updateComplete.then(() => {
+        const marker = window.agentRow('cone-sliccy').querySelector('.marker.status');
+        const style = getComputedStyle(marker);
+        return [
+          Number.parseFloat(style.outlineWidth) > 0 ? 'ring' : 'flat',
+          style.animationName !== 'none' && style.animationName !== '' ? 'pulse' : 'still',
+        ].join('|');
+      });
+    };
+    return stamp('idle').then((idle) => stamp('working').then((working) => ({ idle, working })));
+  });
+  assert.deepEqual(cues, { idle: 'flat|still', working: 'ring|still' });
   assert.deepEqual(page.errors, []);
 });
 
