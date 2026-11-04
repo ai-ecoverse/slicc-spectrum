@@ -142,31 +142,6 @@ const readOnly = [
   'yq',
 ];
 
-const flag = (short: string, long: string[]) => (args: string[]) =>
-  args.some((arg) => {
-    if (!arg.startsWith('--')) return /^-[^-]/.test(arg) && [...short].some((c) => arg.includes(c));
-    const [name] = arg.slice(2).split('=');
-    return !!name && long.some((option) => option.startsWith(name));
-  });
-
-const operands = (args: string[]) => {
-  const end = args.includes('--') ? args.indexOf('--') : args.length;
-  const named = args.slice(0, end).filter((arg) => arg === '-' || !arg.startsWith('-'));
-  return named.length + args.slice(end + 1).length > 1;
-};
-
-const writes: Record<string, (args: string[]) => boolean> = {
-  base64: flag('o', ['output']),
-  file: flag('C', ['compile']),
-  find: (args) =>
-    args.some((arg) => /^-(?:delete|exec|execdir|ok|okdir|fls|fprint0?|fprintf)$/.test(arg)),
-  sort: flag('oT', ['output', 'temporary-directory', 'compress-program']),
-  tree: flag('oR', []),
-  uniq: operands,
-  xxd: operands,
-  yq: flag('is', ['inplace', 'in-place', 'split-exp', 'split-exp-file']),
-};
-
 function candidates(word: string): string[] {
   if (word === '--') return [];
   if (word.startsWith('--'))
@@ -198,11 +173,6 @@ function protects(path: string, whole: boolean): boolean {
 
 const command = (word: string) => word.split('/').pop() ?? '';
 
-const trusted = ([word, ...args]: string[]) => {
-  const name = word.replace(/^\/(?:usr\/)?bin\/(?=[^/]+$)/, '');
-  return readOnly.includes(name) && !writes[name]?.(args);
-};
-
 function letter(arg: string, short: string, takes: string): boolean {
   for (const char of arg.slice(1)) {
     if (short.includes(char)) return true;
@@ -231,7 +201,8 @@ const outputs = (valued: RegExp) => (args: string[]) => {
 const gates: Record<string, (args: string[]) => unknown> = {
   base64: option('o', ['output'], 'bwi'),
   file: option('C', ['compile'], 'efFmP'),
-  find: writes.find,
+  find: (args) =>
+    args.some((arg) => /^-(?:delete|exec|execdir|ok|okdir|fls|fprint0?|fprintf)$/.test(arg)),
   sort: option('oT', ['output', 'temporary-directory', 'compress-program'], 'kSt'),
   tree: option('oR', [], 'HILPT'),
   uniq: outputs(/^(?:-[^-]*[fsw]|--(?:s|sk|ski|skip|skip-|skip-[fc]\w*|c|ch\w*))$/),
@@ -300,6 +271,11 @@ const safe = ([word, ...args]: string[]): boolean => {
   return readOnly.includes(name) && !gates[name]?.(args);
 };
 
+const trusted = ([word, ...args]: string[]): boolean =>
+  plainly(word) === 'xargs'
+    ? launched(args).every((run) => runs(run) && !Object.hasOwn(gates, plainly(run[0] ?? 'echo')))
+    : safe([word, ...args]);
+
 const unseen: Record<string, (args: string[]) => string | undefined> = {
   xargs: (args) => {
     const run = launched(args).find((words) => !runs(words));
@@ -325,14 +301,20 @@ const wrappers: Record<string, [string, string[], number]> = {
 
 const assignment = /^[A-Za-z_]\w*(?:\[[^\]]*\])?\+?=/;
 
-const shells = ['sh', 'bash', 'dash', 'zsh', 'ksh', 'fish'];
+const shells = ['sh', 'bash', 'dash', 'zsh', 'ksh', 'fish', 'su', 'runuser'];
+
+const firsts = new WeakMap<string[], number>();
 
 function shell(words: string[], index: number): boolean {
   const flag = words[index - 1] === '--' ? index - 2 : index - 1;
-  return (
-    /^-[A-Za-z]*c[A-Za-z]*$/.test(words[flag] ?? '') &&
-    words.slice(0, flag).some((word) => shells.includes(command(word)))
-  );
+  if (!/^-[A-Za-z]*c[A-Za-z]*$/.test(words[flag] ?? '')) return false;
+  if (!firsts.has(words))
+    firsts.set(
+      words,
+      words.findIndex((word) => shells.includes(command(word)))
+    );
+  const first = firsts.get(words) as number;
+  return first >= 0 && first < flag;
 }
 
 const escaped = /[\\$\ue124]/;
@@ -352,12 +334,12 @@ interface Walk {
 }
 
 function options(at: Walk, start: number, name: string): void {
-  if (at.seen.has(`${name} ${start}`)) return;
-  at.seen.add(`${name} ${start}`);
   const { words } = at;
   const [takes, long, positional] = wrappers[name];
   let index = start;
   for (; words[index]?.startsWith('-') && (words[index] !== '-' || name === 'env'); index++) {
+    if (at.seen.has(`${name} ${index}`)) return;
+    at.seen.add(`${name} ${index}`);
     const arg = words[index];
     if (arg === '--') {
       index++;
@@ -593,11 +575,24 @@ function commas(words: string[]): string[] {
     .filter(Boolean);
 }
 
+function positions(words: string[]): boolean[] {
+  const at: boolean[] = [];
+  for (const index of words.keys())
+    at.push(
+      index === 0 ||
+        shell(words, index) ||
+        (at[index - 1] && keyword.test(words[index - 1])) ||
+        (at[index - 2] === true && words[index - 2] === 'function')
+    );
+  return at;
+}
+
 function scan(words: string[], cwds: Set<string>, whole: boolean): string | null {
   let cd = false;
+  const at = positions(words);
   for (const [index, word] of words.entries()) {
     let hit: string | null = null;
-    if (index === 0 || words[index - 1] === '-c') {
+    if (at[index]) {
       cd = ['cd', 'pushd'].includes(command(word));
       hit = touched(cwds, word, whole);
     } else if (!cd) hit = touched(cwds, word, whole);
