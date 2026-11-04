@@ -10005,6 +10005,11 @@ const verdictShots = {
     text: 'No verdict: The check didn’t answer in time.',
     actions: ['deny', 'once'],
   },
+  legacy: {
+    verdict: 'unsure',
+    text: 'The automatic check wasn’t sure: it isn’t clear it serves what the owner asked for.',
+    actions: ['deny', 'once'],
+  },
 };
 
 async function verdictDialog(t, scenario, color, width) {
@@ -10020,7 +10025,7 @@ async function verdictDialog(t, scenario, color, width) {
   await new Promise((resolve) => setTimeout(resolve, 600));
   const dialog = await page.evaluate(() => {
     const root = window.$('slicc-app', 'slicc-approvals').shadowRoot;
-    const block = root.querySelector('.judged');
+    const block = root.querySelector('[data-verdict]');
     const box = root.querySelector('sp-alert-dialog').getBoundingClientRect();
     return {
       verdict: block.dataset.verdict,

@@ -25,6 +25,7 @@ export type ApprovalScenario =
   | 'level-3'
   | 'checking'
   | 'no-verdict'
+  | 'legacy'
   | 'guest'
   | 'guest-follower'
   | 'guest-always'
@@ -217,6 +218,15 @@ function levelFixture(scenario: ApprovalScenario, now: number): Approval {
         reason: 'It deletes system files, and that is hard to undo.',
       },
     };
+  if (scenario === 'legacy')
+    return {
+      ...base,
+      requester: docs,
+      command: 'cp harbor.toml /etc/fnox/config.toml',
+      cwd: '/home/cone/harbor',
+      always: true,
+      verdict: { decision: 'unsure', reason: 'it isn’t clear it serves what the owner asked for.' },
+    };
   if (scenario === 'checking')
     return {
       ...base,
@@ -274,7 +284,7 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
         verdict: { decision: 'deny', reason: 'it looks high-risk.' },
       },
     ];
-  if (scenario.startsWith('level-') || scenario === 'checking' || scenario === 'no-verdict')
+  if (['checking', 'no-verdict', 'legacy'].includes(scenario) || scenario.startsWith('level-'))
     return [levelFixture(scenario, now)];
   if (scenario === 'secrets')
     return [

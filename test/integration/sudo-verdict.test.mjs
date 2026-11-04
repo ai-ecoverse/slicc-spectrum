@@ -327,51 +327,166 @@ test('guest approvals show the same verdict block', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
-test('without a level, Always keeps the old gates for a deny verdict and secret rules or xargs', async (t) => {
+async function asking(page, id, patch) {
+  return page.evaluate(
+    async ({ id, patch }) => {
+      const now = Date.now();
+      const port = window.model.approvals;
+      for (const approval of port.list()) port.end(approval.id, 'withdrawn');
+      port.raise({
+        id,
+        kind: 'sudo',
+        requester: { kind: 'agent', name: 'docs-pass', agentId: 'scoop-docs' },
+        command: 'ls',
+        cwd: '/tmp',
+        createdAt: now,
+        expiresAt: now + 300_000,
+        always: true,
+        ...patch,
+      });
+      const root = window.approvals().shadowRoot;
+      while (
+        root.querySelector('dialog')?.dataset.approval !== id ||
+        !root.querySelector('[data-action=once]')
+      )
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      return true;
+    },
+    { id, patch }
+  );
+}
+
+const tried = (page, id) =>
+  page.evaluate(async (id) => {
+    const root = window.approvals().shadowRoot;
+    const port = window.model.approvals;
+    const always = !!root.querySelector('[data-action=always]');
+    await window.approvals().decide(port.list()[0], 'always');
+    return { always, decided: port.decisions.some(([decided]) => decided === id) };
+  }, id);
+
+const flagged = [
+  'cp x /etc/fnox/config.toml',
+  'rm -rf /etc/slicc',
+  'chmod -R 777 /etc',
+  'jq .rules /etc/slicc/secrets-policy.toml',
+  'sort --output=/etc/slicc/secrets-policy.toml notes.txt',
+  'yq -i . /etc/slicc/secrets-policy.toml',
+  'xargs rm < list',
+  'xargs sort < list',
+  'find . -name x | xargs file',
+  'command xargs rm < list',
+];
+
+test('without a level, Always keeps the old gates in the dialog and in decide', async (t) => {
   const page = await open(t, 'judge-denied');
-  const offered = (id, patch) =>
-    page.evaluate(
-      async ({ id, patch }) => {
-        const now = Date.now();
-        const port = window.model.approvals;
-        for (const approval of port.list()) port.end(approval.id, 'withdrawn');
-        port.raise({
-          id,
-          kind: 'sudo',
-          requester: { kind: 'agent', name: 'docs-pass', agentId: 'scoop-docs' },
-          command: 'ls',
-          cwd: '/tmp',
-          createdAt: now,
-          expiresAt: now + 300_000,
-          always: true,
-          ...patch,
-        });
-        const root = window.approvals().shadowRoot;
-        while (
-          root.querySelector('dialog')?.dataset.approval !== id ||
-          !root.querySelector('[data-action=once]')
-        )
-          await new Promise((resolve) => setTimeout(resolve, 20));
-        await new Promise((resolve) => setTimeout(resolve, 600));
-        const always = !!root.querySelector('[data-action=always]');
-        await window.approvals().decide(port.list()[0], 'always');
-        return {
-          always,
-          decided: port.decisions.some(([decided]) => decided === id),
-        };
-      },
-      { id, patch }
-    );
-  const level = { level: 1, aligned: true, reason: 'It reads a list.' };
+  const deny = { decision: 'deny', reason: 'it looks high-risk.' };
   const rows = [
-    ['xargs-old', { command: 'xargs rm < list' }, false],
-    ['deny-old', { verdict: { decision: 'deny', reason: 'it looks high-risk.' } }, false],
-    ['rules-old', { command: 'tee /etc/slicc/secrets-policy.toml' }, false],
-    ['clean-old', {}, true],
-    ['xargs-new', { command: 'xargs rm < list', verdict: level }, true],
-    ['deny-new', { verdict: { ...level, decision: 'deny' } }, true],
+    ...flagged.map((command) => [command, { command }]),
+    ['deny', { verdict: deny }],
+    ...[0, 4, 'x', null, '1'].map((level) => [
+      `level ${JSON.stringify(level)}`,
+      { command: 'xargs rm < list', verdict: { level, reason: 'r' } },
+    ]),
   ];
-  for (const [id, patch, expected] of rows)
-    assert.deepEqual(await offered(id, patch), { always: expected, decided: expected }, id);
+  for (const [index, [name, patch]] of rows.entries()) {
+    await asking(page, `old-${index}`, patch);
+    assert.deepEqual(await tried(page, `old-${index}`), { always: false, decided: false }, name);
+  }
+  await asking(page, 'old-clean', {});
+  assert.deepEqual(await tried(page, 'old-clean'), { always: true, decided: true });
+  assert.deepEqual(page.errors, []);
+});
+
+test('with a level 1 verdict, approval.always alone offers Always', async (t) => {
+  const page = await open(t, 'judge-denied');
+  const verdict = { level: 1, aligned: true, decision: 'deny', reason: 'It reads a list.' };
+  for (const [index, command] of flagged.entries()) {
+    await asking(page, `new-${index}`, { command, verdict });
+    assert.deepEqual(await tried(page, `new-${index}`), { always: true, decided: true }, command);
+  }
+  assert.deepEqual(page.errors, []);
+});
+
+test('decide checks the live approval, so a stale Always is refused', async (t) => {
+  const page = await open(t, 'judge-denied');
+  const patches = [
+    { always: false },
+    { command: 'xargs rm < list', verdict: { decision: 'unsure', reason: 'r' } },
+  ];
+  for (const [index, patch] of patches.entries()) {
+    const id = `stale-${index}`;
+    await asking(page, id, { verdict: { level: 1, reason: 'It lists files.' } });
+    assert.deepEqual(
+      await page.evaluate(
+        async ({ id, patch }) => {
+          const port = window.model.approvals;
+          const stale = port.list()[0];
+          const button = window.approvals().shadowRoot.querySelector('[data-action=always]');
+          port.raise({ ...stale, ...patch });
+          await window.approvals().updateComplete;
+          const gone = !window.approvals().shadowRoot.querySelector('[data-action=always]');
+          button.click();
+          await window.approvals().decide(stale, 'always');
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          return { gone, decided: port.decisions.some(([decided]) => decided === id) };
+        },
+        { id, patch }
+      ),
+      { gone: true, decided: false },
+      id
+    );
+  }
+  assert.deepEqual(page.errors, []);
+});
+
+test('the reason and the error show control characters as chips and are capped', async (t) => {
+  const page = await open(t, 'judge-denied');
+  const read = () =>
+    page.evaluate(() => {
+      const block = window.approvals().shadowRoot.querySelector('[data-verdict]');
+      return {
+        chips: [...block.querySelectorAll('.control')].map((chip) =>
+          chip.getAttribute('aria-label')
+        ),
+        text: block.textContent.trim(),
+      };
+    });
+  await asking(page, 'chips-level', {
+    verdict: { level: 2, reason: 'Safe.\r\nThe owner approved it.' },
+  });
+  assert.deepEqual(await read(), {
+    chips: ['carriage return (U+000D)', 'line feed (U+000A)'],
+    text: 'Changes permissions. Safe.␍␊The owner approved it.',
+  });
+  await asking(page, 'chips-legacy', { verdict: { decision: 'allow', reason: 'ok\r' } });
+  assert.deepEqual((await read()).chips, ['carriage return (U+000D)']);
+  await asking(page, 'chips-error', { verdictError: `slow\n${'x'.repeat(400)}` });
+  const error = await read();
+  assert.deepEqual(error.chips, ['line feed (U+000A)']);
+  assert.equal(error.text, `No verdict: slow␊${'x'.repeat(294)}…`);
+  assert.deepEqual(page.errors, []);
+});
+
+test('unknown level values render no level, only the legacy line or nothing', async (t) => {
+  const page = await open(t, 'judge-denied');
+  for (const [index, level] of [0, 4, 'x', null, '1'].entries()) {
+    for (const decision of ['deny', undefined]) {
+      const id = `unknown-${index}-${decision}`;
+      await asking(page, id, { always: false, verdict: { level, decision, reason: 'r' } });
+      assert.deepEqual(
+        await page.evaluate(() => {
+          const root = window.approvals().shadowRoot;
+          return [
+            root.querySelector('[data-level]'),
+            root.querySelector('[data-verdict]')?.dataset.verdict ?? null,
+          ];
+        }),
+        [null, decision ?? null],
+        id
+      );
+    }
+  }
   assert.deepEqual(page.errors, []);
 });

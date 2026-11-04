@@ -801,7 +801,7 @@ const fits = (aligned: boolean | undefined): string =>
 
 function leveled(approval: Judged): ApprovalLevel | null {
   const level = approval.verdict?.level;
-  return level && Object.hasOwn(levels, level) ? level : null;
+  return level === 1 || level === 2 || level === 3 ? level : null;
 }
 
 function legacyClean(approval: Judged): boolean {
@@ -815,12 +815,12 @@ export function offersAlways(approval: Approval): boolean {
   return (
     approval.kind !== 'tray' &&
     approval.always &&
-    (approval.verdict?.level !== undefined || legacyClean(approval))
+    (leveled(approval) !== null || legacyClean(approval))
   );
 }
 
 export function verdictNote(approval: Judged): string {
-  if (approval.kind !== 'sudo' || approval.always) return '';
+  if (approval.kind !== 'sudo' || offersAlways(approval)) return '';
   const level = leveled(approval);
   if (level === 2) return 'Always allow isn’t offered for permission changes.';
   if (!level && !approval.judging && !approval.verdict && approval.verdictError)
@@ -828,18 +828,23 @@ export function verdictNote(approval: Judged): string {
   return '';
 }
 
+const shown = (text: string): Array<string | TemplateResult> => {
+  const chars = Array.from(text);
+  return commandText(chars.length > 300 ? `${chars.slice(0, 299).join('')}…` : text, false);
+};
+
 function judged(approval: Judged): TemplateResult | typeof nothing {
   const { verdict, judging, verdictError } = approval;
   const level = leveled(approval);
   if (verdict && level) {
     const { name, label } = levels[level];
-    return html`<div class="judged" data-verdict=${name} data-level=${level}>${level === 3 ? html`<swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>` : nothing}<p><strong>${label}</strong>${verdict.reason ? ` ${verdict.reason}` : ''}${fits(verdict.aligned)}</p></div>`;
+    return html`<div class="judged" data-verdict=${name} data-level=${level}>${level === 3 ? html`<swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>` : nothing}<p><strong>${label}</strong>${verdict.reason ? html` ${shown(verdict.reason)}` : ''}${fits(verdict.aligned)}</p></div>`;
   }
   if (judging) return html`<div class="judged" data-verdict="checking"><p>Checking…</p></div>`;
   if (verdict?.decision)
-    return html`<p class="verdict" data-verdict=${verdict.decision}>${verdict.decision === 'unsure' ? 'The automatic check wasn’t sure' : `The automatic check would ${verdict.decision} this`}: ${verdict.reason}</p>`;
+    return html`<p class="verdict" data-verdict=${verdict.decision}>${verdict.decision === 'unsure' ? 'The automatic check wasn’t sure' : `The automatic check would ${verdict.decision} this`}: ${shown(verdict.reason)}</p>`;
   if (verdictError)
-    return html`<div class="judged" data-verdict="none"><p><strong>No verdict:</strong> ${verdictError}</p></div>`;
+    return html`<div class="judged" data-verdict="none"><p><strong>No verdict:</strong> ${shown(verdictError)}</p></div>`;
   return nothing;
 }
 
@@ -1107,7 +1112,8 @@ export class SliccApprovals extends ModelElement {
       (decision !== 'deny' && (!this.#armed || !this.#whole(approval)))
     )
       return;
-    if (decision === 'always' && !offersAlways(approval)) return;
+    const live = port.list().find(({ id }) => id === approval.id);
+    if (decision === 'always' && !(live && offersAlways(live))) return;
     this.busy = decision;
     this.failure = null;
     this.#pending.add(approval.id);
