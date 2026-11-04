@@ -7829,10 +7829,16 @@ for (const width of [1280, 420]) {
       }, status);
       const now = await page.evaluate(header);
       assert.deepEqual(
-        { ...now, color: undefined },
-        { ...idle, color: undefined, status, label: ['img', word, word] },
+        { ...now, color: undefined, size: undefined },
+        { ...idle, color: undefined, size: undefined, status, label: ['img', word, word] },
         status
       );
+      if (status === 'error') {
+        assert.ok(now.size[0] >= 12 && now.size[1] >= 12, String(now.size));
+        assert.ok(now.size[0] > idle.size[0] || now.size[1] > idle.size[1]);
+      } else {
+        assert.deepEqual(now.size, idle.size, status);
+      }
     }
     assert.deepEqual(page.errors, []);
   });
@@ -7964,8 +7970,8 @@ for (const width of [1280, 420]) {
               style.backgroundColor === 'transparent';
             return [
               empty ? 'empty' : 'solid',
-              style.borderStyle,
-              Number.parseFloat(style.outlineWidth) > 0 ? 'ring' : 'flat',
+              style.borderStyle || 'none',
+              style.boxShadow !== 'none' ? 'ring' : 'flat',
               dot.querySelector('swc-icon-alert-triangle') ? 'alert' : 'none',
               style.animationName !== 'none' && style.animationName !== '' ? 'pulse' : 'still',
               dot.getAttribute('aria-label'),
@@ -7979,12 +7985,74 @@ for (const width of [1280, 420]) {
         working: 'solid|solid|ring|none|pulse|Working|0',
         thinking: 'empty|dashed|flat|none|still|Thinking|0',
         waiting: 'empty|solid|flat|none|still|Waiting|0',
-        error: 'empty|solid|flat|alert|still|Error|0',
+        error: 'empty|none|flat|alert|still|Error|0',
       });
       assert.equal(new Set(Object.values(cues)).size, 5);
+      const errorSize = await page.evaluate(() => {
+        const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+        const icon = chat.shadowRoot.querySelector(
+          'header [data-agent-status] swc-icon-alert-triangle'
+        );
+        const box = icon.getBoundingClientRect();
+        return [Math.round(box.width), Math.round(box.height)];
+      });
+      assert.ok(errorSize[0] >= 12 && errorSize[1] >= 12, String(errorSize));
       assert.deepEqual(page.errors, []);
     });
   }
+}
+
+for (const reduced of [false, true]) {
+  test(`focusing the chat header status mark shows a focus ring${reduced ? ' under reduced motion' : ''}`, async (t) => {
+    const page = await open(t);
+    if (reduced) {
+      await page.send('Emulation.setEmulatedMedia', {
+        features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+      });
+      t.after(() => page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {}));
+      await page.until(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+    await page.until(
+      () =>
+        !!window
+          .$('slicc-app', 'slicc-dock', 'slicc-chat')
+          ?.shadowRoot.querySelector('header [data-agent-status]')
+    );
+    await page.evaluate(() => {
+      const active = window.model.agent.active();
+      const list = window.model.agent.list.bind(window.model.agent);
+      window.model.agent.list = () =>
+        list().map((agent) => (agent.id === active ? { ...agent, status: 'working' } : agent));
+      const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+      chat.requestUpdate();
+      return chat.updateComplete;
+    });
+    const look = (focus) =>
+      page.evaluate((focus) => {
+        const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+        const dot = chat.shadowRoot.querySelector('header [data-agent-status]');
+        if (focus) dot.focus({ focusVisible: true });
+        else dot.blur();
+        const style = getComputedStyle(dot);
+        return {
+          outline: style.outlineStyle,
+          width: style.outlineWidth,
+          ring: style.boxShadow !== 'none',
+          visible: Number.parseFloat(style.outlineWidth) > 0 && style.outlineStyle !== 'none',
+        };
+      }, focus);
+    await page.press('Shift');
+    const before = await look(false);
+    assert.deepEqual(
+      { outline: before.outline, ring: before.ring, visible: before.visible },
+      { outline: 'none', ring: true, visible: false }
+    );
+    const after = await look(true);
+    assert.equal(after.ring, true);
+    assert.equal(after.visible, true);
+    assert.notEqual(after.outline, before.outline);
+    assert.deepEqual(page.errors, []);
+  });
 }
 
 test('the chat header refreshes its models once the first provider connects, on one row at 1280 and 420', async (t) => {

@@ -200,7 +200,6 @@ export class SliccAgents extends ModelElement {
       box-sizing: border-box;
       inline-size: var(--swc-spacing-200);
       block-size: var(--swc-spacing-200);
-      border: var(--swc-border-width-200) solid transparent;
       border-radius: var(--swc-corner-radius-full);
       background: var(--status-color);
       color: var(--status-color);

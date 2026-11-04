@@ -236,10 +236,18 @@ export const shared = css`
     box-sizing: border-box;
     width: var(--swc-spacing-100);
     height: var(--swc-spacing-100);
+    margin-inline: var(--swc-border-width-200);
     border: var(--swc-border-width-200) solid transparent;
     border-radius: var(--swc-corner-radius-full);
     background: var(--swc-neutral-visual-color);
     color: var(--swc-neutral-visual-color);
+  }
+  .dot:focus {
+    outline: none;
+  }
+  .dot:focus-visible {
+    outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+    outline-offset: var(--swc-focus-ring-gap);
   }
   .dot[data-variant='info'] {
     background: var(--swc-informative-visual-color);
@@ -263,14 +271,18 @@ export const shared = css`
     border-color: var(--swc-notice-visual-color);
   }
   .dot[data-agent-status='working'] {
-    outline: var(--swc-border-width-200) solid var(--swc-informative-visual-color);
-    outline-offset: var(--swc-border-width-100);
+    box-shadow: 0 0 0 var(--swc-border-width-200) var(--swc-informative-visual-color);
     animation: status-working var(--swc-animation-duration-600) var(--swc-animation-ease-in-out)
       infinite;
   }
   .dot[data-agent-status='error'] {
+    width: var(--swc-spacing-200);
+    height: var(--swc-spacing-200);
+    margin-inline: calc(
+      var(--swc-border-width-200) - (var(--swc-spacing-200) - var(--swc-spacing-100)) / 2
+    );
+    border: none;
     background: transparent;
-    border-color: transparent;
     color: var(--swc-negative-visual-color);
   }
   .dot[data-agent-status='error'] swc-icon-alert-triangle {
@@ -281,21 +293,26 @@ export const shared = css`
     --swc-icon-block-size: 100%;
     --swc-icon-color: currentColor;
   }
+  .marker.status {
+    border: var(--swc-border-width-200) solid transparent;
+    margin-inline-end: var(--swc-border-width-200);
+  }
   .marker.status[data-status='thinking'] {
     background: transparent;
-    border: var(--swc-border-width-200) dashed var(--status-color);
+    border-style: dashed;
+    border-color: var(--status-color);
   }
   .marker.status[data-status='waiting'] {
     background: transparent;
-    border: var(--swc-border-width-200) solid var(--status-color);
+    border-color: var(--status-color);
   }
   .marker.status[data-status='working'] {
-    outline: var(--swc-border-width-200) solid var(--status-color);
-    outline-offset: var(--swc-border-width-100);
+    box-shadow: 0 0 0 var(--swc-border-width-200) var(--status-color);
     animation: status-working var(--swc-animation-duration-600) var(--swc-animation-ease-in-out)
       infinite;
   }
   .marker.status[data-status='error'] {
+    border: none;
     background: transparent;
     color: var(--status-color);
   }
@@ -320,7 +337,7 @@ export const shared = css`
       background: CanvasText;
       color: CanvasText;
       border-color: CanvasText;
-      outline-color: CanvasText;
+      box-shadow: none;
     }
     .dot[data-agent-status='thinking'],
     .dot[data-agent-status='waiting'],
@@ -329,6 +346,13 @@ export const shared = css`
     .marker.status[data-status='waiting'],
     .marker.status[data-status='error'] {
       background: transparent;
+    }
+    .dot[data-agent-status='working'],
+    .marker.status[data-status='working'] {
+      box-shadow: 0 0 0 var(--swc-border-width-200) CanvasText;
+    }
+    .dot:focus-visible {
+      outline-color: Highlight;
     }
   }
   .count {
