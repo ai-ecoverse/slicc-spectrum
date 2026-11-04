@@ -91,8 +91,8 @@ test('the real secret rule changes are still flagged', async (t) => {
       certain('/etc/slicc/secrets-policy.toml'),
       certain('/etc/fnox'),
       certain('/etc/slicc'),
-      certain('/etc'),
-      certain('/etc'),
+      certain('/etc/slicc'),
+      certain('/etc/slicc'),
       certain('/'),
       certain('/etc/slicc/secrets-policy.toml'),
       certain('/etc/fnox/config.toml'),
@@ -380,23 +380,50 @@ test('xargs running a read-only program is clean unless a write flag shows in th
   assert.deepEqual(page.errors, []);
 });
 
-test('every command the base check flags keeps exactly its base verdict', async (t) => {
+test('every command the base check flags keeps its verdict, except the listed reads and cd paths', async (t) => {
   const page = await open(t);
   const base = JSON.parse(
     readFileSync(new URL('./secret-rules-base.json', import.meta.url), 'utf8')
   );
+  const clean = { certain: null, maybe: null };
+  const changed = {
+    "find /etc -name '*.conf' | xargs grep x": clean,
+    'sort -to /etc': clean,
+    'uniq -f 1 /etc': clean,
+    'uniq -s 2 /etc': clean,
+    'xxd -l 16 /etc': clean,
+    'xxd -s 4 /etc': clean,
+    "bash -lc 'cd /etc; rm -r slicc'": { certain: '/etc/slicc', maybe: null },
+    'if cd /etc; then rm -r slicc; fi': { certain: '/etc/slicc', maybe: null },
+    '{ cd /etc; rm -r slicc; }': { certain: '/etc/slicc', maybe: null },
+    "bash -lc 'cd /etc && rm -rf fnox'": { certain: '/etc/fnox', maybe: null },
+    'function f { cd /etc; rm -r slicc; }': { certain: '/etc/slicc', maybe: null },
+    'if cd /etc; then rm -r x; fi': clean,
+    'find /etc | xargs grep x': clean,
+    'find /etc | xargs -I{} cat {}': clean,
+    'sort -ko /etc': clean,
+    'yq -Ii /etc/slicc': clean,
+    "bash -c -- 'cd /etc; rm -r slicc'": { certain: '/etc/slicc', maybe: null },
+    "nice bash -lc 'cd /etc; rm -r slicc'": { certain: '/etc/slicc', maybe: null },
+    'xxd -len 16 /etc': clean,
+    'ls /etc | xargs basename': clean,
+    'find /etc | xargs basename': clean,
+    'find /etc | xargs printf %s': clean,
+    'find / | xargs -n1 dirname': clean,
+    'echo /etc | xargs printf': clean,
+  };
   const found = await verdicts(
     page,
     base.map(([command, cwd]) => [command, cwd ?? undefined])
   );
   assert.deepEqual(
     base.map(([command], index) => [command, found[index]]),
-    base.map(([command, , certain, maybe]) => [command, { certain, maybe }])
+    base.map(([command, , certain, maybe]) => [command, changed[command] ?? { certain, maybe }])
   );
   assert.deepEqual(page.errors, []);
 });
 
-test('the data-write detector never clears or changes what the base check finds', async (t) => {
+test('the data-write detector and the read-only fixes keep the true positives', async (t) => {
   const page = await open(t);
   const certain = (path) => ({ certain: path, maybe: null });
   const clean = { certain: null, maybe: null };
@@ -410,8 +437,68 @@ test('the data-write detector never clears or changes what the base check finds'
     ['git commit -m "fix; xargs rm"', clean],
     ["env -S'xargs\\_rm' < list", { certain: null, maybe: 'env -S' }],
     ["env -S'xargs\\crm' < list", { certain: null, maybe: 'env -S' }],
-    ['sort -to /etc', certain('/etc')],
-    ["find /etc -name '*.conf' | xargs grep x", certain('/etc')],
+    ['chown -c cd /etc', certain('/etc')],
+    ['chmod -R 777 sh -Rc cd /etc', certain('/etc')],
+    ['chmod -R 777 sh -c -- cd /etc', certain('/etc')],
+    ['chmod 777 bash -vc cd /etc', certain('/etc')],
+    ["bash -c -- 'cd /etc; rm -r slicc'", certain('/etc/slicc')],
+    ["FOO=1 sh -c 'cd /etc; rm -r slicc'", certain('/etc/slicc')],
+    ["timeout -s KILL 5 sh -c 'cd /etc; rm -r slicc'", certain('/etc/slicc')],
+    ["sh x -c 'cd /etc; rm -r slicc'", certain('/etc/slicc')],
+    ['chmod -c cd /etc', certain('/etc')],
+    ["su -c 'cd /etc; rm -r slicc'", certain('/etc/slicc')],
+    ['rm -rf if cd /etc', certain('/etc')],
+    ['function f { cd /etc; rm -r slicc; }', certain('/etc/slicc')],
+    ['sort --output=/etc/slicc/secrets-policy.toml f', certain('/etc/slicc/secrets-policy.toml')],
+    ["sort '--output=/etc' f", certain('/etc')],
+    ['sort -o /etc/x /etc', certain('/etc')],
+    ['yq -i . /etc/slicc', certain('/etc/slicc')],
+    ['tree -R -H . /etc', certain('/etc')],
+    ['uniq -f 1 /etc /tmp/out', certain('/etc')],
+    ['xxd -l 16 /etc /tmp/out', certain('/etc')],
+    ['echo /etc | xargs sort', certain('/etc')],
+    ['echo /etc | xargs rm -rf', certain('/etc')],
+    ['find / | xargs xargs grep x', certain('/')],
+    ['find /etc | command xargs rm', certain('/etc')],
+    ['command xargs rm < list', { certain: null, maybe: 'xargs rm' }],
+    ['sort -to /etc', clean],
+    ['sort -ko /etc', clean],
+    ['tree -P*.o /etc', certain('/etc')],
+    ['tree -Lo /etc', certain('/etc')],
+    ['tree -Ho /tmp/x /etc', certain('/etc')],
+    ['tree -Po /tmp/x /etc', certain('/etc')],
+    ['tree -Io /tmp/x /etc', certain('/etc')],
+    ['tree -To /tmp/x /etc', certain('/etc')],
+    ['tree -Ho http://x /etc', certain('/etc')],
+    ['tree -aHo /tmp/x /etc', certain('/etc')],
+    ['tree -dfHo /tmp/x /etc', certain('/etc')],
+    ['tree -Ho /tmp/x /', certain('/')],
+    ['tree -Ho /tmp/x /etc/slicc', certain('/etc/slicc')],
+    ['tree -Io /tmp/x /etc/slicc', certain('/etc/slicc')],
+    ['tree -L2o /tmp/x /etc', certain('/etc')],
+    ['tree -L 2 /etc', clean],
+    ['tree -P *.o /etc', clean],
+    ['xxd -lo /etc /tmp/x', certain('/etc')],
+    ['xxd -ro /etc /tmp/x', certain('/etc')],
+    ['xxd -capitalize /etc /tmp/x', certain('/etc')],
+    ['xxd -offset 4 /etc /tmp/x', certain('/etc')],
+    ['xxd /etc -l', certain('/etc')],
+    ['xxd -- -l /etc', certain('/etc')],
+    ['xxd -len 16 /etc', clean],
+    ['xxd -l16 /etc', clean],
+    ['uniq -wf /etc /tmp/x', certain('/etc')],
+    ['uniq -f1 /etc /tmp/x', certain('/etc')],
+    ['uniq -wf /etc', clean],
+    ['base64 -io /tmp/x /etc', certain('/etc')],
+    ['base64 -bo /tmp/x /etc', certain('/etc')],
+    ['base64 -w0 /etc', clean],
+    ['uniq -f 1 /etc', clean],
+    ['xxd -l 16 /etc', clean],
+    ["find /etc -name '*.conf' | xargs grep x", clean],
+    ['find /etc | xargs -I{} cat {}', clean],
+    ['find /etc | xargs basename', clean],
+    ['find / | xargs -n1 dirname', clean],
+    ['xargs seq < list', clean],
     [`bash -c "eval 'xargs rm < list'"`, { certain: null, maybe: 'xargs rm' }],
     ["eval 'xargs rm < list'", { certain: null, maybe: 'xargs rm' }],
     ["bash -lc 'xargs rm < list'", { certain: null, maybe: 'xargs rm' }],
@@ -575,6 +662,8 @@ test('the sudo dialog offers Always allow for read-only commands and not for a w
     ['find . -name x | xargs file', null, false, true],
     ['xargs grep x -- < list', null, true],
     ["find . -name '*.conf' | xargs grep x", null, true],
+    ["find /etc -name '*.conf' | xargs grep x", null, true],
+    ['sort -to /etc', null, true],
     ['yq -s .a f.yaml', 'yq -s', false],
     ['xargs rm < list', 'xargs rm', false],
     ['xargs sh -c \'rm "$1"\' _ < list', '$1', false],
