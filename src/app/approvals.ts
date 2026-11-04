@@ -804,11 +804,32 @@ function leveled(approval: Judged): ApprovalLevel | null {
   return level === 1 || level === 2 || level === 3 ? level : null;
 }
 
+const clear: SecretRulesVerdict = { certain: null, maybe: null, once: null };
+
+function legacyRules(approval: Approval): SecretRulesVerdict {
+  return approval.kind === 'sudo' && leveled(approval) === null
+    ? secretRules(approval.command, approval.cwd)
+    : clear;
+}
+
 function legacyClean(approval: Judged): boolean {
   if (approval.kind !== 'sudo') return true;
   if (approval.verdict?.decision === 'deny') return false;
-  const { certain, maybe, once } = secretRules(approval.command, approval.cwd);
+  const { certain, maybe, once } = legacyRules(approval);
   return !certain && !maybe && !once;
+}
+
+function legacyNotice(approval: Approval): TemplateResult | typeof nothing {
+  const verdict = legacyRules(approval);
+  const rules = verdict.certain ?? verdict.maybe;
+  if (rules)
+    return html`<div class="rules" data-secret-rules=${rules}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${verdict.certain ? html`<strong>This changes secret rules.</strong> It names <code>${commandText(rules, false)}</code>, where SLICC keeps which secrets programs may use and where they may be sent.` : html`<strong>This may change secret rules.</strong> SLICC can't tell where <code>${commandText(rules, false)}</code> leads, and it could reach the files where SLICC keeps which secrets programs may use and where they may be sent.`} Allow it only if you asked for this change.</p></div>`;
+  return verdict.once &&
+    approval.kind === 'sudo' &&
+    approval.always &&
+    approval.verdict?.decision !== 'deny'
+    ? html`<p class="hint" data-once-only=${verdict.once}>Always allow isn’t offered: xargs adds arguments from its input, and they could include a write flag.</p>`
+    : nothing;
 }
 
 export function offersAlways(approval: Approval): boolean {
@@ -1010,6 +1031,27 @@ export class SliccApprovals extends ModelElement {
       .timer {
         margin-block-start: var(--swc-spacing-300);
         font-variant-numeric: tabular-nums;
+      }
+      .rules {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--swc-spacing-100);
+        margin-block-start: var(--swc-spacing-200);
+        padding: var(--swc-spacing-200) var(--swc-spacing-300);
+        border-radius: var(--swc-corner-radius-medium-default);
+        background: var(--swc-notice-subtle-background-color-default);
+        --swc-icon-color: var(--swc-icon-color-notice);
+      }
+      .rules swc-icon-alert-triangle {
+        flex: none;
+        margin-block-start: 0.15em;
+      }
+      .rules p {
+        margin: 0;
+      }
+      .rules code {
+        font-family: var(--swc-code-font-family-stack);
+        overflow-wrap: anywhere;
       }
       .judged {
         display: flex;
@@ -1319,6 +1361,7 @@ export class SliccApprovals extends ModelElement {
           ${this.#request(approval, true)}
           ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${commandText(approval.cwd, false)}</p>` : nothing}
           ${this.#verdict(approval)}
+          ${legacyNotice(approval)}
           ${hint ? html`<p class="hint">${hint}</p>` : nothing}
           ${!failure && gate ? html`<p class="hint" data-allow-hint>${gate}</p>` : nothing}
           ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : html`<p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>`}

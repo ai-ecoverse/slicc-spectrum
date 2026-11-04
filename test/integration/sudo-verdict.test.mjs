@@ -490,3 +490,46 @@ test('unknown level values render no level, only the legacy line or nothing', as
   }
   assert.deepEqual(page.errors, []);
 });
+
+test('without a level the old secret-rules notice and once hint stay, and a level drops them', async (t) => {
+  const page = await open(t, 'judge-denied');
+  const read = () =>
+    page.evaluate(() => {
+      const root = window.approvals().shadowRoot;
+      return {
+        rules: root.querySelector('[data-secret-rules]')?.dataset.secretRules ?? null,
+        notice: root.querySelector('[data-secret-rules] strong')?.textContent ?? null,
+        once: root.querySelector('[data-once-only]')?.dataset.onceOnly ?? null,
+      };
+    });
+  const rows = [
+    [
+      'cp fnox.toml /etc/fnox/config.toml',
+      {
+        rules: '/etc/fnox/config.toml',
+        notice: 'This changes secret rules.',
+        once: null,
+      },
+    ],
+    ['xargs rm < list', { rules: 'xargs rm', notice: 'This may change secret rules.', once: null }],
+    ['xargs sort < list', { rules: null, notice: null, once: 'xargs sort' }],
+  ];
+  const none = { rules: null, notice: null, once: null };
+  for (const [index, [command, expected]] of rows.entries()) {
+    await asking(page, `notice-old-${index}`, { command });
+    assert.deepEqual(await read(), expected, command);
+    await asking(page, `notice-new-${index}`, {
+      command,
+      verdict: { level: 1, reason: 'It reads a list.' },
+    });
+    assert.deepEqual(await read(), none, command);
+  }
+  await asking(page, 'notice-once-off', { command: 'xargs sort < list', always: false });
+  assert.deepEqual(await read(), none);
+  await asking(page, 'notice-deny', {
+    command: 'xargs sort < list',
+    verdict: { decision: 'deny', reason: 'it looks high-risk.' },
+  });
+  assert.deepEqual(await read(), none);
+  assert.deepEqual(page.errors, []);
+});
