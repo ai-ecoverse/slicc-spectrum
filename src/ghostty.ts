@@ -1,4 +1,4 @@
-import type { CellData } from '@wterm/core';
+import type { CellData, TerminalThemeColors } from '@wterm/core';
 import { GhosttyCore } from '@wterm/ghostty';
 
 const base = 0x51cc00;
@@ -6,6 +6,27 @@ const replies = /\x1b\]1[01];rgb:[0-9a-f/]+(?:\x07|\x1b\\)/gi;
 
 const slot = (rgb: number | undefined) =>
   rgb !== undefined && rgb >>> 4 === base >>> 4 ? rgb & 15 : undefined;
+
+export const markers: TerminalThemeColors = {
+  foreground: 0xd4d4d4,
+  background: 0x1d1d1d,
+  cursor: 0xaeafad,
+  palette: Array.from({ length: 16 }, (_, index) => base + index),
+};
+
+export function keepMarkerPalette(
+  apply: (colors: TerminalThemeColors) => void,
+  palette: readonly number[] = markers.palette
+): (colors: TerminalThemeColors) => void {
+  return (colors) => {
+    apply({
+      foreground: colors.foreground,
+      background: colors.background,
+      cursor: colors.cursor,
+      palette,
+    });
+  };
+}
 
 function indexed(cell: CellData): CellData {
   const fg = slot(cell.fgRgb);
@@ -21,14 +42,10 @@ function indexed(cell: CellData): CellData {
   return cell;
 }
 
-export async function loadCore(wasmPath: string): Promise<GhosttyCore> {
-  const core = await GhosttyCore.load({ wasmPath, scrollbackLimit: 4_000_000 });
-  core.setThemeColors({
-    foreground: 0xd4d4d4,
-    background: 0x1d1d1d,
-    cursor: 0xaeafad,
-    palette: Array.from({ length: 16 }, (_, index) => base + index),
-  });
+export function wireCore(core: GhosttyCore): GhosttyCore {
+  const apply = core.setThemeColors.bind(core);
+  core.setThemeColors = keepMarkerPalette(apply);
+  apply(markers);
   const cell = core.getCell.bind(core);
   const history = core.getScrollbackCell.bind(core);
   const response = core.getResponse.bind(core);
@@ -42,4 +59,11 @@ export async function loadCore(wasmPath: string): Promise<GhosttyCore> {
     return null;
   };
   return core;
+}
+
+export async function loadCore(
+  wasmPath: string,
+  load: typeof GhosttyCore.load = GhosttyCore.load.bind(GhosttyCore)
+): Promise<GhosttyCore> {
+  return wireCore(await load({ wasmPath, scrollbackLimit: 4_000_000 }));
 }

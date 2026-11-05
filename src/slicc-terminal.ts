@@ -6,6 +6,7 @@ import {
   type TerminalSession,
   type TerminalSignal,
 } from './backend.ts';
+import './cell-canvas.ts';
 import { ColorQueries, colorReply, themeColors } from './color-query.ts';
 import { loadCore } from './ghostty.ts';
 import { adopt } from './styles.ts';
