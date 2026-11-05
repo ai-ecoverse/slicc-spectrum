@@ -342,9 +342,9 @@ export class SliccSettings extends ThemedElement {
         min-height: var(--swc-component-height-200);
       }
       .switches {
-        display: flex;
-        flex-wrap: wrap;
-        column-gap: var(--swc-spacing-400);
+        display: grid;
+        justify-items: start;
+        row-gap: var(--swc-spacing-100);
       }
       sp-picker {
         width: 240px;

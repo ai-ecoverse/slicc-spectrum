@@ -1990,6 +1990,28 @@ test('settings change the theme and the composer, and connect accounts', async (
   assert.deepEqual(page.errors, []);
 });
 
+test('the chat switches in settings line up in one column, however wide the page', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.$('slicc-app', 'header swc-action-button#settings').click());
+  await page.until(() => !!window.settingsPart('sp-switch[data-setting=showThinking]'));
+  for (const width of [1200, 640, 420]) {
+    await page.evaluate((px) => {
+      window.settingsPart('.page').getRootNode().host.style.width = `${px}px`;
+    }, width);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const boxes = await page.evaluate(() =>
+      [...window.settingsPart('.switches').querySelectorAll('sp-switch')].map((element) => {
+        const box = element.getBoundingClientRect();
+        return { left: Math.round(box.left), top: Math.round(box.top) };
+      })
+    );
+    assert.ok(boxes.length >= 2, `at ${width}px`);
+    assert.equal(new Set(boxes.map((box) => box.left)).size, 1, `at ${width}px`);
+    assert.equal(new Set(boxes.map((box) => box.top)).size, boxes.length, `at ${width}px`);
+  }
+  assert.deepEqual(page.errors, []);
+});
+
 test('terminal and browser in dark', async (t) => {
   const page = await open(t, { color: 'dark' });
   await page.evaluate(() => window.app.show('browser'));
