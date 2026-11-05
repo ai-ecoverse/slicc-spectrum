@@ -33,7 +33,7 @@ async function open(t, scenario) {
           button.dataset.action,
           button.textContent.trim(),
         ]),
-        rules: !!root.querySelector('[data-secret-rules], [data-once-only]'),
+        rules: !!root.querySelector('[data-secret-rules], [data-once-only], .rules'),
       };
     };
     window.colors = () => {
@@ -240,7 +240,7 @@ test('Always allow shows exactly when the approval offers it', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
-test('reading the secret rules shows no secret-rules notice', async (t) => {
+test('a leveled sudo that names the secret rules shows no secret-rules notice', async (t) => {
   const page = await open(t, 'level-1');
   assert.deepEqual(
     await page.evaluate(() => {
@@ -257,6 +257,37 @@ test('reading the secret rules shows no secret-rules notice', async (t) => {
       'Always allow lets docs-pass run exactly this command with sudo without asking again.',
     ]
   );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a level-less sudo with always true offers only Deny and Allow once', async (t) => {
+  const page = await open(t, 'legacy');
+  assert.deepEqual(await page.evaluate(() => window.card()), {
+    verdict: 'unsure',
+    level: null,
+    text: 'The automatic check wasn’t sure: it isn’t clear it serves what the owner asked for.',
+    icon: false,
+    note: null,
+    actions: [deny, once],
+    rules: false,
+  });
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.approvals().shadowRoot;
+      return {
+        rules: root.querySelector('[data-secret-rules], [data-once-only], .rules'),
+        always: !!root.querySelector('[data-action=always]'),
+      };
+    }),
+    { rules: null, always: false }
+  );
+  await page.evaluate(() =>
+    window
+      .approvals()
+      .decide(window.model.approvals.list()[0], 'always')
+      .then(() => true)
+  );
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), []);
   assert.deepEqual(page.errors, []);
 });
 
@@ -366,55 +397,63 @@ const tried = (page, id) =>
     return { always, decided: port.decisions.some(([decided]) => decided === id) };
   }, id);
 
-const flagged = [
-  'cp x /etc/fnox/config.toml',
-  'rm -rf /etc/slicc',
-  'chmod -R 777 /etc',
-  'jq .rules /etc/slicc/secrets-policy.toml',
-  'sort --output=/etc/slicc/secrets-policy.toml notes.txt',
-  'yq -i . /etc/slicc/secrets-policy.toml',
-  'xargs rm < list',
-  'xargs sort < list',
-  'find . -name x | xargs file',
-  'command xargs rm < list',
-];
-
-test('without a level, Always keeps the old gates in the dialog and in decide', async (t) => {
+test('without a level, a sudo with always true never offers Always', async (t) => {
   const page = await open(t, 'judge-denied');
-  const deny = { decision: 'deny', reason: 'it looks high-risk.' };
   const rows = [
-    ...flagged.map((command) => [command, { command }]),
-    ['deny', { verdict: deny }],
+    ['clean', { command: 'ls' }],
+    ['deny', { verdict: { decision: 'deny', reason: 'it looks high-risk.' } }],
+    ['unsure', { verdict: { decision: 'unsure', reason: 'r' } }],
     ...[0, 4, 'x', null, '1'].map((level) => [
       `level ${JSON.stringify(level)}`,
-      { command: 'xargs rm < list', verdict: { level, reason: 'r' } },
+      { command: 'ls', verdict: { level, reason: 'r' } },
     ]),
   ];
   for (const [index, [name, patch]] of rows.entries()) {
     await asking(page, `old-${index}`, patch);
     assert.deepEqual(await tried(page, `old-${index}`), { always: false, decided: false }, name);
   }
-  await asking(page, 'old-clean', {});
-  assert.deepEqual(await tried(page, 'old-clean'), { always: true, decided: true });
   assert.deepEqual(page.errors, []);
 });
 
 test('with a level 1 verdict, approval.always alone offers Always', async (t) => {
   const page = await open(t, 'judge-denied');
   const verdict = { level: 1, aligned: true, decision: 'deny', reason: 'It reads a list.' };
-  for (const [index, command] of flagged.entries()) {
+  for (const [index, command] of [
+    'cp x /etc/fnox/config.toml',
+    'xargs rm < list',
+    'ls',
+  ].entries()) {
     await asking(page, `new-${index}`, { command, verdict });
     assert.deepEqual(await tried(page, `new-${index}`), { always: true, decided: true }, command);
   }
   assert.deepEqual(page.errors, []);
 });
 
+test('a level-less guest with always still offers Always', async (t) => {
+  const page = await open(t, 'guest-always');
+  assert.deepEqual(await page.evaluate(() => window.card()), {
+    verdict: 'allow',
+    level: null,
+    text: 'The automatic check would allow this: it reads a file inside the shared folder.',
+    icon: false,
+    note: null,
+    actions: [deny, always, once],
+    rules: false,
+  });
+  await page.evaluate(() => {
+    window.approvals().shadowRoot.querySelector('[data-action=always]').click();
+    return true;
+  });
+  await page.until(() => window.model.approvals.decisions.length === 1);
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
+    ['guest-read', 'always'],
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
 test('decide checks the live approval, so a stale Always is refused', async (t) => {
   const page = await open(t, 'judge-denied');
-  const patches = [
-    { always: false },
-    { command: 'xargs rm < list', verdict: { decision: 'unsure', reason: 'r' } },
-  ];
+  const patches = [{ always: false }, { verdict: { decision: 'unsure', reason: 'r' } }];
   for (const [index, patch] of patches.entries()) {
     const id = `stale-${index}`;
     await asking(page, id, { verdict: { level: 1, reason: 'It lists files.' } });
@@ -491,45 +530,24 @@ test('unknown level values render no level, only the legacy line or nothing', as
   assert.deepEqual(page.errors, []);
 });
 
-test('without a level the old secret-rules notice and once hint stay, and a level drops them', async (t) => {
+test('without a level there is no secret-rules notice or once hint', async (t) => {
   const page = await open(t, 'judge-denied');
   const read = () =>
     page.evaluate(() => {
       const root = window.approvals().shadowRoot;
       return {
-        rules: root.querySelector('[data-secret-rules]')?.dataset.secretRules ?? null,
-        notice: root.querySelector('[data-secret-rules] strong')?.textContent ?? null,
-        once: root.querySelector('[data-once-only]')?.dataset.onceOnly ?? null,
+        rules: root.querySelector('[data-secret-rules], [data-once-only], .rules'),
+        always: !!root.querySelector('[data-action=always]'),
       };
     });
-  const rows = [
-    [
-      'cp fnox.toml /etc/fnox/config.toml',
-      {
-        rules: '/etc/fnox/config.toml',
-        notice: 'This changes secret rules.',
-        once: null,
-      },
-    ],
-    ['xargs rm < list', { rules: 'xargs rm', notice: 'This may change secret rules.', once: null }],
-    ['xargs sort < list', { rules: null, notice: null, once: 'xargs sort' }],
-  ];
-  const none = { rules: null, notice: null, once: null };
-  for (const [index, [command, expected]] of rows.entries()) {
+  for (const [index, command] of [
+    'cp fnox.toml /etc/fnox/config.toml',
+    'xargs rm < list',
+    'xargs sort < list',
+    'ls',
+  ].entries()) {
     await asking(page, `notice-old-${index}`, { command });
-    assert.deepEqual(await read(), expected, command);
-    await asking(page, `notice-new-${index}`, {
-      command,
-      verdict: { level: 1, reason: 'It reads a list.' },
-    });
-    assert.deepEqual(await read(), none, command);
+    assert.deepEqual(await read(), { rules: null, always: false }, command);
   }
-  await asking(page, 'notice-once-off', { command: 'xargs sort < list', always: false });
-  assert.deepEqual(await read(), none);
-  await asking(page, 'notice-deny', {
-    command: 'xargs sort < list',
-    verdict: { decision: 'deny', reason: 'it looks high-risk.' },
-  });
-  assert.deepEqual(await read(), none);
   assert.deepEqual(page.errors, []);
 });

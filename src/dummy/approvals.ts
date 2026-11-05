@@ -254,6 +254,11 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
     createdAt: now,
     expiresAt: now + (scenario === 'soon' ? 0.4 * minutes : 5 * minutes),
     always: true,
+    verdict: {
+      level: 1,
+      aligned: true,
+      reason: 'It installs a package the owner asked for.',
+    },
   };
   const user: Approval = {
     id: 'sudo-chown',
@@ -263,6 +268,11 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
     createdAt: now + 1,
     expiresAt: now + 5 * minutes,
     always: true,
+    verdict: {
+      level: 1,
+      aligned: true,
+      reason: 'It hands the owner their own files.',
+    },
   };
   const cache: Approval = {
     id: 'sudo-cache',
@@ -273,6 +283,11 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
     createdAt: now + 2,
     expiresAt: now + 5 * minutes,
     always: false,
+    verdict: {
+      level: 3,
+      aligned: false,
+      reason: 'It deletes cache files that other services may need.',
+    },
   };
   if (scenario === 'judge-denied')
     return [

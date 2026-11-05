@@ -3836,6 +3836,11 @@ test('a 60-line command scrolls in its own box at 420, and Allow waits until its
       createdAt: now,
       expiresAt: now + 5 * 60_000,
       always: true,
+      verdict: {
+        level: 1,
+        aligned: true,
+        reason: 'It runs the release steps the owner asked for.',
+      },
     });
     return true;
   });
@@ -10074,6 +10079,7 @@ async function sudoFromTerminal(t) {
         createdAt: now,
         expiresAt: now + 300_000,
         always: true,
+        verdict: { level: 1, aligned: true, reason: 'It installs a package the owner asked for.' },
       });
     }, id);
     await page.until(
