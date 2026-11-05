@@ -319,12 +319,30 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
   if (scenario.startsWith('tray')) return trayFixtures(scenario, now);
   if (scenario.startsWith('guest-')) return [guestCall(scenario, now)];
   if (scenario === 'none') return [];
-  if (scenario === 'long') return [{ ...agent, id: 'sudo-release', command: longCommand }];
+  if (scenario === 'long')
+    return [
+      {
+        ...agent,
+        id: 'sudo-release',
+        command: longCommand,
+        always: true,
+        verdict: {
+          level: 3,
+          aligned: false,
+          reason: 'It pipes a remote script into a shell.',
+        },
+      },
+    ];
   if (scenario === 'controls-cr' || scenario === 'controls-lf')
     return [
       {
         ...agent,
         command: `printf '%s' 'harbor${scenario === 'controls-cr' ? '\r' : '\n'}schedule'`,
+        verdict: {
+          level: 1,
+          aligned: true,
+          reason: 'It prints a short string and changes nothing.',
+        },
       },
     ];
   if (scenario === 'controls-place')
@@ -333,6 +351,11 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
         ...agent,
         requester: { ...agent.requester, name: 'docs\rpass', where: 'harbor\rterminal\nseat' },
         target: 'harbor\ruser',
+        verdict: {
+          level: 1,
+          aligned: true,
+          reason: 'It installs a package as the named user.',
+        },
       },
     ];
   if (scenario === 'controls-cwd')
