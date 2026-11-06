@@ -394,8 +394,8 @@ export class SliccVaultValue extends LitElement {
     :host {
       display: block;
       min-inline-size: 0;
-      padding: 4px;
-      margin: -4px;
+      padding-block: 4px;
+      margin-block: -4px;
       overflow: hidden;
       contain: paint;
     }
@@ -476,8 +476,8 @@ export class SliccVaultValue extends LitElement {
       element.style.blockSize = `${between(event.height, frameHeight)}px`;
       element.style.maxBlockSize = '45dvh';
       element.style.overflow = 'auto';
-      element.style.inlineSize = `calc(100% + ${2 * inset}px)`;
-      element.style.margin = `${-inset}px`;
+      element.style.inlineSize = '100%';
+      element.style.marginBlock = `${-inset}px`;
     } else if (event.event === 'focus') {
       const root = this.closest('dialog') ?? this.ownerDocument;
       const order = sequential(tabbables(root, this));

@@ -363,7 +363,7 @@ test('an oversized frame stays in its box under the command, and its events lose
     document.addEventListener('vault-value', (event) => window.details.push(event.detail));
     window.fire({ event: 'size', width: 4000, height: 5000, inset: 600 });
     const { style } = window.frame();
-    window.sized = [style.blockSize, style.inlineSize, style.margin];
+    window.sized = [style.blockSize, style.inlineSize, style.marginBlock];
     window.fire({
       event: 'error',
       code: 'EIO',
@@ -372,7 +372,7 @@ test('an oversized frame stays in its box under the command, and its events lose
     });
     return true;
   });
-  assert.deepEqual(await page.evaluate(() => window.sized), ['480px', 'calc(100% + 8px)', '-4px']);
+  assert.deepEqual(await page.evaluate(() => window.sized), ['480px', '100%', '-4px']);
   const box = await page.evaluate(() => {
     const root = window.approvals();
     const host = root.querySelector('slicc-vault-value');
@@ -445,6 +445,101 @@ test('control characters in the name show as chips in the title and in the notic
       )
     ),
     ['carriage return (U+000D)']
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+for (const width of [1280, 420])
+  test(`the secret dialog never scrolls sideways at ${width}`, async (t) => {
+    const page = await open(t, { approvals: 'secret-reveal', vault: 'secrets' });
+    await page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height: 860,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+    await asked(page, 'ask-lagoon');
+    await page.evaluate(() => {
+      window.fire = null;
+      return true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const content = await page.evaluate(() => {
+      const box = window
+        .approvals()
+        .querySelector('sp-alert-dialog')
+        .shadowRoot.querySelector('.content');
+      return [box.scrollWidth <= box.clientWidth, box.clientWidth > 0];
+    });
+    assert.deepEqual(content, [true, true]);
+    assert.deepEqual(page.errors, []);
+  });
+
+test('without decide, enter and reveal asks from an agent and a user are notices, and approvalKinds lists secret', async (t) => {
+  const page = await open(t, { approvals: 'follower', vault: 'secrets' });
+  await page.evaluate(() => {
+    const now = Date.now();
+    const ask = (id, mode, requester, exe) =>
+      window.model.approvals.raise({
+        id,
+        kind: 'secret',
+        mode,
+        name: 'TIDE_KEY',
+        reveal: mode === 'reveal',
+        requester,
+        process: { exe, argv: [exe.split('/').at(-1)], cwd: '/home/cone' },
+        createdAt: now,
+        expiresAt: now + 300_000,
+      });
+    ask('ask-agent-enter', 'enter', { kind: 'agent', name: 'docs-pass' }, '/usr/bin/sealed');
+    ask('ask-agent-reveal', 'reveal', { kind: 'agent', name: 'docs-pass' }, '/usr/bin/sealed');
+    ask('ask-user-enter', 'enter', { kind: 'user', name: 'cone' }, '/usr/bin/fnox');
+    ask('ask-user-reveal', 'reveal', { kind: 'user', name: 'cone' }, '/usr/bin/fnox');
+    return true;
+  });
+  await page.until(() => !!window.deep('[data-approval-notice=ask-user-reveal]'));
+  assert.deepEqual(
+    await page.evaluate(() =>
+      ['ask-agent-enter', 'ask-agent-reveal', 'ask-user-enter', 'ask-user-reveal'].map((id) => {
+        const notice = window.deep(`[data-approval-notice=${id}]`);
+        return [
+          notice.dataset.approvalKind,
+          notice.querySelector('.title').textContent,
+          notice.querySelector('p').textContent,
+        ];
+      })
+    ),
+    [
+      [
+        'secret',
+        'Waiting for a secret',
+        'docs-pass ran /usr/bin/sealed, which asks for a value for TIDE_KEY.',
+      ],
+      [
+        'secret',
+        'Waiting for a secret',
+        'docs-pass ran /usr/bin/sealed, which asks for the plaintext of TIDE_KEY.',
+      ],
+      [
+        'secret',
+        'Waiting for a secret',
+        'You ran /usr/bin/fnox, which asks for a value for TIDE_KEY.',
+      ],
+      [
+        'secret',
+        'Waiting for a secret',
+        'You ran /usr/bin/fnox, which asks for the plaintext of TIDE_KEY.',
+      ],
+    ]
+  );
+  assert.equal(await page.evaluate(() => !!window.approvals().querySelector('dialog')), false);
+  assert.deepEqual(
+    await page.evaluate(async () => {
+      const { approvalKinds } = await import('/dist/slicc-ui.js');
+      return [approvalKinds, Object.isFrozen(approvalKinds)];
+    }),
+    [['sudo', 'guest-message', 'guest-tool', 'tray', 'secret'], true]
   );
   assert.deepEqual(page.errors, []);
 });
