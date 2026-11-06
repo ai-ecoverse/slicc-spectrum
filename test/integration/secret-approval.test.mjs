@@ -362,6 +362,8 @@ test('an oversized frame stays in its box under the command, and its events lose
     window.details = [];
     document.addEventListener('vault-value', (event) => window.details.push(event.detail));
     window.fire({ event: 'size', width: 4000, height: 5000, inset: 600 });
+    const { style } = window.frame();
+    window.sized = [style.blockSize, style.inlineSize, style.margin];
     window.fire({
       event: 'error',
       code: 'EIO',
@@ -370,6 +372,7 @@ test('an oversized frame stays in its box under the command, and its events lose
     });
     return true;
   });
+  assert.deepEqual(await page.evaluate(() => window.sized), ['480px', 'calc(100% + 8px)', '-4px']);
   const box = await page.evaluate(() => {
     const root = window.approvals();
     const host = root.querySelector('slicc-vault-value');
