@@ -543,3 +543,38 @@ test('without decide, enter and reveal asks from an agent and a user are notices
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('an allowed reveal shows in Settings activity, also under Only reveals, and the policy change for agents reads as such', async (t) => {
+  const page = await open(t, { approvals: 'secret-reveal', vault: 'policy' });
+  await asked(page, 'ask-lagoon');
+  await press(page, '[data-action=allow]');
+  await page.until(() => !window.approvals().querySelector('dialog'));
+  await page.evaluate(() => window.$('slicc-app', 'header swc-action-button#settings').click());
+  await page.until(() => !!window.settingsPart('slicc-secrets', '.audit li[data-type=reveal]'));
+  const line = () =>
+    window
+      .settingsPart('slicc-secrets', '.audit li[data-type=reveal] .what')
+      ?.textContent.replace(/\s+/g, ' ')
+      .trim();
+  assert.equal(
+    await page.evaluate(line),
+    'LAGOON_API_KEY · Revealed to sealed ask LAGOON_API_KEY --reveal in /home/cone/harbor, allowed in a dialog by agent'
+  );
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [
+        ...window
+          .settingsPart('slicc-secrets')
+          .shadowRoot.querySelectorAll('.audit li[data-type=policy] [data-change=reveal]'),
+      ].map((change) => change.textContent)
+    ),
+    ['Programs an agent runs may no longer ask for a secret’s plaintext']
+  );
+  await page.evaluate(() => window.settingsPart('slicc-secrets', '[data-action=reveals]').click());
+  await page.until(
+    () =>
+      !window.settingsPart('slicc-secrets', '.audit li[data-type=policy]') &&
+      !!window.settingsPart('slicc-secrets', '.audit li[data-type=reveal]')
+  );
+  assert.deepEqual(page.errors, []);
+});

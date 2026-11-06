@@ -1433,6 +1433,7 @@ export interface PendingRequest {
   prompt?: string;
   mode?: 'enter' | 'reveal';
   reveal?: boolean;
+  replace?: boolean;
   requester?: AskRequester;
   uid: number;
   tag: string | null;
@@ -1496,7 +1497,8 @@ export type PolicyChange =
   | { kind: 'rule'; secret: string; rule: Rule; change: 'added' | 'removed' }
   | { kind: 'exec'; secret: string; from: ExecMode; to: ExecMode }
   | { kind: 'exits'; secret: string; from: ExitName[] | null; to: ExitName[] | null }
-  | { kind: 'limits'; field: string; from: number; to: number };
+  | { kind: 'limits'; field: string; from: number; to: number }
+  | { kind: 'reveal'; field: 'agent'; from: boolean; to: boolean };
 
 export type PolicyFile = '/etc/fnox/config.toml' | '/etc/slicc/secrets-policy.toml';
 
@@ -1554,6 +1556,16 @@ export interface RevealEntry extends AuditBase {
   ppid: number;
   ticket: string;
   consumed: boolean;
+}
+
+export interface AskRevealEntry extends AuditBase {
+  type: 'reveal';
+  uid: number;
+  exe: string;
+  argv: string;
+  cwd: string;
+  requester: 'agent' | 'user';
+  request: string;
 }
 
 export interface SealEntry extends AuditBase {
@@ -1618,6 +1630,7 @@ export type AuditEntry =
   | SessionEntry
   | McpEntry
   | RevealEntry
+  | AskRevealEntry
   | SealEntry
   | RemoveEntry
   | RefreshEntry

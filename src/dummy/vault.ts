@@ -254,6 +254,7 @@ export function vaultAudit(now = Date.now()): AuditEntry[] {
           from: ['proxy', 'device:link-pier'],
           to: ['proxy', 'tailscale', 'device:link-pier'],
         },
+        { kind: 'reveal', field: 'agent', from: true, to: false },
       ],
     },
     {
@@ -1216,10 +1217,22 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
 
   async allow(request: string): Promise<void> {
     await this.#time.sleep(5);
-    this.#asked(request);
+    const found = this.#asked(request);
     this.answered.add(request);
     this.revealed.push(request);
     this.#take(request);
+    const { exe, argv, cwd, kind } = found.requester as NonNullable<PendingRequest['requester']>;
+    this.#log(found.name as string, {
+      type: 'reveal',
+      uid: found.uid,
+      tag: found.tag,
+      exe,
+      argv: argv.join(' '),
+      cwd,
+      requester: kind,
+      request,
+    });
+    this.emit('list', this.#list);
   }
 
   autoLabel(): string {

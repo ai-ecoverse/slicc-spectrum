@@ -87,6 +87,10 @@ export function changeLine(change: PolicyChange, devices: readonly LinkedDevice[
     case 'exits':
       if (change.to?.length === 0) return `${change.secret} now has no exit`;
       return `${change.secret} now leaves through ${change.to ? list(change.to.map((exit) => exitLabel(exit, devices))) : 'any exit'}`;
+    case 'reveal':
+      return change.to
+        ? 'Programs an agent runs may ask for a secret’s plaintext again, in a dialog each time'
+        : 'Programs an agent runs may no longer ask for a secret’s plaintext';
     default:
       return `The limit ${change.field} changed from ${change.from} to ${change.to}`;
   }

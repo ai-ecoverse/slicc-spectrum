@@ -10,6 +10,7 @@ import { css, html, nothing, type PropertyValues, type TemplateResult } from 'li
 import type {
   Account,
   AccountStatus,
+  AskRevealEntry,
   AuditEntry,
   ButtonConfig,
   EndpointsEntry,
@@ -136,6 +137,10 @@ function startOfDay(now: number): number {
   return date.getTime();
 }
 
+export function toProgram(entry: AuditEntry): entry is RevealEntry | AskRevealEntry {
+  return entry.type === 'materialize' || entry.type === 'reveal';
+}
+
 export function revealed(
   name: string,
   entries: readonly AuditEntry[],
@@ -143,7 +148,7 @@ export function revealed(
   more = false
 ): TemplateResult | null {
   const reveals = entries.filter(
-    (entry): entry is RevealEntry => entry.type === 'materialize' && entry.name === name
+    (entry): entry is RevealEntry | AskRevealEntry => toProgram(entry) && entry.name === name
   );
   if (!reveals.length) return null;
   const [last] = reveals;
@@ -242,6 +247,8 @@ export function auditLine(
       return html`Sent to the MCP server ${entry.server} at ${entry.domain}: <code>${entry.method} ${entry.path}</code>, through ${exitLabel(entry.exit, devices)}`;
     case 'materialize':
       return html`Revealed to <code>${entry.argv}</code> in <code>${entry.cwd}</code>`;
+    case 'reveal':
+      return html`Revealed to <code>${entry.argv}</code> in <code>${entry.cwd}</code>, allowed in a dialog`;
     case 'seal':
       return html`${entry.rotated ? 'Value replaced' : 'Value saved'}`;
     case 'remove':
@@ -1395,7 +1402,7 @@ export class SliccSecrets extends ThemedElement {
     entries: readonly AuditEntry[],
     devices: readonly LinkedDevice[]
   ): TemplateResult {
-    const shown = this.reveals ? entries.filter((entry) => entry.type === 'materialize') : entries;
+    const shown = this.reveals ? entries.filter(toProgram) : entries;
     const more = this.more ?? list.auditMore;
     const back = returned(entries);
     return html`<div class="audit-head">
