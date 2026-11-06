@@ -16,7 +16,7 @@ import type {
   TrayApproval,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
-import { Cuts, clampCss, Ends, fullCommand, toScroll, toShow } from './command.ts';
+import { Ends, toScroll } from './command.ts';
 import { commandText } from './command-display.ts';
 import { dialogStyles, focused } from './confirm.ts';
 import { size } from './messages.ts';
@@ -215,8 +215,10 @@ export class SliccApprovals extends ModelElement {
   declare failure: { id: string; message: string } | null;
   declare gone: { approval: Approval; reason: 'elsewhere' | 'expired' } | null;
   arming = 500;
-  #armed = false;
-  #arming: ReturnType<typeof setTimeout> | undefined;
+  #changed = 0;
+  #pressed = 0;
+  #layout = '';
+  #moves = new ResizeObserver(() => this.#settle());
   #showing: Approval | null = null;
   #pending = new Set<string>();
   #done = new Set<string>();
@@ -226,11 +228,6 @@ export class SliccApprovals extends ModelElement {
   #timer: ReturnType<typeof setInterval> | null = null;
   #shown = '';
   #trigger: HTMLElement | null = null;
-  #full = new Set<string>();
-  #cuts = new Cuts(
-    () => this.renderRoot,
-    () => this.requestUpdate()
-  );
   #ends = new Ends(
     () => this.renderRoot,
     () => this.requestUpdate()
@@ -246,7 +243,6 @@ export class SliccApprovals extends ModelElement {
 
   static styles = [
     dialogStyles,
-    clampCss,
     css`
       :host {
         display: contents;
@@ -293,9 +289,6 @@ export class SliccApprovals extends ModelElement {
         inline-size: 0;
         block-size: 0;
       }
-      .full-command {
-        margin-block-start: var(--swc-spacing-100);
-      }
       .guest {
         margin-block-start: var(--swc-spacing-200);
         padding: var(--swc-spacing-200) var(--swc-spacing-300);
@@ -328,16 +321,39 @@ export class SliccApprovals extends ModelElement {
         margin-block-start: var(--swc-spacing-300);
         font-variant-numeric: tabular-nums;
       }
+      .more {
+        min-block-size: 1lh;
+      }
+      .notes {
+        display: flex;
+        flex-direction: column;
+        gap: var(--swc-spacing-100);
+        box-sizing: border-box;
+        block-size: min(9lh, 30dvh);
+        margin-block-start: var(--swc-spacing-200);
+        font-size: var(--swc-font-size-75);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+      .notes .hint,
+      .notes .verdict {
+        margin: 0;
+      }
+      .judge {
+        display: flex;
+        flex: 1 0 auto;
+        flex-direction: column;
+        gap: var(--swc-spacing-100);
+      }
       .judged {
         display: flex;
+        flex: 1 0 auto;
         align-items: flex-start;
         gap: var(--swc-spacing-100);
-        margin-block-start: var(--swc-spacing-200);
         padding: var(--swc-spacing-200) var(--swc-spacing-300);
         border-radius: var(--swc-corner-radius-medium-default);
         background: var(--swc-neutral-subtle-background-color-default);
         color: var(--swc-neutral-content-color-default);
-        font-size: var(--swc-font-size-75);
         overflow-wrap: anywhere;
       }
       .judged[data-verdict='checking'],
@@ -360,6 +376,9 @@ export class SliccApprovals extends ModelElement {
       }
       .judged p {
         margin: 0;
+      }
+      [slot='button'][data-action='deny'] {
+        margin-inline-end: auto;
       }
       .problem {
         display: flex;
@@ -384,7 +403,6 @@ export class SliccApprovals extends ModelElement {
       this.#done.clear();
       this.#closed.clear();
       this.#ended.clear();
-      this.#full.clear();
       this.#ends.clear();
     }
     if (!port) return [];
@@ -407,9 +425,9 @@ export class SliccApprovals extends ModelElement {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.#tick(false);
-    clearTimeout(this.#arming);
     this.#showing = null;
-    this.#cuts.disconnect();
+    this.#layout = '';
+    this.#moves.disconnect();
     this.#ends.disconnect();
   }
 
@@ -426,7 +444,7 @@ export class SliccApprovals extends ModelElement {
     if (
       !port?.decide ||
       this.busy ||
-      (decision !== 'deny' && (!this.#armed || !this.#whole(approval)))
+      (decision !== 'deny' && (!this.#settled(performance.now()) || !this.#whole(approval)))
     )
       return;
     const live = port.list().find(({ id }) => id === approval.id);
@@ -473,18 +491,50 @@ export class SliccApprovals extends ModelElement {
     const next = list[0] ?? null;
     if (next?.id === showing?.id) return;
     this.#showing = next;
-    clearTimeout(this.#arming);
-    this.#armed = false;
-    this.#arming = setTimeout(() => (this.#armed = true), this.arming);
+    this.#changed = performance.now();
+  }
+
+  #settled(at: number): boolean {
+    return at - this.#changed >= this.arming;
+  }
+
+  #settle(): void {
+    const dialog = this.renderRoot.querySelector('dialog');
+    const buttons = [...this.renderRoot.querySelectorAll<HTMLElement>('[slot=button]')];
+    const layout = JSON.stringify([
+      dialog?.dataset.approval,
+      dialog?.dataset.gone,
+      buttons.map((button) => {
+        const { left, top, width, height } = button.getBoundingClientRect();
+        return [
+          button.dataset.action,
+          button.textContent,
+          button.hasAttribute('disabled'),
+          button.hasAttribute('pending'),
+          ...[left, top, width, height].map(Math.round),
+        ];
+      }),
+    ]);
+    if (layout === this.#layout) return;
+    this.#layout = layout;
+    this.#changed = performance.now();
+  }
+
+  #click(event: MouseEvent, approval: Approval, decision: ApprovalDecision): void {
+    if (!this.#settled(event.detail ? this.#pressed : performance.now())) return;
+    void this.decide(approval, decision);
   }
 
   protected updated(changed: PropertyValues): void {
     super.updated(changed);
     const all = this.model?.approvals?.list() ?? [];
     this.#tick(this.isConnected && all.length > 0);
-    this.#cuts.measure();
     this.#ends.observe();
     const dialog = this.renderRoot.querySelector('dialog');
+    if (dialog)
+      for (const box of dialog.querySelectorAll('sp-alert-dialog, [slot=button]'))
+        this.#moves.observe(box);
+    this.#settle();
     const key = dialog
       ? `${dialog.dataset.approval}:${dialog.dataset.gone ?? ''}:${dialog.hasAttribute('data-rejected')}`
       : '';
@@ -497,8 +547,8 @@ export class SliccApprovals extends ModelElement {
       return;
     }
     if (!dialog.open) dialog.showModal();
-    this.#cuts.measure();
     this.#ends.observe();
+    this.#settle();
     const first = dialog.querySelector('[data-action=deny], [data-action=close]') as LitElement;
     void first.updateComplete.then(() => first.focus());
   }
@@ -533,8 +583,8 @@ export class SliccApprovals extends ModelElement {
       fill-style=${variant === 'accent' ? nothing : 'outline'}
       data-action=${decision}
       ?pending=${this.busy === decision}
-      ?disabled=${!!this.busy && this.busy !== decision}
-      @click=${() => this.decide(approval, decision)}
+      ?disabled=${(!!this.busy && this.busy !== decision) || (decision !== 'deny' && !this.#whole(approval))}
+      @click=${(event: MouseEvent) => this.#click(event, approval, decision)}
       >${label}</swc-button
     >`;
   }
@@ -542,39 +592,25 @@ export class SliccApprovals extends ModelElement {
   #dialog(approval: Approval, key: string, content: TemplateResult): unknown {
     return keyed(
       key,
-      html`<dialog role="alertdialog" aria-labelledby="title" aria-describedby="asking" data-approval=${approval.id} data-kind=${approval.kind} data-requester=${approval.requester.kind} data-gone=${this.gone?.reason ?? nothing} data-rejected=${!this.gone && this.failure?.id === approval.id ? '' : nothing} @cancel=${(event: Event) => this.#cancel(event, approval)}>${content}</dialog>`
+      html`<dialog role="alertdialog" aria-labelledby="title" aria-describedby="asking" data-approval=${approval.id} data-kind=${approval.kind} data-requester=${approval.requester.kind} data-gone=${this.gone?.reason ?? nothing} data-rejected=${!this.gone && this.failure?.id === approval.id ? '' : nothing} @pointerdown=${() => (this.#pressed = performance.now())} @cancel=${(event: Event) => this.#cancel(event, approval)}>${content}</dialog>`
     );
   }
 
   #whole(approval: Approval): boolean {
-    const { id } = approval;
     if (truncated(approval)) return false;
-    return (
-      !approved(approval) ||
-      this.#cuts.get(id) === false ||
-      (this.#full.has(id) && this.#ends.has(id))
-    );
+    return !approved(approval) || this.#ends.has(approval.id);
   }
 
   #gate(approval: Approval): string {
     if (truncated(approval)) return tooLong;
-    if (this.#whole(approval)) return '';
-    return this.#full.has(approval.id) ? toScroll : toShow;
-  }
-
-  #expand(id: string): void {
-    if (!this.#full.delete(id)) this.#full.add(id);
-    this.requestUpdate();
+    return this.#ends.hidden(approval.id) ? toScroll : '';
   }
 
   #command(approval: Approval, pending: boolean): TemplateResult {
     const { id } = approval;
     const text = approved(approval);
     if (!text) return html`<p class="hint" data-id="no-details">This request has no details.</p>`;
-    const full = !pending || this.#full.has(id);
-    const toggle =
-      pending && (full || this.#cuts.get(id)) ? fullCommand(full, () => this.#expand(id)) : nothing;
-    return html`<pre class="command" data-command=${approval.kind === 'sudo' ? '' : nothing} data-summary=${approval.kind === 'sudo' ? nothing : ''}><span class="lines" data-clamp=${full ? nothing : id}>${approval.kind === 'sudo' ? commandText(text) : text}${pending ? html`<span class="end" data-end=${id}></span>` : nothing}</span></pre>${toggle}`;
+    return html`<pre class="command" data-command=${approval.kind === 'sudo' ? '' : nothing} data-summary=${approval.kind === 'sudo' ? nothing : ''}><span class="lines">${approval.kind === 'sudo' ? commandText(text) : text}${pending ? html`<span class="end" data-end=${id}></span>` : nothing}</span></pre>`;
   }
 
   #request(approval: Approval, pending = false): TemplateResult {
@@ -591,19 +627,18 @@ export class SliccApprovals extends ModelElement {
       ${files.length ? html`<ul class="files" data-attachments>${files.map((file) => html`<li>${file.name} · ${file.mimeType} · ${size(file.size)}</li>`)}</ul>` : nothing}`;
   }
 
-  #verdict(approval: Approval): TemplateResult | typeof nothing {
+  #notes(approval: Approval, gate: string, always: boolean): TemplateResult | typeof nothing {
     if (approval.kind === 'tray') return nothing;
     const note = verdictNote(approval);
-    return html`<div class="judge" aria-live="polite">${judged(approval)}${note ? html`<p class="hint" data-verdict-note>${note}</p>` : nothing}</div>`;
+    return html`<div class="notes" data-notes><div class="judge" aria-live="polite">${judged(approval)}${note ? html`<p class="hint" data-verdict-note>${note}</p>` : nothing}</div>${gate ? html`<p class="hint" data-allow-hint>${gate}</p>` : nothing}${always ? html`<p class="hint" data-always-hint>${hintOf(approval)}</p>` : nothing}</div>`;
   }
 
   #actions(approval: Approval, rejected: boolean, always: boolean): TemplateResult {
     if (rejected)
       return html`<swc-button slot="button" variant="secondary" fill-style="outline" data-action="close" @click=${() => this.#dismiss(approval)}>Close</swc-button>`;
-    const whole = this.#whole(approval);
     return html`${this.#button(approval, 'deny', 'Deny', 'secondary')}
-      ${whole && always ? this.#button(approval, 'always', inCwd(approval) ? 'Always allow in this directory' : 'Always allow', 'secondary') : nothing}
-      ${whole ? this.#button(approval, 'once', 'Allow once', 'accent') : nothing}`;
+      ${always ? this.#button(approval, 'always', inCwd(approval) ? 'Always allow in this directory' : 'Always allow', 'secondary') : nothing}
+      ${this.#button(approval, 'once', 'Allow once', 'accent')}`;
   }
 
   render(): unknown {
@@ -626,8 +661,7 @@ export class SliccApprovals extends ModelElement {
     if (!approval) return nothing;
     const failure = this.failure?.id === approval.id ? this.failure.message : '';
     const always = offersAlways(approval);
-    const gate = this.#gate(approval);
-    const hint = always && this.#whole(approval) ? hintOf(approval) : '';
+    const gate = failure ? '' : this.#gate(approval);
     return this.#dialog(
       approval,
       approval.id,
@@ -635,11 +669,9 @@ export class SliccApprovals extends ModelElement {
           <h2 id="title" slot="heading">${title(approval)}</h2>
           ${this.#request(approval, true)}
           ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${commandText(approval.cwd, false)}</p>` : nothing}
-          ${this.#verdict(approval)}
-          ${hint ? html`<p class="hint">${hint}</p>` : nothing}
-          ${!failure && gate ? html`<p class="hint" data-allow-hint>${gate}</p>` : nothing}
+          ${this.#notes(approval, gate, always)}
           ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : html`<p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>`}
-          ${rest.length ? html`<p class="more" data-more>${rest.length === 1 ? '1 more request is waiting.' : `${rest.length} more requests are waiting.`}</p>` : nothing}
+          <p class="more" data-more=${rest.length ? '' : nothing}>${rest.length === 1 ? '1 more request is waiting.' : rest.length ? `${rest.length} more requests are waiting.` : ''}</p>
           ${this.#actions(approval, !!failure, always)}
         </sp-alert-dialog>`
     );

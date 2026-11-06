@@ -3610,7 +3610,7 @@ async function cutCommand(page, scope) {
       const cardBox = card.getBoundingClientRect();
       const style = getComputedStyle(command);
       const allow = card.querySelector(
-        '[data-action=allow], [data-action=once], [data-action=always]'
+        '[data-action=allow]:not([disabled]), [data-action=once]:not([disabled]), [data-action=always]:not([disabled])'
       );
       const hits = new Set();
       for (let y = cardBox.top + 1; y < cardBox.bottom; y += 6)
@@ -3798,7 +3798,7 @@ for (const [width, height] of [
     assert.deepEqual(page.errors, []);
   });
 
-  test(`the approval dialog waits for Show the full command before Allow at ${width}`, async (t) => {
+  test(`the approval dialog shows a long command whole and allows it without expanding it at ${width}`, async (t) => {
     const page = await open(t, { approvals: 'long' });
     await page.send('Emulation.setDeviceMetricsOverride', {
       width,
@@ -3813,57 +3813,38 @@ for (const [width, height] of [
     });
     await page.until(
       () =>
-        !!window
-          .approvals()
-          .querySelector('dialog[data-approval=sudo-release] [data-action=full-command]') &&
+        !!window.approvals().querySelector('dialog[data-approval=sudo-release]') &&
         window.focused().includes('swc-button')
     );
     await new Promise((resolve) => setTimeout(resolve, 600));
     await cutCommand(page, 'dialog');
     const wrap = ['pre-wrap', 'anywhere', 'clip', 'none'];
-    const cut = await page.evaluate(() => window.cutCommand('sudo-release'));
+    const shown = await page.evaluate(() => window.cutCommand('sudo-release'));
     assert.deepEqual(
-      [cut.allow, cut.toggle, cut.tail, cut.cut, cut.wrap, cut.mono],
-      [false, ['Show the full command', 'false'], false, true, wrap, true]
+      [shown.allow, shown.toggle, shown.tail, shown.cut, shown.wrap, shown.mono],
+      [true, null, true, false, wrap, true],
+      JSON.stringify(shown)
     );
     assert.deepEqual(
       await page.evaluate(() => [
-        [...window.approvals().querySelectorAll('[slot=button]')].map((b) => b.dataset.action),
-        !!window.approvals().querySelector('[data-timer]'),
-        window.approvals().querySelector('.hint:not([data-allow-hint])'),
-      ]),
-      [['deny'], true, null]
-    );
-    await page.evaluate(() => {
-      const element = window.$('slicc-app', 'slicc-approvals');
-      const approval = window.model.approvals.list()[0];
-      return Promise.all([
-        element.decide(approval, 'once'),
-        element.decide(approval, 'always'),
-      ]).then(() => true);
-    });
-    assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), []);
-
-    for (let i = 0; i < 4; i++) {
-      const action = await page.evaluate(() => window.approvals().activeElement?.dataset.action);
-      if (action === 'full-command') break;
-      await page.press('Tab', 'shift');
-    }
-    await page.press('Enter');
-    await page.until(() => !!window.approvals().querySelector('[data-action=once]'));
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    const opened = await page.evaluate(() => window.cutCommand('sudo-release'));
-    assert.deepEqual(
-      [opened.allow, opened.toggle, opened.tail, opened.cut],
-      [true, ['Hide the full command', 'true'], true, false],
-      JSON.stringify(opened)
-    );
-    assert.deepEqual(
-      await page.evaluate(() => [
-        [...window.approvals().querySelectorAll('[slot=button]')].map((b) => b.dataset.action),
+        [...window.approvals().querySelectorAll('[slot=button]')].map((b) => [
+          b.dataset.action,
+          b.hasAttribute('disabled'),
+        ]),
+        window.approvals().querySelector('[data-allow-hint]'),
+        !!window.approvals().querySelector('[data-always-hint]'),
         window.approvals().activeElement.dataset.action,
       ]),
-      [['deny', 'always', 'once'], 'full-command']
+      [
+        [
+          ['deny', false],
+          ['always', false],
+          ['once', false],
+        ],
+        null,
+        true,
+        'deny',
+      ]
     );
     const { x, y } = await page.evaluate(() => {
       const box = window.approvals().querySelector('[data-action=once]').getBoundingClientRect();
@@ -3893,6 +3874,10 @@ async function phoneDialog(t, approvals) {
     window.approvals = () => window.$('slicc-app', 'slicc-approvals').shadowRoot;
     window.dialogActions = () =>
       [...window.approvals().querySelectorAll('[slot=button]')].map((b) => b.dataset.action);
+    window.enabledActions = () =>
+      [...window.approvals().querySelectorAll('[slot=button]:not([disabled])')].map(
+        (b) => b.dataset.action
+      );
     window.allowHint = () =>
       window.approvals().querySelector('[data-allow-hint]')?.textContent ?? null;
     return true;
@@ -3927,7 +3912,7 @@ async function phoneDialog(t, approvals) {
   return { page, click, wheel, toEnd };
 }
 
-test('a 60-line command scrolls in its own box at 420, and Allow waits until its end has been in view', async (t) => {
+test('a 60-line command scrolls in its own box at 420, and Allow stays disabled until its end has been in view', async (t) => {
   const { page, click, wheel, toEnd } = await phoneDialog(t, 'none');
   await page.evaluate(() => {
     const now = Date.now();
@@ -3950,41 +3935,47 @@ test('a 60-line command scrolls in its own box at 420, and Allow waits until its
   });
   await page.until(
     () =>
-      !!window
-        .approvals()
-        .querySelector('dialog[data-approval=sudo-huge] [data-action=full-command]') &&
+      !!window.approvals().querySelector('dialog[data-approval=sudo-huge] [data-allow-hint]') &&
       window.focused().includes('swc-button')
   );
   await new Promise((resolve) => setTimeout(resolve, 600));
-  assert.deepEqual(await page.evaluate(() => [window.dialogActions(), window.allowHint()]), [
-    ['deny'],
-    'Show the full command to allow it.',
-  ]);
-  await click('[data-action=full-command]');
-  await page.until(
-    () => !!window.approvals().querySelector('[data-action=full-command][data-shown]')
-  );
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  const where = () =>
+    [...window.approvals().querySelectorAll('[slot=button]')].map((b) => {
+      const box = b.getBoundingClientRect();
+      return [b.dataset.action, Math.round(box.left), Math.round(box.top)];
+    });
+  const before = await page.evaluate(where);
   assert.deepEqual(
     await page.evaluate(() => {
       const box = window.approvals().querySelector('.command .lines');
       return [
         window.dialogActions(),
+        window.enabledActions(),
         window.allowHint(),
+        !!window.approvals().querySelector('[data-action=full-command]'),
         box.scrollHeight > box.clientHeight,
         getComputedStyle(box).overflowY,
       ];
     }),
-    [['deny'], 'Scroll to the end of the command to allow it.', true, 'auto']
+    [
+      ['deny', 'always', 'once'],
+      ['deny'],
+      'Scroll to the end of the command to allow it.',
+      false,
+      true,
+      'auto',
+    ]
   );
+  await click('[data-action=once]');
   await page.evaluate(() => {
     const element = window.$('slicc-app', 'slicc-approvals');
     return element.decide(window.model.approvals.list()[0], 'once').then(() => true);
   });
   assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), []);
   await toEnd();
-  await page.until(() => !!window.approvals().querySelector('[data-action=once]'));
-  await new Promise((resolve) => setTimeout(resolve, 200));
+  await page.until(() => window.enabledActions().length === 3);
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  assert.deepEqual(await page.evaluate(where), before);
   const visible = () =>
     ['[data-timer]', '[data-action=deny]', '[data-action=always]', '[data-action=once]'].map(
       (selector) => {
@@ -4004,7 +3995,7 @@ test('a 60-line command scrolls in its own box at 420, and Allow waits until its
   const all = (rows) => rows.map(([selector]) => [selector, true, true]);
   const shown = await page.evaluate(visible);
   assert.deepEqual(shown, all(shown));
-  assert.deepEqual(await page.evaluate(() => [window.dialogActions(), window.allowHint()]), [
+  assert.deepEqual(await page.evaluate(() => [window.enabledActions(), window.allowHint()]), [
     ['deny', 'always', 'once'],
     null,
   ]);
@@ -4013,7 +4004,7 @@ test('a 60-line command scrolls in its own box at 420, and Allow waits until its
   assert.deepEqual(
     await page.evaluate(() => [
       window.approvals().querySelector('.command .lines').scrollTop,
-      window.dialogActions(),
+      window.enabledActions(),
     ]),
     [0, ['deny', 'always', 'once']]
   );
@@ -4025,33 +4016,29 @@ test('a 60-line command scrolls in its own box at 420, and Allow waits until its
   assert.deepEqual(page.errors, []);
 });
 
-test('a guest tool call with a blank summary shows its tool and args, and Allow waits for their end', async (t) => {
+test('a guest tool call with a blank summary shows its tool and args whole, and Allow needs no expanding', async (t) => {
   const { page, click } = await phoneDialog(t, 'guest-args');
   await page.until(
     () =>
-      !!window
-        .approvals()
-        .querySelector('dialog[data-approval=guest-write] [data-action=full-command]') &&
+      !!window.approvals().querySelector('dialog[data-approval=guest-write]') &&
       window.focused().includes('swc-button')
   );
   await new Promise((resolve) => setTimeout(resolve, 600));
   await cutCommand(page, 'dialog');
-  const cut = await page.evaluate(() => window.cutCommand('guest-write'));
-  assert.deepEqual([cut.allow, cut.tail, cut.cut], [false, false, true]);
+  const shown = await page.evaluate(() => window.cutCommand('guest-write'));
+  assert.deepEqual(
+    [shown.allow, shown.tail, shown.cut, shown.toggle],
+    [true, true, false, null],
+    JSON.stringify(shown)
+  );
   assert.deepEqual(
     await page.evaluate(() => [
       window.approvals().querySelector('[data-summary]').textContent.split('\n').slice(0, 2),
-      window.dialogActions(),
+      window.enabledActions(),
       window.allowHint(),
     ]),
-    [['write_file', '{'], ['deny'], 'Show the full command to allow it.']
+    [['write_file', '{'], ['deny', 'always', 'once'], null]
   );
-  await click('[data-action=full-command]');
-  await page.until(() => !!window.approvals().querySelector('[data-action=once]'));
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  const opened = await page.evaluate(() => window.cutCommand('guest-write'));
-  assert.deepEqual([opened.allow, opened.tail], [true, true], JSON.stringify(opened));
-  assert.deepEqual(await page.evaluate(() => window.dialogActions()), ['deny', 'always', 'once']);
   await click('[data-action=once]');
   await page.until(() => !window.approvals().querySelector('dialog'));
   assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
@@ -4073,7 +4060,7 @@ test('a guest tool call with no summary and no args says it has no details, and 
       window.approvals().querySelector('[data-id=no-details]')?.textContent,
       window.approvals().querySelector('[data-summary]'),
       /write_file/.test(window.approvals().querySelector('#asking').textContent),
-      window.dialogActions(),
+      window.enabledActions(),
       window.allowHint(),
     ]),
     ['This request has no details.', null, true, ['deny', 'always', 'once'], null]
@@ -4081,35 +4068,26 @@ test('a guest tool call with no summary and no args says it has no details, and 
   assert.deepEqual(page.errors, []);
 });
 
-test('a guest tool call whose args came truncated never offers Allow, even after its end is in view', async (t) => {
-  const { page, click, toEnd } = await phoneDialog(t, 'guest-truncated');
+test('a guest tool call whose args came truncated never offers Allow, even with its end in view', async (t) => {
+  const { page, click } = await phoneDialog(t, 'guest-truncated');
   await page.until(
     () =>
-      !!window
-        .approvals()
-        .querySelector('dialog[data-approval=guest-write] [data-action=full-command]') &&
+      !!window.approvals().querySelector('dialog[data-approval=guest-write] [data-allow-hint]') &&
       window.focused().includes('swc-button')
   );
   await new Promise((resolve) => setTimeout(resolve, 600));
   const tooLong = 'This request is too long to show in full, so it can’t be allowed.';
-  assert.deepEqual(await page.evaluate(() => [window.dialogActions(), window.allowHint()]), [
-    ['deny'],
-    tooLong,
-  ]);
-  await click('[data-action=full-command]');
-  await page.until(
-    () => !!window.approvals().querySelector('[data-action=full-command][data-shown]')
-  );
-  await toEnd();
-  await new Promise((resolve) => setTimeout(resolve, 500));
   assert.deepEqual(
     await page.evaluate(() => [
       window.dialogActions(),
+      window.enabledActions(),
       window.allowHint(),
+      !!window.approvals().querySelector('[data-action=full-command]'),
       !!window.approvals().querySelector('[data-timer]'),
     ]),
-    [['deny'], tooLong, true]
+    [['deny', 'always', 'once'], ['deny'], tooLong, false, true]
   );
+  await click('[data-action=once]');
   await page.evaluate(() => {
     const element = window.$('slicc-app', 'slicc-approvals');
     const [approval] = window.model.approvals.list();
@@ -4117,6 +4095,7 @@ test('a guest tool call whose args came truncated never offers Allow, even after
       () => true
     );
   });
+  await new Promise((resolve) => setTimeout(resolve, 300));
   assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), []);
   assert.deepEqual(page.errors, []);
 });
@@ -10428,7 +10407,7 @@ test('a guest approval with always offers Always allow, says what it covers and 
   });
   t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
   await page.until(() => document.querySelector('slicc-app').screen === 'phone');
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  await new Promise((resolve) => setTimeout(resolve, 600));
   assert.deepEqual(
     await page.evaluate(() => {
       const root = window.approvals();
