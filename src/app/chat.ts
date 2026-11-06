@@ -667,7 +667,7 @@ export class SliccChat extends ThemedElement {
   #tick: ReturnType<typeof setInterval> | undefined;
   #tail = '';
   #held = '';
-  #mark = 0;
+  #mark = '';
 
   #all = false;
   #seen = '';
@@ -765,6 +765,7 @@ export class SliccChat extends ThemedElement {
   }
 
   #retry(id: string): void {
+    this.#log().focus({ preventScroll: true });
     this.#stopped.delete(id);
     void this.#earlier();
   }
@@ -1360,8 +1361,9 @@ export class SliccChat extends ThemedElement {
     const messages = agent ? (this.model?.agent.messages(agent.id) ?? []) : [];
     this.#tail = messages.at(-1)?.id ?? '';
     const { items, asks } = dock(agent ? this.#items(messages, agent) : [], messages, seat);
-    const count = items.filter(([key]) => !key.startsWith('day:')).length;
-    if (!this.behind) this.#mark = count;
+    const keys = items.flatMap(([key]) => (key.startsWith('day:') ? [] : [key]));
+    if (!this.behind) this.#mark = keys.at(-1) ?? '';
+    const seen = keys.lastIndexOf(this.#mark);
     const older = agent ? this.#olderRow(agent.id, messages[0]?.id ?? '') : nothing;
     return html`
       <header ?data-compact=${this.compact}>
@@ -1388,7 +1390,7 @@ export class SliccChat extends ThemedElement {
             ${this.#thread(items, older !== nothing, empty(watch, seat, agent?.name ?? 'the agent'))}
           </div>
         </div>
-        ${this.behind ? this.#latest(count - this.#mark) : nothing}
+        ${this.behind ? this.#latest(seen < 0 ? 0 : keys.length - 1 - seen) : nothing}
       </div>
       ${
         this.dropping

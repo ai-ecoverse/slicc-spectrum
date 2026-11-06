@@ -118,6 +118,11 @@ test('a long conversation loads earlier turns as the reader nears the top, witho
   assert.equal(kept.connected, true);
   assert.ok(Math.abs(kept.at - before.at) <= 1, `the turn moved from ${before.at} to ${kept.at}`);
   assert.equal(kept.scrolled, true);
+  assert.equal(
+    await page.evaluate(() => window.chatPart('[data-action=jump-latest]')?.textContent.trim()),
+    'Jump to latest',
+    'earlier messages never count as new'
+  );
   assert.ok((await page.evaluate(() => window.calls('cone-kitchen'))) > calls);
   await page.evaluate(() => {
     window.model.agent.olderTicks = 1;
@@ -196,9 +201,20 @@ test('a failed load shows a retry row instead of asking again, and Retry loads t
     { role: 'alert', text: 'Couldn’t load earlier messages.', retry: 'Retry', shown: 1 }
   );
   await page.evaluate(() => {
-    window.chatPart('[data-action=retry-older]').click();
+    const retry = window.chatPart('[data-action=retry-older]');
+    retry.focus();
+    retry.click();
     return true;
   });
+  await page.until(() => !window.chatPart('[data-action=retry-older]'));
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.$('slicc-app', 'slicc-dock', 'slicc-chat').shadowRoot.activeElement === window.log()
+    ),
+    true,
+    'focus stays in the chat when the retry row goes'
+  );
   await page.until(() => !window.model.agent.hasOlder('cone-sliccy') && !window.row());
   assert.equal(await page.evaluate(() => window.shown('cone-sliccy')), 3);
   assert.equal(await settled(page, 'cone-sliccy'), 3);
@@ -268,6 +284,13 @@ test('after loading history and going back to the bottom, the log follows new me
     window.model.agent.lick('cone-kitchen', 'cron', 'Oven timer', 'The bread is done.')
   );
   await page.until(() => !!window.chatPart('[data-action=jump-latest]'));
+  await page.until(() =>
+    /\(1 new\)/.test(window.chatPart('[data-action=jump-latest]').textContent)
+  );
+  assert.equal(
+    await page.evaluate(() => window.chatPart('[data-action=jump-latest]').textContent.trim()),
+    'Jump to latest (1 new)'
+  );
   for (let i = 0; i < 40 && (await page.evaluate(() => window.gap())) > 1; i++)
     await wheel(page, 4000);
   await page.until(() => !window.chatPart('[data-action=jump-latest]'));
