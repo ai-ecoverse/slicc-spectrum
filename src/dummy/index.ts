@@ -76,6 +76,7 @@ export interface DummyOptions {
   import?: ImportScenario | 'off';
   login?: DummyLogin;
   budget?: BudgetScenario;
+  older?: 'paged' | 'off';
 }
 
 export interface DummyModel extends SliccModel {
@@ -227,6 +228,7 @@ export function createDummyModel({
   import: imports = 'off',
   login,
   budget = 'plain',
+  older = 'off',
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
   const mount =
@@ -254,6 +256,7 @@ export function createDummyModel({
     browser.release(agentId);
   };
   importPort(imports, agent, time);
+  if (older === 'paged') agent.paginate(6, 4);
   if (hold !== 'off') agent.setHold({ reason: hold, held: 2 });
   const noticePort = noticesPort(agent, time, notices, readonly, arrival);
   if (scenario === 'driving') void browser.run(drive);

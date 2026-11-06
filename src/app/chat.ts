@@ -9,7 +9,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-attach.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chevron-down.js';
 import '@adobe/spectrum-wc-icons/swc-icon-new.js';
 import link from '@adobe/spectrum-wc/link.css';
-import { css, html, nothing, type TemplateResult, unsafeCSS } from 'lit';
+import { css, html, nothing, type PropertyValues, type TemplateResult, unsafeCSS } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import type {
   Agent,
@@ -118,6 +118,14 @@ interface Ask {
 }
 
 type Entry = [string, TemplateResult];
+
+interface Anchor {
+  agent: string;
+  card: Element | undefined;
+  offset: number;
+  top: number;
+  height: number;
+}
 
 function pendingAsks(messages: readonly Message[]): Array<[string, { id: string; at?: number }]> {
   return messages.flatMap((message): Array<[string, { id: string; at?: number }]> => {
@@ -533,6 +541,16 @@ export class SliccChat extends ThemedElement {
         background: var(--swc-background-elevated-color);
         box-shadow: var(--swc-drop-shadow-elevated);
       }
+      .older {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--swc-spacing-100);
+        min-block-size: var(--swc-component-height-100);
+        margin-block-end: var(--swc-spacing-200);
+        font-size: var(--swc-font-size-100);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
       .empty {
         color: var(--swc-neutral-subdued-content-color-default);
         text-align: center;
@@ -649,7 +667,7 @@ export class SliccChat extends ThemedElement {
   #tick: ReturnType<typeof setInterval> | undefined;
   #tail = '';
   #held = '';
-  #mark = 0;
+  #mark = '';
 
   #all = false;
   #seen = '';
@@ -708,7 +726,85 @@ export class SliccChat extends ThemedElement {
     const log = this.#log();
     if (!this.#stuck && log.scrollHeight <= log.clientHeight) this.#follow();
     else this.#pin(false);
+    this.#check();
   });
+
+  #paging = new Set<string>();
+  #stopped = new Map<string, { head: string; failed: boolean }>();
+  #shown = { agent: '', head: '' };
+  #anchor: Anchor | null = null;
+
+  #first(id: string): string {
+    return (id && this.model?.agent.messages(id)[0]?.id) || '';
+  }
+
+  #check(): void {
+    const log = this.#log();
+    if (log.scrollTop < log.clientHeight) void this.#earlier();
+  }
+
+  async #earlier(): Promise<void> {
+    const agent = this.model?.agent;
+    const id = this.#id();
+    const head = this.#first(id);
+    if (!agent?.hasOlder?.(id) || this.#paging.has(id) || this.#stopped.get(id)?.head === head)
+      return;
+    this.#paging.add(id);
+    this.requestUpdate();
+    try {
+      const found = await agent.older(id, head);
+      const now = this.#first(id);
+      if (!found.length || now === head) this.#stopped.set(id, { head: now, failed: false });
+    } catch {
+      this.#stopped.set(id, { head, failed: true });
+    }
+    this.#paging.delete(id);
+    this.requestUpdate();
+    await this.updateComplete;
+    if (this.#id() === id) this.#check();
+  }
+
+  #retry(id: string): void {
+    this.#log().focus({ preventScroll: true });
+    this.#stopped.delete(id);
+    void this.#earlier();
+  }
+
+  #keep(agent: string): Anchor {
+    const log = this.#log();
+    const top = log.getBoundingClientRect().top;
+    const card = [...(log.querySelector('swc-conversation-thread')?.children ?? [])].find(
+      (child) => !child.matches('.day') && child.getBoundingClientRect().bottom > top
+    );
+    return {
+      agent,
+      card,
+      offset: card ? card.getBoundingClientRect().top - top : 0,
+      top: log.scrollTop,
+      height: log.scrollHeight,
+    };
+  }
+
+  #restore(): void {
+    const { agent, card, offset, top, height } = this.#anchor as Anchor;
+    this.#anchor = null;
+    if (agent !== this.#id()) return;
+    const log = this.#log();
+    log.scrollTop = card?.isConnected
+      ? log.scrollTop + card.getBoundingClientRect().top - log.getBoundingClientRect().top - offset
+      : top + log.scrollHeight - height;
+    this.#last = log.scrollTop;
+    this.#height = log.scrollHeight;
+  }
+
+  #olderRow(id: string, head: string): TemplateResult | typeof nothing {
+    const stop = this.#stopped.get(id);
+    if (stop?.failed && stop.head === head)
+      return html`<div class="older" role="alert" data-older="failed"><span>Couldn’t load earlier messages.</span><swc-action-button size="s" quiet data-action="retry-older" @click=${() => this.#retry(id)}>Retry</swc-action-button></div>`;
+    const paging = this.#paging.has(id);
+    if (!paging && (!this.model?.agent.hasOlder?.(id) || stop?.head === head)) return nothing;
+    return html`<div class="older" role="status" data-older="loading" aria-busy=${paging ? 'true' : 'false'}>Loading earlier messages…</div>`;
+  }
   #fitted: Element | null | undefined;
   #fit = new ResizeObserver(([entry]) => {
     this.style.setProperty('--composer-height', `${(entry.target as HTMLElement).offsetHeight}px`);
@@ -778,6 +874,7 @@ export class SliccChat extends ThemedElement {
       this.#stuck = false;
     this.#last = log.scrollTop;
     this.#height = log.scrollHeight;
+    this.#check();
   };
 
   #intent = {
@@ -851,6 +948,24 @@ export class SliccChat extends ThemedElement {
     this.#fitted = undefined;
     clearInterval(this.#tick);
     this.#tick = undefined;
+  }
+
+  protected willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed);
+    const id = this.#id();
+    const head = this.#first(id);
+    const shown = this.#shown;
+    if (
+      this.hasUpdated &&
+      !this.#anchor &&
+      id === shown.agent &&
+      shown.head &&
+      head !== shown.head
+    ) {
+      this.#anchor = this.#keep(id);
+      requestAnimationFrame(() => this.#restore());
+    }
+    this.#shown = { agent: id, head };
   }
 
   protected updated(): void {
@@ -1210,12 +1325,26 @@ export class SliccChat extends ThemedElement {
     this.#seen = id;
     this.#all = false;
     this.#details.clear();
+    this.#stopped.delete(id);
   }
 
   #probe(): void {
     if (this.#handlers.surface || this.#probed === this.color) return;
     this.#probed = this.color;
     this.#handlers.surface = readSurface(this.renderRoot);
+  }
+
+  #thread(items: Entry[], older: boolean, blank: string): TemplateResult | typeof nothing {
+    if (items.length)
+      return html`<swc-conversation-thread>${repeat(
+        items,
+        ([key]) => key,
+        ([, item]) => item
+      )}</swc-conversation-thread>`;
+    if (this.model?.tabs?.state().role === 'connecting')
+      return html`<div class="empty" data-connecting>${connecting}</div>`;
+    if (this.model?.agent.starting?.() || older) return nothing;
+    return html`<div class="empty" data-empty>${blank}</div>`;
   }
 
   render(): TemplateResult {
@@ -1232,8 +1361,10 @@ export class SliccChat extends ThemedElement {
     const messages = agent ? (this.model?.agent.messages(agent.id) ?? []) : [];
     this.#tail = messages.at(-1)?.id ?? '';
     const { items, asks } = dock(agent ? this.#items(messages, agent) : [], messages, seat);
-    const count = items.filter(([key]) => !key.startsWith('day:')).length;
-    if (!this.behind) this.#mark = count;
+    const keys = items.flatMap(([key]) => (key.startsWith('day:') ? [] : [key]));
+    if (!this.behind) this.#mark = keys.at(-1) ?? '';
+    const seen = keys.lastIndexOf(this.#mark);
+    const older = agent ? this.#olderRow(agent.id, messages[0]?.id ?? '') : nothing;
     return html`
       <header ?data-compact=${this.compact}>
         ${agent ? this.#meta(agent, !messages.length) : this.#agentless()}
@@ -1255,22 +1386,11 @@ export class SliccChat extends ThemedElement {
           @pointerdown=${this.#hold}
         >
           <div class="column" @keydown=${this.#keys}>
-            ${
-              items.length
-                ? html`<swc-conversation-thread>${repeat(
-                    items,
-                    ([key]) => key,
-                    ([, item]) => item
-                  )}</swc-conversation-thread>`
-                : this.model?.tabs?.state().role === 'connecting'
-                  ? html`<div class="empty" data-connecting>${connecting}</div>`
-                  : this.model?.agent.starting?.()
-                    ? nothing
-                    : html`<div class="empty" data-empty>${empty(watch, seat, agent?.name ?? 'the agent')}</div>`
-            }
+            ${older}
+            ${this.#thread(items, older !== nothing, empty(watch, seat, agent?.name ?? 'the agent'))}
           </div>
         </div>
-        ${this.behind ? this.#latest(count - this.#mark) : nothing}
+        ${this.behind ? this.#latest(seen < 0 ? 0 : keys.length - 1 - seen) : nothing}
       </div>
       ${
         this.dropping

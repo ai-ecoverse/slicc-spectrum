@@ -305,6 +305,7 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   setModel(agentId: string, model: string): void;
   setThinking(agentId: string, thinking: Thinking): void;
   older(agentId: string, before: string): Promise<readonly Message[]>;
+  hasOlder?(agentId: string): boolean;
   commands(agentId: string): readonly SlashCommand[];
   toolLabel?(agentId: string, callIds: readonly string[]): Promise<string | null>;
   ready(): Promise<void>;
