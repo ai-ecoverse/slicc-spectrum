@@ -15,6 +15,7 @@ import {
   waiting,
 } from './approvals.ts';
 import { ModelElement } from './base.ts';
+import { commandText } from './command-display.ts';
 import { tabsBanner } from './tabs.ts';
 
 export class SliccNotices extends ModelElement {
@@ -217,7 +218,7 @@ export class SliccNotices extends ModelElement {
         <swc-icon-alert-triangle></swc-icon-alert-triangle>
         <div class="text">
           <span class="title">Waiting for a secret</span>
-          <p>${secretWaiting(approval)}</p>
+          <p>${commandText(secretWaiting(approval), false)}</p>
           <p>It waits for the owner's answer. Denied automatically at ${deadline(approval.expiresAt)}.</p>
         </div>
       </div>`;

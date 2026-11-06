@@ -279,3 +279,169 @@ test('a request cancelled elsewhere shows Answered elsewhere, and a locked vault
   assert.equal(await page.evaluate(() => window.card().title), 'Answered elsewhere');
   assert.deepEqual(page.errors, []);
 });
+
+async function capture(page) {
+  await page.evaluate(() => {
+    const vault = window.model.vault;
+    const make = vault.valueFrame.bind(vault);
+    window.fires = [];
+    vault.valueFrame = (request) => {
+      const frame = make(request);
+      const listen = frame.listen.bind(frame);
+      frame.listen = (listener) => {
+        window.fires.push(listener);
+        return listen(listener);
+      };
+      return frame;
+    };
+    window.fire = (event) => window.fires.at(-1)({ type: 'slicc-vault', v: 1, ...event });
+    window.calls = [];
+    const decide = window.model.approvals.decide;
+    window.model.approvals.decide = (id, decision) => {
+      window.calls.push([id, decision]);
+      return decide(id, decision);
+    };
+    window.ask = (patch = {}) => {
+      const now = Date.now();
+      window.model.approvals.raise({
+        id: 'ask-reef',
+        kind: 'secret',
+        mode: 'enter',
+        name: 'REEF_TOKEN',
+        reveal: false,
+        requester: { kind: 'user', name: 'cone' },
+        process: { exe: '/usr/bin/fnox', argv: ['fnox', 'set', 'REEF_TOKEN'], cwd: '/home/cone' },
+        createdAt: now,
+        expiresAt: now + 300_000,
+        ...patch,
+      });
+      return true;
+    };
+    return true;
+  });
+}
+
+test('decide takes only deny for a secret, and nothing once the ask is gone or done', async (t) => {
+  const page = await open(t, { approvals: 'none', vault: 'secrets' });
+  await capture(page);
+  await page.evaluate(() => window.ask());
+  await asked(page, 'ask-reef');
+  await page.evaluate(async () => {
+    const element = window.$('slicc-app', 'slicc-approvals');
+    const approval = window.model.approvals.list()[0];
+    await element.decide(approval, 'once');
+    await element.decide(approval, 'always');
+    return true;
+  });
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.calls,
+      !!window.approvals().querySelector('[data-rejected]'),
+    ]),
+    [[], false]
+  );
+  await page.evaluate(() => window.model.approvals.end('ask-reef', 'expired'));
+  await page.until(() => window.approvals().querySelector('dialog')?.dataset.gone === 'expired');
+  await page.evaluate(async () => {
+    const element = window.$('slicc-app', 'slicc-approvals');
+    await element.decide({ id: 'ask-reef', kind: 'secret' }, 'deny');
+    window.fire({ event: 'escape' });
+    return true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(await page.evaluate(() => window.calls), []);
+  assert.deepEqual(page.errors, []);
+});
+
+test('an oversized frame stays in its box under the command, and its events lose extra fields', async (t) => {
+  const page = await open(t, { approvals: 'none', vault: 'secrets' });
+  await capture(page);
+  await page.evaluate(() => window.ask());
+  await asked(page, 'ask-reef');
+  await page.evaluate(() => {
+    window.details = [];
+    document.addEventListener('vault-value', (event) => window.details.push(event.detail));
+    window.fire({ event: 'size', width: 4000, height: 5000, inset: 600 });
+    window.fire({
+      event: 'error',
+      code: 'EIO',
+      message: 'The vault went away.',
+      value: 'leak-0001',
+    });
+    return true;
+  });
+  const box = await page.evaluate(() => {
+    const root = window.approvals();
+    const host = root.querySelector('slicc-vault-value');
+    const frame = host.shadowRoot.querySelector('[data-vault-value]').getBoundingClientRect();
+    const clip = host.getBoundingClientRect();
+    const command = root.querySelector('[data-command]').getBoundingClientRect();
+    return {
+      height: frame.height <= 480,
+      inside: frame.left >= clip.left - 4 && frame.right <= clip.right + 4,
+      below: clip.top >= command.bottom,
+      clipped: getComputedStyle(host).overflow,
+    };
+  });
+  assert.deepEqual(box, { height: true, inside: true, below: true, clipped: 'hidden' });
+  assert.deepEqual(await page.evaluate(() => window.details), [
+    { event: 'error', code: 'EIO', message: 'The vault went away.' },
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a replaced ask with the same id gets a new frame and waits for its end again', async (t) => {
+  const page = await open(t, { approvals: 'secret-long', vault: 'secrets' });
+  await page.until(() => !!window.approvals().querySelector('[data-allow-hint]'));
+  await page.evaluate(() => {
+    const lines = window.approvals().querySelector('.command .lines');
+    lines.scrollTop = lines.scrollHeight;
+    return true;
+  });
+  await page.until(() => !window.approvals().querySelector('[data-value-frame][inert]'));
+  const frames = await page.evaluate(() => window.model.vault.frames.length);
+  await page.evaluate(() => {
+    const [approval] = window.model.approvals.list();
+    window.model.approvals.raise({ ...approval, createdAt: approval.createdAt + 1000 });
+    return true;
+  });
+  await page.until(
+    (frames) =>
+      window.model.vault.frames.length > frames &&
+      !!window.approvals().querySelector('[data-value-frame][inert]') &&
+      !!window.approvals().querySelector('[data-allow-hint]'),
+    frames
+  );
+  assert.equal(await page.evaluate(() => window.approvals().activeElement?.dataset.action), 'deny');
+  assert.deepEqual(page.errors, []);
+});
+
+test('control characters in the name show as chips in the title and in the notice', async (t) => {
+  const page = await open(t, { approvals: 'none', vault: 'secrets' });
+  await capture(page);
+  await page.evaluate(() => window.ask({ name: 'REEF\rTOKEN' }));
+  await page.until(
+    () => window.approvals().querySelector('dialog')?.dataset.approval === 'ask-reef'
+  );
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.approvals().querySelectorAll('h2 .control')].map((chip) => chip.title)
+    ),
+    ['carriage return (U+000D)']
+  );
+  await page.evaluate(() => {
+    window.model.approvals.decide = undefined;
+    window.ask({ id: 'ask-notice', name: 'REEF\rKEY' });
+    return true;
+  });
+  await page.until(() => !!window.deep('[data-approval-notice=ask-notice]'));
+  assert.deepEqual(
+    await page.evaluate(() =>
+      [...window.deep('[data-approval-notice=ask-notice]').querySelectorAll('.control')].map(
+        (chip) => chip.title
+      )
+    ),
+    ['carriage return (U+000D)']
+  );
+  assert.deepEqual(page.errors, []);
+});

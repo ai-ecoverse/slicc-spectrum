@@ -98,6 +98,11 @@ export class Ends {
     this.#looked.clear();
   }
 
+  forget(id: string): void {
+    this.#seen.delete(id);
+    this.#looked.delete(id);
+  }
+
   observe(): void {
     for (const end of this.#root().querySelectorAll<HTMLElement>('[data-end]'))
       this.#observer.observe(end);

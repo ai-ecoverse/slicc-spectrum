@@ -361,6 +361,21 @@ export class SliccVaultButton extends LitElement {
 
 export type ValueDetail = Extract<ValueEvent, { event: 'done' | 'gone' | 'error' | 'escape' }>;
 
+export const frameHeight = 480;
+export const frameInset = 4;
+
+const between = (value: unknown, most: number): number =>
+  typeof value === 'number' && Number.isFinite(value) ? Math.min(Math.max(value, 0), most) : 0;
+
+const picked = ['event', 'request', 'state', 'code', 'message'] as const;
+
+function pick(event: ValueEvent): ValueDetail {
+  const fields = event as unknown as Record<string, unknown>;
+  return Object.fromEntries(
+    picked.filter((key) => typeof fields[key] === 'string').map((key) => [key, fields[key]])
+  ) as unknown as ValueDetail;
+}
+
 export class SliccVaultValue extends LitElement {
   static properties = {
     vault: { attribute: false },
@@ -379,6 +394,10 @@ export class SliccVaultValue extends LitElement {
     :host {
       display: block;
       min-inline-size: 0;
+      padding: 4px;
+      margin: -4px;
+      overflow: hidden;
+      contain: paint;
     }
     iframe {
       display: block;
@@ -453,9 +472,12 @@ export class SliccVaultValue extends LitElement {
       this.#ready = true;
       this.#send();
     } else if (event.event === 'size') {
-      element.style.blockSize = `${event.height}px`;
-      element.style.inlineSize = `calc(100% + ${2 * event.inset}px)`;
-      element.style.margin = `${-event.inset}px`;
+      const inset = between(event.inset, frameInset);
+      element.style.blockSize = `${between(event.height, frameHeight)}px`;
+      element.style.maxBlockSize = '45dvh';
+      element.style.overflow = 'auto';
+      element.style.inlineSize = `calc(100% + ${2 * inset}px)`;
+      element.style.margin = `${-inset}px`;
     } else if (event.event === 'focus') {
       const root = this.closest('dialog') ?? this.ownerDocument;
       const order = sequential(tabbables(root, this));
@@ -467,7 +489,7 @@ export class SliccVaultValue extends LitElement {
     } else {
       this.dispatchEvent(
         new CustomEvent<ValueDetail>('vault-value', {
-          detail: event,
+          detail: pick(event),
           bubbles: true,
           composed: true,
         })

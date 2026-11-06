@@ -249,6 +249,14 @@ function title(approval: Approval): string {
 
 const toAnswer = 'Scroll to the end of the command to answer it.';
 
+function identity(approval: Approval): string {
+  const extra =
+    approval.kind === 'secret'
+      ? [approval.mode, approval.name, approval.reveal, approval.prompt ?? '', approval.requester]
+      : [];
+  return JSON.stringify([approval.kind, approval.createdAt, approved(approval), ...extra]);
+}
+
 function gone(reason: ApprovalEnd): 'elsewhere' | 'expired' {
   return reason === 'expired' ? 'expired' : 'elsewhere';
 }
@@ -276,6 +284,8 @@ export class SliccApprovals extends ModelElement {
   #pending = new Set<string>();
   #done = new Set<string>();
   #closed = new Set<string>();
+  #keys = new Map<string, string>();
+  #generation = new Map<string, number>();
   #port: ApprovalsPort | undefined;
   #ended = new Map<string, ApprovalEnd>();
   #timer: ReturnType<typeof setInterval> | null = null;
@@ -503,6 +513,7 @@ export class SliccApprovals extends ModelElement {
       this.#closed.clear();
       this.#ended.clear();
       this.#ends.clear();
+      this.#keys.clear();
     }
     if (!port) return [];
     return [
@@ -540,9 +551,15 @@ export class SliccApprovals extends ModelElement {
 
   async decide(approval: Approval, decision: ApprovalDecision): Promise<void> {
     const port = this.model?.approvals;
+    const { id } = approval;
     if (
       !port?.decide ||
       this.busy ||
+      this.gone ||
+      this.#showing?.id !== id ||
+      this.#done.has(id) ||
+      this.#closed.has(id) ||
+      (approval.kind === 'secret' && decision !== 'deny') ||
       (decision !== 'deny' && (!this.#settled(performance.now()) || !this.#whole(approval)))
     )
       return;
@@ -571,8 +588,28 @@ export class SliccApprovals extends ModelElement {
       : [];
   }
 
+  #track(): void {
+    const keys = new Map<string, string>();
+    for (const approval of this.model?.approvals?.list() ?? []) {
+      if (!Object.hasOwn(titles, approval.kind)) continue;
+      const { id } = approval;
+      const key = identity(approval);
+      keys.set(id, key);
+      if (this.#keys.get(id) === key || this.#pending.has(id)) continue;
+      this.#generation.set(id, (this.#generation.get(id) ?? 0) + 1);
+      this.#done.delete(id);
+      this.#closed.delete(id);
+      this.#ended.delete(id);
+      this.#ends.forget(id);
+      if (this.frameError?.id === id) this.frameError = null;
+      if (this.#showing?.id === id && !this.gone) this.#showing = null;
+    }
+    this.#keys = keys;
+  }
+
   protected willUpdate(changed: PropertyValues): void {
     super.willUpdate(changed);
+    this.#track();
     const list = this.#current();
     const showing = this.#showing;
     if (showing && this.#pending.has(showing.id)) return;
@@ -641,7 +678,7 @@ export class SliccApprovals extends ModelElement {
         this.#moves.observe(box);
     this.#settle();
     const key = dialog
-      ? `${dialog.dataset.approval}:${dialog.dataset.gone ?? ''}:${dialog.hasAttribute('data-rejected')}`
+      ? `${dialog.dataset.approval}:${this.#generation.get(dialog.dataset.approval as string)}:${dialog.dataset.gone ?? ''}:${dialog.hasAttribute('data-rejected')}`
       : '';
     if (key === this.#shown) return;
     if (dialog && !this.#shown) this.#trigger = origin();
@@ -815,9 +852,9 @@ export class SliccApprovals extends ModelElement {
     const gate = failure ? '' : this.#gate(approval);
     return this.#dialog(
       approval,
-      approval.id,
+      `${approval.id}:${this.#generation.get(approval.id)}`,
       html`<sp-alert-dialog variant="warning" data-approval-kind=${approval.kind}>
-          <h2 id="title" slot="heading">${title(approval)}</h2>
+          <h2 id="title" slot="heading">${commandText(title(approval), false)}</h2>
           ${this.#request(approval, true)}
           ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${commandText(approval.cwd, false)}</p>` : nothing}
           ${this.#notes(approval, gate, always)}
