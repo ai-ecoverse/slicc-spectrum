@@ -62,12 +62,17 @@ export class Cuts {
 
 export class Ends {
   #seen = new Set<string>();
+  #looked = new Set<string>();
   #root: () => ParentNode;
   #changed: () => void;
   #observer = new IntersectionObserver((entries) => {
     let changed = false;
     for (const entry of entries) {
       const id = (entry.target as HTMLElement).dataset.end as string;
+      if (!this.#looked.has(id)) {
+        this.#looked.add(id);
+        changed = true;
+      }
       if (!entry.isIntersecting || this.#seen.has(id)) continue;
       this.#seen.add(id);
       changed = true;
@@ -84,8 +89,13 @@ export class Ends {
     return this.#seen.has(id);
   }
 
+  hidden(id: string): boolean {
+    return this.#looked.has(id) && !this.#seen.has(id);
+  }
+
   clear(): void {
     this.#seen.clear();
+    this.#looked.clear();
   }
 
   observe(): void {

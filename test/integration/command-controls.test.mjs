@@ -14,9 +14,7 @@ async function open(t, approvals) {
     return true;
   });
   await page.until(() => !!window.approvals().querySelector('dialog[open] pre.command'));
-  await page.until(
-    () => !!window.approvals().querySelector('[data-action=always], [data-action=full-command]')
-  );
+  await page.until(() => !!window.approvals().querySelector('[data-action=once]'));
   await new Promise((resolve) => setTimeout(resolve, 600));
   return page;
 }
@@ -32,7 +30,7 @@ for (const [scenario, control, shown] of [
       await page.evaluate(() => ({
         text: window.approvals().querySelector('pre.command').textContent,
         command: window.model.approvals.list()[0].command,
-        hint: window.approvals().querySelector('.hint:not([data-allow-hint])')?.textContent,
+        hint: window.approvals().querySelector('[data-always-hint]')?.textContent,
       })),
       {
         text: `sudo printf '%s' 'harbor${shown}schedule'`,
@@ -88,7 +86,9 @@ test('control characters in a full command are shown', async (t) => {
   });
   await page.until(
     () =>
-      !!window.approvals().querySelector('[data-approval=sudo-controls] [data-action=full-command]')
+      !!window
+        .approvals()
+        .querySelector('[data-approval=sudo-controls] [data-action=once]:not([disabled])')
   );
   const expected = await page.evaluate(() =>
     window.originalCommand
@@ -103,26 +103,12 @@ test('control characters in a full command are shown', async (t) => {
       .replace(/\u2066/g, 'U+2066')
       .replace(/\ufeff/g, 'U+FEFF')
   );
-  assert.equal(
-    await page.evaluate(() => window.approvals().querySelector('pre.command').textContent),
-    `sudo ${expected}`
-  );
-  await page.until(() => window.approvals().querySelector('dialog').getAnimations().length === 0);
-  const { x, y } = await page.evaluate(() => {
-    const box = window
-      .approvals()
-      .querySelector('[data-action=full-command]')
-      .getBoundingClientRect();
-    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-  });
-  for (const type of ['mousePressed', 'mouseReleased'])
-    await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
-  await page.until(() =>
-    window.approvals().querySelector('[data-action=full-command]')?.hasAttribute('data-shown')
-  );
-  assert.equal(
-    await page.evaluate(() => window.approvals().querySelector('pre.command').textContent),
-    `sudo ${expected}`
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.approvals().querySelector('pre.command').textContent,
+      !!window.approvals().querySelector('[data-action=full-command], [data-clamp]'),
+    ]),
+    [`sudo ${expected}`, false]
   );
   assert.equal(
     await page.evaluate(() => window.model.approvals.list()[0].command === window.originalCommand),
@@ -143,9 +129,14 @@ for (const scenario of ['agent', 'long']) {
     assert.deepEqual(
       await page.evaluate(() => {
         const pre = window.approvals().querySelector('pre.command');
-        return [getComputedStyle(pre).whiteSpace, !!pre.querySelector('[data-clamp]')];
+        return [
+          getComputedStyle(pre).whiteSpace,
+          !!pre.querySelector('[data-clamp]'),
+          !!window.approvals().querySelector('[data-action=full-command]'),
+          !!window.approvals().querySelector('[data-action=once]:not([disabled])'),
+        ];
       }),
-      ['pre-wrap', true]
+      ['pre-wrap', false, false, true]
     );
     assert.deepEqual(page.errors, []);
   });
@@ -161,7 +152,7 @@ for (const scenario of ['controls-place', 'controls-cwd']) {
         asking: root.querySelector('#asking').textContent,
         command: root.querySelector('pre.command').textContent,
         cwd: root.querySelector('.cwd')?.textContent,
-        hint: root.querySelector('.hint:not([data-allow-hint])')?.textContent,
+        hint: root.querySelector('[data-always-hint]')?.textContent,
         labels: [...root.querySelectorAll('.control')].map((chip) =>
           chip.getAttribute('aria-label')
         ),
