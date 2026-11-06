@@ -19,7 +19,7 @@ import type {
 } from '../model/types.ts';
 import { ModelElement, resolveColor } from './base.ts';
 import { Ends, toScroll } from './command.ts';
-import { commandText } from './command-display.ts';
+import { commandText, controlStyles } from './command-display.ts';
 import { dialogStyles, focused } from './confirm.ts';
 import { size } from './messages.ts';
 import { prompt } from './secrets.ts';
@@ -307,6 +307,7 @@ export class SliccApprovals extends ModelElement {
 
   static styles = [
     dialogStyles,
+    controlStyles,
     css`
       :host {
         display: contents;
@@ -327,20 +328,6 @@ export class SliccApprovals extends ModelElement {
         font-size: var(--swc-font-size-100);
         white-space: pre-wrap;
         overflow-wrap: anywhere;
-      }
-      .control {
-        display: inline-flex;
-        align-items: baseline;
-        gap: var(--swc-spacing-50);
-        padding-inline: var(--swc-spacing-50);
-        border-radius: var(--swc-corner-radius-75);
-        background: var(--swc-gray-300);
-        color: var(--swc-gray-900);
-        font-size: var(--swc-font-size-100);
-        font-weight: var(--swc-bold-font-weight);
-      }
-      .control[data-label]:not([data-label=''])::after {
-        content: attr(data-label);
       }
       .command .lines:not([data-clamp]) {
         display: block;
