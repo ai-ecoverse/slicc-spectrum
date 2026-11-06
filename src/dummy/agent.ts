@@ -67,6 +67,11 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   #ice = new Map<string, Array<{ agent: Agent; messages: Message[] }>>();
   #suggestions = new Map<string, string>();
   #runs = new Map<string, Run>();
+  #earlier = new Map<string, Message[]>();
+  #page = 0;
+  #failing = 0;
+  olderTicks = 10;
+  readonly olderCalls: string[] = [];
   #active: string;
   #clock: Clock;
   #effects: Omit<Effects, 'agentId'>;
@@ -502,6 +507,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     const messages = this.#messages.get(agentId) as Message[];
     if (agent.kind === 'cone' && messages.length) this.#shelve(agent, messages);
     this.#messages.set(agentId, []);
+    this.#earlier.delete(agentId);
     this.#queues.set(agentId, []);
     this.#suggestions.delete(agentId);
     this.emit('messages', agentId);
@@ -537,8 +543,39 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     this.#changed();
   }
 
-  async older(): Promise<readonly Message[]> {
-    return [];
+  paginate(keep: number, size: number, ids: readonly string[] = [...this.#messages.keys()]): void {
+    this.#page = size;
+    for (const agentId of ids) {
+      const all = [...(this.#earlier.get(agentId) ?? []), ...(this.#messages.get(agentId) ?? [])];
+      const cut = Math.max(0, all.length - keep);
+      this.#earlier.set(agentId, all.slice(0, cut));
+      this.#messages.set(agentId, all.slice(cut));
+      this.emit('messages', agentId);
+    }
+  }
+
+  failOlder(times = 1): void {
+    this.#failing = times;
+  }
+
+  hasOlder(agentId: string): boolean {
+    return !!this.#earlier.get(agentId)?.length;
+  }
+
+  async older(agentId: string): Promise<readonly Message[]> {
+    this.olderCalls.push(agentId);
+    await this.#clock.sleep(this.olderTicks);
+    if (this.#failing > 0) {
+      this.#failing--;
+      throw new Error('The earlier messages couldn’t be read.');
+    }
+    const earlier = this.#earlier.get(agentId) ?? [];
+    const page = earlier.splice(Math.max(0, earlier.length - this.#page));
+    if (page.length) {
+      this.#messages.get(agentId)?.unshift(...page);
+      this.emit('messages', agentId);
+    }
+    return page;
   }
 
   commands(agentId: string): readonly SlashCommand[] {
@@ -585,6 +622,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     this.stop(agentId);
     this.#agents = this.#agents.filter((candidate) => candidate !== agent);
     this.#messages.delete(agentId);
+    this.#earlier.delete(agentId);
     this.#queues.delete(agentId);
     this.#suggestions.delete(agentId);
     if (this.#active === agentId) this.select(agent.parentId ?? (this.#agents[0] as Agent).id);
