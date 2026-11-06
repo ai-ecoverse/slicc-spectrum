@@ -804,8 +804,18 @@ for (const color of ['light', 'dark']) {
           contrast: backgrounds.every((bg) => window.contrast(style.backgroundColor, bg) >= 3),
         };
       });
-      const dots = [...window.agents().shadowRoot.querySelectorAll('.marker.status')].every((dot) =>
-        backgrounds.every((bg) => window.contrast(getComputedStyle(dot).backgroundColor, bg) >= 3)
+      const dots = [...window.agents().shadowRoot.querySelectorAll('.marker.status')].every(
+        (dot) => {
+          const style = getComputedStyle(dot);
+          const empty =
+            style.backgroundColor === 'rgba(0, 0, 0, 0)' || style.backgroundColor === 'transparent';
+          const paint = empty
+            ? style.borderStyle === 'none'
+              ? style.color
+              : style.borderTopColor
+            : style.backgroundColor;
+          return backgrounds.every((bg) => window.contrast(paint, bg) >= 3);
+        }
       );
       const selected = window.agentRow('cone-tides');
       const bar = getComputedStyle(selected, '::before');
@@ -855,36 +865,173 @@ test('Under forced colors, the dots, segments, unread circle and selection bar k
         const style = getComputedStyle(node, pseudo);
         return [style.forcedColorAdjust, style.backgroundColor];
       };
-      const dot = window.agentRow('cone-kitchen').querySelector('.marker.status');
-      const segment = window.agentRow('cone-sliccy').querySelector('.segment');
-      const unread = window.agentRow('cone-release').querySelector('.marker.unread');
-      const bar = window.agentRow('cone-sliccy');
-      return [
-        paint(dot),
-        paint(segment),
-        [...paint(unread), getComputedStyle(unread).color],
-        paint(bar, '::before'),
-      ].map((value) =>
-        value.map((part) =>
-          part === 'none'
-            ? part
-            : part === system('CanvasText')
-              ? 'CanvasText'
-              : part === system('Highlight')
-                ? 'Highlight'
-                : part === system('HighlightText')
-                  ? 'HighlightText'
-                  : part
-        )
-      );
+      const list = window.model.agent.list.bind(window.model.agent);
+      const statuses = {
+        'cone-kitchen': 'thinking',
+        'cone-harbor': 'waiting',
+        'cone-triage': 'error',
+        'cone-sliccy': 'idle',
+      };
+      window.model.agent.list = () =>
+        list().map((agent) =>
+          statuses[agent.id] ? { ...agent, status: statuses[agent.id] } : agent
+        );
+      const agents = window.agents();
+      agents.requestUpdate();
+      return agents.updateComplete.then(() => {
+        const mark = (id) => window.agentRow(id).querySelector('.marker.status');
+        const text = system('CanvasText');
+        const thinking = getComputedStyle(mark('cone-kitchen'));
+        const waiting = getComputedStyle(mark('cone-harbor'));
+        const error = getComputedStyle(mark('cone-triage'));
+        const idle = getComputedStyle(mark('cone-sliccy'));
+        const segment = window.agentRow('cone-sliccy').querySelector('.segment');
+        const unread = window.agentRow('cone-release').querySelector('.marker.unread');
+        const bar = window.agentRow('cone-sliccy');
+        return [
+          [
+            thinking.forcedColorAdjust,
+            thinking.borderTopColor === text,
+            waiting.borderTopColor === text,
+            error.color === text,
+            idle.backgroundColor === text,
+          ],
+          paint(segment),
+          [...paint(unread), getComputedStyle(unread).color],
+          paint(bar, '::before'),
+        ].map((value) =>
+          value.map((part) =>
+            part === 'none'
+              ? part
+              : part === true || part === false
+                ? part
+                : part === system('CanvasText')
+                  ? 'CanvasText'
+                  : part === system('Highlight')
+                    ? 'Highlight'
+                    : part === system('HighlightText')
+                      ? 'HighlightText'
+                      : part
+          )
+        );
+      });
     }),
     [
-      ['none', 'CanvasText'],
+      ['none', true, true, true, true],
       ['none', 'CanvasText'],
       ['none', 'Highlight', 'HighlightText'],
       ['none', 'Highlight'],
     ]
   );
+  assert.deepEqual(page.errors, []);
+});
+
+for (const width of [1280, 420]) {
+  for (const forced of [false, true]) {
+    test(`Agents status markers stay pairwise distinct${forced ? ' in forced colours' : ''} at ${width}`, async (t) => {
+      const page = await open(t);
+      await page.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 860,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+      if (forced) {
+        await page.send('Emulation.setEmulatedMedia', {
+          features: [{ name: 'forced-colors', value: 'active' }],
+        });
+        t.after(() => page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {}));
+        await page.until(() => matchMedia('(forced-colors: active)').matches);
+      }
+      if (width < 600) {
+        await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+        await page.evaluate(() =>
+          window.$('slicc-app', '.rail.bottom [data-surface=agents]')?.click()
+        );
+        await page.until(
+          () =>
+            window.app.shadowRoot
+              .querySelector('.rail.bottom [data-surface=agents]')
+              ?.hasAttribute('data-visible') &&
+            Boolean(window.agentRow('cone-sliccy')?.getBoundingClientRect().height)
+        );
+      }
+      await page.until(() =>
+        Boolean(window.agentRow('cone-sliccy')?.querySelector('.marker.status'))
+      );
+      const cues = {};
+      for (const status of ['idle', 'working', 'thinking', 'waiting', 'error']) {
+        cues[status] = await page.evaluate((status) => {
+          const list = window.model.agent.list.bind(window.model.agent);
+          window.model.agent.list = () =>
+            list().map((agent) => (agent.id === 'cone-sliccy' ? { ...agent, status } : agent));
+          const agents = window.agents();
+          agents.requestUpdate();
+          return agents.updateComplete.then(() => {
+            const marker = window.agentRow('cone-sliccy').querySelector('.marker.status');
+            const style = getComputedStyle(marker);
+            const empty =
+              style.backgroundColor === 'rgba(0, 0, 0, 0)' ||
+              style.backgroundColor === 'transparent';
+            const ring = style.boxShadow !== 'none';
+            return [
+              empty ? 'empty' : 'solid',
+              style.borderStyle || 'none',
+              ring ? 'ring' : 'flat',
+              marker.querySelector('swc-icon-alert-triangle') ? 'alert' : 'none',
+              style.animationName !== 'none' && style.animationName !== '' ? 'pulse' : 'still',
+            ].join('|');
+          });
+        }, status);
+      }
+      assert.deepEqual(cues, {
+        idle: 'solid|solid|flat|none|still',
+        working: 'solid|solid|ring|none|pulse',
+        thinking: 'empty|dashed|flat|none|still',
+        waiting: 'empty|solid|flat|none|still',
+        error: 'empty|none|flat|alert|still',
+      });
+      assert.equal(new Set(Object.values(cues)).size, 5);
+      const errorSize = await page.evaluate(() => {
+        const icon = window
+          .agentRow('cone-sliccy')
+          .querySelector('.marker.status swc-icon-alert-triangle');
+        const box = icon.getBoundingClientRect();
+        return [Math.round(box.width), Math.round(box.height)];
+      });
+      assert.ok(errorSize[0] >= 12 && errorSize[1] >= 12, String(errorSize));
+      assert.deepEqual(page.errors, []);
+    });
+  }
+}
+
+test('working keeps its ring when motion is reduced, so it still differs from idle', async (t) => {
+  const page = await open(t);
+  await page.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+  });
+  t.after(() => page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {}));
+  await page.until(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const cues = await page.evaluate(() => {
+    const list = window.model.agent.list.bind(window.model.agent);
+    const stamp = (status) => {
+      window.model.agent.list = () =>
+        list().map((agent) => (agent.id === 'cone-sliccy' ? { ...agent, status } : agent));
+      const agents = window.agents();
+      agents.requestUpdate();
+      return agents.updateComplete.then(() => {
+        const marker = window.agentRow('cone-sliccy').querySelector('.marker.status');
+        const style = getComputedStyle(marker);
+        return [
+          style.boxShadow !== 'none' ? 'ring' : 'flat',
+          style.animationName !== 'none' && style.animationName !== '' ? 'pulse' : 'still',
+        ].join('|');
+      });
+    };
+    return stamp('idle').then((idle) => stamp('working').then((working) => ({ idle, working })));
+  });
+  assert.deepEqual(cues, { idle: 'flat|still', working: 'ring|still' });
   assert.deepEqual(page.errors, []);
 });
 
@@ -1148,6 +1295,13 @@ for (const color of ['light', 'dark']) {
         [...row(id).querySelector('.head').children].map(
           (node) => node.classList[1] ?? node.className
         );
+      const statusPaint = (id) => {
+        const node = row(id).querySelector('.marker.status');
+        const style = getComputedStyle(node);
+        const empty =
+          style.backgroundColor === 'rgba(0, 0, 0, 0)' || style.backgroundColor === 'transparent';
+        return empty ? style.borderTopColor : style.backgroundColor;
+      };
       return {
         order: [order('cone-release'), order('cone-triage')],
         status: [
@@ -1155,8 +1309,8 @@ for (const color of ['light', 'dark']) {
           row('cone-triage').querySelector('.marker.status').dataset.status,
         ],
         counts: paint('cone-release', '.marker.unread') === paint('cone-triage', '.marker.unread'),
-        dots: paint('cone-release', '.marker.status') !== paint('cone-triage', '.marker.status'),
-        waiting: paint('cone-triage', '.marker.status') === window.token('--swc-notice-color-900'),
+        dots: statusPaint('cone-release') !== statusPaint('cone-triage'),
+        waiting: statusPaint('cone-triage') === window.token('--swc-notice-color-900'),
         label: row('cone-release').getAttribute('aria-label'),
         contrast: (a + 0.05) / (b + 0.05) >= 4.5,
       };

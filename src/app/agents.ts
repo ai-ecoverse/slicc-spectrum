@@ -7,7 +7,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-delete.js';
 import { css, html, nothing, type TemplateResult } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import type { Agent, SliccModel } from '../model/types.ts';
-import { ModelElement, percent, shared, statusLabel } from './base.ts';
+import { ModelElement, percent, shared, statusLabel, statusMark } from './base.ts';
 import { confirm, prompt } from './confirm.ts';
 import { onWatch, watchOnly } from './follow.ts';
 import { deleteCone } from './freezer.ts';
@@ -202,6 +202,7 @@ export class SliccAgents extends ModelElement {
       block-size: var(--swc-spacing-200);
       border-radius: var(--swc-corner-radius-full);
       background: var(--status-color);
+      color: var(--status-color);
     }
     .marker.unread {
       --status-color: var(--swc-accent-background-color-default);
@@ -328,7 +329,7 @@ export class SliccAgents extends ModelElement {
       }
     }
     @media (forced-colors: active) {
-      .marker,
+      .marker.unread,
       .segment,
       li[aria-selected='true']::before {
         forced-color-adjust: none;
@@ -597,7 +598,7 @@ export class SliccAgents extends ModelElement {
     >
       ${this.#disclosure(agent, scoops, open)}
       <div class="head">
-        <span class="marker status" data-status=${agent.status} aria-hidden="true"></span>
+        <span class="marker status" data-status=${agent.status} aria-hidden="true">${statusMark(agent.status)}</span>
         ${unread ? html`<span class="marker unread" data-status=${agent.status} aria-hidden="true">${unreadCount(unread)}</span>` : nothing}
         <span class="name">${agent.name}</span>
       </div>

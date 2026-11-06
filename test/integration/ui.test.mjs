@@ -7900,7 +7900,6 @@ for (const width of [1280, 420]) {
       [idle.light, idle.word, idle.status, idle.label, idle.first],
       [false, false, 'idle', ['img', 'Idle', 'Idle'], true]
     );
-    const colors = new Set([idle.color]);
     for (const [status, word] of [
       ['working', 'Working'],
       ['thinking', 'Thinking'],
@@ -7917,20 +7916,24 @@ for (const width of [1280, 420]) {
         return chat.updateComplete.then(() => true);
       }, status);
       const now = await page.evaluate(header);
-      colors.add(now.color);
       assert.deepEqual(
-        { ...now, color: undefined },
-        { ...idle, color: undefined, status, label: ['img', word, word] },
+        { ...now, color: undefined, size: undefined },
+        { ...idle, color: undefined, size: undefined, status, label: ['img', word, word] },
         status
       );
+      if (status === 'error') {
+        assert.ok(now.size[0] >= 12 && now.size[1] >= 12, String(now.size));
+        assert.ok(now.size[0] > idle.size[0] || now.size[1] > idle.size[1]);
+      } else {
+        assert.deepEqual(now.size, idle.size, status);
+      }
     }
-    assert.equal(colors.size, 4);
     assert.deepEqual(page.errors, []);
   });
 }
 
 for (const width of [1280, 420]) {
-  test(`in forced colours the chat header's status dot stays visible in a system colour, at ${width}`, async (t) => {
+  test(`in forced colours the chat header's status dot stays visible with a system-colour shape, at ${width}`, async (t) => {
     const page = await open(t);
     await page.send('Emulation.setDeviceMetricsOverride', {
       width,
@@ -7971,13 +7974,21 @@ for (const width of [1280, 420]) {
             const dot = head.querySelector('[data-agent-status]');
             const style = getComputedStyle(dot);
             const box = dot.getBoundingClientRect();
+            const empty =
+              style.backgroundColor === 'rgba(0, 0, 0, 0)' ||
+              style.backgroundColor === 'transparent';
+            const ink = empty
+              ? status === 'error'
+                ? style.color === text
+                : style.borderTopColor === text
+              : style.backgroundColor === text;
             return {
               status: dot.dataset.agentStatus,
               adjust: style.forcedColorAdjust,
-              paint: style.backgroundColor === text,
-              apart: style.backgroundColor !== getComputedStyle(head).backgroundColor,
+              ink,
               shown: box.width > 0 && box.height > 0,
               label: dot.getAttribute('aria-label'),
+              tab: dot.tabIndex,
             };
           });
         }, status)
@@ -7994,12 +8005,140 @@ for (const width of [1280, 420]) {
       ].map(([status, label]) => ({
         status,
         adjust: 'none',
-        paint: true,
-        apart: true,
+        ink: true,
         shown: true,
         label,
+        tab: 0,
       }))
     );
+    assert.deepEqual(page.errors, []);
+  });
+}
+
+for (const width of [1280, 420]) {
+  for (const forced of [false, true]) {
+    test(`chat header status shapes stay pairwise distinct${forced ? ' in forced colours' : ''} at ${width}`, async (t) => {
+      const page = await open(t);
+      await page.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 860,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+      if (forced) {
+        await page.send('Emulation.setEmulatedMedia', {
+          features: [{ name: 'forced-colors', value: 'active' }],
+        });
+        t.after(() => page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {}));
+        await page.until(() => matchMedia('(forced-colors: active)').matches);
+      }
+      if (width < 600)
+        await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+      await page.until(
+        () =>
+          !!window
+            .$('slicc-app', 'slicc-dock', 'slicc-chat')
+            ?.shadowRoot.querySelector('header [data-agent-status]')
+      );
+      const cues = {};
+      for (const status of ['idle', 'working', 'thinking', 'waiting', 'error']) {
+        cues[status] = await page.evaluate((status) => {
+          const active = window.model.agent.active();
+          const list = window.model.agent.list.bind(window.model.agent);
+          window.model.agent.list = () =>
+            list().map((agent) => (agent.id === active ? { ...agent, status } : agent));
+          const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+          chat.requestUpdate();
+          return chat.updateComplete.then(() => {
+            const dot = chat.shadowRoot.querySelector('header [data-agent-status]');
+            const style = getComputedStyle(dot);
+            const empty =
+              style.backgroundColor === 'rgba(0, 0, 0, 0)' ||
+              style.backgroundColor === 'transparent';
+            return [
+              empty ? 'empty' : 'solid',
+              style.borderStyle || 'none',
+              style.boxShadow !== 'none' ? 'ring' : 'flat',
+              dot.querySelector('swc-icon-alert-triangle') ? 'alert' : 'none',
+              style.animationName !== 'none' && style.animationName !== '' ? 'pulse' : 'still',
+              dot.getAttribute('aria-label'),
+              String(dot.tabIndex),
+            ].join('|');
+          });
+        }, status);
+      }
+      assert.deepEqual(cues, {
+        idle: 'solid|solid|flat|none|still|Idle|0',
+        working: 'solid|solid|ring|none|pulse|Working|0',
+        thinking: 'empty|dashed|flat|none|still|Thinking|0',
+        waiting: 'empty|solid|flat|none|still|Waiting|0',
+        error: 'empty|none|flat|alert|still|Error|0',
+      });
+      assert.equal(new Set(Object.values(cues)).size, 5);
+      const errorSize = await page.evaluate(() => {
+        const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+        const icon = chat.shadowRoot.querySelector(
+          'header [data-agent-status] swc-icon-alert-triangle'
+        );
+        const box = icon.getBoundingClientRect();
+        return [Math.round(box.width), Math.round(box.height)];
+      });
+      assert.ok(errorSize[0] >= 12 && errorSize[1] >= 12, String(errorSize));
+      assert.deepEqual(page.errors, []);
+    });
+  }
+}
+
+for (const reduced of [false, true]) {
+  test(`focusing the chat header status mark shows a focus ring${reduced ? ' under reduced motion' : ''}`, async (t) => {
+    const page = await open(t);
+    if (reduced) {
+      await page.send('Emulation.setEmulatedMedia', {
+        features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+      });
+      t.after(() => page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {}));
+      await page.until(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+    await page.until(
+      () =>
+        !!window
+          .$('slicc-app', 'slicc-dock', 'slicc-chat')
+          ?.shadowRoot.querySelector('header [data-agent-status]')
+    );
+    await page.evaluate(() => {
+      const active = window.model.agent.active();
+      const list = window.model.agent.list.bind(window.model.agent);
+      window.model.agent.list = () =>
+        list().map((agent) => (agent.id === active ? { ...agent, status: 'working' } : agent));
+      const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+      chat.requestUpdate();
+      return chat.updateComplete;
+    });
+    const look = (focus) =>
+      page.evaluate((focus) => {
+        const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+        const dot = chat.shadowRoot.querySelector('header [data-agent-status]');
+        if (focus) dot.focus({ focusVisible: true });
+        else dot.blur();
+        const style = getComputedStyle(dot);
+        return {
+          outline: style.outlineStyle,
+          width: style.outlineWidth,
+          ring: style.boxShadow !== 'none',
+          visible: Number.parseFloat(style.outlineWidth) > 0 && style.outlineStyle !== 'none',
+        };
+      }, focus);
+    await page.press('Shift');
+    const before = await look(false);
+    assert.deepEqual(
+      { outline: before.outline, ring: before.ring, visible: before.visible },
+      { outline: 'none', ring: true, visible: false }
+    );
+    const after = await look(true);
+    assert.equal(after.ring, true);
+    assert.equal(after.visible, true);
+    assert.notEqual(after.outline, before.outline);
     assert.deepEqual(page.errors, []);
   });
 }
