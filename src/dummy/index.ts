@@ -256,6 +256,8 @@ export function createDummyModel({
   importPort(imports, agent, time);
   if (hold !== 'off') agent.setHold({ reason: hold, held: 2 });
   const noticePort = noticesPort(agent, time, notices, readonly, arrival);
+  const vaultPort =
+    vault === 'off' ? undefined : new DummyVault(vault, time, vaultRecords(accounts, mcp));
   if (scenario === 'driving') void browser.run(drive);
   const base = {
     agent,
@@ -303,13 +305,9 @@ export function createDummyModel({
     ...(changes === 'files' ? {} : { changes: new DummyChanges(files, changes === 'git') }),
     ...(noticePort ? { notices: noticePort } : {}),
     ...(tabs === 'off' ? {} : { tabs: new DummyTabs(tabs, time) }),
-    ...(approvals === 'off' ? {} : { approvals: new DummyApprovals(approvals, time) }),
+    ...(approvals === 'off' ? {} : { approvals: new DummyApprovals(approvals, time, vaultPort) }),
     ...(follow === 'off' ? {} : { follow: new DummyFollow(follow, time) }),
-    ...(vault === 'off'
-      ? {}
-      : {
-          vault: new DummyVault(vault, time, vaultRecords(accounts, mcp)),
-        }),
+    ...(vaultPort ? { vault: vaultPort } : {}),
     ...guestsPort(guests, time),
   };
   base.vault?.on('status', (status) => {

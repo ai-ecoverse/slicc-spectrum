@@ -11,15 +11,19 @@ import type {
   ApprovalsPort,
   GuestMessageApproval,
   GuestToolApproval,
+  SecretApproval,
   SliccModel,
   SudoApproval,
   TrayApproval,
+  ValueConfig,
 } from '../model/types.ts';
-import { ModelElement } from './base.ts';
+import { ModelElement, resolveColor } from './base.ts';
 import { Ends, toScroll } from './command.ts';
 import { commandText } from './command-display.ts';
 import { dialogStyles, focused } from './confirm.ts';
 import { size } from './messages.ts';
+import { prompt } from './secrets.ts';
+import { shellWord, type ValueDetail } from './vault.ts';
 
 export { deadline } from './messages.ts';
 
@@ -83,8 +87,41 @@ export function trayAsking(approval: TrayApproval): string {
   return `${name} wants to unlink ${approval.device?.name ?? 'a device'} from this seven.`;
 }
 
+export function secretTitle(approval: SecretApproval): string {
+  return approval.mode === 'reveal'
+    ? `Reveal ${approval.name} to a program?`
+    : `Enter a value for ${approval.name}?`;
+}
+
+export function secretAsking(approval: SecretApproval): string {
+  const { kind, name, where } = approval.requester;
+  const place = where ? ` in ${where}` : '';
+  return kind === 'user' ? `You ran this${place} (as ${name})` : `${name} ran this${place}`;
+}
+
+export function processLine(approval: SecretApproval): string {
+  const { exe, argv } = approval.process;
+  return [exe, ...argv.slice(1)].map(shellWord).join(' ');
+}
+
+export function revealWarning(approval: SecretApproval): string {
+  const asked = approval.requester.kind === 'agent' ? ' The agent asked for this.' : '';
+  return `${approval.process.exe} gets the plaintext. It can send it anywhere.${asked}`;
+}
+
+export function secretWaiting(approval: SecretApproval): string {
+  const { kind, name } = approval.requester;
+  const who = kind === 'user' ? 'You ran' : `${name} ran`;
+  const what =
+    approval.mode === 'reveal'
+      ? `the plaintext of ${approval.name}`
+      : `a value for ${approval.name}`;
+  return `${who} ${approval.process.exe}, which asks for ${what}.`;
+}
+
 export function approved(approval: Approval): string {
   if (approval.kind === 'sudo') return sudo(approval);
+  if (approval.kind === 'secret') return processLine(approval);
   if (approval.kind === 'guest-message' || approval.kind === 'tray') return '';
   if (approval.summary.trim()) return approval.summary;
   return approval.args?.trim() ? `${approval.tool}\n${approval.args}` : '';
@@ -131,6 +168,7 @@ function leveled(approval: Judged): ApprovalLevel | null {
 export function offersAlways(approval: Approval): boolean {
   return (
     approval.kind !== 'tray' &&
+    approval.kind !== 'secret' &&
     approval.always &&
     (approval.kind !== 'sudo' || leveled(approval) !== null)
   );
@@ -192,11 +230,24 @@ const titles: Record<Approval['kind'], Record<'ask' | 'elsewhere' | 'expired', s
     elsewhere: 'Answered in another tab',
     expired: 'Tray request timed out',
   },
+  secret: {
+    ask: '',
+    elsewhere: 'Answered elsewhere',
+    expired: 'Secret request timed out',
+  },
 };
 
+export const approvalKinds: readonly Approval['kind'][] = Object.freeze(
+  Object.keys(titles) as Approval['kind'][]
+);
+
 function title(approval: Approval): string {
-  return approval.kind === 'tray' ? trayTitle(approval) : titles[approval.kind].ask;
+  if (approval.kind === 'tray') return trayTitle(approval);
+  if (approval.kind === 'secret') return secretTitle(approval);
+  return titles[approval.kind].ask;
 }
+
+const toAnswer = 'Scroll to the end of the command to answer it.';
 
 function gone(reason: ApprovalEnd): 'elsewhere' | 'expired' {
   return reason === 'expired' ? 'expired' : 'elsewhere';
@@ -209,11 +260,13 @@ export class SliccApprovals extends ModelElement {
     busy: { state: true },
     failure: { state: true },
     gone: { state: true },
+    frameError: { state: true },
   };
   declare now: number;
   declare busy: ApprovalDecision | '';
   declare failure: { id: string; message: string } | null;
   declare gone: { approval: Approval; reason: 'elsewhere' | 'expired' } | null;
+  declare frameError: { id: string; message: string } | null;
   arming = 500;
   #changed = 0;
   #pressed = 0;
@@ -239,6 +292,7 @@ export class SliccApprovals extends ModelElement {
     this.busy = '';
     this.failure = null;
     this.gone = null;
+    this.frameError = null;
   }
 
   static styles = [
@@ -380,6 +434,50 @@ export class SliccApprovals extends ModelElement {
       [slot='button'][data-action='deny'] {
         margin-inline-end: auto;
       }
+      .prompt {
+        margin-block-start: var(--swc-spacing-200);
+        padding-inline-start: var(--swc-spacing-200);
+        border-inline-start: var(--swc-border-width-200) solid var(--swc-gray-300);
+        overflow-wrap: anywhere;
+        max-block-size: 8lh;
+        overflow: auto;
+      }
+      .prompt .from {
+        display: block;
+        font-size: var(--swc-font-size-75);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .prompt .said {
+        white-space: pre-wrap;
+      }
+      .reveal {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--swc-spacing-100);
+        margin-block-start: var(--swc-spacing-200);
+        padding: var(--swc-spacing-200) var(--swc-spacing-300);
+        border-radius: var(--swc-corner-radius-medium-default);
+        background: var(--swc-negative-subtle-background-color-default);
+        color: var(--swc-neutral-content-color-default);
+        overflow-wrap: anywhere;
+        --swc-icon-color: var(--swc-icon-color-negative);
+      }
+      .reveal swc-icon-alert-triangle {
+        flex: none;
+        margin-block-start: 0.15em;
+      }
+      .reveal p {
+        margin: 0;
+      }
+      .value {
+        margin-block-start: var(--swc-spacing-300);
+      }
+      .value[inert] {
+        opacity: 0.4;
+      }
+      .gate {
+        min-block-size: 1lh;
+      }
       .problem {
         display: flex;
         align-items: flex-start;
@@ -399,6 +497,7 @@ export class SliccApprovals extends ModelElement {
       this.gone = null;
       this.busy = '';
       this.failure = null;
+      this.frameError = null;
       this.#pending.clear();
       this.#done.clear();
       this.#closed.clear();
@@ -484,12 +583,18 @@ export class SliccApprovals extends ModelElement {
       !list.some((approval) => approval.id === showing.id)
     ) {
       const reason =
-        this.#ended.get(showing.id) ?? (showing.expiresAt <= this.now ? 'expired' : 'answered');
+        this.#ended.get(showing.id) ??
+        (showing.expiresAt <= this.now
+          ? 'expired'
+          : showing.kind === 'secret'
+            ? 'withdrawn'
+            : 'answered');
       if (reason !== 'withdrawn') this.gone = { approval: showing, reason: gone(reason) };
     }
     if (this.gone) return;
     const next = list[0] ?? null;
     if (next?.id === showing?.id) return;
+    this.frameError = null;
     this.#showing = next;
     this.#changed = performance.now();
   }
@@ -558,10 +663,49 @@ export class SliccApprovals extends ModelElement {
     this.#showing = null;
   }
 
+  #value(event: CustomEvent<ValueDetail>, approval: SecretApproval): void {
+    const detail = event.detail;
+    if (detail.event === 'escape') {
+      void this.decide(approval, 'deny');
+      return;
+    }
+    if (detail.event === 'error') {
+      this.frameError = { id: approval.id, message: detail.message };
+      return;
+    }
+    const { id } = approval;
+    if (detail.request !== id || this.#pending.has(id) || this.#done.has(id)) return;
+    if (detail.event === 'done' || detail.state === 'withdrawn') this.#dismiss(approval);
+    else this.gone = { approval, reason: detail.state === 'expired' ? 'expired' : 'elsewhere' };
+  }
+
+  #config(): ValueConfig {
+    const doc = this.ownerDocument;
+    const dark = doc.defaultView?.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+    const lang = doc.documentElement.lang;
+    return {
+      theme: resolveColor(this.model?.settings?.get().color ?? 'system', dark),
+      dir: doc.documentElement.dir === 'rtl' ? 'rtl' : 'ltr',
+      ...(lang ? { lang } : {}),
+    };
+  }
+
+  #frame(approval: SecretApproval): TemplateResult {
+    const vault = this.model?.vault;
+    if (!vault?.valueFrame)
+      return html`<p class="hint" data-id="no-frame">The vault isn’t available here, so this request can only be denied.</p>`;
+    const hidden = this.#ends.hidden(approval.id);
+    const problem = this.frameError?.id === approval.id ? this.frameError.message : '';
+    return html`<div class="value" data-value-frame ?inert=${!this.#ends.has(approval.id)}><slicc-vault-value .vault=${vault} .request=${approval.id} .config=${this.#config()} @vault-value=${(event: CustomEvent<ValueDetail>) => this.#value(event, approval)}></slicc-vault-value></div>
+      <p class="hint gate" data-allow-hint=${hidden ? '' : nothing}>${hidden ? toAnswer : ''}</p>
+      ${problem ? html`<p class="problem" role="alert" data-frame-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${problem}</span></p>` : nothing}`;
+  }
+
   #dismiss(approval: Approval): void {
     this.#done.add(approval.id);
     this.#closed.add(approval.id);
     this.failure = null;
+    this.requestUpdate();
   }
 
   #cancel(event: Event, approval: Approval): void {
@@ -610,7 +754,8 @@ export class SliccApprovals extends ModelElement {
     const { id } = approval;
     const text = approved(approval);
     if (!text) return html`<p class="hint" data-id="no-details">This request has no details.</p>`;
-    return html`<pre class="command" data-command=${approval.kind === 'sudo' ? '' : nothing} data-summary=${approval.kind === 'sudo' ? nothing : ''}><span class="lines">${approval.kind === 'sudo' ? commandText(text) : text}${pending ? html`<span class="end" data-end=${id}></span>` : nothing}</span></pre>`;
+    const command = approval.kind === 'sudo' || approval.kind === 'secret';
+    return html`<pre class="command" data-command=${command ? '' : nothing} data-summary=${command ? nothing : ''}><span class="lines">${command ? commandText(text) : text}${pending ? html`<span class="end" data-end=${id}></span>` : nothing}</span></pre>`;
   }
 
   #request(approval: Approval, pending = false): TemplateResult {
@@ -621,6 +766,12 @@ export class SliccApprovals extends ModelElement {
     if (approval.kind === 'guest-tool')
       return html`<p id="asking">${guestAsking(approval)}</p>
         ${this.#command(approval, pending)}`;
+    if (approval.kind === 'secret')
+      return html`<p id="asking">${commandText(secretAsking(approval), false)}:</p>
+        ${this.#command(approval, pending)}
+        <p class="cwd">In ${commandText(approval.process.cwd, false)}</p>
+        ${approval.prompt ? html`<div class="prompt" data-prompt><span class="from">From the agent, not checked by SLICC:</span><span class="said">${commandText(prompt(approval.prompt))}</span></div>` : nothing}
+        ${approval.reveal ? html`<div class="reveal" data-reveal><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><p>${commandText(revealWarning(approval), false)}</p></div>` : nothing}`;
     const files = approval.attachments ?? [];
     return html`<p id="asking">${guestAsking(approval)}</p>
       <div class="guest" data-guest-text>${approval.text}</div>
@@ -628,7 +779,7 @@ export class SliccApprovals extends ModelElement {
   }
 
   #notes(approval: Approval, gate: string, always: boolean): TemplateResult | typeof nothing {
-    if (approval.kind === 'tray') return nothing;
+    if (approval.kind === 'tray' || approval.kind === 'secret') return nothing;
     const note = verdictNote(approval);
     return html`<div class="notes" data-notes><div class="judge" aria-live="polite">${judged(approval)}${note ? html`<p class="hint" data-verdict-note>${note}</p>` : nothing}</div>${gate ? html`<p class="hint" data-allow-hint>${gate}</p>` : nothing}${always ? html`<p class="hint" data-always-hint>${hintOf(approval)}</p>` : nothing}</div>`;
   }
@@ -638,7 +789,7 @@ export class SliccApprovals extends ModelElement {
       return html`<swc-button slot="button" variant="secondary" fill-style="outline" data-action="close" @click=${() => this.#dismiss(approval)}>Close</swc-button>`;
     return html`${this.#button(approval, 'deny', 'Deny', 'secondary')}
       ${always ? this.#button(approval, 'always', inCwd(approval) ? 'Always allow in this directory' : 'Always allow', 'secondary') : nothing}
-      ${this.#button(approval, 'once', 'Allow once', 'accent')}`;
+      ${approval.kind === 'secret' ? nothing : this.#button(approval, 'once', 'Allow once', 'accent')}`;
   }
 
   render(): unknown {
@@ -670,6 +821,7 @@ export class SliccApprovals extends ModelElement {
           ${this.#request(approval, true)}
           ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${commandText(approval.cwd, false)}</p>` : nothing}
           ${this.#notes(approval, gate, always)}
+          ${approval.kind === 'secret' && !failure ? this.#frame(approval) : nothing}
           ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : html`<p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>`}
           <p class="more" data-more=${rest.length ? '' : nothing}>${rest.length === 1 ? '1 more request is waiting.' : rest.length ? `${rest.length} more requests are waiting.` : ''}</p>
           ${this.#actions(approval, !!failure, always)}

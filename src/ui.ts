@@ -1,7 +1,7 @@
 import './app/spectrum.ts';
 import { SliccAgents } from './app/agents.ts';
 import { SliccApp } from './app/app.ts';
-import { SliccApprovals } from './app/approvals.ts';
+import { approvalKinds, SliccApprovals } from './app/approvals.ts';
 import { SliccBrowser } from './app/browser.ts';
 import { SliccChanges, SliccDiffPanel } from './app/changes.ts';
 import { SliccChat } from './app/chat.ts';
@@ -25,7 +25,7 @@ import { SliccTerminalPanel } from './app/terminals.ts';
 import { SliccTray } from './app/tray.ts';
 import { SliccUpdates } from './app/updates.ts';
 import { SliccValueRequest } from './app/value-request.ts';
-import { SliccVaultButton } from './app/vault.ts';
+import { SliccVaultButton, SliccVaultValue } from './app/vault.ts';
 import { defineCodeViews, SliccCodeView, SliccDiffView } from './components/code-view.ts';
 import { defineDock, SliccDock } from './components/dock.ts';
 import { defineFileTree, SliccFileTree } from './components/file-tree.ts';
@@ -57,6 +57,7 @@ export { Emitter } from './model/emitter.ts';
 export type * from './model/types.ts';
 export { isVaultFailure } from './model/values.ts';
 export {
+  approvalKinds,
   SliccAgents,
   SliccApp,
   SliccApprovals,
@@ -82,6 +83,7 @@ export {
   SliccUpdates,
   SliccValueRequest,
   SliccVaultButton,
+  SliccVaultValue,
 };
 
 const elements: Record<string, CustomElementConstructor> = {
@@ -110,6 +112,7 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-approvals': SliccApprovals,
   'slicc-secrets': SliccSecrets,
   'slicc-vault-button': SliccVaultButton,
+  'slicc-vault-value': SliccVaultValue,
   'slicc-value-request': SliccValueRequest,
   'slicc-confirm': SliccConfirm,
   'slicc-prompt': SliccPrompt,
