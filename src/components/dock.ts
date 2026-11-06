@@ -144,7 +144,9 @@ export class SliccDock extends HTMLElement {
 
   reveal(id: string): void {
     const panel = this.api.getPanel(id);
+    const again = panel?.group.activePanel === panel;
     panel?.group.model.openPanel(panel, { skipSetGroupActive: true });
+    if (again) this.#reactivate(id);
   }
 
   close(id: string): void {
@@ -154,8 +156,18 @@ export class SliccDock extends HTMLElement {
   focusPanel(id: string): void {
     const panel = this.api.getPanel(id);
     if (!panel) return;
+    const again = panel.group.activePanel === panel;
     panel.api.setActive();
+    if (again) this.#reactivate(id);
     this.#contents.get(id)?.focus();
+  }
+
+  #reactivate(id: string): void {
+    const content = this.#contents.get(id);
+    const host = content?.parentElement;
+    if (!content || !host) return;
+    content.remove();
+    host.append(content);
   }
 
   cycleGroup(delta: number): string | null {

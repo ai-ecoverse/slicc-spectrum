@@ -1165,6 +1165,8 @@ Types are in `dist/types/ui.d.ts`, `dist/types/dummy.d.ts` and `dist/types/kerne
 - Keyboard navigation (`keyboardNavigation`) needs dockview-enterprise, so `<slicc-dock>` implements <kbd>F6</kbd> and <kbd>Ctrl</kbd>+<kbd>]</kbd>/<kbd>[</kbd> itself.
 - A floating group with a border (`--dv-floating-border`, which dockview's own light theme sets) grows by twice the border width on every save and restore.
   The theme draws the edge with a box shadow instead.
+- From dockview-core 8.8.1, activating a panel that is already the group's active panel no longer remounts its content.
+  `<slicc-dock>` remounts on `focusPanel` / `reveal` when that panel was already the group's active panel, so Lit panels re-read their model and a terminal reconnects at the laid-out size.
 
 ## Development
 
