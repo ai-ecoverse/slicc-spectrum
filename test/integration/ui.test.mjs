@@ -287,6 +287,88 @@ test('panels move, close, float and come back, and a reload keeps the layout', a
   assert.deepEqual(page.errors, []);
 });
 
+test('focusPanel remounts an already-active panel once, and a restored one on first focus', async (t) => {
+  const page = await open(t);
+  const chat = 'chat:cone-sliccy';
+  await page.evaluate((id) => {
+    const dock = window.dock();
+    if (!customElements.get('slicc-remount-probe')) {
+      customElements.define(
+        'slicc-remount-probe',
+        class extends HTMLElement {
+          connectedCallback() {
+            const host = this.parentElement;
+            if (host) host.__connects = (host.__connects ?? 0) + 1;
+          }
+        }
+      );
+    }
+    window.hookConnects = (panelId) => {
+      const content = dock.content(panelId);
+      if (!content.__probe) {
+        content.__connects = 0;
+        content.__probe = document.createElement('slicc-remount-probe');
+        content.append(content.__probe);
+      }
+      return content.__connects;
+    };
+    window.hookConnects(id);
+    return true;
+  }, chat);
+  assert.equal(
+    await page.evaluate((id) => window.dock().api.getPanel(id).group.activePanel.id, chat),
+    chat
+  );
+  let before = await page.evaluate((id) => window.hookConnects(id), chat);
+  await page.evaluate((id) => window.dock().focusPanel(id), chat);
+  assert.equal(await page.evaluate((id) => window.hookConnects(id), chat), before + 1);
+  before = await page.evaluate((id) => window.hookConnects(id), chat);
+  await page.evaluate((id) => window.dock().reveal(id), chat);
+  assert.equal(await page.evaluate((id) => window.hookConnects(id), chat), before + 1);
+
+  before = await page.evaluate((id) => window.hookConnects(id), chat);
+  await page.evaluate(() => window.app.show('settings'));
+  await page.until(() => window.dock().api.activePanel?.id === 'settings');
+  await page.evaluate((id) => window.dock().focusPanel(id), chat);
+  assert.equal(await page.evaluate((id) => window.hookConnects(id), chat), before + 1);
+  assert.equal(await page.evaluate((id) => window.dock().api.activePanel?.id, chat), chat);
+
+  const layout = await page.evaluate(() => window.dock().toJSON());
+  await page.evaluate((saved) => {
+    const dock = window.dock();
+    dock.clear();
+    dock.restore(saved);
+    return true;
+  }, layout);
+  await page.until((id) => window.dock().api.getPanel(id)?.group.activePanel?.id === id, chat);
+  before = await page.evaluate((id) => window.hookConnects(id), chat);
+  await page.evaluate((id) => window.dock().focusPanel(id), chat);
+  assert.equal(await page.evaluate((id) => window.hookConnects(id), chat), before + 1);
+
+  await page.evaluate(() => window.app.show('settings'));
+  await page.until(() => window.dock().api.activePanel?.id === 'settings');
+  const tab = await page.evaluate(() => {
+    const el = [...window.dock().shadowRoot.querySelectorAll('.dv-tab')].find(
+      (node) => node.textContent.trim() === 'sliccy'
+    );
+    const box = el.getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  });
+  for (const type of ['mousePressed', 'mouseReleased'])
+    await page.send('Input.dispatchMouseEvent', {
+      type,
+      x: tab.x,
+      y: tab.y,
+      button: 'left',
+      clickCount: 1,
+    });
+  await page.until((id) => window.dock().api.getPanel(id)?.group.activePanel?.id === id, chat);
+  before = await page.evaluate((id) => window.hookConnects(id), chat);
+  await page.evaluate((id) => window.dock().focusPanel(id), chat);
+  assert.equal(await page.evaluate((id) => window.hookConnects(id), chat), before + 1);
+  assert.deepEqual(page.errors, []);
+});
+
 test('sending a message streams a reply with a tool call', async (t) => {
   const page = await open(t, { delay: '8' });
   await page.evaluate(() => {

@@ -29,7 +29,6 @@ export class SliccDock extends HTMLElement {
   accepts: string[] = [];
   #api: DockviewApi | null = null;
   #contents = new Map<string, HTMLElement>();
-  #shown = new Set<string>();
 
   get api(): DockviewApi {
     if (!this.#api) this.#mount();
@@ -97,7 +96,6 @@ export class SliccDock extends HTMLElement {
     });
     api.onDidRemovePanel((panel) => {
       this.#contents.delete(panel.id);
-      this.#shown.delete(panel.id);
       this.#dispatch('panel-close', { id: panel.id });
     });
     this.#api = api;
@@ -146,9 +144,8 @@ export class SliccDock extends HTMLElement {
 
   reveal(id: string): void {
     const panel = this.api.getPanel(id);
-    const again = this.#shown.has(id);
+    const again = panel?.group.activePanel === panel;
     panel?.group.model.openPanel(panel, { skipSetGroupActive: true });
-    this.#shown.add(id);
     if (again) this.#reactivate(id);
   }
 
@@ -159,9 +156,8 @@ export class SliccDock extends HTMLElement {
   focusPanel(id: string): void {
     const panel = this.api.getPanel(id);
     if (!panel) return;
-    const again = this.#shown.has(id);
+    const again = panel.group.activePanel === panel;
     panel.api.setActive();
-    this.#shown.add(id);
     if (again) this.#reactivate(id);
     this.#contents.get(id)?.focus();
   }
@@ -211,14 +207,12 @@ export class SliccDock extends HTMLElement {
 
   clear(): void {
     this.api.clear();
-    this.#shown.clear();
   }
 
   dispose(): void {
     this.#api?.dispose();
     this.#api = null;
     this.#contents.clear();
-    this.#shown.clear();
   }
 }
 
