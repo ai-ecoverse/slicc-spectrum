@@ -373,6 +373,13 @@ test('an oversized frame stays in its box under the command, and its events lose
     return true;
   });
   assert.deepEqual(await page.evaluate(() => window.sized), ['480px', '100%', '-4px']);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const host = getComputedStyle(window.approvals().querySelector('slicc-vault-value'));
+      return [host.paddingTop, host.paddingBottom, host.marginTop, host.marginBottom];
+    }),
+    ['4px', '4px', '-4px', '-4px']
+  );
   const box = await page.evaluate(() => {
     const root = window.approvals();
     const host = root.querySelector('slicc-vault-value');

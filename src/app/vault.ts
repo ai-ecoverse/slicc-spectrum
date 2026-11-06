@@ -1,4 +1,4 @@
-import { css, LitElement, type PropertyValues } from 'lit';
+import { css, LitElement, type PropertyValues, unsafeCSS } from 'lit';
 import type {
   ButtonConfig,
   ButtonEvent,
@@ -398,8 +398,8 @@ export class SliccVaultValue extends LitElement {
     :host {
       display: block;
       min-inline-size: 0;
-      padding-block: 4px;
-      margin-block: -4px;
+      padding-block: ${unsafeCSS(frameInset)}px;
+      margin-block: -${unsafeCSS(frameInset)}px;
       overflow: hidden;
       contain: paint;
     }
