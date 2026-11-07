@@ -528,6 +528,10 @@ export class SliccComposer extends ThemedElement {
       event instanceof KeyboardEvent && (event.code === 'KeyM' || event.key === 'Alt');
     if (this.dictating && (released || event.type === 'blur')) this.dictate();
   };
+  #outside = (event: Event): void => {
+    const form = this.renderRoot.querySelector('form.secret');
+    if (form && !this.sharing && !event.composedPath().includes(form)) this.closeSecret();
+  };
   #keys = { capture: true, handleEvent: (event: KeyboardEvent) => this.#keydown(event) };
 
   constructor() {
@@ -823,8 +827,10 @@ export class SliccComposer extends ThemedElement {
         outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
         outline-offset: var(--swc-focus-ring-gap);
       }
-      .secret swc-button {
-        justify-self: start;
+      .secret .buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--swc-spacing-100);
       }
       .secret-error {
         display: flex;
@@ -864,6 +870,7 @@ export class SliccComposer extends ThemedElement {
     clearTimeout(this.#abandon);
     globalThis.addEventListener('keyup', this.#release);
     globalThis.addEventListener('blur', this.#release);
+    globalThis.addEventListener('pointerdown', this.#outside, true);
     if (this.hasUpdated) this.#wire();
   }
 
@@ -875,6 +882,7 @@ export class SliccComposer extends ThemedElement {
     super.disconnectedCallback();
     globalThis.removeEventListener('keyup', this.#release);
     globalThis.removeEventListener('blur', this.#release);
+    globalThis.removeEventListener('pointerdown', this.#outside, true);
     clearValues(this.renderRoot);
     const kept = this.#waiting.draft?.attachments;
     const held = [
@@ -1276,6 +1284,11 @@ export class SliccComposer extends ThemedElement {
         : null;
   }
 
+  closeSecret(): void {
+    clearValues(this.renderRoot);
+    this.popup = null;
+  }
+
   openPopup(kind: 'file' | 'secret'): void {
     clearValues(this.renderRoot);
     this.secretError = null;
@@ -1563,9 +1576,7 @@ export class SliccComposer extends ThemedElement {
         );
       };
       const close = (event: KeyboardEvent) => {
-        if (event.key !== 'Escape') return;
-        clearValues(this.renderRoot);
-        this.popup = null;
+        if (event.key === 'Escape') this.closeSecret();
       };
       const bad = (name: string) => (this.secretField === name ? 'true' : nothing);
       const described = (name: string) => (this.secretField === name ? 'secret-error' : nothing);
@@ -1575,7 +1586,10 @@ export class SliccComposer extends ThemedElement {
         <label class="field"><span>Name</span><input name="name" placeholder="API_TOKEN" autocomplete="off" spellcheck="false" aria-invalid=${bad('name')} aria-describedby=${described('name')} /></label>
         ${valued ? html`<label class="field"><span>Value</span><input name="value" type="password" autocomplete="off" spellcheck="false" aria-invalid=${bad('value')} aria-describedby=${described('value')} /></label>` : nothing}
         ${this.secretError ? html`<span class="secret-error" role="alert" id="secret-error" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.secretError}</span></span>` : nothing}
-        <swc-button size="s" variant="accent" data-action="share-secret" ?pending=${this.sharing} @click=${(event: Event) => (event.currentTarget as HTMLElement).closest('form')?.requestSubmit()}>Share</swc-button>
+        <span class="buttons">
+          <swc-button size="s" variant="accent" data-action="share-secret" ?pending=${this.sharing} @click=${(event: Event) => (event.currentTarget as HTMLElement).closest('form')?.requestSubmit()}>Share</swc-button>
+          <swc-button size="s" variant="secondary" fill-style="outline" data-action="cancel-secret" ?disabled=${this.sharing} @click=${() => this.closeSecret()}>Cancel</swc-button>
+        </span>
       </form>`;
     }
     const title = {
