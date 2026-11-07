@@ -58,6 +58,7 @@ export interface DummyOptions {
   notices?: NoticeScenario | 'off';
   tabs?: TabsScenario | 'off';
   approvals?: ApprovalScenario | 'off';
+  entry?: 'input' | 'frame';
   asks?: 'long' | 'off';
   follow?: FollowScenario | 'off';
   vault?: VaultScenario | 'off';
@@ -213,6 +214,7 @@ export function createDummyModel({
   asks = 'off',
   follow = 'off',
   vault = 'off',
+  entry = 'input',
   guests = 'off',
   accounts = 'settings',
   providers = 'connected',
@@ -261,6 +263,7 @@ export function createDummyModel({
   const noticePort = noticesPort(agent, time, notices, readonly, arrival);
   const vaultPort =
     vault === 'off' ? undefined : new DummyVault(vault, time, vaultRecords(accounts, mcp));
+  if (vaultPort && entry === 'input') vaultPort.enter = undefined;
   if (scenario === 'driving') void browser.run(drive);
   const base = {
     agent,

@@ -41,15 +41,21 @@ import {
   clearValues,
   deviceName,
   devicesOf,
+  drop,
+  enters,
   execLine,
   exitLabel,
   failureText,
   fieldOf,
   fieldStyles,
+  goneText,
   list,
   type PopupDetail,
   ruleLine,
   take,
+  type ValueDetail,
+  valueConfig,
+  valueField,
   widening,
 } from './vault.ts';
 import { ViewState } from './view-state.ts';
@@ -354,6 +360,7 @@ export class SliccSecrets extends ThemedElement {
     problem: { state: true },
     invalid: { state: true },
     said: { state: true },
+    entry: { state: true },
     acting: { state: true },
     importKind: { state: true },
     candidates: { state: true },
@@ -375,6 +382,7 @@ export class SliccSecrets extends ThemedElement {
   declare problem: string | null;
   declare invalid: string | null;
   declare said: Said | null;
+  declare entry: { request: string; form: SecretForm } | null;
   declare acting: ReadonlySet<string>;
   declare importKind: ImportKind;
   declare candidates: readonly ImportCandidate[] | null;
@@ -404,6 +412,7 @@ export class SliccSecrets extends ThemedElement {
     this.candidates = null;
     this.picked = new Set();
     this.again = false;
+    this.entry = null;
   }
 
   static styles = [
@@ -714,6 +723,7 @@ export class SliccSecrets extends ThemedElement {
     super.disconnectedCallback();
     clearTimeout(this.#tick);
     clearValues(this.renderRoot);
+    this.#leave();
     this.older = [];
     this.more = null;
   }
@@ -800,6 +810,7 @@ export class SliccSecrets extends ThemedElement {
   open(form: SecretForm | null): void {
     if (form && this.busy) return;
     clearValues(this.renderRoot);
+    this.#leave();
     this.form = form;
     this.problem = null;
     this.invalid = null;
@@ -808,6 +819,91 @@ export class SliccSecrets extends ThemedElement {
     this.again = false;
     if (form?.kind === 'import') this.importKind = 'bundle';
     if (form) void this.updateComplete.then(() => this.#focus());
+    const vault = this.model?.vault;
+    if (form?.kind === 'replace' && enters(vault))
+      void this.#begin(vault as VaultPort, form, form.name, true);
+  }
+
+  #leave(): void {
+    const entry = this.entry;
+    if (!entry) return;
+    this.entry = null;
+    drop(this.model?.vault, entry.request);
+  }
+
+  async #begin(vault: VaultPort, form: SecretForm, name: string, replace: boolean): Promise<void> {
+    const options = form.kind === 'replace' ? form.options : undefined;
+    this.busy = true;
+    try {
+      const { request } = await (vault.enter as NonNullable<VaultPort['enter']>)({
+        name,
+        ...(options?.kind ? { kind: options.kind } : {}),
+        ...(options?.provider ? { provider: options.provider } : {}),
+        ...(options?.server ? { server: options.server } : {}),
+        ...(replace ? { replace: true } : {}),
+      });
+      if (!this.#mine(vault, form)) {
+        drop(vault, request);
+        return;
+      }
+      this.#refuse(null);
+      this.entry = { request, form };
+      void this.updateComplete.then(() =>
+        this.renderRoot.querySelector<HTMLElement>('[data-form] slicc-vault-value')?.focus()
+      );
+    } catch (error) {
+      if (this.#mine(vault, form)) this.#refuse(failureText(error), fieldOf(error, 'name'), true);
+    } finally {
+      if (this.model?.vault === vault) this.busy = false;
+    }
+  }
+
+  async next(vault: VaultPort): Promise<void> {
+    const form = this.form as SecretForm;
+    if (this.busy) return;
+    const name = this.#field('name').value.trim();
+    const bad = nameProblem(name);
+    if (bad) {
+      this.#refuse(bad, 'name', true);
+      return;
+    }
+    const exists = !!vault
+      .list()
+      ?.secrets.some(
+        (secret) => secret.name === name && secret.kind === 'secret' && secret.state !== 'removed'
+      );
+    if (exists) {
+      this.busy = true;
+      const sure = await confirm({
+        title: `Replace ${name}?`,
+        body: 'A secret with this name exists. Saving replaces its value, and its placeholder stays.',
+        action: 'Replace',
+        variant: 'confirmation',
+      });
+      if (this.model?.vault === vault) this.busy = false;
+      if (!sure || !this.#mine(vault, form)) return;
+    }
+    await this.#begin(vault, form, name, exists);
+  }
+
+  #entered(detail: ValueDetail): void {
+    const entry = this.entry as { request: string; form: SecretForm };
+    if (detail.event === 'error') {
+      this.#refuse(detail.message);
+      return;
+    }
+    if (detail.event === 'escape') {
+      this.open(null);
+      return;
+    }
+    if (detail.request !== entry.request) return;
+    this.entry = null;
+    if (detail.event === 'gone') {
+      this.#refuse(goneText(detail.state));
+      return;
+    }
+    this.form = null;
+    this.said = { kind: 'saved', name: detail.state === 'sealed' ? (detail.name ?? '') : '' };
   }
 
   #refuse(text: string | null, field: string | null = null, focus = false): void {
@@ -1129,7 +1225,34 @@ export class SliccSecrets extends ThemedElement {
       : nothing;
   }
 
+  #entryForm(vault: VaultPort, form: SecretForm): TemplateResult {
+    const add = form.kind === 'add';
+    const entry = this.entry?.form === form ? this.entry : null;
+    const next = () => this.next(vault);
+    const keys = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.open(null);
+      } else if (event.key === 'Enter' && (event.target as HTMLElement).localName === 'input') {
+        event.preventDefault();
+        void next();
+      }
+    };
+    const name = form.kind === 'replace' ? form.name : '';
+    return html`<div class="form" data-form=${form.kind} data-entry=${entry ? '' : nothing} @input=${() => this.#typed()} @keydown=${keys}>
+      <strong>${add ? 'Add a secret' : html`Replace the value of <code>${name}</code>`}</strong>
+      ${add && !entry ? html`<label class="field"><span>Name</span><input type="text" autocomplete="off" spellcheck="false" autocapitalize="characters" data-field="name" placeholder="API_TOKEN" aria-invalid=${this.#bad('name')} aria-describedby=${this.#described('name')} @input=${(event: Event) => this.#upper(event)} /></label>` : nothing}
+      ${entry ? html`<p class="muted">Type the value in the vault’s own field. It never passes through this page.</p>${valueField(vault, entry.request, valueConfig(this.ownerDocument, this.color), (detail) => this.#entered(detail))}` : add ? html`<p class="muted">You type the value in the vault’s own field next.</p>` : html`<p class="muted" data-opening>${this.busy ? 'Opening the vault’s field…' : ''}</p>`}
+      ${this.problem ? this.#error(this.problem, 'form') : nothing}
+      <div class="buttons">
+        ${add && !entry ? html`<swc-button size="m" variant="accent" data-action="enter-value" ?pending=${this.busy} @click=${next}>Next</swc-button>` : nothing}
+        <swc-button size="m" variant="secondary" fill-style="outline" data-action="cancel" @click=${() => this.open(null)}>Cancel</swc-button>
+      </div>
+    </div>`;
+  }
+
   #valueForm(vault: VaultPort, form: SecretForm, locked: boolean): TemplateResult {
+    if (enters(vault)) return this.#entryForm(vault, form);
     const save = () => this.save(vault);
     const add = form.kind === 'add';
     return html`<div class="form" data-form=${form.kind} @input=${() => this.#typed()} @keydown=${(event: KeyboardEvent) => this.#enter(event, save, locked)}>
