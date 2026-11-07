@@ -1,4 +1,4 @@
-import { css, LitElement, type PropertyValues, unsafeCSS } from 'lit';
+import { css, html, LitElement, type PropertyValues, type TemplateResult, unsafeCSS } from 'lit';
 import type {
   ButtonConfig,
   ButtonEvent,
@@ -365,13 +365,59 @@ export class SliccVaultButton extends LitElement {
 
 export type ValueDetail = Extract<ValueEvent, { event: 'done' | 'gone' | 'error' | 'escape' }>;
 
+export function valueConfig(doc: Document, theme: 'light' | 'dark'): ValueConfig {
+  const lang = doc.documentElement.lang;
+  return {
+    theme,
+    dir: doc.documentElement.dir === 'rtl' ? 'rtl' : 'ltr',
+    ...(lang ? { lang } : {}),
+  };
+}
+
+export function enters(vault: VaultPort | null | undefined): boolean {
+  return !!(vault?.enter && vault.valueFrame);
+}
+
+export function ours(detail: ValueDetail, request: string, open: string | undefined): boolean {
+  if (request !== open) return false;
+  return !('request' in detail) || detail.request === undefined || detail.request === request;
+}
+
+export function drop(vault: VaultPort | null | undefined, request: string): void {
+  void vault?.cancel?.(request).catch(() => {});
+}
+
+export function goneText(state: string): string {
+  return state === 'expired'
+    ? 'The vault’s field timed out. Try again.'
+    : 'The vault’s field closed. Try again.';
+}
+
+export function valueField(
+  vault: VaultPort,
+  request: string,
+  config: ValueConfig,
+  on: (detail: ValueDetail, request: string) => void
+): TemplateResult {
+  return html`<div class="value-field" data-value-frame><slicc-vault-value .vault=${vault} .request=${request} .config=${config} @vault-value=${(event: CustomEvent<ValueDetail>) => on(event.detail, request)}></slicc-vault-value></div>`;
+}
+
 export const frameHeight = 480;
 export const frameInset = 4;
 
 const between = (value: unknown, most: number): number =>
   typeof value === 'number' && Number.isFinite(value) ? Math.min(Math.max(value, 0), most) : 0;
 
-const picked = ['event', 'request', 'state', 'code', 'message'] as const;
+const picked = [
+  'event',
+  'request',
+  'state',
+  'code',
+  'message',
+  'name',
+  'placeholder',
+  'record',
+] as const;
 
 function pick(event: ValueEvent): ValueDetail {
   const fields = event as unknown as Record<string, unknown>;
@@ -390,6 +436,7 @@ export class SliccVaultValue extends LitElement {
   declare request: string;
   declare config: ValueConfig;
   #frame: VaultValueFrame | null = null;
+  #focusing = false;
   #off: (() => void) | null = null;
   #ready = false;
   #sent = '';
@@ -429,7 +476,8 @@ export class SliccVaultValue extends LitElement {
   }
 
   focus(): void {
-    this.#frame?.post({ type: 'slicc-vault', v: 1, op: 'focus' });
+    this.#focusing = !this.#ready;
+    if (this.#ready) this.#frame?.post({ type: 'slicc-vault', v: 1, op: 'focus' });
   }
 
   protected updated(changed: PropertyValues): void {
@@ -475,6 +523,7 @@ export class SliccVaultValue extends LitElement {
     if (event.event === 'ready') {
       this.#ready = true;
       this.#send();
+      if (this.#focusing) this.focus();
     } else if (event.event === 'size') {
       const inset = between(event.inset, frameInset);
       element.style.blockSize = `${between(event.height, frameHeight)}px`;

@@ -1396,7 +1396,7 @@ export type RecordSource =
 
 export type LockMode = 'auto' | 'passkey' | 'passphrase';
 
-export type RequestKind = 'value' | 'oauth' | 'jerk-seal' | 'jerk' | 'unseal' | 'ask';
+export type RequestKind = 'value' | 'oauth' | 'jerk-seal' | 'jerk' | 'unseal' | 'ask' | 'enter';
 
 export type RequestState = 'pending' | 'done' | 'cancelled' | 'expired' | 'withdrawn';
 
@@ -1825,11 +1825,32 @@ export type ValueEvent = { type: 'slicc-vault'; v: 1 } & (
   | { event: 'ready' }
   | { event: 'size'; width: number; height: number; inset: number }
   | { event: 'focus'; direction: 'next' | 'previous' }
-  | { event: 'done'; request: string; state: 'sealed' | 'allowed' }
+  | {
+      event: 'done';
+      request: string;
+      state: 'sealed';
+      name?: string;
+      placeholder?: string;
+      record?: RecordState;
+    }
+  | { event: 'done'; request: string; state: 'allowed' }
   | { event: 'gone'; request: string; state: RequestState }
   | { event: 'error'; code: ErrorCode; message: string }
   | { event: 'escape' }
 );
+
+export interface EnterOptions {
+  name: string;
+  kind?: 'secret' | 'model' | 'mcp';
+  provider?: string;
+  server?: string;
+  settings?: Record<string, string>;
+  replace?: boolean;
+}
+
+export interface EnterResult {
+  request: string;
+}
 
 export interface VaultValueFrame {
   element: HTMLElement;
@@ -1874,6 +1895,7 @@ export interface VaultPort extends Subscribable<VaultEvents> {
   settings?(name: string, kind: RecordKind, settings: Record<string, string>): Promise<void>;
   button(): VaultButton;
   valueFrame?(request: string): VaultValueFrame;
+  enter?(options: EnterOptions): Promise<EnterResult>;
 }
 
 export type GuestGate = 'user' | 'cone' | 'agent' | `scoop:${string}` | 'off';

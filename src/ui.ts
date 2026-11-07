@@ -57,6 +57,8 @@ export type { Listener, Subscribable } from './model/emitter.ts';
 export { Emitter } from './model/emitter.ts';
 export type * from './model/types.ts';
 export { isVaultFailure } from './model/values.ts';
+
+export const valueEntry = true;
 export {
   approvalKinds,
   SliccAgents,

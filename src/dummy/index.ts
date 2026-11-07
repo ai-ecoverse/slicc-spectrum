@@ -59,6 +59,7 @@ export interface DummyOptions {
   notices?: NoticeScenario | 'off';
   tabs?: TabsScenario | 'off';
   approvals?: ApprovalScenario | 'off';
+  entry?: 'input' | 'frame';
   asks?: 'long' | 'off';
   live?: LiveScenario | 'off';
   switches?: 'capture' | 'off';
@@ -171,6 +172,18 @@ function vaultRecords(
   return accountRecords(Date.now(), mcp === 'moved' ? docsUrl : undefined);
 }
 
+function dummyVault(
+  vault: VaultScenario | 'off',
+  entry: 'input' | 'frame',
+  time: Clock,
+  records: readonly SecretView[]
+): DummyVault | undefined {
+  if (vault === 'off') return undefined;
+  const port = new DummyVault(vault, time, records);
+  if (entry === 'input') port.enter = undefined;
+  return port;
+}
+
 function guestsPort(guests: GuestsScenario | 'off', time: Clock): { guests?: DummyGuests } {
   return guests === 'off' ? {} : { guests: new DummyGuests(guests, time) };
 }
@@ -220,6 +233,7 @@ export function createDummyModel({
   switches = 'off',
   follow = 'off',
   vault = 'off',
+  entry = 'input',
   guests = 'off',
   accounts = 'settings',
   providers = 'connected',
@@ -266,8 +280,7 @@ export function createDummyModel({
   if (older === 'paged') agent.paginate(6, 4);
   if (hold !== 'off') agent.setHold({ reason: hold, held: 2 });
   const noticePort = noticesPort(agent, time, notices, readonly, arrival);
-  const vaultPort =
-    vault === 'off' ? undefined : new DummyVault(vault, time, vaultRecords(accounts, mcp));
+  const vaultPort = dummyVault(vault, entry, time, vaultRecords(accounts, mcp));
   if (scenario === 'driving') void browser.run(drive);
   const base = {
     agent,

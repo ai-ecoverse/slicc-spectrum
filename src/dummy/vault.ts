@@ -7,6 +7,8 @@ import type {
   ButtonEvent,
   ButtonMessage,
   EndpointSet,
+  EnterOptions,
+  EnterResult,
   ErrorCode,
   ImportCandidate,
   ImportKind,
@@ -831,9 +833,20 @@ export class DummyValueFrame implements VaultValueFrame {
     problem.textContent = '';
     this.#finished = true;
     try {
-      if (reveal) await this.#vault.allow(this.request);
-      else await this.#vault.seal(this.request, value);
-      this.#emit({ event: 'done', request: this.request, state: reveal ? 'allowed' : 'sealed' });
+      if (reveal) {
+        await this.#vault.allow(this.request);
+        this.#emit({ event: 'done', request: this.request, state: 'allowed' });
+      } else {
+        const { name, placeholder, state } = await this.#vault.seal(this.request, value);
+        this.#emit({
+          event: 'done',
+          request: this.request,
+          state: 'sealed',
+          name,
+          placeholder,
+          record: state,
+        });
+      }
     } catch (error) {
       this.#finished = false;
       const { code, message } = error as VaultError;
@@ -860,6 +873,8 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
   #serial = 0;
   buttons: DummyVaultButton[] = [];
   frames: DummyValueFrame[] = [];
+  entered: EnterOptions[] = [];
+  #entries = new Map<string, { options: EnterOptions; pending: PendingRequest }>();
   answered = new Set<string>();
   revealed: string[] = [];
   puts: { name: string; request?: string; options?: PutOptions }[] = [];
@@ -919,6 +934,11 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
   availability(): Availability {
     if (this.#available === 'waiting') return 'waiting';
     return this.#status.locked ? 'locked' : 'ready';
+  }
+
+  wait(): void {
+    this.#available = 'waiting';
+    this.emit('availability', this.availability());
   }
 
   arrive(): void {
@@ -1080,7 +1100,7 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
   async cancel(request: string): Promise<RequestState> {
     await this.#time.sleep(5);
     this.#failed();
-    this.#take(request);
+    if (!this.#ended(request)) this.#take(request);
     this.cancelled.push(request);
     return 'cancelled';
   }
@@ -1195,7 +1215,50 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
   }
 
   ask(request: string): PendingRequest | undefined {
-    return this.#status.waiting.find(({ id, kind }) => id === request && kind === 'ask');
+    return (
+      this.#entries.get(request)?.pending ??
+      this.#status.waiting.find(({ id, kind }) => id === request && kind === 'ask')
+    );
+  }
+
+  enter?: (options: EnterOptions) => Promise<EnterResult> = (options) => this.#open(options);
+
+  async #open(options: EnterOptions): Promise<EnterResult> {
+    await this.#time.sleep(5);
+    this.#failed();
+    const { name, kind = 'secret', replace } = options;
+    const bad = nameProblem(name);
+    if (bad) throw vaultFailure('EINVAL', bad);
+    const live = this.#list.secrets.some(
+      (secret) => secret.name === name && secret.kind === kind && secret.state !== 'removed'
+    );
+    if (live && !replace)
+      throw vaultFailure('EEXIST', `${name} already holds a value; replace it instead`);
+    if (options.settings) refused(options.settings);
+    this.#serial += 1;
+    const request = `enter-${this.#serial}`;
+    const now = Date.now();
+    this.entered.push({ ...options });
+    this.#entries.set(request, {
+      options,
+      pending: {
+        id: request,
+        kind: 'ask',
+        name,
+        mode: 'enter',
+        uid: 0,
+        tag: null,
+        createdAt: now,
+        expiresAt: now + 5 * minute,
+      },
+    });
+    return { request };
+  }
+
+  #ended(request: string): boolean {
+    if (!this.#entries.delete(request)) return false;
+    this.emit('status', this.#status);
+    return true;
   }
 
   #asked(request: string): PendingRequest {
@@ -1211,8 +1274,18 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
     const problem = valueProblem(value);
     if (problem) throw vaultFailure('EINVAL', problem);
     this.answered.add(request);
-    this.#take(request);
-    return this.#seal(found.name as string, 'settings');
+    const entry = this.#entries.get(request);
+    if (!entry) {
+      this.#take(request);
+      return this.#seal(found.name as string, 'settings');
+    }
+    this.#ended(request);
+    const { kind = 'secret', provider, server, settings } = entry.options;
+    return this.#seal(found.name as string, 'settings', kind, {
+      ...(provider === undefined ? {} : { provider }),
+      ...(server === undefined ? {} : { server }),
+      ...(settings === undefined ? {} : { settings: { ...settings } }),
+    });
   }
 
   async allow(request: string): Promise<void> {
