@@ -1,4 +1,4 @@
-import { css, LitElement, type PropertyValues } from 'lit';
+import { css, LitElement, type PropertyValues, unsafeCSS } from 'lit';
 import type {
   ButtonConfig,
   ButtonEvent,
@@ -11,8 +11,11 @@ import type {
   PopupState,
   Rule,
   SliccModel,
+  ValueConfig,
+  ValueEvent,
   VaultButton,
   VaultPort,
+  VaultValueFrame,
   Widening,
 } from '../model/types.ts';
 import { isPolicyPaused, isVaultFailure } from '../model/values.ts';
@@ -84,6 +87,10 @@ export function changeLine(change: PolicyChange, devices: readonly LinkedDevice[
     case 'exits':
       if (change.to?.length === 0) return `${change.secret} now has no exit`;
       return `${change.secret} now leaves through ${change.to ? list(change.to.map((exit) => exitLabel(exit, devices))) : 'any exit'}`;
+    case 'reveal':
+      return change.to
+        ? 'Programs an agent runs may ask for a secret’s plaintext again, in a dialog each time'
+        : 'Programs an agent runs may no longer ask for a secret’s plaintext';
     default:
       return `The limit ${change.field} changed from ${change.from} to ${change.to}`;
   }
@@ -348,6 +355,145 @@ export class SliccVaultButton extends LitElement {
       this.dispatchEvent(
         new CustomEvent<PopupDetail>('vault-popup', {
           detail: { intent, state },
+          bubbles: true,
+          composed: true,
+        })
+      );
+    }
+  }
+}
+
+export type ValueDetail = Extract<ValueEvent, { event: 'done' | 'gone' | 'error' | 'escape' }>;
+
+export const frameHeight = 480;
+export const frameInset = 4;
+
+const between = (value: unknown, most: number): number =>
+  typeof value === 'number' && Number.isFinite(value) ? Math.min(Math.max(value, 0), most) : 0;
+
+const picked = ['event', 'request', 'state', 'code', 'message'] as const;
+
+function pick(event: ValueEvent): ValueDetail {
+  const fields = event as unknown as Record<string, unknown>;
+  return Object.fromEntries(
+    picked.filter((key) => typeof fields[key] === 'string').map((key) => [key, fields[key]])
+  ) as unknown as ValueDetail;
+}
+
+export class SliccVaultValue extends LitElement {
+  static properties = {
+    vault: { attribute: false },
+    request: { attribute: false },
+    config: { attribute: false },
+  };
+  declare vault: VaultPort | null | undefined;
+  declare request: string;
+  declare config: ValueConfig;
+  #frame: VaultValueFrame | null = null;
+  #off: (() => void) | null = null;
+  #ready = false;
+  #sent = '';
+
+  static styles = css`
+    :host {
+      display: block;
+      min-inline-size: 0;
+      padding-block: ${unsafeCSS(frameInset)}px;
+      margin-block: -${unsafeCSS(frameInset)}px;
+      overflow: hidden;
+      contain: paint;
+    }
+    iframe {
+      display: block;
+      inline-size: 100%;
+      border: 0;
+      background: transparent;
+    }
+  `;
+
+  constructor() {
+    super();
+    this.vault = null;
+    this.request = '';
+    this.config = {};
+  }
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.requestUpdate();
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.#drop();
+  }
+
+  focus(): void {
+    this.#frame?.post({ type: 'slicc-vault', v: 1, op: 'focus' });
+  }
+
+  protected updated(changed: PropertyValues): void {
+    if (changed.has('vault') || changed.has('request')) this.#drop();
+    if (!this.#frame && this.vault?.valueFrame && this.request) this.#mount(this.vault);
+    this.#send();
+  }
+
+  #mount(vault: VaultPort): void {
+    const frame = (vault.valueFrame as (request: string) => VaultValueFrame)(this.request);
+    this.#frame = frame;
+    this.#off = frame.listen((event) => this.#event(event));
+    this.renderRoot.append(frame.element);
+  }
+
+  #drop(): void {
+    this.#off?.();
+    this.#frame?.element.remove();
+    this.#frame = null;
+    this.#off = null;
+    this.#ready = false;
+    this.#sent = '';
+  }
+
+  #send(): void {
+    if (this.#frame) this.#frame.element.style.colorScheme = this.config.theme ?? '';
+    if (!(this.#ready && this.#frame)) return;
+    const message = {
+      type: 'slicc-vault',
+      v: 1,
+      op: 'value',
+      request: this.request,
+      config: this.config,
+    } as const;
+    const sent = JSON.stringify(message);
+    if (sent === this.#sent) return;
+    this.#sent = sent;
+    this.#frame.post(message);
+  }
+
+  #event(event: ValueEvent): void {
+    const element = this.#frame?.element as HTMLElement;
+    if (event.event === 'ready') {
+      this.#ready = true;
+      this.#send();
+    } else if (event.event === 'size') {
+      const inset = between(event.inset, frameInset);
+      element.style.blockSize = `${between(event.height, frameHeight)}px`;
+      element.style.maxBlockSize = '45dvh';
+      element.style.overflow = 'auto';
+      element.style.inlineSize = '100%';
+      element.style.marginBlock = `${-inset}px`;
+    } else if (event.event === 'focus') {
+      const root = this.closest('dialog') ?? this.ownerDocument;
+      const order = sequential(tabbables(root, this));
+      const at = order.indexOf(null);
+      const forward = event.direction === 'next';
+      const others = order.filter((item) => item !== null);
+      const next = forward ? order[at + 1] : order[at - 1];
+      (next ?? (forward ? others[0] : others.at(-1)))?.focus();
+    } else {
+      this.dispatchEvent(
+        new CustomEvent<ValueDetail>('vault-value', {
+          detail: pick(event),
           bubbles: true,
           composed: true,
         })

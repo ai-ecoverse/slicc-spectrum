@@ -9628,7 +9628,7 @@ test('refused rules and policy changes show in Secrets and its activity log', as
           .settingsPart('slicc-secrets')
           .shadowRoot.querySelectorAll('.audit li[data-type=policy] [data-change]').length
     ),
-    3
+    4
   );
   assert.deepEqual(page.errors, []);
 });

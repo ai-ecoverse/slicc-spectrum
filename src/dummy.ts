@@ -83,6 +83,7 @@ export {
 } from './dummy/updates.ts';
 export type { VaultScenario } from './dummy/vault.ts';
 export {
+  DummyValueFrame,
   DummyVault,
   DummyVaultButton,
   vaultAudit,

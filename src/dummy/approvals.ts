@@ -5,9 +5,12 @@ import type {
   ApprovalEnd,
   ApprovalsEvents,
   ApprovalsPort,
+  PendingRequest,
+  SecretApproval,
 } from '../model/types.ts';
 import type { Clock } from './clock.ts';
 import { longCommand } from './showcase.ts';
+import type { DummyVault } from './vault.ts';
 
 export type ApprovalScenario =
   | 'agent'
@@ -42,6 +45,10 @@ export type ApprovalScenario =
   | 'tray-rotate'
   | 'tray-unlink'
   | 'tray-expired'
+  | 'secret'
+  | 'secret-enter'
+  | 'secret-reveal'
+  | 'secret-long'
   | 'none';
 
 const minutes = 60_000;
@@ -166,6 +173,88 @@ function trayFixtures(scenario: ApprovalScenario, now: number): Approval[] {
   if (scenario === 'tray') return all;
   const id = scenario === 'tray-expired' ? 'tray-url' : scenario;
   return all.filter((approval) => approval.id === id);
+}
+
+function secretFixtures(scenario: ApprovalScenario, now: number): SecretApproval[] {
+  const base = { createdAt: now, expiresAt: now + 5 * minutes };
+  const enter: SecretApproval = {
+    ...base,
+    id: 'ask-harbor',
+    kind: 'secret',
+    mode: 'enter',
+    name: 'HARBOR_DEPLOY_TOKEN',
+    prompt: 'Paste the harbor deploy token from the release checklist.',
+    reveal: false,
+    requester: { kind: 'user', name: 'cone', where: 'Terminal 1' },
+    process: {
+      exe: '/usr/bin/fnox',
+      argv: ['fnox', 'set', 'HARBOR_DEPLOY_TOKEN'],
+      cwd: '/home/cone/harbor',
+    },
+  };
+  const reveal: SecretApproval = {
+    ...base,
+    id: 'ask-lagoon',
+    kind: 'secret',
+    mode: 'reveal',
+    name: 'LAGOON_API_KEY',
+    prompt: 'The tide report script signs its uploads with this key.',
+    reveal: true,
+    requester: { kind: 'agent', name: 'docs-pass', where: 'scoop:docs' },
+    process: {
+      exe: '/usr/bin/sealed',
+      argv: ['sealed', 'ask', 'LAGOON_API_KEY', '--reveal'],
+      cwd: '/home/cone/harbor',
+    },
+    createdAt: now + 1,
+  };
+  if (scenario === 'secret-enter') return [enter];
+  if (scenario === 'secret-reveal') return [reveal];
+  if (scenario === 'secret-long')
+    return [
+      {
+        ...enter,
+        id: 'ask-long',
+        reveal: true,
+        requester: { kind: 'agent', name: 'quiet-otter' },
+        prompt: `Paste it\u202eevil\r${'and wait. '.repeat(30)}`,
+        process: {
+          exe: '/usr/bin/sh',
+          argv: [
+            'sh',
+            '-c',
+            [longCommand, longCommand, longCommand].join(' && \\\n'),
+            'tide\rreport',
+          ],
+          cwd: '/home/cone/harbor\rferry',
+        },
+      },
+    ];
+  return [enter, reveal];
+}
+
+export function pendingAsk(approval: SecretApproval): PendingRequest {
+  const { kind, name, where } = approval.requester;
+  return {
+    id: approval.id,
+    kind: 'ask',
+    name: approval.name,
+    ...(approval.prompt ? { prompt: approval.prompt } : {}),
+    mode: approval.mode,
+    reveal: approval.reveal,
+    requester: {
+      kind,
+      name,
+      ...(where ? { where } : {}),
+      ...approval.process,
+      tty: kind === 'user' ? '/dev/pts/1' : null,
+      stdin: kind === 'user' ? 'tty' : 'pipe',
+    },
+    uid: 1000,
+    tag: kind,
+    createdAt: approval.createdAt,
+    expiresAt: approval.expiresAt,
+  };
 }
 
 function levelFixture(scenario: ApprovalScenario, now: number): Approval {
@@ -317,6 +406,7 @@ export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): 
   if (scenario === 'guest' || scenario === 'guest-follower') return guestFixtures(now);
   if (scenario === 'guest-always') return guestAlways(now);
   if (scenario.startsWith('tray')) return trayFixtures(scenario, now);
+  if (scenario.startsWith('secret-') || scenario === 'secret') return secretFixtures(scenario, now);
   if (scenario.startsWith('guest-')) return [guestCall(scenario, now)];
   if (scenario === 'none') return [];
   if (scenario === 'long')
@@ -377,13 +467,21 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
   #approvals: Approval[];
   #time: Clock;
   #fail: boolean;
+  #vault: DummyVault | undefined;
+  #quiet = new Set<string>();
   decisions: Array<[string, ApprovalDecision]> = [];
   decide?: (id: string, decision: ApprovalDecision) => Promise<void>;
 
-  constructor(scenario: ApprovalScenario, time: Clock) {
+  constructor(scenario: ApprovalScenario, time: Clock, vault?: DummyVault) {
     super();
     this.#approvals = approvalFixtures(scenario);
     this.#time = time;
+    this.#vault = vault;
+    if (vault) {
+      for (const approval of this.#approvals)
+        if (approval.kind === 'secret') vault.hold(pendingAsk(approval));
+      vault.on('status', (status) => this.#left(status.waiting));
+    }
     this.#fail = scenario === 'fail';
     if (scenario !== 'follower' && scenario !== 'guest-follower')
       this.decide = (id, decision) => this.#decide(id, decision);
@@ -396,11 +494,27 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
   }
 
   raise(approval: Approval): void {
+    if (approval.kind === 'secret') this.#vault?.hold(pendingAsk(approval));
     this.#approvals = [...this.#approvals.filter(({ id }) => id !== approval.id), approval];
     this.emit('approvals', this.list());
   }
 
+  #left(waiting: readonly PendingRequest[]): void {
+    const vault = this.#vault as DummyVault;
+    for (const approval of this.#approvals) {
+      if (approval.kind !== 'secret' || waiting.some(({ id }) => id === approval.id)) continue;
+      if (vault.answered.has(approval.id) || this.#quiet.has(approval.id)) this.#drop(approval.id);
+      else this.end(approval.id, 'answered');
+    }
+  }
+
+  #drop(id: string): void {
+    this.#approvals = this.#approvals.filter((approval) => approval.id !== id);
+    this.emit('approvals', this.list());
+  }
+
   end(id: string, reason: ApprovalEnd): void {
+    if (!this.#approvals.some((approval) => approval.id === id)) return;
     this.emit('ended', { id, reason });
     this.#approvals = this.#approvals.filter((approval) => approval.id !== id);
     this.emit('approvals', this.list());
@@ -414,7 +528,14 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
     await this.#time.sleep(10);
     if (this.#fail) throw new Error('The kernel stopped waiting. Run the command again.');
     if (id === 'guest-late') throw new Error('Someone else already answered this.');
+    const approval = this.#approvals.find((item) => item.id === id);
+    if (approval?.kind === 'secret' && decision !== 'deny')
+      throw new Error('Save or Allow in the vault’s frame.');
     this.decisions.push([id, decision]);
+    if (approval?.kind === 'secret' && this.#vault?.ask(id)) {
+      this.#quiet.add(id);
+      await this.#vault.cancel(id);
+    }
     this.end(id, 'answered');
   }
 }

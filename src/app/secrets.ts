@@ -10,6 +10,7 @@ import { css, html, nothing, type PropertyValues, type TemplateResult } from 'li
 import type {
   Account,
   AccountStatus,
+  AskRevealEntry,
   AuditEntry,
   ButtonConfig,
   EndpointsEntry,
@@ -30,6 +31,7 @@ import type {
 } from '../model/types.ts';
 import { isVaultFailure, nameProblem, valueProblem } from '../model/values.ts';
 import { ThemedElement } from './base.ts';
+import { commandText, controlStyles } from './command-display.ts';
 import { confirm } from './confirm.ts';
 import { disclosureStyles, smallChevron } from './disclosure.ts';
 import { since } from './network.ts';
@@ -136,6 +138,12 @@ function startOfDay(now: number): number {
   return date.getTime();
 }
 
+const shown = (text: string) => commandText(text, false);
+
+export function toProgram(entry: AuditEntry): entry is RevealEntry | AskRevealEntry {
+  return entry.type === 'materialize' || entry.type === 'reveal';
+}
+
 export function revealed(
   name: string,
   entries: readonly AuditEntry[],
@@ -143,7 +151,7 @@ export function revealed(
   more = false
 ): TemplateResult | null {
   const reveals = entries.filter(
-    (entry): entry is RevealEntry => entry.type === 'materialize' && entry.name === name
+    (entry): entry is RevealEntry | AskRevealEntry => toProgram(entry) && entry.name === name
   );
   if (!reveals.length) return null;
   const [last] = reveals;
@@ -153,7 +161,7 @@ export function revealed(
   const when = today
     ? `${partial ? 'at least ' : ''}${today} ${today === 1 ? 'time' : 'times'} today`
     : since(last.at, now);
-  return html`Revealed to programs ${when}, last by ${who(last)} with <code>${last.argv}</code>`;
+  return html`Revealed to programs ${when}, last by ${shown(who(last))} with <code>${shown(last.argv)}</code>`;
 }
 
 export function changes(entry: PolicyEntry, devices: readonly LinkedDevice[]): string[][] {
@@ -241,7 +249,9 @@ export function auditLine(
     case 'mcp':
       return html`Sent to the MCP server ${entry.server} at ${entry.domain}: <code>${entry.method} ${entry.path}</code>, through ${exitLabel(entry.exit, devices)}`;
     case 'materialize':
-      return html`Revealed to <code>${entry.argv}</code> in <code>${entry.cwd}</code>`;
+      return html`Revealed to <code>${shown(entry.argv)}</code> in <code>${shown(entry.cwd)}</code>`;
+    case 'reveal':
+      return html`Revealed to <code>${shown(entry.argv)}</code> in <code>${shown(entry.cwd)}</code>, allowed in a dialog`;
     case 'seal':
       return html`${entry.rotated ? 'Value replaced' : 'Value saved'}`;
     case 'remove':
@@ -398,6 +408,7 @@ export class SliccSecrets extends ThemedElement {
 
   static styles = [
     fieldStyles,
+    controlStyles,
     disclosureStyles,
     css`
       :host {
@@ -1385,7 +1396,7 @@ export class SliccSecrets extends ThemedElement {
     const name = entry.type === 'policy' || entry.type === 'endpoints' ? null : entry.name;
     return html`<li data-seq=${entry.seq} data-type=${entry.type}>
       <time datetime=${date.toISOString()} title=${date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}>${since(entry.at)}</time>
-      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices, (provider) => this.#provider(provider), back)}${entry.type === 'policy' || entry.type === 'refresh' || entry.type === 'endpoints' ? nothing : html` <span class="by">by ${who(entry)}</span>`}${entry.type === 'endpoints' && vault ? this.#unpin(vault, entry, all) : nothing}</span>
+      <span class="what">${name ? html`<code>${name}</code> · ` : nothing}${auditLine(entry, devices, (provider) => this.#provider(provider), back)}${entry.type === 'policy' || entry.type === 'refresh' || entry.type === 'endpoints' ? nothing : html` <span class="by">by ${shown(who(entry))}</span>`}${entry.type === 'endpoints' && vault ? this.#unpin(vault, entry, all) : nothing}</span>
     </li>`;
   }
 
@@ -1395,7 +1406,7 @@ export class SliccSecrets extends ThemedElement {
     entries: readonly AuditEntry[],
     devices: readonly LinkedDevice[]
   ): TemplateResult {
-    const shown = this.reveals ? entries.filter((entry) => entry.type === 'materialize') : entries;
+    const shown = this.reveals ? entries.filter(toProgram) : entries;
     const more = this.more ?? list.auditMore;
     const back = returned(entries);
     return html`<div class="audit-head">

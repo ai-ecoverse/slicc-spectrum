@@ -1,4 +1,21 @@
-import { html, type TemplateResult } from 'lit';
+import { css, html, type TemplateResult } from 'lit';
+
+export const controlStyles = css`
+  .control {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--swc-spacing-50);
+    padding-inline: var(--swc-spacing-50);
+    border-radius: var(--swc-corner-radius-75);
+    background: var(--swc-gray-300);
+    color: var(--swc-gray-900);
+    font-size: var(--swc-font-size-100);
+    font-weight: var(--swc-bold-font-weight);
+  }
+  .control[data-label]:not([data-label=''])::after {
+    content: attr(data-label);
+  }
+`;
 
 const controls = /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029]/u;
 const notation = (char: string) =>

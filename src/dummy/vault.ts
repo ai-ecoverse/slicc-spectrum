@@ -21,6 +21,9 @@ import type {
   RequestState,
   SealResult,
   SecretView,
+  ValueConfig,
+  ValueEvent,
+  ValueMessage,
   VaultButton,
   VaultEndpointChange,
   VaultError,
@@ -28,6 +31,7 @@ import type {
   VaultList,
   VaultPort,
   VaultStatus,
+  VaultValueFrame,
 } from '../model/types.ts';
 import { nameProblem, valueProblem, vaultFailure } from '../model/values.ts';
 import type { Clock } from './clock.ts';
@@ -250,6 +254,7 @@ export function vaultAudit(now = Date.now()): AuditEntry[] {
           from: ['proxy', 'device:link-pier'],
           to: ['proxy', 'tailscale', 'device:link-pier'],
         },
+        { kind: 'reveal', field: 'agent', from: true, to: false },
       ],
     },
     {
@@ -680,6 +685,164 @@ export class DummyVaultButton implements VaultButton {
   }
 }
 
+type FrameView = 'locked' | 'enter' | 'reveal' | 'gone';
+
+export class DummyValueFrame implements VaultValueFrame {
+  element: HTMLElement;
+  request: string;
+  config: ValueConfig | null = null;
+  messages: ValueMessage[] = [];
+  arming = 500;
+  #listeners = new Set<(event: ValueEvent) => void>();
+  #vault: DummyVault;
+  #box: HTMLElement;
+  #view: FrameView | '' = '';
+  #armed = false;
+  #finished = false;
+  #sizes = new ResizeObserver(() => this.#size());
+
+  constructor(vault: DummyVault, time: Clock, request: string) {
+    this.#vault = vault;
+    this.request = request;
+    this.element = document.createElement('div');
+    this.element.dataset.vaultValue = '';
+    this.#box = document.createElement('div');
+    this.#box.style.padding = '2px';
+    this.element.append(this.#box);
+    this.element.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || event.isComposing) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.#emit({ event: 'escape' });
+    });
+    vault.on('status', () => this.#render());
+    this.#sizes.observe(this.#box);
+    void time.sleep(0).then(() => this.#emit({ event: 'ready' }));
+  }
+
+  post(message: ValueMessage): void {
+    this.messages.push(message);
+    if (message.op === 'focus') {
+      this.#box.querySelector<HTMLElement>('input, swc-button')?.focus();
+      return;
+    }
+    this.request = message.request;
+    this.config = message.config;
+    this.element.style.colorScheme = message.config.theme ?? '';
+    this.#render();
+  }
+
+  listen(listener: (event: ValueEvent) => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  #emit(event: Record<string, unknown>): void {
+    const message = { type: 'slicc-vault', v: 1, ...event } as ValueEvent;
+    for (const listener of [...this.#listeners]) listener(message);
+  }
+
+  #size(): void {
+    const { width, height } = this.#box.getBoundingClientRect();
+    this.#emit({ event: 'size', width: Math.ceil(width), height: Math.ceil(height), inset: 2 });
+  }
+
+  #render(): void {
+    if (!this.config || this.#finished) return;
+    const ask = this.#vault.ask(this.request);
+    if (!ask) {
+      this.#finished = true;
+      this.#box.replaceChildren();
+      this.#emit({ event: 'gone', request: this.request, state: 'cancelled' });
+      return;
+    }
+    const view: FrameView = this.#vault.status()?.locked ? 'locked' : (ask.mode ?? 'enter');
+    if (view === this.#view) return;
+    if (view !== 'locked' && (this.#view === '' || this.#view === 'locked'))
+      setTimeout(() => {
+        this.#armed = true;
+        this.#arm();
+      }, this.arming);
+    this.#view = view;
+    this.#box.replaceChildren(...this.#controls(view, ask));
+    this.#arm();
+    this.#size();
+  }
+
+  #arm(): void {
+    for (const button of this.#box.querySelectorAll('[data-action=save], [data-action=allow]'))
+      button.toggleAttribute('disabled', !this.#armed);
+  }
+
+  #button(action: string, label: string, variant: string, click: () => void): HTMLElement {
+    const button = document.createElement('swc-button');
+    button.dataset.action = action;
+    button.setAttribute('variant', variant);
+    button.textContent = label;
+    button.addEventListener('click', click);
+    return button;
+  }
+
+  #controls(view: FrameView, ask: PendingRequest): HTMLElement[] {
+    const text = document.createElement('p');
+    text.style.margin = '0 0 8px';
+    const problem = document.createElement('p');
+    problem.dataset.problem = '';
+    problem.style.margin = '8px 0 0';
+    if (view === 'locked') {
+      text.textContent = 'Unlock the vault to answer.';
+      return [
+        text,
+        this.#button('unlock', 'Unlock', 'accent', () => {
+          void this.#vault.answer({ kind: 'unlock' });
+        }),
+      ];
+    }
+    if (view === 'reveal') {
+      text.textContent = `${ask.requester?.exe} gets the plaintext of ${ask.name}`;
+      return [
+        text,
+        this.#button('allow', 'Allow', 'negative', () => void this.#answer(problem, '')),
+        problem,
+      ];
+    }
+    const label = document.createElement('label');
+    label.textContent = `Value for ${ask.name}`;
+    label.style.display = 'grid';
+    const input = document.createElement('input');
+    input.type = 'password';
+    input.dataset.field = 'value';
+    input.autocomplete = 'off';
+    label.append(input);
+    text.append(label);
+    return [
+      text,
+      this.#button('save', 'Save', 'accent', () => {
+        const value = input.value;
+        input.value = '';
+        void this.#answer(problem, value);
+      }),
+      problem,
+    ];
+  }
+
+  async #answer(problem: HTMLElement, value: string): Promise<void> {
+    const reveal = this.#view === 'reveal';
+    problem.textContent = '';
+    this.#finished = true;
+    try {
+      if (reveal) await this.#vault.allow(this.request);
+      else await this.#vault.seal(this.request, value);
+      this.#emit({ event: 'done', request: this.request, state: reveal ? 'allowed' : 'sealed' });
+    } catch (error) {
+      this.#finished = false;
+      const { code, message } = error as VaultError;
+      if (code === 'EINVAL') problem.textContent = message;
+      else this.#emit({ event: 'error', code, message });
+    }
+  }
+}
+
 export interface DummyImport {
   kind: ImportKind;
   size: number;
@@ -696,6 +859,9 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
   #older: AuditEntry[] = vaultOlder();
   #serial = 0;
   buttons: DummyVaultButton[] = [];
+  frames: DummyValueFrame[] = [];
+  answered = new Set<string>();
+  revealed: string[] = [];
   puts: { name: string; request?: string; options?: PutOptions }[] = [];
   endpointChanges: VaultEndpointChange[] = [];
   settingsCalls: Array<{ name: string; kind: RecordKind; settings: Record<string, string> }> = [];
@@ -1012,6 +1178,61 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
     const button = new DummyVaultButton(this, this.#time);
     this.buttons.push(button);
     return button;
+  }
+
+  valueFrame(request: string): DummyValueFrame {
+    const frame = new DummyValueFrame(this, this.#time, request);
+    this.frames.push(frame);
+    return frame;
+  }
+
+  hold(request: PendingRequest): void {
+    this.#status = {
+      ...this.#status,
+      waiting: [...this.#status.waiting.filter(({ id }) => id !== request.id), request],
+    };
+    this.emit('status', this.#status);
+  }
+
+  ask(request: string): PendingRequest | undefined {
+    return this.#status.waiting.find(({ id, kind }) => id === request && kind === 'ask');
+  }
+
+  #asked(request: string): PendingRequest {
+    this.#unlocked();
+    const found = this.ask(request);
+    if (!found) throw vaultFailure('ENOENT', 'That request is no longer waiting.');
+    return found;
+  }
+
+  async seal(request: string, value: string): Promise<SealResult> {
+    await this.#time.sleep(5);
+    const found = this.#asked(request);
+    const problem = valueProblem(value);
+    if (problem) throw vaultFailure('EINVAL', problem);
+    this.answered.add(request);
+    this.#take(request);
+    return this.#seal(found.name as string, 'settings');
+  }
+
+  async allow(request: string): Promise<void> {
+    await this.#time.sleep(5);
+    const found = this.#asked(request);
+    this.answered.add(request);
+    this.revealed.push(request);
+    this.#take(request);
+    const { exe, argv, cwd, kind } = found.requester as NonNullable<PendingRequest['requester']>;
+    this.#log(found.name as string, {
+      type: 'reveal',
+      uid: found.uid,
+      tag: found.tag,
+      exe,
+      argv: argv.join(' '),
+      cwd,
+      requester: kind,
+      request,
+    });
+    this.emit('list', this.#list);
   }
 
   autoLabel(): string {

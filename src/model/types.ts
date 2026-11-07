@@ -1242,7 +1242,25 @@ export interface TrayApproval {
   expiresAt: number;
 }
 
-export type Approval = SudoApproval | GuestMessageApproval | GuestToolApproval | TrayApproval;
+export interface SecretApproval {
+  id: string;
+  kind: 'secret';
+  mode: 'enter' | 'reveal';
+  name: string;
+  prompt?: string;
+  reveal: boolean;
+  requester: { kind: 'agent' | 'user'; name: string; where?: string };
+  process: { exe: string; argv: string[]; cwd: string };
+  createdAt: number;
+  expiresAt: number;
+}
+
+export type Approval =
+  | SudoApproval
+  | GuestMessageApproval
+  | GuestToolApproval
+  | TrayApproval
+  | SecretApproval;
 
 export type ApprovalEnd = 'answered' | 'withdrawn' | 'expired';
 
@@ -1304,9 +1322,9 @@ export type RecordSource =
 
 export type LockMode = 'auto' | 'passkey' | 'passphrase';
 
-export type RequestKind = 'value' | 'oauth' | 'jerk-seal' | 'jerk' | 'unseal';
+export type RequestKind = 'value' | 'oauth' | 'jerk-seal' | 'jerk' | 'unseal' | 'ask';
 
-export type RequestState = 'pending' | 'done' | 'cancelled' | 'expired';
+export type RequestState = 'pending' | 'done' | 'cancelled' | 'expired' | 'withdrawn';
 
 export type ErrorCode =
   | 'EINVAL'
@@ -1414,10 +1432,25 @@ export interface PendingRequest {
   name?: string;
   provider?: string;
   prompt?: string;
+  mode?: 'enter' | 'reveal';
+  reveal?: boolean;
+  replace?: boolean;
+  requester?: AskRequester;
   uid: number;
   tag: string | null;
   createdAt: number;
   expiresAt: number;
+}
+
+export interface AskRequester {
+  kind: 'agent' | 'user';
+  name?: string;
+  where?: string;
+  exe: string;
+  argv: string[];
+  cwd: string;
+  tty: string | null;
+  stdin: 'tty' | 'none' | 'pipe' | 'file';
 }
 
 export interface ScrubState {
@@ -1465,7 +1498,8 @@ export type PolicyChange =
   | { kind: 'rule'; secret: string; rule: Rule; change: 'added' | 'removed' }
   | { kind: 'exec'; secret: string; from: ExecMode; to: ExecMode }
   | { kind: 'exits'; secret: string; from: ExitName[] | null; to: ExitName[] | null }
-  | { kind: 'limits'; field: string; from: number; to: number };
+  | { kind: 'limits'; field: string; from: number; to: number }
+  | { kind: 'reveal'; field: 'agent'; from: boolean; to: boolean };
 
 export type PolicyFile = '/etc/fnox/config.toml' | '/etc/slicc/secrets-policy.toml';
 
@@ -1523,6 +1557,16 @@ export interface RevealEntry extends AuditBase {
   ppid: number;
   ticket: string;
   consumed: boolean;
+}
+
+export interface AskRevealEntry extends AuditBase {
+  type: 'reveal';
+  uid: number;
+  exe: string;
+  argv: string;
+  cwd: string;
+  requester: 'agent' | 'user';
+  request: string;
 }
 
 export interface SealEntry extends AuditBase {
@@ -1587,6 +1631,7 @@ export type AuditEntry =
   | SessionEntry
   | McpEntry
   | RevealEntry
+  | AskRevealEntry
   | SealEntry
   | RemoveEntry
   | RefreshEntry
@@ -1691,6 +1736,33 @@ export interface VaultButton {
   listen(listener: (event: ButtonEvent) => void): () => void;
 }
 
+export interface ValueConfig {
+  theme?: 'light' | 'dark';
+  dir?: 'ltr' | 'rtl';
+  lang?: string;
+  scale?: 'medium' | 'large';
+}
+
+export type ValueMessage =
+  | { type: 'slicc-vault'; v: 1; op: 'value'; request: string; config: ValueConfig }
+  | { type: 'slicc-vault'; v: 1; op: 'focus' };
+
+export type ValueEvent = { type: 'slicc-vault'; v: 1 } & (
+  | { event: 'ready' }
+  | { event: 'size'; width: number; height: number; inset: number }
+  | { event: 'focus'; direction: 'next' | 'previous' }
+  | { event: 'done'; request: string; state: 'sealed' | 'allowed' }
+  | { event: 'gone'; request: string; state: RequestState }
+  | { event: 'error'; code: ErrorCode; message: string }
+  | { event: 'escape' }
+);
+
+export interface VaultValueFrame {
+  element: HTMLElement;
+  post(message: ValueMessage): void;
+  listen(listener: (event: ValueEvent) => void): () => void;
+}
+
 export interface VaultEvents {
   status: VaultStatus;
   list: VaultList;
@@ -1727,6 +1799,7 @@ export interface VaultPort extends Subscribable<VaultEvents> {
   endpoints?(change: VaultEndpointChange): Promise<void>;
   settings?(name: string, kind: RecordKind, settings: Record<string, string>): Promise<void>;
   button(): VaultButton;
+  valueFrame?(request: string): VaultValueFrame;
 }
 
 export type GuestGate = 'user' | 'cone' | 'agent' | `scoop:${string}` | 'off';
