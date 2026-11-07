@@ -204,7 +204,8 @@ export type LickChannel =
   | 'scoop-notify'
   | 'scoop-idle'
   | 'scoop-wait'
-  | 'sudo-request';
+  | 'sudo-request'
+  | 'cone-message';
 
 export type LickState = 'pending' | 'confirmed' | 'dismissed';
 
