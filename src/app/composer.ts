@@ -34,7 +34,20 @@ import { nameProblem, valueProblem } from '../model/values.ts';
 import { chatModels, shared, speech, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import { deadline, mine, size } from './messages.ts';
-import { away, clearValues, failureText, fieldOf, type PopupDetail, take } from './vault.ts';
+import {
+  away,
+  clearValues,
+  drop,
+  enters,
+  failureText,
+  fieldOf,
+  goneText,
+  type PopupDetail,
+  take,
+  type ValueDetail,
+  valueConfig,
+  valueField,
+} from './vault.ts';
 
 export const limit = 25 * 1024 * 1024;
 
@@ -498,6 +511,8 @@ export class SliccComposer extends ThemedElement {
     sharing: { state: true },
     secretError: { state: true },
     secretField: { state: true },
+    secretName: { state: true },
+    entry: { state: true },
     failure: { state: true },
     reattach: { state: true },
     agent: {},
@@ -511,6 +526,8 @@ export class SliccComposer extends ThemedElement {
   declare sharing: boolean;
   declare secretError: string | null;
   declare secretField: string | null;
+  declare secretName: string;
+  declare entry: { request: string; name: string } | null;
   declare failure: string | null;
   declare reattach: Kept[] | null;
   declare agent: string;
@@ -545,6 +562,8 @@ export class SliccComposer extends ThemedElement {
     this.sharing = false;
     this.secretError = null;
     this.secretField = null;
+    this.secretName = '';
+    this.entry = null;
     this.failure = null;
     this.reattach = null;
     this.agent = '';
@@ -832,6 +851,14 @@ export class SliccComposer extends ThemedElement {
         flex-wrap: wrap;
         gap: var(--swc-spacing-100);
       }
+      .secret .choices {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--swc-spacing-100);
+      }
+      .secret .value-field {
+        min-inline-size: min(22rem, 70vw);
+      }
       .secret-error {
         display: flex;
         align-items: flex-start;
@@ -851,7 +878,11 @@ export class SliccComposer extends ThemedElement {
 
   protected willUpdate(changed: PropertyValues<this>): void {
     super.willUpdate(changed);
-    if (changed.has('popup') && this.popup?.kind !== 'secret') clearValues(this.renderRoot);
+    if (changed.has('popup') && this.popup?.kind !== 'secret') {
+      clearValues(this.renderRoot);
+      this.#leave();
+      this.secretName = '';
+    }
     if (changed.has('agent') && this.agent && this.model && this.agent !== this.#agent) {
       this.#switch(this.agent);
     }
@@ -884,6 +915,7 @@ export class SliccComposer extends ThemedElement {
     globalThis.removeEventListener('blur', this.#release);
     globalThis.removeEventListener('pointerdown', this.#outside, true);
     clearValues(this.renderRoot);
+    this.#leave();
     const kept = this.#waiting.draft?.attachments;
     const held = [
       this.attachments === kept ? [] : this.attachments,
@@ -1176,6 +1208,99 @@ export class SliccComposer extends ThemedElement {
       },
     ];
     this.popup = null;
+  }
+
+  #clean(name: string): string {
+    return name
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9_]/g, '_');
+  }
+
+  #exists(vault: VaultPort | undefined, name: string): boolean {
+    return !!vault
+      ?.list()
+      ?.secrets.some(
+        (secret) => secret.name === name && secret.kind === 'secret' && secret.state !== 'removed'
+      );
+  }
+
+  #attach(name: string): void {
+    this.#refuse(null);
+    this.attachments = [
+      ...this.attachments,
+      { id: this.#id(), name, kind: 'secret', mimeType: 'application/octet-stream', size: 0 },
+    ];
+    this.popup = null;
+  }
+
+  #leave(): void {
+    const entry = this.entry;
+    if (!entry) return;
+    this.entry = null;
+    drop(this.model?.vault, entry.request);
+  }
+
+  async enterSecret(name: string, replace = false): Promise<void> {
+    const vault = this.model?.vault as VaultPort;
+    const clean = this.#clean(name);
+    if (this.sharing) return;
+    const bad = clean ? nameProblem(clean) : 'Enter a name';
+    if (bad) {
+      this.#refuse(bad, 'name', true);
+      return;
+    }
+    if (!replace && this.#exists(vault, clean)) {
+      this.#attach(clean);
+      return;
+    }
+    const agent = this.#agent;
+    const mine = () => this.#agent === agent && this.model?.vault === vault;
+    this.sharing = true;
+    try {
+      if (replace) {
+        const sure = await confirm({
+          title: `Replace ${clean}?`,
+          body: 'A secret with this name exists. Sharing replaces its value, and its placeholder stays.',
+          action: 'Replace',
+          variant: 'confirmation',
+        });
+        if (!sure || !mine()) return;
+      }
+      const { request } = await (vault.enter as NonNullable<VaultPort['enter']>)({
+        name: clean,
+        ...(replace ? { replace: true } : {}),
+      });
+      if (!mine() || this.popup?.kind !== 'secret') {
+        drop(vault, request);
+        return;
+      }
+      this.#refuse(null);
+      this.entry = { request, name: clean };
+      void this.updateComplete.then(() =>
+        this.renderRoot.querySelector<HTMLElement>('slicc-vault-value')?.focus()
+      );
+    } catch (error) {
+      if (mine()) this.#refuse(failureText(error), fieldOf(error, 'name'), true);
+    } finally {
+      this.sharing = false;
+    }
+  }
+
+  #entered(detail: ValueDetail): void {
+    const entry = this.entry as { request: string; name: string };
+    if (detail.event === 'error') {
+      this.#refuse(detail.message);
+      return;
+    }
+    if (detail.event === 'escape') {
+      this.popup = null;
+      return;
+    }
+    if (detail.request !== entry.request) return;
+    this.entry = null;
+    if (detail.event === 'done') this.#attach(entry.name);
+    else this.#refuse(goneText(detail.state));
   }
 
   #refuse(text: string | null, field: string | null = null, focus = false): void {
@@ -1562,6 +1687,8 @@ export class SliccComposer extends ThemedElement {
   #popup(): TemplateResult | typeof nothing {
     const popup = this.popup;
     if (!popup) return nothing;
+    if (popup.kind === 'secret' && enters(this.model?.vault))
+      return this.#entering(this.model?.vault as VaultPort);
     if (popup.kind === 'secret') {
       const vault = this.model?.vault;
       const valued = !!vault?.put && !blocked(vault);
@@ -1630,6 +1757,47 @@ export class SliccComposer extends ThemedElement {
           : html`<div class="empty">Nothing matches.</div>`
       }
     </div>`;
+  }
+
+  #entering(vault: VaultPort): TemplateResult {
+    const entry = this.entry;
+    const close = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      this.popup = null;
+    };
+    const error = this.secretError
+      ? html`<span class="secret-error" role="alert" id="secret-error" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.secretError}</span></span>`
+      : nothing;
+    if (entry)
+      return html`<form class="popup secret" data-vault="on" data-entry @submit=${(event: Event) => event.preventDefault()} @keydown=${close}>
+        <strong>Share a secret</strong>
+        <span class="lead">Type the value of <code>${entry.name}</code> in the vault’s own field. The agent only sees its name.</span>
+        ${valueField(vault, entry.request, valueConfig(this.ownerDocument, this.color), (detail) => this.#entered(detail))}
+        ${error}
+        <swc-button size="s" variant="secondary" fill-style="outline" data-action="back-secret" @click=${() => this.#leave()}>Back</swc-button>
+      </form>`;
+    const name = this.#clean(this.secretName);
+    const exists = !!name && this.#exists(vault, name);
+    const bad = this.secretField === 'name' ? 'true' : nothing;
+    const submit = (event: Event) => {
+      event.preventDefault();
+      void this.enterSecret(this.secretName);
+    };
+    return html`<form class="popup secret" data-vault="on" @submit=${submit} @keydown=${close} @input=${(
+      event: Event
+    ) => {
+      this.secretField = null;
+      this.secretName = (event.target as HTMLInputElement).value;
+    }}>
+        <strong>Share a secret</strong>
+        <span class="lead">${exists ? html`<code>${name}</code> is in the vault. Share it as it is, or replace its value first.` : 'You type the value in the vault’s own field next; the agent only sees its name.'}</span>
+        <label class="field"><span>Name</span><input name="name" placeholder="API_TOKEN" autocomplete="off" spellcheck="false" .value=${this.secretName} aria-invalid=${bad} aria-describedby=${this.secretField === 'name' ? 'secret-error' : nothing} /></label>
+        ${error}
+        <div class="choices">
+          <swc-button size="s" variant="accent" data-action="share-secret" ?pending=${this.sharing} @click=${(event: Event) => (event.currentTarget as HTMLElement).closest('form')?.requestSubmit()}>Share</swc-button>
+          ${exists ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="replace-secret" ?disabled=${this.sharing} @click=${() => void this.enterSecret(this.secretName, true)}>Replace value</swc-button>` : nothing}
+        </div>
+      </form>`;
   }
 
   #hold(): TemplateResult | typeof nothing {

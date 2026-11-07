@@ -26,7 +26,7 @@ import { commandText, controlStyles } from './command-display.ts';
 import { dialogStyles, focused } from './confirm.ts';
 import { size } from './messages.ts';
 import { prompt } from './secrets.ts';
-import { shellWord, type ValueDetail } from './vault.ts';
+import { shellWord, type ValueDetail, valueConfig } from './vault.ts';
 
 export { deadline } from './messages.ts';
 
@@ -808,12 +808,7 @@ export class SliccApprovals extends ModelElement {
   #config(): ValueConfig {
     const doc = this.ownerDocument;
     const dark = doc.defaultView?.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
-    const lang = doc.documentElement.lang;
-    return {
-      theme: resolveColor(this.model?.settings?.get().color ?? 'system', dark),
-      dir: doc.documentElement.dir === 'rtl' ? 'rtl' : 'ltr',
-      ...(lang ? { lang } : {}),
-    };
+    return valueConfig(doc, resolveColor(this.model?.settings?.get().color ?? 'system', dark));
   }
 
   #frame(approval: SecretApproval): TemplateResult {
