@@ -21,7 +21,7 @@ import type {
   ValueConfig,
 } from '../model/types.ts';
 import { ModelElement, resolveColor } from './base.ts';
-import { Ends, toScroll } from './command.ts';
+import { Arming, Ends, end, endCss, layout, toScroll, Watched } from './command.ts';
 import { commandText, controlStyles } from './command-display.ts';
 import { dialogStyles, focused } from './confirm.ts';
 import { size } from './messages.ts';
@@ -373,10 +373,9 @@ export class SliccApprovals extends ModelElement {
   declare gone: { approval: Approval; reason: 'elsewhere' | 'expired' } | null;
   declare frameError: { id: string; message: string } | null;
   arming = 500;
-  #changed = 0;
-  #pressed = 0;
-  #layout = '';
-  #moves = new ResizeObserver(() => this.#settle());
+  #arming = new Arming(() => this.arming);
+  #moves = new Watched(new ResizeObserver(() => this.#settle()));
+  #moved = (): void => this.#settle();
   #showing: Approval | null = null;
   #pending = new Set<string>();
   #done = new Set<string>();
@@ -405,6 +404,7 @@ export class SliccApprovals extends ModelElement {
   static styles = [
     dialogStyles,
     controlStyles,
+    endCss,
     css`
       :host {
         display: contents;
@@ -426,16 +426,11 @@ export class SliccApprovals extends ModelElement {
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
-      .command .lines:not([data-clamp]) {
+      .command .lines {
         display: block;
         max-block-size: min(16lh, 50dvh);
         overflow: auto;
         overscroll-behavior: contain;
-      }
-      .command .end {
-        display: inline-block;
-        inline-size: 0;
-        block-size: 0;
       }
       .guest {
         margin-block-start: var(--swc-spacing-200);
@@ -621,11 +616,17 @@ export class SliccApprovals extends ModelElement {
     ];
   }
 
+  connectedCallback(): void {
+    super.connectedCallback();
+    globalThis.addEventListener('resize', this.#moved);
+  }
+
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    globalThis.removeEventListener('resize', this.#moved);
     this.#tick(false);
     this.#showing = null;
-    this.#layout = '';
+    this.#arming.forget();
     this.#moves.disconnect();
     this.#ends.disconnect();
   }
@@ -649,7 +650,7 @@ export class SliccApprovals extends ModelElement {
       this.#done.has(id) ||
       this.#closed.has(id) ||
       !answerable(approval, decision) ||
-      (decision !== 'deny' && (!this.#settled(performance.now()) || !this.#whole(approval)))
+      (decision !== 'deny' && (!this.#arming.settled() || !this.#whole(approval)))
     )
       return;
     const live = port.list().find(({ id }) => id === approval.id);
@@ -722,37 +723,17 @@ export class SliccApprovals extends ModelElement {
     if (next?.id === showing?.id) return;
     this.frameError = null;
     this.#showing = next;
-    this.#changed = performance.now();
-  }
-
-  #settled(at: number): boolean {
-    return at - this.#changed >= this.arming;
+    this.#arming.arm();
   }
 
   #settle(): void {
     const dialog = this.renderRoot.querySelector('dialog');
     const buttons = [...this.renderRoot.querySelectorAll<HTMLElement>('[slot=button]')];
-    const layout = JSON.stringify([
-      dialog?.dataset.approval,
-      dialog?.dataset.gone,
-      buttons.map((button) => {
-        const { left, top, width, height } = button.getBoundingClientRect();
-        return [
-          button.dataset.action,
-          button.textContent,
-          button.hasAttribute('disabled'),
-          button.hasAttribute('pending'),
-          ...[left, top, width, height].map(Math.round),
-        ];
-      }),
-    ]);
-    if (layout === this.#layout) return;
-    this.#layout = layout;
-    this.#changed = performance.now();
+    this.#arming.watch(layout(buttons, [dialog?.dataset.approval, dialog?.dataset.gone]));
   }
 
   #click(event: MouseEvent, approval: Approval, decision: ApprovalDecision): void {
-    if (!this.#settled(event.detail ? this.#pressed : performance.now())) return;
+    if (!this.#arming.counts(event)) return;
     void this.decide(approval, decision);
   }
 
@@ -762,9 +743,7 @@ export class SliccApprovals extends ModelElement {
     this.#tick(this.isConnected && all.length > 0);
     this.#ends.observe();
     const dialog = this.renderRoot.querySelector('dialog');
-    if (dialog)
-      for (const box of dialog.querySelectorAll('sp-alert-dialog, [slot=button]'))
-        this.#moves.observe(box);
+    this.#moves.sync(dialog?.querySelectorAll('sp-alert-dialog, [slot=button]') ?? []);
     this.#settle();
     const key = dialog
       ? `${dialog.dataset.approval}:${this.#generation.get(dialog.dataset.approval as string)}:${dialog.dataset.gone ?? ''}:${dialog.hasAttribute('data-rejected')}`
@@ -862,7 +841,7 @@ export class SliccApprovals extends ModelElement {
   #dialog(approval: Approval, key: string, content: TemplateResult): unknown {
     return keyed(
       key,
-      html`<dialog role="alertdialog" aria-labelledby="title" aria-describedby="asking" data-approval=${approval.id} data-kind=${approval.kind} data-requester=${approval.requester.kind} data-gone=${this.gone?.reason ?? nothing} data-rejected=${!this.gone && this.failure?.id === approval.id ? '' : nothing} @pointerdown=${() => (this.#pressed = performance.now())} @cancel=${(event: Event) => this.#cancel(event, approval)}>${content}</dialog>`
+      html`<dialog role="alertdialog" aria-labelledby="title" aria-describedby="asking" data-approval=${approval.id} data-kind=${approval.kind} data-requester=${approval.requester.kind} data-gone=${this.gone?.reason ?? nothing} data-rejected=${!this.gone && this.failure?.id === approval.id ? '' : nothing} @pointerdown=${this.#arming.press} @cancel=${(event: Event) => this.#cancel(event, approval)}>${content}</dialog>`
     );
   }
 
@@ -881,7 +860,7 @@ export class SliccApprovals extends ModelElement {
     const text = approved(approval);
     if (!text) return html`<p class="hint" data-id="no-details">This request has no details.</p>`;
     const command = approval.kind === 'sudo' || approval.kind === 'secret';
-    return html`<pre class="command" data-command=${command ? '' : nothing} data-summary=${command ? nothing : ''}><span class="lines">${command ? commandText(text) : text}${pending ? html`<span class="end" data-end=${id}></span>` : nothing}</span></pre>`;
+    return html`<pre class="command" data-command=${command ? '' : nothing} data-summary=${command ? nothing : ''}><span class="lines">${command ? commandText(text) : text}${pending ? end(id) : nothing}</span></pre>`;
   }
 
   #request(approval: Approval, pending = false): TemplateResult {

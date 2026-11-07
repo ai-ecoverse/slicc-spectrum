@@ -23,7 +23,7 @@ import type {
 } from '../model/types.ts';
 import { readSurface } from './ansi.ts';
 import { chatModels, meterVariant, shared, statusDot, statusLight, ThemedElement } from './base.ts';
-import { Cuts, clampCss } from './command.ts';
+import { Arming, Ends, endCss, layout, Watched } from './command.ts';
 import { fade, folders, limit, type SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
 import { following, onWatch, watchOnly } from './follow.ts';
@@ -141,13 +141,28 @@ function pendingAsks(messages: readonly Message[]): Array<[string, { id: string;
   });
 }
 
-function into(card: Element, dock: HTMLElement): void {
-  const box = card.getBoundingClientRect();
+function into(card: Element, dock: HTMLElement, target: Element): void {
   const view = dock.getBoundingClientRect();
   const start = view.top + (Number.parseFloat(getComputedStyle(dock).scrollPaddingBlockStart) || 0);
+  const fits = card.getBoundingClientRect().height <= view.bottom - start;
+  const box = (fits ? card : target).getBoundingClientRect();
   if (box.top < start) dock.scrollTop -= start - box.top;
   else if (box.bottom > view.bottom)
     dock.scrollTop += Math.min(box.bottom - view.bottom, box.top - start);
+}
+
+function lift(turn: Element, dock: HTMLElement, raised: number): number {
+  const decide = turn.querySelector('.decide');
+  if (!decide) return raised;
+  const style = getComputedStyle(dock);
+  const view = dock.getBoundingClientRect();
+  const start = view.top + (Number.parseFloat(style.scrollPaddingBlockStart) || 0);
+  const end = view.bottom - (Number.parseFloat(style.scrollPaddingBlockEnd) || 0);
+  const top = (turn.querySelector('.command') ?? turn).getBoundingClientRect().top;
+  const need = decide.getBoundingClientRect().bottom - end;
+  const base = dock.scrollTop - raised;
+  dock.scrollTop = base + (need <= top - start ? raised + Math.max(0, need) : 0);
+  return dock.scrollTop - base;
 }
 
 const place = (id: string): TemplateResult =>
@@ -303,7 +318,7 @@ export class SliccChat extends ThemedElement {
     fade,
     markdownCss,
     messageCss,
-    clampCss,
+    endCss,
     unsafeCSS(link),
     signInCss,
     css`
@@ -564,8 +579,14 @@ export class SliccChat extends ThemedElement {
   #licks = new ViewSet(this, 'chat:licks');
   #runs = new ViewSet(this, 'chat:runs');
   #details = new Set<string>();
-  #commands = new ViewSet(this, 'chat:commands');
-  #cuts = new Cuts(
+  arming = 500;
+  #arming = new Arming(() => this.arming);
+  #moves = new Watched(new ResizeObserver(() => this.#settle()));
+  #moved = (): void => this.#settle();
+  #lifted = '';
+  #lifting = '';
+  #raised = 0;
+  #ends = new Ends(
     () => this.renderRoot,
     () => this.requestUpdate()
   );
@@ -580,12 +601,8 @@ export class SliccChat extends ThemedElement {
       },
     },
     commands: {
-      cut: (id) => this.#cuts.get(id),
-      has: (id) => this.#commands.has(id),
-      toggle: (id) => {
-        this.#commands.toggle(id);
-        void this.updateComplete.then(() => this.#reach(id));
-      },
+      seen: (id) => this.#ends.has(id),
+      armed: (event) => this.#arming.counts(event),
     },
     color: 'light',
     model: null,
@@ -676,7 +693,7 @@ export class SliccChat extends ThemedElement {
     const target = event.target as Element;
     this.#held = target.closest<HTMLElement>('.decision-turn[data-pending]')?.dataset.id ?? '';
     const card = target.closest('.ask');
-    if (card) into(card, card.closest('.asks') as HTMLElement);
+    if (card) into(card, card.closest('.asks') as HTMLElement, target);
   };
 
   #more = (): void => {
@@ -689,19 +706,45 @@ export class SliccChat extends ThemedElement {
     );
   };
 
-  #reach(id: string): void {
+  #settle(): void {
+    this.#lift();
     const dock = this.renderRoot.querySelector<HTMLElement>('.asks');
-    const turn = [...(dock?.querySelectorAll<HTMLElement>('.decision-turn') ?? [])].find(
-      (candidate) => candidate.dataset.id === id
+    const buttons = [...this.renderRoot.querySelectorAll<HTMLElement>('.asks .decide swc-button')];
+    this.#arming.watch(layout(buttons, [], dock));
+  }
+
+  #lift(): void {
+    const dock = this.renderRoot.querySelector<HTMLElement>('.asks');
+    const turn = [...(dock?.querySelectorAll<HTMLElement>('.ask .decision-turn') ?? [])].at(-1);
+    const id = turn?.dataset.id ?? '';
+    if (id !== this.#lifted) {
+      this.#lifting = id;
+      this.#raised = 0;
+    }
+    this.#lifted = id;
+    if (!this.#lifting || !dock || !turn || dock.hasAttribute('data-open')) return;
+    const raised = lift(turn, dock, this.#raised);
+    if (raised !== this.#raised) this.#arming.arm();
+    this.#raised = raised;
+  }
+
+  #stay = (): void => {
+    this.#lifting = '';
+  };
+
+  #press = (): void => {
+    this.#stay();
+    this.#arming.press();
+  };
+
+  #guard(): void {
+    this.#ends.observe();
+    this.#moves.sync(
+      this.renderRoot.querySelectorAll(
+        'header, slicc-notices, .asks, .asks .decision, .asks .decide swc-button'
+      )
     );
-    if (!dock || !turn) return;
-    const style = getComputedStyle(dock);
-    const room =
-      dock.clientHeight -
-      (Number.parseFloat(style.scrollPaddingBlockStart) || 0) -
-      (Number.parseFloat(style.scrollPaddingBlockEnd) || 0);
-    const target = turn.offsetHeight <= room ? turn : turn.querySelector('.decide');
-    target?.scrollIntoView({ block: 'nearest' });
+    this.#settle();
   }
 
   #refocus(): void {
@@ -935,6 +978,7 @@ export class SliccChat extends ThemedElement {
     this.#probed = null;
     globalThis.addEventListener('pointerup', this.#release, true);
     globalThis.addEventListener('pointercancel', this.#release, true);
+    globalThis.addEventListener('resize', this.#moved);
     if (this.hasUpdated) this.#observe();
   }
 
@@ -942,9 +986,14 @@ export class SliccChat extends ThemedElement {
     super.disconnectedCallback();
     globalThis.removeEventListener('pointerup', this.#release, true);
     globalThis.removeEventListener('pointercancel', this.#release, true);
+    globalThis.removeEventListener('resize', this.#moved);
     this.#resize.disconnect();
     this.#fit.disconnect();
-    this.#cuts.disconnect();
+    this.#ends.disconnect();
+    this.#moves.disconnect();
+    this.#lifted = '';
+    this.#lifting = '';
+    this.#arming.forget();
     this.#fitted = undefined;
     clearInterval(this.#tick);
     this.#tick = undefined;
@@ -981,7 +1030,7 @@ export class SliccChat extends ThemedElement {
     const asks = [...this.renderRoot.querySelectorAll<HTMLElement>('.ask-list .decision-turn')];
     for (const turn of asks) turn.tabIndex = 0;
     this.#more();
-    this.#cuts.measure();
+    this.#guard();
   }
 
   #timed(): boolean {
@@ -1246,7 +1295,7 @@ export class SliccChat extends ThemedElement {
       this.#all = !open;
       this.requestUpdate();
     };
-    return html`<section class="asks" aria-label="Waiting for you" ?data-open=${open} @scroll=${this.#more}><div class="column">
+    return html`<section class="asks" aria-label="Waiting for you" ?data-open=${open} @scroll=${this.#more} @pointerdown=${this.#press} @wheel=${this.#stay} @touchstart=${this.#stay} @keydown=${this.#stay} @focusin=${this.#stay}><div class="column">
       ${
         older.length
           ? html`<div class="waiting"><swc-action-button size="s" quiet data-action="show-waiting" aria-expanded=${open ? 'true' : 'false'} @click=${toggle}><swc-icon-chevron-down slot="icon"></swc-icon-chevron-down>${asks.length} waiting</swc-action-button>${timed.length ? askTimer(Math.min(...timed)) : nothing}</div>`

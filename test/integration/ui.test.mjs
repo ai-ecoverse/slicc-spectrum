@@ -26,6 +26,20 @@ async function open(t, params = {}) {
   return page;
 }
 
+async function armed(page) {
+  await page.until(() => !window.chatPart('.asks .decide swc-button[disabled]'));
+  await new Promise((resolve) => setTimeout(resolve, 600));
+}
+
+async function frames(page) {
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))
+      )
+  );
+}
+
 async function altM(page, type) {
   const m = { key: 'µ', code: 'KeyM', windowsVirtualKeyCode: 77, modifiers: 1 };
   if (type === 'keyDown') {
@@ -2799,6 +2813,7 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
   await page.until(
     () => window.$('slicc-app', 'slicc-dock', 'slicc-chat', '.question[data-state=open]') === null
   );
+  await armed(page);
   await page.evaluate(() =>
     [
       ...window
@@ -3392,6 +3407,7 @@ for (const [width, height] of [
     const reached = [];
     for (let i = 0; i < 12; i++) {
       await page.press('Tab');
+      await frames(page);
       const step = await page.evaluate(() => {
         const root = window.chatPart().shadowRoot;
         const active = root.activeElement;
@@ -3419,6 +3435,7 @@ for (const [width, height] of [
       ['k-l17', 'allow', true],
     ]);
 
+    await armed(page);
     await page.evaluate(() => {
       window.chatPart('.decision-turn[data-id=k-l17] [data-action=allow]').click();
       return true;
@@ -3500,6 +3517,7 @@ test('four open asks at 420 fade at the cut edge while more is below, and Tab sc
   const seen = [];
   for (let i = 0; i < 24; i++) {
     await page.press('Tab');
+    await frames(page);
     const step = await page.evaluate(() => {
       const root = window.chatPart().shadowRoot;
       const active = root.activeElement;
@@ -3655,7 +3673,7 @@ for (const [width, height] of [
   [1280, 800],
   [420, 860],
 ]) {
-  test(`a long approval command waits for Show the full command before Allow appears at ${width}`, async (t) => {
+  test(`a long approval command in a chat card shows whole and is allowed without expanding it at ${width}`, async (t) => {
     const page = await open(t, { delay: '0', asks: 'long' });
     await page.send('Emulation.setEmulatedMedia', {
       features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
@@ -3672,21 +3690,48 @@ for (const [width, height] of [
     await page.evaluate(() => window.model.agent.select('cone-kitchen'));
     await page.until(
       () =>
-        !!window.chatPart('.asks .decision-turn[data-id=k-long] [data-action=full-command]') &&
-        window.chatPart().getBoundingClientRect().right <= innerWidth
+        !!window.chatPart(
+          '.asks .decision-turn[data-id=k-long] [data-action=allow]:not([disabled])'
+        ) && window.chatPart().getBoundingClientRect().right <= innerWidth
     );
-    await cutCommand(page, 'chat');
-    await page.until(() => window.cutCommand('k-long').hits.includes('deny'));
-    const wrap = ['pre-wrap', 'anywhere', 'clip', 'none'];
-    assert.deepEqual(await page.evaluate(() => window.cutCommand('k-long')), {
-      allow: false,
-      hits: ['deny', 'full-command'],
-      toggle: ['Show the full command', 'false'],
-      tail: false,
-      cut: true,
-      wrap,
-      mono: true,
+    await page.until(() => {
+      const dock = window.chatPart('.asks');
+      const turn = window.chatPart('.asks .decision-turn[data-id=k-long]');
+      const style = getComputedStyle(dock);
+      const view = dock.getBoundingClientRect();
+      const start = view.top + (Number.parseFloat(style.scrollPaddingBlockStart) || 0);
+      const fade = dock.hasAttribute('data-more');
+      const end = view.bottom - (fade ? Number.parseFloat(style.scrollPaddingBlockEnd) || 0 : 0);
+      const buttons = [...turn.querySelectorAll('.decide swc-button')].map((button) =>
+        button.getBoundingClientRect()
+      );
+      const command = turn.querySelector('.command').getBoundingClientRect();
+      return (
+        buttons.length === 2 &&
+        buttons.every((box) => box.top >= start - 1 && box.bottom <= end + 1) &&
+        command.top >= start - 1
+      );
     });
+    await cutCommand(page, 'chat');
+    await page.until(() => window.cutCommand('k-long').hits.includes('allow'));
+    const wrap = ['pre-wrap', 'anywhere', 'clip', 'none'];
+    const shown = await page.evaluate(() => window.cutCommand('k-long'));
+    assert.deepEqual(
+      [shown.allow, shown.toggle, shown.tail, shown.cut, shown.wrap, shown.mono],
+      [true, null, true, false, wrap, true],
+      JSON.stringify(shown)
+    );
+    assert.deepEqual(
+      shown.hits.filter((hit) => !['ask-detail', 'show-waiting'].includes(hit)),
+      ['allow', 'deny']
+    );
+    assert.deepEqual(
+      await page.evaluate(() => [
+        !!window.chatPart('[data-action=full-command], [data-clamp]'),
+        !!window.chatPart('.decision-turn[data-id=k-long] .allow-hint'),
+      ]),
+      [false, false]
+    );
 
     await page.evaluate(() => {
       window.chatPart('[data-action=show-waiting]').click();
@@ -3695,18 +3740,26 @@ for (const [width, height] of [
     await page.until(
       () => !!window.chatPart('.asks[data-open] .ask:not([hidden]) [data-id=k-l17]')
     );
+    await page.evaluate(() => {
+      window
+        .chatPart('.decision-turn[data-id=k-l17] [data-end]')
+        .scrollIntoView({ block: 'nearest' });
+      return true;
+    });
+    await page.until(
+      () => !!window.chatPart('.decision-turn[data-id=k-l17] [data-action=allow]:not([disabled])')
+    );
     const short = await page.evaluate(() => window.cutCommand('k-l17'));
     assert.deepEqual(
       [short.allow, short.toggle, short.cut, short.wrap, short.mono],
       [true, null, false, wrap, true]
     );
-    assert.ok(short.hits.includes('allow'), JSON.stringify(short));
     const compact = await page.evaluate(() => window.cutCommand('k-long'));
     assert.deepEqual(
-      [compact.allow, compact.toggle, compact.tail, compact.cut, compact.wrap],
-      [false, ['Show the full command', 'false'], false, true, wrap]
+      [compact.allow, compact.toggle, compact.cut, compact.wrap],
+      [true, null, false, wrap],
+      JSON.stringify(compact)
     );
-    assert.equal(compact.hits.includes('allow'), false);
 
     await page.evaluate(() => {
       window.chatPart('[data-action=show-waiting]').focus();
@@ -3715,6 +3768,7 @@ for (const [width, height] of [
     const reached = [];
     for (let i = 0; i < 16; i++) {
       await page.press('Tab');
+      await frames(page);
       const step = await page.evaluate(() => {
         const active = window.chatPart().shadowRoot.activeElement;
         const card = active?.closest?.('.asks .decision-turn');
@@ -3722,66 +3776,19 @@ for (const [width, height] of [
       });
       if (!step) break;
       reached.push(step);
-      if (step[0] === 'k-long' && step[1] === 'full-command') break;
+      if (step[0] === 'k-long' && step[1] === 'allow') break;
     }
     assert.deepEqual(
       reached.filter(([id]) => id === 'k-long'),
       [
         ['k-long', 'card'],
         ['k-long', 'ask-detail'],
-        ['k-long', 'full-command'],
+        ['k-long', 'deny'],
+        ['k-long', 'allow'],
       ]
     );
-    await page.press('Tab');
-    assert.deepEqual(
-      await page.evaluate(() => {
-        const active = window.chatPart().shadowRoot.activeElement;
-        return [active.closest('.decision-turn').dataset.id, active.dataset.action];
-      }),
-      ['k-long', 'deny']
-    );
-    await page.press('Tab', 'shift');
-    assert.equal(
-      await page.evaluate(() => window.chatPart().shadowRoot.activeElement.dataset.action),
-      'full-command'
-    );
-    await page.press('Enter');
-    await page.until(() => !!window.chatPart('.decision-turn[data-id=k-long] [data-action=allow]'));
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    const opened = await page.evaluate(() => window.cutCommand('k-long'));
-    assert.deepEqual(
-      [opened.allow, opened.toggle, opened.tail, opened.cut, opened.wrap],
-      [true, ['Hide the full command', 'true'], true, false, wrap],
-      JSON.stringify(opened)
-    );
-    assert.ok(opened.hits.includes('allow'), JSON.stringify(opened));
-    assert.deepEqual(
-      await page.evaluate(() => {
-        const active = window.chatPart().shadowRoot.activeElement;
-        return [active.closest('.decision-turn').dataset.id, active.dataset.action];
-      }),
-      ['k-long', 'full-command']
-    );
 
-    await page.press('Enter');
-    await page.until(() => !window.chatPart('.decision-turn[data-id=k-long] [data-action=allow]'));
-    const closed = await page.evaluate(() => window.cutCommand('k-long'));
-    assert.deepEqual(
-      [closed.allow, closed.toggle, closed.tail],
-      [false, ['Show the full command', 'false'], false]
-    );
-    await page.press('Enter');
-    await page.until(() => !!window.chatPart('.decision-turn[data-id=k-long] [data-action=allow]'));
-
-    await page.evaluate(() => window.model.agent.select('cone-sliccy'));
-    await page.until(() => !window.chatPart('.decision-turn[data-id=k-long]'));
-    await page.evaluate(() => window.model.agent.select('cone-kitchen'));
-    await page.until(() => !!window.chatPart('.decision-turn[data-id=k-long] [data-action=allow]'));
-    assert.deepEqual((await page.evaluate(() => window.cutCommand('k-long'))).toggle, [
-      'Hide the full command',
-      'true',
-    ]);
-
+    await armed(page);
     const { x, y } = await page.evaluate(() => {
       const box = window
         .chatPart('.decision-turn[data-id=k-long] [data-action=allow]')
@@ -4179,6 +4186,7 @@ test('decision cards dock above the log, reveal their place from the keyboard an
   assert.deepEqual(await page.evaluate(docked), ['k-q3', 'k-l17']);
   assert.equal(await page.evaluate(expanded), 'true');
 
+  await armed(page);
   await page.evaluate(() => {
     window.chatPart('.decision-turn[data-id=k-l17] swc-button[data-action=allow]').focus();
     return true;
