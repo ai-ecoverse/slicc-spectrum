@@ -431,7 +431,8 @@ export class SliccSettings extends ThemedElement {
       .switched {
         grid-column: 2;
       }
-      .developer {
+      .developer,
+      .capture {
         display: grid;
         gap: var(--swc-spacing-75);
         padding-block: var(--swc-spacing-75);
@@ -442,7 +443,8 @@ export class SliccSettings extends ThemedElement {
         gap: var(--swc-spacing-100);
       }
       .developer .hint,
-      .developer .failure {
+      .developer .failure,
+      .capture .hint {
         margin: 0;
         line-height: var(--swc-line-height-200);
       }
@@ -696,6 +698,7 @@ export class SliccSettings extends ThemedElement {
       }),
       model.settings.on('providers', update),
       ...(model.vault ? [model.vault.on('status', update), model.vault.on('list', update)] : []),
+      ...(model.switches ? [model.switches.on('switches', update)] : []),
     ];
   }
 
@@ -772,6 +775,29 @@ export class SliccSettings extends ThemedElement {
         ${this.developerError ? html`<p class="failure" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.developerError}</span></p>` : nothing}
       </div>
     </div>`;
+  }
+
+  #switches(): TemplateResult | typeof nothing {
+    const port = this.model?.switches;
+    const list = port?.list() ?? [];
+    if (!port || !list.length) return nothing;
+    return html`<h2 data-section="switches">Capture and devices</h2>
+      <div class="rows">
+      <div class="row">
+        <span class="label">Allow</span>
+        <div class="capture">
+          <div class="switches" data-surface="switches">
+            ${repeat(
+              list,
+              (item) => item.key,
+              (item) =>
+                html`<sp-switch .checked=${live(item.on)} data-id=${item.key} @change=${(event: Event) => port.set(item.key, this.#checked(event))}>${item.label}</sp-switch>`
+            )}
+          </div>
+          <p class="hint">Programs can capture only what’s on here. Turning one off stops what’s live under it.</p>
+        </div>
+      </div>
+      </div>`;
   }
 
   #cancelled = new Set<string>();
@@ -2234,6 +2260,7 @@ export class SliccSettings extends ThemedElement {
       </div>
       ${this.#developerRow()}
       </div>
+      ${this.#switches()}
       <h2 data-section="accounts">Accounts</h2>
       ${this.#providerList(providers)}
       ${this.#serverList(servers)}

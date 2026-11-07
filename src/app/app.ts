@@ -187,6 +187,9 @@ export class SliccApp extends ThemedElement {
       flex-direction: column;
       height: 100%;
     }
+    .shell slicc-live {
+      flex: none;
+    }
     .shell[data-alone] header > :not(.brand),
     .shell[data-alone] main,
     .shell[data-alone] .rail.bottom {
@@ -1154,6 +1157,7 @@ export class SliccApp extends ThemedElement {
           }
           ${this.#headerButton('theme', color === 'dark' ? 'Switch to light theme' : 'Switch to dark theme', html`<swc-icon-contrast slot="icon"></swc-icon-contrast>`, () => this.toggleColor())}
         </header>
+        ${this.model?.live ? html`<slicc-live .model=${this.model} ?compact=${this.screen === 'phone'}></slicc-live>` : nothing}
         ${lonely ? html`<div class="alone" role="status" data-tabs="alone"><p>${alone}</p></div>` : nothing}
         ${paused && !lonely ? html`<div class="alone" data-follow=${paused.kind}><slicc-follow page .model=${this.model}></slicc-follow></div>` : nothing}
         <main>

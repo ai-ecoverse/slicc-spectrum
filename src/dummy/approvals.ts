@@ -49,6 +49,9 @@ export type ApprovalScenario =
   | 'secret-enter'
   | 'secret-reveal'
   | 'secret-long'
+  | 'click'
+  | 'click-remote'
+  | 'capture'
   | 'none';
 
 const minutes = 60_000;
@@ -333,7 +336,50 @@ function levelFixture(scenario: ApprovalScenario, now: number): Approval {
   };
 }
 
+function captureFixtures(scenario: ApprovalScenario, now: number): Approval[] {
+  const base = { createdAt: now, expiresAt: now + 5 * minutes };
+  if (scenario === 'capture')
+    return [
+      {
+        ...base,
+        id: 'capture-screen',
+        kind: 'capture',
+        requester: mara,
+        agentId: 'cone-sliccy',
+        agentName: 'sliccy',
+        detail: { what: 'screen', mode: 'video', seconds: 10, microphone: true, program: 'media' },
+        always: false,
+        verdict: {
+          level: 2,
+          aligned: true,
+          reason: 'It records the screen and the microphone, which the guest asked for.',
+        },
+      },
+    ];
+  return [
+    {
+      ...base,
+      id: 'click-share',
+      kind: 'click',
+      subject: 'capture',
+      what: 'screen',
+      program: 'media',
+      requester: { kind: 'agent', name: 'sliccy', agentId: 'cone-sliccy' },
+      title: 'Share your screen?',
+      body: 'media wants to record your screen for sliccy. Choose a screen, window or tab in Chrome’s picker.',
+      action: 'Choose what to share',
+      here: scenario === 'click',
+      ...(scenario === 'click' ? {} : { device: { id: 'device-studio', name: 'Studio Mac' } }),
+    },
+  ];
+}
+
 export function approvalFixtures(scenario: ApprovalScenario, now = Date.now()): Approval[] {
+  if (scenario.startsWith('click') || scenario === 'capture') return captureFixtures(scenario, now);
+  return sudoFixtures(scenario, now);
+}
+
+function sudoFixtures(scenario: ApprovalScenario, now: number): Approval[] {
   const agent: Approval = {
     id: 'sudo-jq',
     kind: 'sudo',

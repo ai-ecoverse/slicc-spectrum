@@ -2535,7 +2535,7 @@ test('tool steps join across messages, keep their states, and open from the keyb
     ['k-r9', 'running', 'active'],
   ]);
   assert.equal(shape.cards, 0);
-  assert.deepEqual(shape.hooks, [4, 27]);
+  assert.deepEqual(shape.hooks, [5, 28]);
   assert.equal(shape.failed, 'bash Run the unit tests · Failed');
 
   await page.evaluate(() =>
@@ -2694,8 +2694,8 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     steered: 1,
     assistant: 8,
     tool: 1,
-    statuses: 4,
-    steps: 27,
+    statuses: 5,
+    steps: 28,
     markers: 3,
     errors: 3,
     notices: 1,

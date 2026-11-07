@@ -11,6 +11,7 @@ import * as fixtures from './fixtures.ts';
 import { DummyFollow, type FollowScenario } from './follow.ts';
 import { DummyGuests, type GuestsScenario } from './guests.ts';
 import { DummyImport, type ImportScenario } from './import.ts';
+import { DummyLive, DummySwitches, type LiveScenario } from './live.ts';
 import { DummyMemory } from './memory.ts';
 import { agentSections, DummyMonitor } from './monitor.ts';
 import {
@@ -59,6 +60,8 @@ export interface DummyOptions {
   tabs?: TabsScenario | 'off';
   approvals?: ApprovalScenario | 'off';
   asks?: 'long' | 'off';
+  live?: LiveScenario | 'off';
+  switches?: 'capture' | 'off';
   follow?: FollowScenario | 'off';
   vault?: VaultScenario | 'off';
   guests?: GuestsScenario | 'off';
@@ -87,6 +90,8 @@ export interface DummyModel extends SliccModel {
   notices?: DummyNotices;
   tabs?: DummyTabs;
   approvals?: DummyApprovals;
+  live?: DummyLive;
+  switches?: DummySwitches;
   follow?: DummyFollow;
   vault?: DummyVault;
   guests?: DummyGuests;
@@ -211,6 +216,8 @@ export function createDummyModel({
   tabs = 'off',
   approvals = 'off',
   asks = 'off',
+  live = 'off',
+  switches = 'off',
   follow = 'off',
   vault = 'off',
   guests = 'off',
@@ -309,6 +316,8 @@ export function createDummyModel({
     ...(noticePort ? { notices: noticePort } : {}),
     ...(tabs === 'off' ? {} : { tabs: new DummyTabs(tabs, time) }),
     ...(approvals === 'off' ? {} : { approvals: new DummyApprovals(approvals, time, vaultPort) }),
+    ...(live === 'off' ? {} : { live: new DummyLive(live) }),
+    ...(switches === 'off' ? {} : { switches: new DummySwitches() }),
     ...(follow === 'off' ? {} : { follow: new DummyFollow(follow, time) }),
     ...(vaultPort ? { vault: vaultPort } : {}),
     ...guestsPort(guests, time),

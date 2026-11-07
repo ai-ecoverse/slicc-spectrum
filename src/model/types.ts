@@ -1256,12 +1256,59 @@ export interface SecretApproval {
   expiresAt: number;
 }
 
+export interface ClickApproval {
+  id: string;
+  kind: 'click';
+  subject: 'capture' | 'device';
+  what: string;
+  program: string;
+  requester: ApprovalRequester;
+  title: string;
+  body: string;
+  action: string;
+  here: boolean;
+  device?: { id: string; name: string };
+  createdAt: number;
+  expiresAt: number;
+}
+
+export type CaptureWhat = 'screen' | 'camera' | 'microphone';
+
+export type CaptureMode = 'still' | 'video' | 'audio';
+
+export interface CaptureDetail {
+  what: CaptureWhat;
+  mode: CaptureMode;
+  seconds?: number;
+  system?: boolean;
+  microphone?: boolean;
+  device?: string;
+  program: string;
+}
+
+export interface CaptureApproval {
+  id: string;
+  kind: 'capture';
+  requester: ApprovalRequester;
+  agentId?: string;
+  agentName?: string;
+  detail: CaptureDetail;
+  createdAt: number;
+  expiresAt: number;
+  always: boolean;
+  verdict?: ApprovalVerdict;
+  judging?: boolean;
+  verdictError?: string;
+}
+
 export type Approval =
   | SudoApproval
   | GuestMessageApproval
   | GuestToolApproval
   | TrayApproval
-  | SecretApproval;
+  | SecretApproval
+  | ClickApproval
+  | CaptureApproval;
 
 export type ApprovalEnd = 'answered' | 'withdrawn' | 'expired';
 
@@ -1273,6 +1320,32 @@ export interface ApprovalsEvents {
 export interface ApprovalsPort extends Subscribable<ApprovalsEvents> {
   list(): readonly Approval[];
   decide?(id: string, decision: ApprovalDecision, reason?: string): Promise<void>;
+}
+
+export interface LiveItem {
+  id: string;
+  kind: string;
+  label: string;
+  what: string;
+  asker: string;
+  since: number;
+  action: { label: string };
+}
+
+export interface LivePort extends Subscribable<{ items: readonly LiveItem[] }> {
+  items(): readonly LiveItem[];
+  act(id: string): void;
+}
+
+export interface Switch {
+  key: string;
+  label: string;
+  on: boolean;
+}
+
+export interface SwitchesPort extends Subscribable<{ switches: readonly Switch[] }> {
+  list(): readonly Switch[];
+  set(key: string, on: boolean): void;
 }
 
 export type TabRole = 'owner' | 'follower' | 'connecting' | 'alone';
@@ -1869,6 +1942,8 @@ export interface SliccModel {
   notices?: NoticesPort;
   tabs?: TabsPort;
   approvals?: ApprovalsPort;
+  live?: LivePort;
+  switches?: SwitchesPort;
   follow?: FollowPort;
   vault?: VaultPort;
   guests?: GuestPort;

@@ -42,6 +42,8 @@ export {
 } from './dummy/import.ts';
 export type { DummyModel, DummyOptions } from './dummy/index.ts';
 export { createDummyModel, movedDocs } from './dummy/index.ts';
+export type { LiveScenario } from './dummy/live.ts';
+export { DummyLive, DummySwitches, liveFixtures, switchFixtures } from './dummy/live.ts';
 export type { LeadersScenario, NetworkScenario, TailnetScenario } from './dummy/network.ts';
 export {
   DummyNetwork,
