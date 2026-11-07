@@ -128,6 +128,7 @@ export const lickLabels: Record<LickChannel, [string, string]> = {
   'scoop-idle': ['Scoop idle', 'neutral'],
   'scoop-wait': ['Scoop wait', 'yellow'],
   'sudo-request': ['Permission', 'notice'],
+  'cone-message': ['Cone message', 'indigo'],
 };
 
 const stepStates: Record<ToolStatus, string> = {
@@ -951,7 +952,17 @@ const lickIcons: Record<LickChannel, string> = {
   'scoop-idle': '💤',
   'scoop-wait': '⏳',
   'sudo-request': '🔐',
+  'cone-message': '💬',
 };
+
+const unknownLick: [string, string] = ['Notice', 'neutral'];
+const unknownIcon = '📎';
+
+export function lickLook(channel: string): { label: string; icon: string } {
+  const entry = (lickLabels as Partial<Record<string, [string, string]>>)[channel];
+  const icon = (lickIcons as Partial<Record<string, string>>)[channel];
+  return { label: entry?.[0] ?? unknownLick[0], icon: icon ?? unknownIcon };
+}
 
 export function pendingApproval(message: Message): boolean {
   return (
@@ -1054,8 +1065,7 @@ const scoopWords: Record<string, string> = {
 const scoopBracket = /^\[(?:scoop |@)[^\]\n]* (completed|failed|stopped)\][^\S\n]*(?:\n|$)/;
 
 function scoopLine(message: LickMessage): [string, boolean, string, string] {
-  const icon = lickIcons[message.channel];
-  const [label] = lickLabels[message.channel];
+  const { icon, label } = lickLook(message.channel);
   const bracket = message.channel === 'scoop-notify' && scoopBracket.exec(message.text);
   if (!bracket) return [message.text, false, icon, label];
   const name = message.title.replace(/\s*\([^)]*\)$/, '');

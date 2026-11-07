@@ -303,6 +303,13 @@ const licks: Array<[LickChannel, string, string, string | undefined, Partial<Mes
     undefined,
     { state: 'dismissed' } as Partial<Message>,
   ],
+  [
+    'cone-message',
+    'Message from landlording',
+    '[slicc message from cone:cone-32 "landlording" (user cone-32)]',
+    'Can you take the Friday on-call?',
+    {},
+  ],
 ];
 
 const attachmentsMessage: UserMessage = {

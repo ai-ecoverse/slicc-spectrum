@@ -135,7 +135,7 @@ test('a long conversation loads earlier turns as the reader nears the top, witho
   )
     await wheel(page, -4000);
   await page.until(() => !window.model.agent.hasOlder('cone-kitchen') && !window.row());
-  assert.equal(await page.evaluate(() => window.shown('cone-kitchen')), 40);
+  assert.equal(await page.evaluate(() => window.shown('cone-kitchen')), 41);
   const done = await settled(page, 'cone-kitchen');
   await wait(500);
   assert.equal(await page.evaluate(() => window.calls('cone-kitchen')), done);
