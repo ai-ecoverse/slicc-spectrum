@@ -50,6 +50,7 @@ import {
   fieldStyles,
   goneText,
   list,
+  ours,
   type PopupDetail,
   ruleLine,
   take,
@@ -382,7 +383,7 @@ export class SliccSecrets extends ThemedElement {
   declare problem: string | null;
   declare invalid: string | null;
   declare said: Said | null;
-  declare entry: { request: string; form: SecretForm } | null;
+  declare entry: { request: string; form: SecretForm; vault: VaultPort } | null;
   declare acting: ReadonlySet<string>;
   declare importKind: ImportKind;
   declare candidates: readonly ImportCandidate[] | null;
@@ -738,6 +739,7 @@ export class SliccSecrets extends ThemedElement {
     this.loading = false;
     this.popup = null;
     this.failure = null;
+    this.#leave();
     this.form = null;
     this.busy = false;
     this.unpinning = null;
@@ -828,7 +830,7 @@ export class SliccSecrets extends ThemedElement {
     const entry = this.entry;
     if (!entry) return;
     this.entry = null;
-    drop(this.model?.vault, entry.request);
+    drop(entry.vault, entry.request);
   }
 
   async #begin(vault: VaultPort, form: SecretForm, name: string, replace: boolean): Promise<void> {
@@ -847,7 +849,7 @@ export class SliccSecrets extends ThemedElement {
         return;
       }
       this.#refuse(null);
-      this.entry = { request, form };
+      this.entry = { request, form, vault };
       void this.updateComplete.then(() =>
         this.renderRoot.querySelector<HTMLElement>('[data-form] slicc-vault-value')?.focus()
       );
@@ -886,8 +888,9 @@ export class SliccSecrets extends ThemedElement {
     await this.#begin(vault, form, name, exists);
   }
 
-  #entered(detail: ValueDetail): void {
-    const entry = this.entry as { request: string; form: SecretForm };
+  #entered(detail: ValueDetail, request: string): void {
+    const entry = this.entry;
+    if (!entry || !ours(detail, request, entry.request)) return;
     if (detail.event === 'error') {
       this.#refuse(detail.message);
       return;
@@ -896,7 +899,6 @@ export class SliccSecrets extends ThemedElement {
       this.open(null);
       return;
     }
-    if (detail.request !== entry.request) return;
     this.entry = null;
     if (detail.event === 'gone') {
       this.#refuse(goneText(detail.state));
@@ -1242,7 +1244,7 @@ export class SliccSecrets extends ThemedElement {
     return html`<div class="form" data-form=${form.kind} data-entry=${entry ? '' : nothing} @input=${() => this.#typed()} @keydown=${keys}>
       <strong>${add ? 'Add a secret' : html`Replace the value of <code>${name}</code>`}</strong>
       ${add && !entry ? html`<label class="field"><span>Name</span><input type="text" autocomplete="off" spellcheck="false" autocapitalize="characters" data-field="name" placeholder="API_TOKEN" aria-invalid=${this.#bad('name')} aria-describedby=${this.#described('name')} @input=${(event: Event) => this.#upper(event)} /></label>` : nothing}
-      ${entry ? html`<p class="muted">Type the value in the vault’s own field. It never passes through this page.</p>${valueField(vault, entry.request, valueConfig(this.ownerDocument, this.color), (detail) => this.#entered(detail))}` : add ? html`<p class="muted">You type the value in the vault’s own field next.</p>` : html`<p class="muted" data-opening>${this.busy ? 'Opening the vault’s field…' : ''}</p>`}
+      ${entry ? html`<p class="muted">Type the value in the vault’s own field. It never passes through this page.</p>${valueField(vault, entry.request, valueConfig(this.ownerDocument, this.color), (detail, request) => this.#entered(detail, request))}` : add ? html`<p class="muted">You type the value in the vault’s own field next.</p>` : html`<p class="muted" data-opening>${this.busy ? 'Opening the vault’s field…' : ''}</p>`}
       ${this.problem ? this.#error(this.problem, 'form') : nothing}
       <div class="buttons">
         ${add && !entry ? html`<swc-button size="m" variant="accent" data-action="enter-value" ?pending=${this.busy} @click=${next}>Next</swc-button>` : nothing}

@@ -50,12 +50,14 @@ import { recordKind, recordName, serverOf, upper as upperName } from './records.
 import { search, searchCss } from './search.ts';
 import { SignInCopies, SignInWaits, signInCss, signInDetails, signInText } from './sign-in.ts';
 import {
+  away,
   clearValues,
   drop,
   enters,
   failureText,
   fieldStyles,
   goneText,
+  ours,
   type PopupDetail,
   take,
   type ValueDetail,
@@ -67,6 +69,7 @@ interface KeyEntry {
   id: string;
   request: string;
   fields: Record<string, string> | undefined;
+  vault: VaultPort;
 }
 
 import { ViewScroll } from './view-state.ts';
@@ -882,7 +885,9 @@ export class SliccSettings extends ThemedElement {
   #vault(account: Account): VaultPort | null {
     const vault = this.model?.vault;
     const keyed = account.auth === 'api-key' || dual(account);
-    return keyed && account.store === 'vault' && vault?.put ? vault : null;
+    return keyed && account.store === 'vault' && vault && (vault.put || enters(vault))
+      ? vault
+      : null;
   }
 
   async keep(account: Account, value: string, fields?: Record<string, string>): Promise<void> {
@@ -964,7 +969,7 @@ export class SliccSettings extends ThemedElement {
         drop(vault, request);
         return;
       }
-      this.keyEntry = { id, request, fields };
+      this.keyEntry = { id, request, fields, vault };
       void this.updateComplete.then(() =>
         this.renderRoot.querySelector<HTMLElement>('[data-entry] slicc-vault-value')?.focus()
       );
@@ -985,11 +990,13 @@ export class SliccSettings extends ThemedElement {
     const model = this.model;
     if (url && !(await this.#confirmUrl(url))) return;
     if (this.model !== model || this.entering !== account.id) return;
+    if (away(this.#vault(account) as VaultPort)) return;
     await this.#startKey(account, fields);
   }
 
-  async #keyed(account: Account, detail: ValueDetail): Promise<void> {
-    const entry = this.keyEntry as KeyEntry;
+  async #keyed(account: Account, detail: ValueDetail, request: string): Promise<void> {
+    const entry = this.keyEntry;
+    if (!entry || entry.id !== account.id || !ours(detail, request, entry.request)) return;
     const { id } = account;
     if (detail.event === 'error') {
       this.#refuse(id, 'value', detail.message);
@@ -999,7 +1006,6 @@ export class SliccSettings extends ThemedElement {
       this.#leaveKey(account);
       return;
     }
-    if (detail.request !== entry.request) return;
     this.keyEntry = null;
     if (detail.event === 'gone') {
       this.#refuse(id, 'value', goneText(detail.state));
@@ -1033,11 +1039,15 @@ export class SliccSettings extends ThemedElement {
     }
   }
 
+  #unmounted(): void {
+    if (this.keyEntry && !this.renderRoot.querySelector('form.key[data-entry]')) this.#dropKey();
+  }
+
   #dropKey(): void {
     const entry = this.keyEntry;
     if (!entry) return;
     this.keyEntry = null;
-    drop(this.model?.vault, entry.request);
+    drop(entry.vault, entry.request);
   }
 
   #settingsOf(
@@ -1520,21 +1530,32 @@ export class SliccSettings extends ThemedElement {
     const name = secretNames[account.secret ?? 'api-key'];
     const entry = this.keyEntry?.id === id ? this.keyEntry : null;
     const fields = account.fields ?? [];
-    if (!entry && !fields.length && !this.#mcpUrl(account) && this.#auto !== id && !busy)
+    const waiting = away(vault);
+    if (
+      !entry &&
+      !waiting &&
+      !fields.length &&
+      !this.#mcpUrl(account) &&
+      this.#auto !== id &&
+      !busy
+    )
       this.#wants = account;
     const required = fields.filter((field) => field.required && !field.options);
     const ready =
+      !waiting &&
       !account.blocked &&
       required.every((field) => !this.#offered() || this.filled.has(field.name));
     const optional = this.#keyOptional(account);
     const hint = entry
       ? 'Type it in the vault’s own field. It never passes through this page.'
-      : busy
-        ? 'Opening the vault’s field…'
-        : `You type the ${name} in the vault’s own field next.${optional ? ' Or save these settings and keep the key you have.' : ''}`;
+      : waiting
+        ? 'Waiting for the vault'
+        : busy
+          ? 'Opening the vault’s field…'
+          : `You type the ${name} in the vault’s own field next.${optional ? ' Or save these settings and keep the key you have.' : ''}`;
     return html`<form class="key stacked" data-id=${id} data-store="vault" data-entry=${entry ? '' : nothing} @submit=${(event: Event) => void this.#nextKey(event, account)} @input=${(event: Event) => this.#fill(event)}>
         <span class="entry-label">${account.provider} ${name}</span>
-        ${entry ? valueField(vault, entry.request, valueConfig(this.ownerDocument, this.color), (detail) => void this.#keyed(account, detail)) : nothing}
+        ${entry ? valueField(vault, entry.request, valueConfig(this.ownerDocument, this.color), (detail, request) => void this.#keyed(account, detail, request)) : nothing}
         ${this.#problem(account, 'value')}
         <p class="hint">${hint}</p>
         ${this.#getKey(account)}
@@ -2160,14 +2181,21 @@ export class SliccSettings extends ThemedElement {
     this.picking = true;
   }
 
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.#dropKey();
+  }
+
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
     super.willUpdate(changed as PropertyValues);
-    if (this.keyEntry && this.entering !== this.keyEntry.id) this.#dropKey();
+    const entry = this.keyEntry;
+    if (entry && (this.entering !== entry.id || entry.vault !== this.model?.vault)) this.#dropKey();
     if (this.entering === null) this.#auto = null;
   }
 
   protected updated(changed: Map<PropertyKey, unknown>): void {
     super.updated(changed);
+    if (this.keyEntry) void this.updateComplete.then(() => this.#unmounted());
     const wants = this.#wants;
     this.#wants = null;
     if (wants && this.#auto !== wants.id) {

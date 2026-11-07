@@ -936,6 +936,11 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
     return this.#status.locked ? 'locked' : 'ready';
   }
 
+  wait(): void {
+    this.#available = 'waiting';
+    this.emit('availability', this.availability());
+  }
+
   arrive(): void {
     this.#available = 'ready';
     this.emit('availability', this.availability());

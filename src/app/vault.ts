@@ -375,7 +375,12 @@ export function valueConfig(doc: Document, theme: 'light' | 'dark'): ValueConfig
 }
 
 export function enters(vault: VaultPort | null | undefined): boolean {
-  return !!(vault?.enter && vault.valueFrame && !away(vault));
+  return !!(vault?.enter && vault.valueFrame);
+}
+
+export function ours(detail: ValueDetail, request: string, open: string | undefined): boolean {
+  if (request !== open) return false;
+  return !('request' in detail) || detail.request === undefined || detail.request === request;
 }
 
 export function drop(vault: VaultPort | null | undefined, request: string): void {
@@ -392,9 +397,9 @@ export function valueField(
   vault: VaultPort,
   request: string,
   config: ValueConfig,
-  on: (detail: ValueDetail) => void
+  on: (detail: ValueDetail, request: string) => void
 ): TemplateResult {
-  return html`<div class="value-field" data-value-frame><slicc-vault-value .vault=${vault} .request=${request} .config=${config} @vault-value=${(event: CustomEvent<ValueDetail>) => on(event.detail)}></slicc-vault-value></div>`;
+  return html`<div class="value-field" data-value-frame><slicc-vault-value .vault=${vault} .request=${request} .config=${config} @vault-value=${(event: CustomEvent<ValueDetail>) => on(event.detail, request)}></slicc-vault-value></div>`;
 }
 
 export const frameHeight = 480;

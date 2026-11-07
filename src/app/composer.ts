@@ -42,6 +42,7 @@ import {
   failureText,
   fieldOf,
   goneText,
+  ours,
   type PopupDetail,
   take,
   type ValueDetail,
@@ -527,7 +528,7 @@ export class SliccComposer extends ThemedElement {
   declare secretError: string | null;
   declare secretField: string | null;
   declare secretName: string;
-  declare entry: { request: string; name: string } | null;
+  declare entry: { request: string; name: string; vault: VaultPort } | null;
   declare failure: string | null;
   declare reattach: Kept[] | null;
   declare agent: string;
@@ -1233,7 +1234,7 @@ export class SliccComposer extends ThemedElement {
     const entry = this.entry;
     if (!entry) return;
     this.entry = null;
-    drop(this.model?.vault, entry.request);
+    drop(entry.vault, entry.request);
   }
 
   async enterSecret(name: string, replace = false): Promise<void> {
@@ -1271,7 +1272,7 @@ export class SliccComposer extends ThemedElement {
         return;
       }
       this.#refuse(null);
-      this.entry = { request, name: clean };
+      this.entry = { request, name: clean, vault };
       void this.updateComplete.then(() =>
         this.renderRoot.querySelector<HTMLElement>('slicc-vault-value')?.focus()
       );
@@ -1282,8 +1283,9 @@ export class SliccComposer extends ThemedElement {
     }
   }
 
-  #entered(detail: ValueDetail): void {
-    const entry = this.entry as { request: string; name: string };
+  #entered(detail: ValueDetail, request: string): void {
+    const entry = this.entry;
+    if (!entry || !ours(detail, request, entry.request)) return;
     if (detail.event === 'error') {
       this.#refuse(detail.message);
       return;
@@ -1292,7 +1294,6 @@ export class SliccComposer extends ThemedElement {
       this.closeSecret();
       return;
     }
-    if (detail.request !== entry.request) return;
     this.entry = null;
     if (detail.event === 'done') this.#attach(entry.name);
     else this.#refuse(goneText(detail.state));
@@ -1683,11 +1684,11 @@ export class SliccComposer extends ThemedElement {
   #popup(): TemplateResult | typeof nothing {
     const popup = this.popup;
     if (!popup) return nothing;
-    if (popup.kind === 'secret' && enters(this.model?.vault))
+    if (popup.kind === 'secret' && this.#framed())
       return this.#entering(this.model?.vault as VaultPort);
     if (popup.kind === 'secret') {
       const vault = this.model?.vault;
-      const valued = !!vault?.put && !blocked(vault);
+      const valued = !!vault?.put && !vault.enter && !blocked(vault);
       const waiting = vault?.put ? blocked(vault) : null;
       if (!valued) clearValues(this.renderRoot);
       const submit = (event: Event) => {
@@ -1755,6 +1756,11 @@ export class SliccComposer extends ThemedElement {
     </div>`;
   }
 
+  #framed(): boolean {
+    const vault = this.model?.vault;
+    return enters(vault) && (!!this.entry || !away(vault as VaultPort));
+  }
+
   #entering(vault: VaultPort): TemplateResult {
     const entry = this.entry;
     const close = (event: KeyboardEvent) => {
@@ -1768,7 +1774,7 @@ export class SliccComposer extends ThemedElement {
       return html`<form class="popup secret" data-vault="on" data-entry @submit=${(event: Event) => event.preventDefault()} @keydown=${close}>
         <strong>Share a secret</strong>
         <span class="lead">Type the value of <code>${entry.name}</code> in the vault’s own field. The agent only sees its name.</span>
-        ${valueField(vault, entry.request, valueConfig(this.ownerDocument, this.color), (detail) => this.#entered(detail))}
+        ${valueField(vault, entry.request, valueConfig(this.ownerDocument, this.color), (detail, request) => this.#entered(detail, request))}
         ${error}
         <span class="buttons">
           <swc-button size="s" variant="secondary" fill-style="outline" data-action="back-secret" @click=${() => this.#leave()}>Back</swc-button>

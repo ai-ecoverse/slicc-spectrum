@@ -561,3 +561,217 @@ for (const [how, close] of Object.entries(closes)) {
     assert.deepEqual(page.errors, []);
   });
 }
+
+test('with enter and the vault away, no surface ever shows a value input', async (t) => {
+  const page = await open(t, { vault: 'waiting', providers: 'all' });
+  const inputs = () => {
+    const roots = [document];
+    let found = 0;
+    for (let index = 0; index < roots.length; index++) {
+      found += roots[index].querySelectorAll(
+        'input[type=password], input[name=value], input[data-field=value]'
+      ).length;
+      for (const node of roots[index].querySelectorAll('*'))
+        if (node.shadowRoot) roots.push(node.shadowRoot);
+    }
+    return found;
+  };
+  await sharePopup(page);
+  await page.insert('tide token');
+  assert.equal(await page.evaluate(inputs), 0);
+  await page.evaluate(() => window.composer('[data-action=share-secret]').click());
+  await page.until(
+    () =>
+      window.composer('swc-upload-attachment[data-kind=secret] [slot=title]')?.textContent ===
+      'TIDE_TOKEN'
+  );
+  assert.deepEqual(await page.evaluate(() => window.model.vault.entered), []);
+  await page.evaluate(() => {
+    window.app.show('settings');
+    window.model.settings.disconnect('openai');
+    return true;
+  });
+  await page.until(() => !!window.settingsPart('[data-action=add-provider]'));
+  await page.evaluate(() => window.settingsPart('[data-action=add-provider]').click());
+  await page.until(() => window.settingsPart('dialog.picker')?.open);
+  await page.evaluate(() =>
+    window.settingsPart('dialog.picker .option[data-provider="mistral"]').click()
+  );
+  await page.until(() => !!window.settingsPart('dialog.picker form.key'));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.settingsPart('dialog.picker form.key .hint')?.textContent,
+      window.settingsPart('dialog.picker [data-action=enter-key]')?.hasAttribute('disabled'),
+      window.model.vault.entered.length,
+    ]),
+    ['Waiting for the vault', true, 0]
+  );
+  assert.equal(await page.evaluate(inputs), 0);
+  assert.deepEqual(await page.evaluate(() => window.puts), []);
+  assert.deepEqual(page.errors, []);
+});
+
+test('an open field stays through a brief away, and a vault swap or closing Settings cancels the request', async (t) => {
+  const page = await open(t, { providers: 'all' });
+  await sharePopup(page);
+  await page.insert('tide token');
+  await page.evaluate(() => window.composer('[data-action=share-secret]').click());
+  await page.until(() => !!window.composer('form.secret[data-entry] slicc-vault-value'));
+  await page.evaluate(() => {
+    window.model.vault.wait();
+    return true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      !!window.composer('form.secret[data-entry] slicc-vault-value'),
+      !!window.composer('form.secret input[name=value]'),
+    ]),
+    [true, false]
+  );
+  await page.evaluate(() => {
+    window.model.vault.arrive();
+    window.composer().closeSecret();
+    window.app.show('settings');
+    return true;
+  });
+  await page.until(() => window.model.vault.cancelled.length === 1);
+  await secretsPage(page);
+  await page.evaluate(() => window.secrets('[data-action=add-secret]').click());
+  await page.until(() => !!window.secrets('[data-form=add] input[data-field=name]'));
+  await page.evaluate(() => window.secrets('[data-form=add] input[data-field=name]').focus());
+  await page.insert('PIER_TOKEN');
+  await page.evaluate(() => window.secrets('[data-action=enter-value]').click());
+  await page.until(() => !!window.secrets('[data-form=add][data-entry] slicc-vault-value'));
+  await page.evaluate(async () => {
+    const { createDummyModel } = await import('/dist/slicc-dummy.js');
+    const other = createDummyModel({ delay: 5, vault: 'secrets', entry: 'frame' });
+    const element = window.settingsPart('slicc-secrets');
+    element.model = { ...element.model, vault: other.vault };
+    return true;
+  });
+  await page.until(() => window.model.vault.cancelled.length === 2);
+  await page.evaluate(() => {
+    window.app.show('settings');
+    return true;
+  });
+  await page.evaluate(() => window.settingsPart('[data-action=add-provider]').click());
+  await page.until(() => window.settingsPart('dialog.picker')?.open);
+  await page.evaluate(() =>
+    window.settingsPart('dialog.picker .option[data-provider="mistral"]').click()
+  );
+  await page.until(() => !!window.hosts.picker());
+  await page.evaluate(() => {
+    window.settingsPart().remove();
+    return true;
+  });
+  await page.until(() => window.model.vault.cancelled.length === 3);
+  assert.deepEqual(page.errors, []);
+});
+
+test('late or stale frame events after Back or a new form change nothing and throw nothing', async (t) => {
+  const page = await open(t, { providers: 'all' });
+  await page.evaluate(() => {
+    window.late = (host, events) => {
+      for (const detail of events)
+        host.dispatchEvent(
+          new CustomEvent('vault-value', { detail, bubbles: true, composed: true })
+        );
+    };
+    return true;
+  });
+  await sharePopup(page);
+  await page.insert('tide token');
+  await page.evaluate(() => window.composer('[data-action=share-secret]').click());
+  await page.until(() => !!window.composer('form.secret[data-entry] slicc-vault-value'));
+  await page.evaluate(() => {
+    const host = window.hosts.composer();
+    const request = window.composer().entry.request;
+    window.composer('[data-action=back-secret]').click();
+    window.late(host, [
+      { event: 'gone', request, state: 'cancelled' },
+      { event: 'done', request, state: 'sealed', name: 'TIDE_TOKEN' },
+      { event: 'error', code: 'EIO', message: 'Stale.' },
+      { event: 'escape' },
+    ]);
+    return true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      !!window.composer('form.secret input[name=name]'),
+      window.composer('form.secret [data-error]')?.textContent ?? null,
+      window.composer().attachments.length,
+    ]),
+    [true, null, 0]
+  );
+  await page.evaluate(() => {
+    window.composer().closeSecret();
+    window.app.show('settings');
+    return true;
+  });
+  await secretsPage(page);
+  await page.evaluate(() => window.secrets('[data-action=add-secret]').click());
+  await page.until(() => !!window.secrets('[data-form=add] input[data-field=name]'));
+  await page.evaluate(() => window.secrets('[data-form=add] input[data-field=name]').focus());
+  await page.insert('PIER_TOKEN');
+  await page.evaluate(() => window.secrets('[data-action=enter-value]').click());
+  await page.until(() => !!window.secrets('[data-form=add][data-entry] slicc-vault-value'));
+  await page.evaluate(() => {
+    const host = window.hosts.add();
+    const element = window.settingsPart('slicc-secrets');
+    const request = element.entry.request;
+    element.open({ kind: 'add' });
+    window.late(host, [
+      { event: 'gone', request, state: 'cancelled' },
+      { event: 'error', code: 'EIO', message: 'Stale.' },
+      { event: 'escape' },
+    ]);
+    return true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      !!window.secrets('[data-form=add] input[data-field=name]'),
+      window.secrets('[data-error=form]')?.textContent ?? null,
+    ]),
+    [true, null]
+  );
+  await page.evaluate(() => window.settingsPart('[data-action=add-provider]').click());
+  await page.until(() => window.settingsPart('dialog.picker')?.open);
+  await page.evaluate(() =>
+    window.settingsPart('dialog.picker .option[data-provider="cloudflare"]').click()
+  );
+  await page.until(() => !!window.settingsPart('dialog.picker input[data-account-field=account]'));
+  await page.evaluate(() =>
+    window.settingsPart('dialog.picker input[data-account-field=account]').focus()
+  );
+  await page.insert('acct-1');
+  await page.evaluate(() => window.settingsPart('dialog.picker [data-action=enter-key]').click());
+  await page.until(() => !!window.hosts.picker());
+  await page.evaluate(() => {
+    const host = window.hosts.picker();
+    const settings = window.settingsPart();
+    const request = settings.keyEntry.request;
+    window.settingsPart('dialog.picker [data-action=back-key]').click();
+    window.late(host, [
+      { event: 'gone', request, state: 'cancelled' },
+      { event: 'done', request, state: 'sealed' },
+      { event: 'error', code: 'EIO', message: 'Stale.' },
+      { event: 'escape' },
+    ]);
+    return true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      !!window.settingsPart('dialog.picker [data-action=enter-key]'),
+      window.settingsPart('dialog.picker #key-problem')?.textContent.trim() ?? null,
+      window.model.settings.accounts().find((account) => account.id === 'cloudflare')?.status ??
+        null,
+    ]),
+    [true, null, null]
+  );
+  assert.deepEqual(page.errors, []);
+});
