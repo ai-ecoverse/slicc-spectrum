@@ -209,7 +209,7 @@ export function accessConfirm(device: LinkedDevice, key: AccessKey | 'follow'): 
     ],
     browser: [
       `Let ${name} drive this browser?`,
-      'It can open, read and control the tabs in this browser, as you, with your signed-in sites. Seven’s own pages and the vault stay out of its reach.',
+      'It can open, read and control the tabs in this browser, as you, with your signed-in sites. This SLICC’s own pages and the vault stay out of its reach.',
     ],
   }[key];
   return { title, body: `${body} ${again}`, action: 'Allow', variant: 'confirmation' };

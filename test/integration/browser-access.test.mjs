@@ -76,7 +76,7 @@ async function devices(page) {
 }
 
 const body =
-  'It can open, read and control the tabs in this browser, as you, with your signed-in sites. Seven’s own pages and the vault stay out of its reach. Unlinking it, or a new certificate on it, turns this off again.';
+  'It can open, read and control the tabs in this browser, as you, with your signed-in sites. This SLICC’s own pages and the vault stay out of its reach. Unlinking it, or a new certificate on it, turns this off again.';
 
 test('a CLI device with browser in its access gets a Browser switch after Control', async (t) => {
   const page = await open(t);
