@@ -24,6 +24,7 @@ async function open(t, params = {}) {
         where: root.querySelector('[data-where]')?.textContent ?? null,
         capture: root.querySelector('[data-capture]')?.textContent ?? null,
         level: root.querySelector('.judged')?.dataset.level ?? null,
+        verdict: root.querySelector('.judged strong')?.textContent ?? null,
         timer: root.querySelector('[data-timer]')?.textContent.replace(/\d+:\d\d/, 'm:ss'),
         actions: [...root.querySelectorAll('[slot=button]')].map((button) => [
           button.dataset.action,
@@ -100,6 +101,7 @@ test('a click item here shows its title, body, Cancel and its action, and answer
     where: null,
     capture: null,
     level: null,
+    verdict: null,
     timer: 'Cancelled automatically in m:ss.',
     actions: [
       ['deny', 'Cancel'],
@@ -152,6 +154,7 @@ test('a guest capture item shows its line and level 2 verdict, and answers once'
     where: null,
     capture: 'Record your screen for up to 10 seconds, with your microphone · media',
     level: '2',
+    verdict: 'Records what you share.',
     timer: 'Denied automatically in m:ss.',
     actions: [
       ['deny', 'Deny'],
@@ -349,13 +352,14 @@ test('without the live and switches ports nothing new shows', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
-test('decide() refuses every decision the dialog does not offer for click and capture items', async (t) => {
-  const cases = [
-    ['click', 'click-share', ['always'], 'once'],
-    ['click-remote', 'click-share', ['once', 'always'], 'deny'],
-    ['capture', 'capture-screen', ['always'], 'once'],
-  ];
-  for (const [approvals, id, refused, allowed] of cases) {
+const refusals = [
+  ['click', 'click-share', ['always'], 'once'],
+  ['click-remote', 'click-share', ['once', 'always'], 'deny'],
+  ['capture', 'capture-screen', ['always'], 'once'],
+];
+
+for (const [approvals, id, refused, allowed] of refusals) {
+  test(`decide() refuses ${refused.join(' and ')} for the ${approvals} item and takes ${allowed}`, async (t) => {
     const page = await open(t, { approvals });
     await ask(page, id);
     for (const decision of refused) {
@@ -370,8 +374,7 @@ test('decide() refuses every decision the dialog does not offer for click and ca
         window.model.approvals.decisions,
         window.approvals().querySelector('dialog')?.dataset.approval,
       ]),
-      [[], id],
-      `${approvals} refused ${refused.join(', ')}`
+      [[], id]
     );
     await page.evaluate((decision) => {
       const element = window.$('slicc-app', 'slicc-approvals');
@@ -381,5 +384,89 @@ test('decide() refuses every decision the dialog does not offer for click and ca
     await page.until(() => !window.approvals().querySelector('dialog'));
     assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [[id, allowed]]);
     assert.deepEqual(page.errors, []);
-  }
+  });
+}
+
+async function followerNotice(t, approval) {
+  const page = await open(t, { approvals: 'none' });
+  await page.evaluate((approval) => {
+    window.model.approvals.decide = undefined;
+    const now = Date.now();
+    window.model.approvals.raise({ ...approval, createdAt: now, expiresAt: now + 300_000 });
+    return true;
+  }, approval);
+  await page.until(
+    (kind) =>
+      !!window.$(
+        'slicc-app',
+        'slicc-dock',
+        'slicc-chat',
+        'slicc-notices',
+        `[data-approval-kind=${kind}]`
+      ),
+    approval.kind
+  );
+  const notice = await page.evaluate((kind) => {
+    const notice = window.$(
+      'slicc-app',
+      'slicc-dock',
+      'slicc-chat',
+      'slicc-notices',
+      `[data-approval-kind=${kind}]`
+    );
+    return [
+      notice.dataset.approvalNotice,
+      notice.querySelector('.title').textContent,
+      ...[...notice.querySelectorAll('p')].map((p) =>
+        p.textContent.replace(/at \d{1,2}:\d\d.*\./, 'at …')
+      ),
+    ];
+  }, approval.kind);
+  assert.equal(await page.evaluate(() => !!window.approvals().querySelector('dialog')), false);
+  assert.deepEqual(page.errors, []);
+  return notice;
+}
+
+test('without decide, a click item is a notice that says where to click, and no dialog shows', async (t) => {
+  assert.deepEqual(
+    await followerNotice(t, {
+      id: 'click-share',
+      kind: 'click',
+      subject: 'capture',
+      what: 'screen',
+      program: 'media',
+      requester: { kind: 'agent', name: 'sliccy' },
+      title: 'Share your screen?',
+      body: 'media wants to record your screen for sliccy.',
+      action: 'Choose what to share',
+      here: false,
+      device: { id: 'device-studio', name: 'Studio Mac' },
+    }),
+    [
+      'click-share',
+      'Share your screen?',
+      'media wants to record your screen for sliccy.',
+      'Click in seven’s tab on Studio Mac. Cancelled automatically at …',
+    ]
+  );
+});
+
+test('without decide, a capture item is a notice with its capture line, and no dialog shows', async (t) => {
+  assert.deepEqual(
+    await followerNotice(t, {
+      id: 'capture-mic',
+      kind: 'capture',
+      requester: { kind: 'guest', name: 'Seat 2 (Mara)' },
+      agentName: 'sliccy',
+      detail: { what: 'microphone', mode: 'audio', seconds: 30, program: 'media' },
+      always: false,
+    }),
+    [
+      'capture-mic',
+      'Waiting for approval of a guest’s capture',
+      "sliccy wants to use your microphone for Seat 2 (Mara), which waits for the owner's approval.",
+      'Record your microphone for up to 30 seconds · media',
+      'Denied automatically at …',
+    ]
+  );
 });

@@ -212,6 +212,12 @@ const levels: Record<ApprovalLevel, { name: string; label: string }> = {
   3: { name: 'harm', label: 'Could harm the system.' },
 };
 
+const captureLevels: Record<ApprovalLevel, { name: string; label: string }> = {
+  1: { name: 'routine', label: 'Routine capture.' },
+  2: { name: 'permissions', label: 'Records what you share.' },
+  3: { name: 'harm', label: 'Could expose something private.' },
+};
+
 type Judged = GuestMessageApproval | GuestToolApproval | SudoApproval | CaptureApproval;
 
 const fits = (aligned: boolean | undefined): string =>
@@ -254,7 +260,7 @@ function judged(approval: Judged): TemplateResult | typeof nothing {
   const { verdict, judging, verdictError } = approval;
   const level = leveled(approval);
   if (verdict && level) {
-    const { name, label } = levels[level];
+    const { name, label } = (approval.kind === 'capture' ? captureLevels : levels)[level];
     return html`<div class="judged" data-verdict=${name} data-level=${level}>${level === 3 ? html`<swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>` : nothing}<p><strong>${label}</strong>${verdict.reason ? html` ${shown(verdict.reason)}` : ''}${fits(verdict.aligned)}</p></div>`;
   }
   if (judging) return html`<div class="judged" data-verdict="checking"><p>Checking…</p></div>`;
