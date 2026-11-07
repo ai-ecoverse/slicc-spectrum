@@ -10071,6 +10071,60 @@ for (const [color, width] of [['light'], ['dark'], ['light', 420]]) {
   });
 }
 
+test('the share a secret popup closes on Cancel and on a click outside it', async (t) => {
+  const page = await shareSecret(t, 'secrets', 'light');
+  const form = () =>
+    !!window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'form.secret');
+  await page.evaluate(() => {
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'form.secret input[name=value]')
+      .focus();
+    return true;
+  });
+  await page.insert(sample);
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', '[data-action=cancel-secret]')
+      .click()
+  );
+  await page.until(
+    () => !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'form.secret')
+  );
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer').openPopup('secret');
+    return true;
+  });
+  await page.until(form);
+  const inside = await page.evaluate(() => {
+    const box = window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'form.secret input[name=name]')
+      .getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  });
+  for (const type of ['mousePressed', 'mouseReleased'])
+    await page.send('Input.dispatchMouseEvent', { type, ...inside, button: 'left', clickCount: 1 });
+  assert.equal(await page.evaluate(form), true);
+  const outside = await page.evaluate(() => {
+    const box = window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'form.secret')
+      .getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: Math.max(1, box.top - 40) };
+  });
+  for (const type of ['mousePressed', 'mouseReleased'])
+    await page.send('Input.dispatchMouseEvent', {
+      type,
+      ...outside,
+      button: 'left',
+      clickCount: 1,
+    });
+  await page.until(
+    () => !window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer', 'form.secret')
+  );
+  assert.deepEqual(await page.evaluate(() => window.model.vault.puts), []);
+  await clean(page);
+  assert.deepEqual(page.errors, []);
+});
+
 const verdictShots = {
   'level-1': {
     verdict: 'routine',
