@@ -348,3 +348,38 @@ test('without the live and switches ports nothing new shows', async (t) => {
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('decide() refuses every decision the dialog does not offer for click and capture items', async (t) => {
+  const cases = [
+    ['click', 'click-share', ['always'], 'once'],
+    ['click-remote', 'click-share', ['once', 'always'], 'deny'],
+    ['capture', 'capture-screen', ['always'], 'once'],
+  ];
+  for (const [approvals, id, refused, allowed] of cases) {
+    const page = await open(t, { approvals });
+    await ask(page, id);
+    for (const decision of refused) {
+      await page.evaluate((decision) => {
+        const element = window.$('slicc-app', 'slicc-approvals');
+        const [item] = window.model.approvals.list();
+        return element.decide(item, decision).then(() => true);
+      }, decision);
+    }
+    assert.deepEqual(
+      await page.evaluate(() => [
+        window.model.approvals.decisions,
+        window.approvals().querySelector('dialog')?.dataset.approval,
+      ]),
+      [[], id],
+      `${approvals} refused ${refused.join(', ')}`
+    );
+    await page.evaluate((decision) => {
+      const element = window.$('slicc-app', 'slicc-approvals');
+      const [item] = window.model.approvals.list();
+      return element.decide(item, decision).then(() => true);
+    }, allowed);
+    await page.until(() => !window.approvals().querySelector('dialog'));
+    assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [[id, allowed]]);
+    assert.deepEqual(page.errors, []);
+  }
+});

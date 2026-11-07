@@ -546,7 +546,7 @@ test('without decide, enter and reveal asks from an agent and a user are notices
       const { approvalKinds } = await import('/dist/slicc-ui.js');
       return [approvalKinds, Object.isFrozen(approvalKinds)];
     }),
-    [['sudo', 'guest-message', 'guest-tool', 'tray', 'secret'], true]
+    [['sudo', 'guest-message', 'guest-tool', 'tray', 'secret', 'click', 'capture'], true]
   );
   assert.deepEqual(page.errors, []);
 });
