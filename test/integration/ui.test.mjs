@@ -2535,7 +2535,7 @@ test('tool steps join across messages, keep their states, and open from the keyb
     ['k-r9', 'running', 'active'],
   ]);
   assert.equal(shape.cards, 0);
-  assert.deepEqual(shape.hooks, [4, 27]);
+  assert.deepEqual(shape.hooks, [5, 28]);
   assert.equal(shape.failed, 'bash Run the unit tests · Failed');
 
   await page.evaluate(() =>

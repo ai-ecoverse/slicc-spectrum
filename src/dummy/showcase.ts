@@ -599,6 +599,16 @@ function work(): Message[] {
           text: 'Opened the suggestions sprinkle',
         },
         { type: 'delegation', kind: 'drop', scoop: 'amber-heron', text: 'Wrapped up amber-heron' },
+        {
+          type: 'tool',
+          tool: tool(
+            'k-media',
+            'bash',
+            'Record the preview for the docs',
+            'media -f avfoundation -i "1" -t 10 /tmp/preview.webm',
+            "media: waiting for a click in seven's tab: choose what to share\nRecorded 0:10 to /tmp/preview.webm"
+          ),
+        },
       ],
     },
     {

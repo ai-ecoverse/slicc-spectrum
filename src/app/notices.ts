@@ -7,6 +7,9 @@ import { repeat } from 'lit/directives/repeat.js';
 import type { Approval, Notice, NoticesPort, SliccModel } from '../model/types.ts';
 import {
   asking,
+  captureLine,
+  captureWaiting,
+  clickWhere,
   deadline,
   guestWaiting,
   secretWaiting,
@@ -220,6 +223,25 @@ export class SliccNotices extends ModelElement {
           <span class="title">Waiting for a secret</span>
           <p>${commandText(secretWaiting(approval), false)}</p>
           <p>It waits for the owner's answer. Denied automatically at ${deadline(approval.expiresAt)}.</p>
+        </div>
+      </div>`;
+    if (approval.kind === 'click')
+      return html`<div class="notice" role="status" data-approval-notice=${approval.id} data-approval-kind="click" data-tone="warning">
+        <swc-icon-alert-triangle></swc-icon-alert-triangle>
+        <div class="text">
+          <span class="title">${commandText(approval.title, false)}</span>
+          <p>${commandText(approval.body, false)}</p>
+          <p>${commandText(clickWhere(approval), false)} Cancelled automatically at ${deadline(approval.expiresAt)}.</p>
+        </div>
+      </div>`;
+    if (approval.kind === 'capture')
+      return html`<div class="notice" role="status" data-approval-notice=${approval.id} data-approval-kind="capture" data-tone="warning">
+        <swc-icon-alert-triangle></swc-icon-alert-triangle>
+        <div class="text">
+          <span class="title">Waiting for approval of a guest’s capture</span>
+          <p>${commandText(captureWaiting(approval), false)}</p>
+          <p>${commandText(captureLine(approval), false)}</p>
+          <p>Denied automatically at ${deadline(approval.expiresAt)}.</p>
         </div>
       </div>`;
     if (approval.kind !== 'sudo')

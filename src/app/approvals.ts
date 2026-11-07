@@ -9,6 +9,9 @@ import type {
   ApprovalEnd,
   ApprovalLevel,
   ApprovalsPort,
+  CaptureApproval,
+  CaptureDetail,
+  ClickApproval,
   GuestMessageApproval,
   GuestToolApproval,
   SecretApproval,
@@ -87,6 +90,57 @@ export function trayAsking(approval: TrayApproval): string {
   return `${name} wants to unlink ${approval.device?.name ?? 'a device'} from this seven.`;
 }
 
+const captureActs: Record<string, [string, string]> = {
+  'screen:still': ['take a picture of your screen', 'take pictures of your screen'],
+  'screen:video': ['record your screen', 'record your screen'],
+  'camera:still': ['take a photo with your camera', 'take photos with your camera'],
+  'camera:video': ['record your camera', 'record your camera'],
+  'microphone:audio': ['record your microphone', 'record your microphone'],
+};
+
+function captureAct(detail: CaptureDetail): [string, string] {
+  const fallback = `capture your ${detail.what}`;
+  return captureActs[`${detail.what}:${detail.mode}`] ?? [fallback, fallback];
+}
+
+export function captureLine(approval: CaptureApproval): string {
+  const { detail } = approval;
+  const [act] = captureAct(detail);
+  const device = detail.device ? ` (${detail.device})` : '';
+  const still = detail.mode === 'still';
+  const span = detail.seconds
+    ? ` for up to ${detail.seconds} ${detail.seconds === 1 ? 'second' : 'seconds'}`
+    : ' until it’s stopped';
+  const audio = [
+    detail.system ? 'system audio' : '',
+    detail.microphone && detail.what !== 'microphone' ? 'microphone' : '',
+  ].filter(Boolean);
+  const extra = still || !audio.length ? '' : `, with your ${audio.join(' and ')}`;
+  const line = `${act}${device}${still ? '' : span}${extra}`;
+  return `${line[0].toUpperCase()}${line.slice(1)} · ${detail.program}`;
+}
+
+export function captureAsking(approval: CaptureApproval): string {
+  return `${approval.agentName ?? 'This cone'} wants to use your ${approval.detail.what} for ${approval.requester.name}:`;
+}
+
+export function captureWaiting(approval: CaptureApproval): string {
+  return `${approval.agentName ?? 'This cone'} wants to use your ${approval.detail.what} for ${approval.requester.name}, which waits for the owner's approval.`;
+}
+
+export function captureAlwaysHint(approval: CaptureApproval): string {
+  const [, acts] = captureAct(approval.detail);
+  const picker =
+    approval.detail.what === 'screen' ? ' You still choose what to share each time.' : '';
+  return `Always allow lets ${approval.agentName ?? 'this cone'} ${acts} for ${approval.requester.name} without asking again.${picker}`;
+}
+
+export function clickWhere(approval: ClickApproval): string {
+  return approval.device
+    ? `Click in seven’s tab on ${approval.device.name}.`
+    : 'Click in seven’s tab.';
+}
+
 export function secretTitle(approval: SecretApproval): string {
   return approval.mode === 'reveal'
     ? `Reveal ${approval.name} to a program?`
@@ -122,7 +176,13 @@ export function secretWaiting(approval: SecretApproval): string {
 export function approved(approval: Approval): string {
   if (approval.kind === 'sudo') return sudo(approval);
   if (approval.kind === 'secret') return processLine(approval);
-  if (approval.kind === 'guest-message' || approval.kind === 'tray') return '';
+  if (
+    approval.kind === 'guest-message' ||
+    approval.kind === 'tray' ||
+    approval.kind === 'click' ||
+    approval.kind === 'capture'
+  )
+    return '';
   if (approval.summary.trim()) return approval.summary;
   return approval.args?.trim() ? `${approval.tool}\n${approval.args}` : '';
 }
@@ -132,6 +192,7 @@ export function truncated(approval: Approval): boolean {
 }
 
 function hintOf(approval: Approval): string | Array<string | TemplateResult> {
+  if (approval.kind === 'capture') return captureAlwaysHint(approval);
   return approval.kind === 'sudo'
     ? commandText(alwaysHint(approval), false)
     : guestAlwaysHint(approval as GuestMessageApproval | GuestToolApproval);
@@ -151,7 +212,7 @@ const levels: Record<ApprovalLevel, { name: string; label: string }> = {
   3: { name: 'harm', label: 'Could harm the system.' },
 };
 
-type Judged = GuestMessageApproval | GuestToolApproval | SudoApproval;
+type Judged = GuestMessageApproval | GuestToolApproval | SudoApproval | CaptureApproval;
 
 const fits = (aligned: boolean | undefined): string =>
   aligned === undefined
@@ -169,6 +230,7 @@ export function offersAlways(approval: Approval): boolean {
   return (
     approval.kind !== 'tray' &&
     approval.kind !== 'secret' &&
+    approval.kind !== 'click' &&
     approval.always &&
     (approval.kind !== 'sudo' || leveled(approval) !== null)
   );
@@ -235,6 +297,16 @@ const titles: Record<Approval['kind'], Record<'ask' | 'elsewhere' | 'expired', s
     elsewhere: 'Answered elsewhere',
     expired: 'Secret request timed out',
   },
+  click: {
+    ask: '',
+    elsewhere: 'Answered elsewhere',
+    expired: 'Click request timed out',
+  },
+  capture: {
+    ask: 'Allow a guest’s capture?',
+    elsewhere: 'Answered elsewhere',
+    expired: 'Capture request timed out',
+  },
 };
 
 export const approvalKinds: readonly Approval['kind'][] = Object.freeze(
@@ -244,16 +316,35 @@ export const approvalKinds: readonly Approval['kind'][] = Object.freeze(
 function title(approval: Approval): string {
   if (approval.kind === 'tray') return trayTitle(approval);
   if (approval.kind === 'secret') return secretTitle(approval);
+  if (approval.kind === 'click') return approval.title;
   return titles[approval.kind].ask;
 }
 
 const toAnswer = 'Scroll to the end of the command to answer it.';
 
+function extras(approval: Approval): unknown[] {
+  if (approval.kind === 'secret')
+    return [
+      approval.mode,
+      approval.name,
+      approval.reveal,
+      approval.prompt ?? '',
+      approval.requester,
+    ];
+  if (approval.kind === 'click')
+    return [approval.title, approval.body, approval.action, approval.here, approval.device ?? null];
+  if (approval.kind === 'capture') return [approval.detail, approval.requester];
+  return [];
+}
+
+function answerable(approval: Approval, decision: ApprovalDecision): boolean {
+  if (decision === 'deny') return true;
+  if (approval.kind === 'secret') return false;
+  return approval.kind !== 'click' || approval.here;
+}
+
 function identity(approval: Approval): string {
-  const extra =
-    approval.kind === 'secret'
-      ? [approval.mode, approval.name, approval.reveal, approval.prompt ?? '', approval.requester]
-      : [];
+  const extra = extras(approval);
   return JSON.stringify([approval.kind, approval.createdAt, approved(approval), ...extra]);
 }
 
@@ -366,6 +457,11 @@ export class SliccApprovals extends ModelElement {
         font-size: var(--swc-font-size-75);
       }
       .cwd {
+        overflow-wrap: anywhere;
+      }
+      .where {
+        margin-block-start: var(--swc-spacing-200);
+        font-weight: var(--swc-bold-font-weight);
         overflow-wrap: anywhere;
       }
       .timer {
@@ -546,7 +642,7 @@ export class SliccApprovals extends ModelElement {
       this.#showing?.id !== id ||
       this.#done.has(id) ||
       this.#closed.has(id) ||
-      (approval.kind === 'secret' && decision !== 'deny') ||
+      !answerable(approval, decision) ||
       (decision !== 'deny' && (!this.#settled(performance.now()) || !this.#whole(approval)))
     )
       return;
@@ -784,6 +880,12 @@ export class SliccApprovals extends ModelElement {
 
   #request(approval: Approval, pending = false): TemplateResult {
     if (approval.kind === 'tray') return html`<p id="asking">${trayAsking(approval)}</p>`;
+    if (approval.kind === 'click')
+      return html`<p id="asking">${commandText(approval.body, false)}</p>
+        ${approval.here ? nothing : html`<p class="where" data-where>${commandText(clickWhere(approval), false)}</p>`}`;
+    if (approval.kind === 'capture')
+      return html`<p id="asking">${commandText(captureAsking(approval), false)}</p>
+        <div class="guest" data-capture>${commandText(captureLine(approval), false)}</div>`;
     if (approval.kind === 'sudo')
       return html`<p id="asking">${commandText(asking(approval), false)}:</p>
         ${this.#command(approval, pending)}`;
@@ -803,7 +905,8 @@ export class SliccApprovals extends ModelElement {
   }
 
   #notes(approval: Approval, gate: string, always: boolean): TemplateResult | typeof nothing {
-    if (approval.kind === 'tray' || approval.kind === 'secret') return nothing;
+    if (approval.kind === 'tray' || approval.kind === 'secret' || approval.kind === 'click')
+      return nothing;
     const note = verdictNote(approval);
     return html`<div class="notes" data-notes><div class="judge" aria-live="polite">${judged(approval)}${note ? html`<p class="hint" data-verdict-note>${note}</p>` : nothing}</div>${gate ? html`<p class="hint" data-allow-hint>${gate}</p>` : nothing}${always ? html`<p class="hint" data-always-hint>${hintOf(approval)}</p>` : nothing}</div>`;
   }
@@ -811,9 +914,10 @@ export class SliccApprovals extends ModelElement {
   #actions(approval: Approval, rejected: boolean, always: boolean): TemplateResult {
     if (rejected)
       return html`<swc-button slot="button" variant="secondary" fill-style="outline" data-action="close" @click=${() => this.#dismiss(approval)}>Close</swc-button>`;
-    return html`${this.#button(approval, 'deny', 'Deny', 'secondary')}
+    const click = approval.kind === 'click';
+    return html`${this.#button(approval, 'deny', click ? 'Cancel' : 'Deny', 'secondary')}
       ${always ? this.#button(approval, 'always', inCwd(approval) ? 'Always allow in this directory' : 'Always allow', 'secondary') : nothing}
-      ${approval.kind === 'secret' ? nothing : this.#button(approval, 'once', 'Allow once', 'accent')}`;
+      ${answerable(approval, 'once') ? this.#button(approval, 'once', click ? approval.action : 'Allow once', 'accent') : nothing}`;
   }
 
   render(): unknown {
@@ -825,7 +929,7 @@ export class SliccApprovals extends ModelElement {
         html`<sp-alert-dialog variant="information" data-approval-kind=${approval.kind}>
           <h2 id="title" slot="heading">${titles[approval.kind][reason]}</h2>
           ${this.#request(approval)}
-          ${reason === 'expired' ? html`<p class="timer" data-timer>Denied because nobody answered in time.</p>` : nothing}
+          ${reason === 'expired' ? html`<p class="timer" data-timer>${approval.kind === 'click' ? 'Cancelled because nobody clicked in time.' : 'Denied because nobody answered in time.'}</p>` : nothing}
           <swc-button slot="button" variant="secondary" fill-style="outline" data-action="close" @click=${() => this.close()}>Close</swc-button>
         </sp-alert-dialog>`
       );
@@ -846,7 +950,7 @@ export class SliccApprovals extends ModelElement {
           ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${commandText(approval.cwd, false)}</p>` : nothing}
           ${this.#notes(approval, gate, always)}
           ${approval.kind === 'secret' && !failure ? this.#frame(approval) : nothing}
-          ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : html`<p class="timer" data-timer>Denied automatically in ${countdown(approval.expiresAt - this.now)}.</p>`}
+          ${failure ? html`<p class="problem" role="alert" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${failure}</span></p>` : html`<p class="timer" data-timer>${approval.kind === 'click' ? 'Cancelled' : 'Denied'} automatically in ${countdown(approval.expiresAt - this.now)}.</p>`}
           <p class="more" data-more=${rest.length ? '' : nothing}>${rest.length === 1 ? '1 more request is waiting.' : rest.length ? `${rest.length} more requests are waiting.` : ''}</p>
           ${this.#actions(approval, !!failure, always)}
         </sp-alert-dialog>`

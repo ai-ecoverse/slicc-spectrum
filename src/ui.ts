@@ -12,6 +12,7 @@ import { SliccFollow } from './app/follow.ts';
 import { SliccFreezer } from './app/freezer.ts';
 import { SliccFreezerImport } from './app/freezer-import.ts';
 import { SliccGuestInvite } from './app/guests.ts';
+import { SliccLive } from './app/live.ts';
 import { SliccLucide } from './app/lucide.ts';
 import { SliccMemory } from './app/memory.ts';
 import { SliccMonitor } from './app/monitor.ts';
@@ -76,6 +77,7 @@ export {
   SliccFollow,
   SliccFreezerImport,
   SliccGuestInvite,
+  SliccLive,
   SliccNetwork,
   SliccNotices,
   SliccPrompt,
@@ -105,6 +107,7 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-sprinkle': SliccSprinkle,
   'slicc-lucide': SliccLucide,
   'slicc-tray': SliccTray,
+  'slicc-live': SliccLive,
   'slicc-follow': SliccFollow,
   'slicc-updates': SliccUpdates,
   'slicc-network': SliccNetwork,
