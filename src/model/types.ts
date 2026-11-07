@@ -1396,7 +1396,7 @@ export type RecordSource =
 
 export type LockMode = 'auto' | 'passkey' | 'passphrase';
 
-export type RequestKind = 'value' | 'oauth' | 'jerk-seal' | 'jerk' | 'unseal' | 'ask';
+export type RequestKind = 'value' | 'oauth' | 'jerk-seal' | 'jerk' | 'unseal' | 'ask' | 'enter';
 
 export type RequestState = 'pending' | 'done' | 'cancelled' | 'expired' | 'withdrawn';
 

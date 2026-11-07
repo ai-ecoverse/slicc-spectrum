@@ -30,7 +30,11 @@ export const compatible: [
   Fits<Vault.ValueConfig, Spectrum.ValueConfig>,
   Fits<Vault.ValueEvent, Spectrum.ValueEvent>,
   Fits<Spectrum.ValueMessage, Vault.ValueMessage>,
+  Fits<Spectrum.EnterOptions, Vault.EnterOptions>,
+  Fits<Vault.EnterResult, Spectrum.EnterResult>,
 ] = [
+  true,
+  true,
   true,
   true,
   true,
