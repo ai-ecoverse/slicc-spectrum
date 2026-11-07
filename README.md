@@ -270,7 +270,7 @@ Under forced colors, the dots, segments, unread circle and selection bar keep `C
 A cone with scoops carries `aria-expanded`, and `aria-controls` names its scoop rows while they show.
 Expanding and collapsing have no motion.
 **New cone** sits at the bottom.
-The conversation title is also shown in the header's cone picker: `Agent.title`, or else the first line of the first user message, or "No messages yet".
+The conversation title is also shown in the header's cone picker: `Agent.title`, or else the first line of the first user message in `messages()`. Without one, it reads "Earlier messages" while `hasOlder` says there is more to load (the loaded window can hold no user message, or nothing the chat shows, while the conversation has hundreds), "Untitled chat" when the cone has messages but none from the user, and "No messages yet" only when it has none.
 When cones share a name, their accessible names and the Delete cone, Freezer and confirmation labels add the title, as in "Delete cone sliccy (Hello from Bedrock)".
 
 #### `<slicc-chat>`
@@ -773,7 +773,7 @@ The optional `drop(agentId)` removes a scoop: it stops and its working folder is
 `thaw(id)` brings a cone back, or forks a scoop or agent run into a new cone, and `discard(id)` removes a row.
 The optional `importProfile(file, { preview, again? })` takes a SLICC 6 profile export (a `Blob`) and resolves with a `ProfileImportResult` (`preview`, the imported `cones`' ids, the `report` path and a `text`), or rejects with a sentence to show; with `preview: true` it only checks, and its `ProfileImportPreview` counts the export (`origin`, `createdAt`, `cones`, `scoops`, `frozen`, `bytes`, `skills`, `crons`, `webhooks`), lists the zip paths of `flagged` credential-like files, which are imported as they are (at 0600) and listed in the report for review, `providers` to sign in to again and `mounts` it can't bring, and has `already`, when this export was imported before, or `null`.
 `importCancel()` stops it, and `importing()` returns a `ProfileImportProgress` (`phase`: `idle`, `checking`, `writing`, `done` or `failed`, with `done`, `total` and `text`), with an `importing` event; the UI never sees kernel paths, so the adapter decides how the file reaches the agent.
-Names don't have to be unique, and an optional `Agent.title` names a cone's conversation; without it, the first user message does.
+Names don't have to be unique, and an optional `Agent.title` names a cone's conversation; without it, the first user message in `messages()` does, and with none loaded but `hasOlder` true, "Earlier messages" (see the Agents list).
 Assistant messages stream: the same message is re-emitted as its parts grow and its tool calls go from `running` to `done`.
 The optional `toolLabel(agentId, callIds)` resolves with a short label for a run of tool calls (`callIds` in order), such as "Compare the docs with the live API", or `null`; the agent dedupes, caches and persists it.
 Spectrum asks once a reply's status has two calls and again each time it grows, once per set of ids, and shows the label once the status is complete.
