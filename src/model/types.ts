@@ -1035,12 +1035,13 @@ export type RemoteControlMode = 'prompt' | 'watch';
 
 export type LinkKind = 'cli' | 'seven';
 
-export type AccessKey = 'view' | 'control' | 'terminal';
+export type AccessKey = 'view' | 'control' | 'terminal' | 'browser';
 
 export interface DeviceAccess {
   view?: boolean;
   control?: boolean;
   terminal?: boolean;
+  browser?: boolean;
   fixed?: boolean;
 }
 

@@ -173,6 +173,7 @@ export const accessLabels: Record<AccessKey, string> = {
   view: 'View',
   control: 'Control',
   terminal: 'Terminal',
+  browser: 'Browser',
 };
 
 const accessKeys = Object.keys(accessLabels) as AccessKey[];
@@ -205,6 +206,10 @@ export function accessConfirm(device: LinkedDevice, key: AccessKey | 'follow'): 
     terminal: [
       `Give ${name} a root shell?`,
       'Terminal lets it open shells on this SLICC as root: it can run any command and read or change every file.',
+    ],
+    browser: [
+      `Let ${name} drive this browser?`,
+      'It can open, read and control the tabs in this browser, as you, with your signed-in sites. This SLICC’s own pages and the vault stay out of its reach.',
     ],
   }[key];
   return { title, body: `${body} ${again}`, action: 'Allow', variant: 'confirmation' };
