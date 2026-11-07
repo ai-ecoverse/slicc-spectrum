@@ -17,6 +17,8 @@ async function open(t, params = {}) {
       const root = window.approvals();
       return {
         kind: root.querySelector('dialog')?.dataset.kind,
+        variant: root.querySelector('sp-alert-dialog')?.getAttribute('variant'),
+        icon: !!root.querySelector('sp-alert-dialog')?.shadowRoot?.querySelector('.icon'),
         title: root.querySelector('h2')?.textContent,
         body: root.querySelector('#asking')?.textContent,
         where: root.querySelector('[data-where]')?.textContent ?? null,
@@ -91,6 +93,8 @@ test('a click item here shows its title, body, Cancel and its action, and answer
   await ask(page, 'click-share');
   assert.deepEqual(await page.evaluate(() => window.card()), {
     kind: 'click',
+    variant: 'information',
+    icon: false,
     title: 'Share your screen?',
     body: 'media wants to record your screen for sliccy. Choose a screen, window or tab in Chrome’s picker.',
     where: null,
@@ -116,6 +120,7 @@ test('a click item on another device says where to click and offers only Cancel'
   await ask(page, 'click-share');
   const card = await page.evaluate(() => window.card());
   assert.equal(card.where, 'Click in seven’s tab on Studio Mac.');
+  assert.deepEqual([card.variant, card.icon], ['information', false]);
   assert.deepEqual(card.actions, [['deny', 'Cancel']]);
   assert.equal(
     await page.evaluate(() => !!window.approvals().querySelector('[data-action=once]')),
@@ -140,6 +145,8 @@ test('a guest capture item shows its line and level 2 verdict, and answers once'
   await ask(page, 'capture-screen');
   assert.deepEqual(await page.evaluate(() => window.card()), {
     kind: 'capture',
+    variant: 'warning',
+    icon: true,
     title: 'Allow a guest’s capture?',
     body: 'sliccy wants to use your screen for Seat 2 (Mara):',
     where: null,

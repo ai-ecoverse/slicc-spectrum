@@ -944,7 +944,7 @@ export class SliccApprovals extends ModelElement {
     return this.#dialog(
       approval,
       `${approval.id}:${this.#generation.get(approval.id)}`,
-      html`<sp-alert-dialog variant="warning" data-approval-kind=${approval.kind}>
+      html`<sp-alert-dialog variant=${approval.kind === 'click' ? 'information' : 'warning'} data-approval-kind=${approval.kind}>
           <h2 id="title" slot="heading">${commandText(title(approval), false)}</h2>
           ${this.#request(approval, true)}
           ${approval.kind === 'sudo' && approval.cwd ? html`<p class="cwd">In ${commandText(approval.cwd, false)}</p>` : nothing}
