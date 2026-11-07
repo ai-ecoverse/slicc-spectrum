@@ -383,7 +383,7 @@ export class SliccSecrets extends ThemedElement {
   declare problem: string | null;
   declare invalid: string | null;
   declare said: Said | null;
-  declare entry: { request: string; form: SecretForm; vault: VaultPort } | null;
+  declare entry: { request: string; form: SecretForm; vault: VaultPort; name: string } | null;
   declare acting: ReadonlySet<string>;
   declare importKind: ImportKind;
   declare candidates: readonly ImportCandidate[] | null;
@@ -849,7 +849,7 @@ export class SliccSecrets extends ThemedElement {
         return;
       }
       this.#refuse(null);
-      this.entry = { request, form, vault };
+      this.entry = { request, form, vault, name };
       void this.updateComplete.then(() =>
         this.renderRoot.querySelector<HTMLElement>('[data-form] slicc-vault-value')?.focus()
       );
@@ -905,7 +905,10 @@ export class SliccSecrets extends ThemedElement {
       return;
     }
     this.form = null;
-    this.said = { kind: 'saved', name: detail.state === 'sealed' ? (detail.name ?? '') : '' };
+    this.said = {
+      kind: 'saved',
+      name: (detail.state === 'sealed' ? detail.name : undefined) ?? entry.name,
+    };
   }
 
   #refuse(text: string | null, field: string | null = null, focus = false): void {

@@ -775,3 +775,68 @@ test('late or stale frame events after Back or a new form change nothing and thr
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('Enter in an account field opens the vault’s field, and a done without a name still names the secret', async (t) => {
+  const page = await open(t, { providers: 'all' });
+  await page.evaluate(() => {
+    window.app.show('settings');
+    return true;
+  });
+  await page.until(() => !!window.settingsPart('[data-action=add-provider]'));
+  await page.evaluate(() => window.settingsPart('[data-action=add-provider]').click());
+  await page.until(() => window.settingsPart('dialog.picker')?.open);
+  await page.evaluate(() =>
+    window.settingsPart('dialog.picker .option[data-provider="cloudflare"]').click()
+  );
+  await page.until(() => !!window.settingsPart('dialog.picker input[data-account-field=account]'));
+  for (const [field, value] of [
+    ['account', 'acct-1'],
+    ['gateway', 'gw-1'],
+  ]) {
+    await page.evaluate(
+      (field) => window.settingsPart(`dialog.picker input[data-account-field=${field}]`).focus(),
+      field
+    );
+    await page.insert(value);
+  }
+  await page.press('Enter');
+  await page.until(() => !!window.hosts.picker());
+  assert.deepEqual(await page.evaluate(() => window.model.vault.entered), [
+    {
+      name: 'CLOUDFLARE_WORKERS_AI_API_KEY',
+      kind: 'model',
+      provider: 'cloudflare',
+      settings: { CLOUDFLARE_ACCOUNT_ID: 'acct-1', CLOUDFLARE_GATEWAY_ID: 'gw-1' },
+    },
+  ]);
+  await page.evaluate(() => {
+    window.settingsPart('dialog.picker [data-action=back-key]').click();
+    window
+      .settingsPart('dialog.picker swc-close-button, dialog.picker [data-action=close]')
+      ?.click();
+    window.settingsPart('dialog.picker')?.close();
+    return true;
+  });
+  await secretsPage(page);
+  await page.evaluate(() => window.secrets('[data-action=add-secret]').click());
+  await page.until(() => !!window.secrets('[data-form=add] input[data-field=name]'));
+  await page.evaluate(() => window.secrets('[data-form=add] input[data-field=name]').focus());
+  await page.insert('PIER_TOKEN');
+  await page.evaluate(() => window.secrets('[data-action=enter-value]').click());
+  await page.until(() => !!window.secrets('[data-form=add][data-entry] slicc-vault-value'));
+  await page.evaluate(() => {
+    const request = window.settingsPart('slicc-secrets').entry.request;
+    window.hosts.add().dispatchEvent(
+      new CustomEvent('vault-value', {
+        detail: { event: 'done', request, state: 'sealed' },
+        bubbles: true,
+        composed: true,
+      })
+    );
+    return true;
+  });
+  await page.until(
+    () => window.secrets('[data-said=saved]')?.textContent === 'Saved PIER_TOKEN in the vault'
+  );
+  assert.deepEqual(page.errors, []);
+});

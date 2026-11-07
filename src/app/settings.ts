@@ -1553,7 +1553,7 @@ export class SliccSettings extends ThemedElement {
         : busy
           ? 'Opening the vault’s field…'
           : `You type the ${name} in the vault’s own field next.${optional ? ' Or save these settings and keep the key you have.' : ''}`;
-    return html`<form class="key stacked" data-id=${id} data-store="vault" data-entry=${entry ? '' : nothing} @submit=${(event: Event) => void this.#nextKey(event, account)} @input=${(event: Event) => this.#fill(event)}>
+    return html`<form class="key stacked" data-id=${id} data-store="vault" data-entry=${entry ? '' : nothing} @submit=${(event: Event) => void this.#nextKey(event, account)} @keydown=${(event: KeyboardEvent) => this.#submitOnEnter(event)} @input=${(event: Event) => this.#fill(event)}>
         <span class="entry-label">${account.provider} ${name}</span>
         ${entry ? valueField(vault, entry.request, valueConfig(this.ownerDocument, this.color), (detail, request) => void this.#keyed(account, detail, request)) : nothing}
         ${this.#problem(account, 'value')}
