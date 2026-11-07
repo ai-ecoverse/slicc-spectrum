@@ -21,7 +21,7 @@ import type {
   ValueConfig,
 } from '../model/types.ts';
 import { ModelElement, resolveColor } from './base.ts';
-import { Arming, Ends, end, endCss, layout, toScroll } from './command.ts';
+import { Arming, Ends, end, endCss, layout, toScroll, Watched } from './command.ts';
 import { commandText, controlStyles } from './command-display.ts';
 import { dialogStyles, focused } from './confirm.ts';
 import { size } from './messages.ts';
@@ -374,7 +374,7 @@ export class SliccApprovals extends ModelElement {
   declare frameError: { id: string; message: string } | null;
   arming = 500;
   #arming = new Arming(() => this.arming);
-  #moves = new ResizeObserver(() => this.#settle());
+  #moves = new Watched(new ResizeObserver(() => this.#settle()));
   #moved = (): void => this.#settle();
   #showing: Approval | null = null;
   #pending = new Set<string>();
@@ -743,9 +743,7 @@ export class SliccApprovals extends ModelElement {
     this.#tick(this.isConnected && all.length > 0);
     this.#ends.observe();
     const dialog = this.renderRoot.querySelector('dialog');
-    if (dialog)
-      for (const box of dialog.querySelectorAll('sp-alert-dialog, [slot=button]'))
-        this.#moves.observe(box);
+    this.#moves.sync(dialog?.querySelectorAll('sp-alert-dialog, [slot=button]') ?? []);
     this.#settle();
     const key = dialog
       ? `${dialog.dataset.approval}:${this.#generation.get(dialog.dataset.approval as string)}:${dialog.dataset.gone ?? ''}:${dialog.hasAttribute('data-rejected')}`

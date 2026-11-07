@@ -12,6 +12,29 @@ export const endCss = css`
 
 export const end = (id: string): TemplateResult => html`<span class="end" data-end=${id}></span>`;
 
+type Observer = Pick<ResizeObserver, 'observe' | 'unobserve' | 'disconnect'>;
+
+export class Watched {
+  #observer: Observer;
+  #targets = new Set<Element>();
+
+  constructor(observer: Observer) {
+    this.#observer = observer;
+  }
+
+  sync(targets: Iterable<Element>): void {
+    const next = new Set(targets);
+    for (const target of this.#targets) if (!next.has(target)) this.#observer.unobserve(target);
+    for (const target of next) if (!this.#targets.has(target)) this.#observer.observe(target);
+    this.#targets = next;
+  }
+
+  disconnect(): void {
+    this.#observer.disconnect();
+    this.#targets.clear();
+  }
+}
+
 export class Ends {
   #seen = new Set<string>();
   #looked = new Set<string>();
@@ -55,13 +78,14 @@ export class Ends {
     this.#looked.delete(id);
   }
 
+  #watched = new Watched(this.#observer);
+
   observe(): void {
-    for (const end of this.#root().querySelectorAll<HTMLElement>('[data-end]'))
-      this.#observer.observe(end);
+    this.#watched.sync(this.#root().querySelectorAll<HTMLElement>('[data-end]'));
   }
 
   disconnect(): void {
-    this.#observer.disconnect();
+    this.#watched.disconnect();
   }
 }
 

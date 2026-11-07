@@ -3694,6 +3694,24 @@ for (const [width, height] of [
           '.asks .decision-turn[data-id=k-long] [data-action=allow]:not([disabled])'
         ) && window.chatPart().getBoundingClientRect().right <= innerWidth
     );
+    await page.until(() => {
+      const dock = window.chatPart('.asks');
+      const turn = window.chatPart('.asks .decision-turn[data-id=k-long]');
+      const style = getComputedStyle(dock);
+      const view = dock.getBoundingClientRect();
+      const start = view.top + (Number.parseFloat(style.scrollPaddingBlockStart) || 0);
+      const fade = dock.hasAttribute('data-more');
+      const end = view.bottom - (fade ? Number.parseFloat(style.scrollPaddingBlockEnd) || 0 : 0);
+      const buttons = [...turn.querySelectorAll('.decide swc-button')].map((button) =>
+        button.getBoundingClientRect()
+      );
+      const command = turn.querySelector('.command').getBoundingClientRect();
+      return (
+        buttons.length === 2 &&
+        buttons.every((box) => box.top >= start - 1 && box.bottom <= end + 1) &&
+        command.top >= start - 1
+      );
+    });
     await cutCommand(page, 'chat');
     await page.until(() => window.cutCommand('k-long').hits.includes('allow'));
     const wrap = ['pre-wrap', 'anywhere', 'clip', 'none'];
@@ -3704,7 +3722,7 @@ for (const [width, height] of [
       JSON.stringify(shown)
     );
     assert.deepEqual(
-      shown.hits.filter((hit) => hit !== 'ask-detail'),
+      shown.hits.filter((hit) => !['ask-detail', 'show-waiting'].includes(hit)),
       ['allow', 'deny']
     );
     assert.deepEqual(

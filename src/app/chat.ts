@@ -23,7 +23,7 @@ import type {
 } from '../model/types.ts';
 import { readSurface } from './ansi.ts';
 import { chatModels, meterVariant, shared, statusDot, statusLight, ThemedElement } from './base.ts';
-import { Arming, Ends, endCss, layout } from './command.ts';
+import { Arming, Ends, endCss, layout, Watched } from './command.ts';
 import { fade, folders, limit, type SliccComposer } from './composer.ts';
 import { dipType } from './dips.ts';
 import { following, onWatch, watchOnly } from './follow.ts';
@@ -149,6 +149,20 @@ function into(card: Element, dock: HTMLElement, target: Element): void {
   if (box.top < start) dock.scrollTop -= start - box.top;
   else if (box.bottom > view.bottom)
     dock.scrollTop += Math.min(box.bottom - view.bottom, box.top - start);
+}
+
+function lift(turn: Element, dock: HTMLElement): boolean {
+  const decide = turn.querySelector('.decide');
+  if (!decide) return false;
+  const style = getComputedStyle(dock);
+  const view = dock.getBoundingClientRect();
+  const start = view.top + (Number.parseFloat(style.scrollPaddingBlockStart) || 0);
+  const end = view.bottom - (Number.parseFloat(style.scrollPaddingBlockEnd) || 0);
+  const top = (turn.querySelector('.command') ?? turn).getBoundingClientRect().top;
+  const by = Math.min(decide.getBoundingClientRect().bottom - end, top - start);
+  const was = dock.scrollTop;
+  if (by > 0) dock.scrollTop = was + by;
+  return dock.scrollTop !== was;
 }
 
 const place = (id: string): TemplateResult =>
@@ -567,8 +581,10 @@ export class SliccChat extends ThemedElement {
   #details = new Set<string>();
   arming = 500;
   #arming = new Arming(() => this.arming);
-  #moves = new ResizeObserver(() => this.#settle());
+  #moves = new Watched(new ResizeObserver(() => this.#settle()));
   #moved = (): void => this.#settle();
+  #lifted = '';
+  #lifting = '';
   #ends = new Ends(
     () => this.renderRoot,
     () => this.requestUpdate()
@@ -690,17 +706,38 @@ export class SliccChat extends ThemedElement {
   };
 
   #settle(): void {
+    this.#lift();
     const dock = this.renderRoot.querySelector<HTMLElement>('.asks');
     const buttons = [...this.renderRoot.querySelectorAll<HTMLElement>('.asks .decide swc-button')];
     this.#arming.watch(layout(buttons, [], dock));
   }
 
+  #lift(): void {
+    const dock = this.renderRoot.querySelector<HTMLElement>('.asks');
+    const turn = [...(dock?.querySelectorAll<HTMLElement>('.ask .decision-turn') ?? [])].at(-1);
+    const id = turn?.dataset.id ?? '';
+    if (id !== this.#lifted) this.#lifting = id;
+    this.#lifted = id;
+    if (!this.#lifting || !dock || !turn || dock.hasAttribute('data-open')) return;
+    if (lift(turn, dock)) this.#arming.arm();
+  }
+
+  #stay = (): void => {
+    this.#lifting = '';
+  };
+
+  #press = (): void => {
+    this.#stay();
+    this.#arming.press();
+  };
+
   #guard(): void {
     this.#ends.observe();
-    for (const box of this.renderRoot.querySelectorAll(
-      'header, slicc-notices, .asks, .asks .decision, .asks .decide swc-button'
-    ))
-      this.#moves.observe(box);
+    this.#moves.sync(
+      this.renderRoot.querySelectorAll(
+        'header, slicc-notices, .asks, .asks .decision, .asks .decide swc-button'
+      )
+    );
     this.#settle();
   }
 
@@ -948,6 +985,8 @@ export class SliccChat extends ThemedElement {
     this.#fit.disconnect();
     this.#ends.disconnect();
     this.#moves.disconnect();
+    this.#lifted = '';
+    this.#lifting = '';
     this.#arming.forget();
     this.#fitted = undefined;
     clearInterval(this.#tick);
@@ -1250,7 +1289,7 @@ export class SliccChat extends ThemedElement {
       this.#all = !open;
       this.requestUpdate();
     };
-    return html`<section class="asks" aria-label="Waiting for you" ?data-open=${open} @scroll=${this.#more} @pointerdown=${this.#arming.press}><div class="column">
+    return html`<section class="asks" aria-label="Waiting for you" ?data-open=${open} @scroll=${this.#more} @pointerdown=${this.#press} @wheel=${this.#stay} @touchstart=${this.#stay} @keydown=${this.#stay} @focusin=${this.#stay}><div class="column">
       ${
         older.length
           ? html`<div class="waiting"><swc-action-button size="s" quiet data-action="show-waiting" aria-expanded=${open ? 'true' : 'false'} @click=${toggle}><swc-icon-chevron-down slot="icon"></swc-icon-chevron-down>${asks.length} waiting</swc-action-button>${timed.length ? askTimer(Math.min(...timed)) : nothing}</div>`
