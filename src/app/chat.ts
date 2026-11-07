@@ -151,18 +151,18 @@ function into(card: Element, dock: HTMLElement, target: Element): void {
     dock.scrollTop += Math.min(box.bottom - view.bottom, box.top - start);
 }
 
-function lift(turn: Element, dock: HTMLElement): boolean {
+function lift(turn: Element, dock: HTMLElement, raised: number): number {
   const decide = turn.querySelector('.decide');
-  if (!decide) return false;
+  if (!decide) return raised;
   const style = getComputedStyle(dock);
   const view = dock.getBoundingClientRect();
   const start = view.top + (Number.parseFloat(style.scrollPaddingBlockStart) || 0);
   const end = view.bottom - (Number.parseFloat(style.scrollPaddingBlockEnd) || 0);
   const top = (turn.querySelector('.command') ?? turn).getBoundingClientRect().top;
-  const by = Math.min(decide.getBoundingClientRect().bottom - end, top - start);
-  const was = dock.scrollTop;
-  if (by > 0) dock.scrollTop = was + by;
-  return dock.scrollTop !== was;
+  const need = decide.getBoundingClientRect().bottom - end;
+  const base = dock.scrollTop - raised;
+  dock.scrollTop = base + (need <= top - start ? raised + Math.max(0, need) : 0);
+  return dock.scrollTop - base;
 }
 
 const place = (id: string): TemplateResult =>
@@ -585,6 +585,7 @@ export class SliccChat extends ThemedElement {
   #moved = (): void => this.#settle();
   #lifted = '';
   #lifting = '';
+  #raised = 0;
   #ends = new Ends(
     () => this.renderRoot,
     () => this.requestUpdate()
@@ -716,10 +717,15 @@ export class SliccChat extends ThemedElement {
     const dock = this.renderRoot.querySelector<HTMLElement>('.asks');
     const turn = [...(dock?.querySelectorAll<HTMLElement>('.ask .decision-turn') ?? [])].at(-1);
     const id = turn?.dataset.id ?? '';
-    if (id !== this.#lifted) this.#lifting = id;
+    if (id !== this.#lifted) {
+      this.#lifting = id;
+      this.#raised = 0;
+    }
     this.#lifted = id;
     if (!this.#lifting || !dock || !turn || dock.hasAttribute('data-open')) return;
-    if (lift(turn, dock)) this.#arming.arm();
+    const raised = lift(turn, dock, this.#raised);
+    if (raised !== this.#raised) this.#arming.arm();
+    this.#raised = raised;
   }
 
   #stay = (): void => {

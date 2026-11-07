@@ -7,9 +7,9 @@ after(() => chrome.close());
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function open(t, width, height) {
+async function open(t, width, height, params = {}) {
   const page = await chrome.page(t);
-  await page.goto(`/ui/?${new URLSearchParams({ delay: '0', color: 'light' })}`);
+  await page.goto(`/ui/?${new URLSearchParams({ delay: '0', color: 'light', ...params })}`);
   await page.until(() => window.ready === true);
   await page.until(() => window.$('slicc-app', 'slicc-dock')?.api.panels.length > 0);
   await page.send('Emulation.setEmulatedMedia', {
@@ -190,3 +190,46 @@ test('a click on a chat card within half a second of its buttons changing does n
   await page.until((card) => window.stateOf(card) === 'confirmed', third);
   assert.deepEqual(page.errors, []);
 });
+
+const twelve = Array.from({ length: 12 }, (_, i) => `npm run step-${i + 1} -- --verbose`).join(
+  '\n'
+);
+
+for (const [width, height, made] of [
+  [1440, 700, null],
+  [420, 860, twelve],
+]) {
+  test(`a card whose buttons can't be brought into the region keeps its requester and title in view at ${width}x${height}`, async (t) => {
+    const page = await open(t, width, height, made ? {} : { asks: 'long' });
+    const id = made
+      ? await page.evaluate((body) => window.ask('Wants to run the release steps', body), made)
+      : 'k-long';
+    await page.until((card) => !!window.card(card)?.querySelector('[data-end]'), id);
+    await wait(1000);
+    const read = (card) => {
+      const dock = window.chatPart('.asks');
+      const turn = window.card(card);
+      const style = getComputedStyle(dock);
+      const view = dock.getBoundingClientRect();
+      const start = view.top + (Number.parseFloat(style.scrollPaddingBlockStart) || 0);
+      const inside = (selector) => {
+        const box = turn.querySelector(selector).getBoundingClientRect();
+        return box.top >= start - 1 && box.bottom <= view.bottom + 1;
+      };
+      const decide = turn.querySelector('.decide').getBoundingClientRect();
+      return {
+        top: dock.scrollTop,
+        who: inside('.decision-head .who'),
+        text: inside('.decision-text'),
+        hidden: decide.bottom > view.bottom - (Number.parseFloat(style.scrollPaddingBlockEnd) || 0),
+      };
+    };
+    assert.deepEqual(await page.evaluate(read, id), {
+      top: 0,
+      who: true,
+      text: true,
+      hidden: true,
+    });
+    assert.deepEqual(page.errors, []);
+  });
+}
