@@ -1,64 +1,16 @@
-import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
-import '@adobe/spectrum-wc-icons/swc-icon-chevron-down.js';
-import { css, html, nothing, type TemplateResult } from 'lit';
+import { css, html, type TemplateResult } from 'lit';
 
-export const toShow = 'Show the full command to allow it.';
 export const toScroll = 'Scroll to the end of the command to allow it.';
 
-export const clampCss = css`
-  .command [data-clamp] {
-    display: block;
-    max-block-size: 4lh;
-    overflow: hidden;
-  }
-  .full-command .chevron {
-    transition: transform var(--swc-animation-duration-100) var(--swc-animation-ease-out);
-  }
-  .full-command[data-shown] .chevron {
-    transform: rotate(180deg);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .full-command .chevron {
-      transition: none;
-    }
+export const endCss = css`
+  .command .end {
+    display: inline-block;
+    inline-size: 0;
+    block-size: 0;
   }
 `;
 
-export class Cuts {
-  #cuts = new Map<string, boolean>();
-  #root: () => ParentNode;
-  #changed: () => void;
-  #observer = new ResizeObserver(() => this.measure());
-
-  constructor(root: () => ParentNode, changed: () => void) {
-    this.#root = root;
-    this.#changed = changed;
-  }
-
-  get(id: string): boolean | undefined {
-    return this.#cuts.get(id);
-  }
-
-  measure(): void {
-    let changed = false;
-    for (const command of this.#root().querySelectorAll<HTMLElement>('.command [data-clamp]')) {
-      this.#observer.observe(command);
-      const id = command.dataset.clamp as string;
-      const cut = command.clientHeight
-        ? command.scrollHeight > command.clientHeight + 1
-        : undefined;
-      if (this.#cuts.get(id) === cut) continue;
-      changed = true;
-      if (cut === undefined) this.#cuts.delete(id);
-      else this.#cuts.set(id, cut);
-    }
-    if (changed) this.#changed();
-  }
-
-  disconnect(): void {
-    this.#observer.disconnect();
-  }
-}
+export const end = (id: string): TemplateResult => html`<span class="end" data-end=${id}></span>`;
 
 export class Ends {
   #seen = new Set<string>();
@@ -113,6 +65,64 @@ export class Ends {
   }
 }
 
-export function fullCommand(shown: boolean, toggle: () => void): TemplateResult {
-  return html`<swc-action-button size="s" quiet class="full-command" data-action="full-command" data-shown=${shown ? '' : nothing} aria-expanded=${shown ? 'true' : 'false'} @click=${toggle}><swc-icon-chevron-down slot="icon" class="chevron" aria-hidden="true"></swc-icon-chevron-down>${shown ? 'Hide the full command' : 'Show the full command'}</swc-action-button>`;
+export class Arming {
+  #ms: () => number;
+  #changed = 0;
+  #pressed = 0;
+  #layout = '';
+
+  constructor(ms: () => number) {
+    this.#ms = ms;
+  }
+
+  arm(): void {
+    this.#changed = performance.now();
+  }
+
+  press = (): void => {
+    this.#pressed = performance.now();
+  };
+
+  settled(at = performance.now()): boolean {
+    return at - this.#changed >= this.#ms();
+  }
+
+  counts(event: MouseEvent): boolean {
+    return this.settled(event.detail ? this.#pressed : performance.now());
+  }
+
+  watch(layout: string): void {
+    if (layout === this.#layout) return;
+    this.#layout = layout;
+    this.arm();
+  }
+
+  forget(): void {
+    this.#layout = '';
+  }
+}
+
+export function layout(
+  buttons: readonly HTMLElement[],
+  head: readonly unknown[] = [],
+  frame?: HTMLElement | null
+): string {
+  const box = frame?.getBoundingClientRect();
+  const x = box ? box.left - (frame as HTMLElement).scrollLeft : 0;
+  const y = box ? box.top - (frame as HTMLElement).scrollTop : 0;
+  return JSON.stringify([
+    ...head,
+    box ? [box.left, box.top].map(Math.round) : null,
+    buttons.map((button) => {
+      const { left, top, width, height } = button.getBoundingClientRect();
+      return [
+        button.closest<HTMLElement>('[data-id]')?.dataset.id ?? null,
+        button.dataset.action,
+        button.textContent,
+        button.hasAttribute('disabled'),
+        button.hasAttribute('pending'),
+        ...(width || height ? [left - x, top - y, width, height].map(Math.round) : []),
+      ];
+    }),
+  ]);
 }

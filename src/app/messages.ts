@@ -44,7 +44,7 @@ import type {
   UserMessage,
 } from '../model/types.ts';
 import { ansi, type Surface } from './ansi.ts';
-import { fullCommand, toShow } from './command.ts';
+import { end } from './command.ts';
 import { guard } from './guard.ts';
 import { markdown } from './markdown.ts';
 import { type Copied, signInDetails, signInText } from './sign-in.ts';
@@ -72,9 +72,8 @@ export interface Handlers {
   runs?: ViewSet;
   detail?: { has(id: string): boolean; toggle(id: string): void };
   commands?: {
-    cut(id: string): boolean | undefined;
-    has(id: string): boolean;
-    toggle(id: string): void;
+    seen(id: string): boolean;
+    armed(event: MouseEvent): boolean;
   };
 }
 
@@ -1017,18 +1016,20 @@ function spokenLeft(left: number, at: number): string {
 }
 
 function decide(message: LickMessage, handlers: Handlers, settled: boolean) {
-  const commands = settled || !message.body ? undefined : handlers.commands;
-  const full = commands?.has(message.id) ?? true;
-  const cut = commands?.cut(message.id);
-  const toggle =
-    commands && (full || cut) ? fullCommand(full, () => commands.toggle(message.id)) : nothing;
-  const actions = html`${commands && !full && cut ? html`<p class="allow-hint" data-allow-hint>${toShow}</p>` : nothing}<div class="decide">
-    ${toggle}
-    <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'dismissed')}>Deny</swc-button>
-    ${full || cut === false ? html`<swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly} @click=${() => handlers.resolve(message.id, 'confirmed')}>Allow</swc-button>` : nothing}
+  const { id, body } = message;
+  const commands = settled ? undefined : handlers.commands;
+  const gated = !!body && !!commands;
+  const whole = !gated || !!commands?.seen(id);
+  const choose = (event: MouseEvent, state: 'confirmed' | 'dismissed') => {
+    if (commands?.armed(event) === false || (state === 'confirmed' && !whole)) return;
+    handlers.resolve(id, state);
+  };
+  const actions = html`<div class="decide">
+    <swc-button size="s" variant="secondary" fill-style="outline" data-action="deny" ?disabled=${handlers.readOnly} @click=${(event: MouseEvent) => choose(event, 'dismissed')}>Deny</swc-button>
+    <swc-button size="s" variant="accent" data-action="allow" ?disabled=${handlers.readOnly || !whole} @click=${(event: MouseEvent) => choose(event, 'confirmed')}>Allow</swc-button>
   </div>`;
-  const command = message.body
-    ? html`<pre class="command"><span class="lines" data-clamp=${full ? nothing : message.id}>${message.body}</span></pre>`
+  const command = body
+    ? html`<pre class="command"><span class="lines">${body}${gated ? end(id) : nothing}</span></pre>`
     : nothing;
   return { actions, command };
 }
@@ -1845,14 +1846,6 @@ export const messageCss = css`
   .question.decision .options {
     justify-content: flex-end;
     padding: 0;
-  }
-  .decide .full-command {
-    margin-inline-end: auto;
-  }
-  .decision .allow-hint {
-    margin: 0;
-    color: var(--swc-neutral-subdued-content-color-default);
-    font-size: var(--swc-font-size-75);
   }
   .question.decision .options {
     display: flex;
