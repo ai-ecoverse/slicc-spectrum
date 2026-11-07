@@ -851,11 +851,6 @@ export class SliccComposer extends ThemedElement {
         flex-wrap: wrap;
         gap: var(--swc-spacing-100);
       }
-      .secret .choices {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--swc-spacing-100);
-      }
       .secret .value-field {
         min-inline-size: min(22rem, 70vw);
       }
@@ -1294,7 +1289,7 @@ export class SliccComposer extends ThemedElement {
       return;
     }
     if (detail.event === 'escape') {
-      this.popup = null;
+      this.closeSecret();
       return;
     }
     if (detail.request !== entry.request) return;
@@ -1411,6 +1406,7 @@ export class SliccComposer extends ThemedElement {
 
   closeSecret(): void {
     clearValues(this.renderRoot);
+    this.#leave();
     this.popup = null;
   }
 
@@ -1762,9 +1758,9 @@ export class SliccComposer extends ThemedElement {
   #entering(vault: VaultPort): TemplateResult {
     const entry = this.entry;
     const close = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      this.popup = null;
+      if (event.key === 'Escape') this.closeSecret();
     };
+    const cancel = html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="cancel-secret" ?disabled=${this.sharing} @click=${() => this.closeSecret()}>Cancel</swc-button>`;
     const error = this.secretError
       ? html`<span class="secret-error" role="alert" id="secret-error" data-error><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${this.secretError}</span></span>`
       : nothing;
@@ -1774,7 +1770,10 @@ export class SliccComposer extends ThemedElement {
         <span class="lead">Type the value of <code>${entry.name}</code> in the vault’s own field. The agent only sees its name.</span>
         ${valueField(vault, entry.request, valueConfig(this.ownerDocument, this.color), (detail) => this.#entered(detail))}
         ${error}
-        <swc-button size="s" variant="secondary" fill-style="outline" data-action="back-secret" @click=${() => this.#leave()}>Back</swc-button>
+        <span class="buttons">
+          <swc-button size="s" variant="secondary" fill-style="outline" data-action="back-secret" @click=${() => this.#leave()}>Back</swc-button>
+          ${cancel}
+        </span>
       </form>`;
     const name = this.#clean(this.secretName);
     const exists = !!name && this.#exists(vault, name);
@@ -1793,10 +1792,11 @@ export class SliccComposer extends ThemedElement {
         <span class="lead">${exists ? html`<code>${name}</code> is in the vault. Share it as it is, or replace its value first.` : 'You type the value in the vault’s own field next; the agent only sees its name.'}</span>
         <label class="field"><span>Name</span><input name="name" placeholder="API_TOKEN" autocomplete="off" spellcheck="false" .value=${this.secretName} aria-invalid=${bad} aria-describedby=${this.secretField === 'name' ? 'secret-error' : nothing} /></label>
         ${error}
-        <div class="choices">
+        <span class="buttons">
           <swc-button size="s" variant="accent" data-action="share-secret" ?pending=${this.sharing} @click=${(event: Event) => (event.currentTarget as HTMLElement).closest('form')?.requestSubmit()}>Share</swc-button>
           ${exists ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="replace-secret" ?disabled=${this.sharing} @click=${() => void this.enterSecret(this.secretName, true)}>Replace value</swc-button>` : nothing}
-        </div>
+          ${cancel}
+        </span>
       </form>`;
   }
 

@@ -467,3 +467,97 @@ for (const [color, width] of [
     assert.equal(sideways, true);
     assert.deepEqual(page.errors, []);
   });
+
+async function press(page, point) {
+  for (const type of ['mousePressed', 'mouseReleased'])
+    await page.send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 });
+}
+
+const closes = {
+  cancel: async (page) => {
+    await page.evaluate(() => window.composer('[data-action=cancel-secret]').click());
+  },
+  outside: async (page) => {
+    const point = await page.evaluate(() => {
+      const box = window.composer('form.secret').getBoundingClientRect();
+      return { x: box.left + box.width / 2, y: Math.max(1, box.top - 40) };
+    });
+    await press(page, point);
+  },
+  escape: async (page) => {
+    await page.evaluate(() =>
+      window.composer('form.secret input, form.secret swc-button')?.focus()
+    );
+    await page.evaluate(() => {
+      window
+        .composer('form.secret')
+        .dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true })
+        );
+      return true;
+    });
+  },
+};
+
+for (const [how, close] of Object.entries(closes)) {
+  test(`with the vault's field open, ${how} closes the popup and cancels the enter request`, async (t) => {
+    const page = await open(t);
+    await sharePopup(page);
+    await page.insert('tide token');
+    await page.evaluate(() => window.composer('[data-action=share-secret]').click());
+    await page.until(
+      () =>
+        !!window
+          .frameIn(window.composer('form.secret[data-entry] slicc-vault-value'))
+          ?.querySelector('input')
+    );
+    const inside = await page.evaluate(() => {
+      const box = window.composer('form.secret .lead').getBoundingClientRect();
+      return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+    });
+    await press(page, inside);
+    assert.equal(await page.evaluate(() => !!window.composer('form.secret[data-entry]')), true);
+    assert.equal(await page.evaluate(() => window.model.vault.entered.length), 1);
+    await close(page);
+    await page.until(() => !window.composer('form.secret'));
+    await page.until(() => window.model.vault.cancelled.length === 1);
+    assert.deepEqual(
+      await page.evaluate(() => [
+        window.model.vault.cancelled[0].startsWith('enter-'),
+        window.composer().entry,
+        window.puts,
+      ]),
+      [true, null, []]
+    );
+    assert.deepEqual(page.errors, []);
+  });
+
+  test(`with the name only, ${how} closes the popup without an enter request`, async (t) => {
+    const page = await open(t);
+    await sharePopup(page);
+    await page.insert('tide token');
+    await close(page);
+    await page.until(() => !window.composer('form.secret'));
+    assert.deepEqual(
+      await page.evaluate(() => [window.model.vault.entered, window.model.vault.cancelled]),
+      [[], []]
+    );
+    assert.deepEqual(page.errors, []);
+  });
+
+  test(`without enter, ${how} closes the popup and clears the typed value`, async (t) => {
+    const page = await open(t, { entry: 'input' });
+    await sharePopup(page);
+    await page.insert('tide token');
+    await page.evaluate(() => window.composer('form.secret input[name=value]').focus());
+    await page.insert(sample);
+    await page.evaluate(() => {
+      window.typed = window.composer('form.secret input[name=value]');
+      return true;
+    });
+    await close(page);
+    await page.until(() => !window.composer('form.secret'));
+    assert.deepEqual(await page.evaluate(() => [window.typed.value, window.puts]), ['', []]);
+    assert.deepEqual(page.errors, []);
+  });
+}
