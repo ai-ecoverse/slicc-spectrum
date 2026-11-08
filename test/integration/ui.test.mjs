@@ -7792,6 +7792,68 @@ test('the agent picker lists cones and opens the agents panel for the rest', asy
   assert.deepEqual(page.errors, []);
 });
 
+test('the chat header Thinking picker follows the active cone, not settings', async (t) => {
+  const page = await open(t);
+  await page.until(
+    () =>
+      !!window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat')
+        ?.shadowRoot.querySelector('header sp-picker[label=Thinking]')
+  );
+  const thinking = () => {
+    const picker = window
+      .$('slicc-app', 'slicc-dock', 'slicc-chat')
+      .shadowRoot.querySelector('header sp-picker[label=Thinking]');
+    return {
+      value: picker.value,
+      sliccy: window.model.agent.list().find((agent) => agent.id === 'cone-sliccy').thinking,
+      harbor: window.model.agent.list().find((agent) => agent.id === 'cone-harbor').thinking,
+      settings: window.model.settings.get().thinking,
+    };
+  };
+  await page.evaluate(() => {
+    window.model.settings.update({ thinking: 'medium' });
+    window.model.agent.setThinking('cone-sliccy', 'off');
+    window.model.agent.setThinking('cone-harbor', 'high');
+    window.model.agent.select('cone-sliccy');
+    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    chat.requestUpdate();
+    return chat.updateComplete.then(() => true);
+  });
+  assert.deepEqual(await page.evaluate(thinking), {
+    value: 'off',
+    sliccy: 'off',
+    harbor: 'high',
+    settings: 'medium',
+  });
+  await page.evaluate(() => {
+    window.model.agent.select('cone-harbor');
+    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    chat.requestUpdate();
+    return chat.updateComplete.then(() => true);
+  });
+  assert.deepEqual(await page.evaluate(thinking), {
+    value: 'high',
+    sliccy: 'off',
+    harbor: 'high',
+    settings: 'medium',
+  });
+  await page.evaluate(() => {
+    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    const picker = chat.shadowRoot.querySelector('header sp-picker[label=Thinking]');
+    picker.value = 'low';
+    picker.dispatchEvent(new Event('change', { bubbles: true }));
+    chat.requestUpdate();
+    return chat.updateComplete.then(() => true);
+  });
+  assert.deepEqual(await page.evaluate(thinking), {
+    value: 'low',
+    sliccy: 'off',
+    harbor: 'low',
+    settings: 'medium',
+  });
+  assert.deepEqual(page.errors, []);
+});
 test('the chat header lists chat models with their provider and starts a new chat', async (t) => {
   const page = await open(t);
   assert.deepEqual(
