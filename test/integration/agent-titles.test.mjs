@@ -74,3 +74,22 @@ test('a paged cone whose window holds only verdicts or no prompt never reads No 
   await page.until((id) => window.same(id, 'No messages yet'), empty);
   assert.deepEqual(page.errors, []);
 });
+
+test('an agents-doc title update refreshes the Agents panel and cone picker without a reload', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.model.agent.select('cone-tides'));
+  await page.until(() => window.model.agent.active() === 'cone-tides');
+  const before = await page.evaluate(() => window.titles('cone-tides')[0]);
+  assert.match(before, /tide table/i);
+  await page.evaluate(() => {
+    window.model.agent.setTitle('cone-tides', 'Harbor tides');
+    return true;
+  });
+  await page.until(() => window.same('cone-tides', 'Harbor tides'));
+  await page.evaluate(() => {
+    window.model.agent.setTitle('cone-tides', 'Retitled from the agents doc');
+    return true;
+  });
+  await page.until(() => window.same('cone-tides', 'Retitled from the agents doc'));
+  assert.deepEqual(page.errors, []);
+});

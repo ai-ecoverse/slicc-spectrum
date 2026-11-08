@@ -687,6 +687,14 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     return this.#starting;
   }
 
+  setTitle(agentId: string, title: string | undefined): void {
+    const agent = this.#agent(agentId);
+    if (!agent) return;
+    if (title === undefined) delete agent.title;
+    else agent.title = title;
+    this.#changed();
+  }
+
   setStarting(line: string | null): void {
     this.#arrival++;
     this.#starting = line || null;

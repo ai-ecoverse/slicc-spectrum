@@ -2533,7 +2533,7 @@ test('tool steps join across messages, keep their states, and open from the keyb
   assert.deepEqual(shape.m8, [
     ['complete', 9, '1 failed, 1 cancelled · Compare the docs with the live API'],
   ]);
-  assert.deepEqual(shape.single, [['complete', 1, 'bash Check the preview port']]);
+  assert.deepEqual(shape.single, [['complete', 1, 'Check the preview port']]);
   assert.equal(shape.absorbed, false);
   assert.deepEqual(shape.owner, ['k-tool1', 'k-m3']);
   assert.match(shape.ran, /^Ran at \d\d:\d\d$/);
@@ -2550,7 +2550,7 @@ test('tool steps join across messages, keep their states, and open from the keyb
   ]);
   assert.equal(shape.cards, 0);
   assert.deepEqual(shape.hooks, [5, 28]);
-  assert.equal(shape.failed, 'bash Run the unit tests · Failed');
+  assert.equal(shape.failed, 'Run the unit tests · Failed');
 
   await page.evaluate(() =>
     window
@@ -2578,6 +2578,54 @@ test('tool steps join across messages, keep their states, and open from the keyb
   );
   await page.press(' ');
   await page.until(() => !window.chatPart('#run-k-r7').hasAttribute('data-open'));
+  assert.deepEqual(page.errors, []);
+});
+
+test('a single raw command asks toolLabel and keeps the expand region on the command', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    const call = {
+      id: 'raw-t1',
+      name: 'bash',
+      title: 'git status --short',
+      input: 'git status --short',
+      output: ' M src/app/messages.ts',
+      status: 'done',
+      paths: [],
+    };
+    const added = [
+      { id: 'raw-user', role: 'user', text: 'Show the tree', createdAt: now },
+      {
+        id: 'raw-run',
+        role: 'assistant',
+        status: 'done',
+        createdAt: now,
+        model: 'claude-opus-5-5',
+        parts: [{ type: 'tool', tool: call }],
+      },
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    const label = agent.toolLabel.bind(agent);
+    agent.toolLabel = async (agentId, callIds) =>
+      callIds.includes('raw-t1') ? 'Summarise the working tree' : label(agentId, callIds);
+    agent.select('cone-sliccy');
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.chatPart('swc-conversation-turn[data-id=raw-run] slicc-status-label')?.textContent ===
+      'Summarise the working tree'
+  );
+  await page.evaluate(() => window.chatPart('#run-raw-t1 .run-toggle').click());
+  await page.until(() => window.chatPart('#run-raw-t1').hasAttribute('data-open'));
+  assert.match(
+    await page.evaluate(() => window.chatPart('#detail-raw-t1 pre.input')?.textContent ?? ''),
+    /git status --short/
+  );
   assert.deepEqual(page.errors, []);
 });
 
