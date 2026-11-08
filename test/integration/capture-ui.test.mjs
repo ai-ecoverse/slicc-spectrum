@@ -335,6 +335,24 @@ test('Settings lists the capture switches in order and each one calls set', asyn
   assert.deepEqual(page.errors, []);
 });
 
+test('Settings switches hint covers programs and linked devices', async (t) => {
+  const page = await open(t, { switches: 'capture' });
+  await page.evaluate(() => {
+    window.app.show('settings');
+    return true;
+  });
+  await page.until(() => !!window.settingsPart('[data-surface=switches]'));
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.settingsPart('[data-surface=switches]').parentElement.querySelector('.hint')
+          .textContent
+    ),
+    'Programs and linked devices can use only what’s on here. Turning one off stops what’s live under it.'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('without the live and switches ports nothing new shows', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {
