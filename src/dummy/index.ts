@@ -2,6 +2,7 @@ import type { Account, AgentHold, Message, SecretView, SliccModel } from '../mod
 import { DummyAgent } from './agent.ts';
 import { type ApprovalScenario, DummyApprovals } from './approvals.ts';
 import { type BrowserScenario, browserHistory, DummyBrowser, drive } from './browser.ts';
+import { type CaptureScenario, DummyCapture } from './capture.ts';
 import { type ChangesScenario, DummyChanges } from './changes.ts';
 import { type Clock, clock } from './clock.ts';
 import type { BudgetScenario } from './extras.ts';
@@ -62,6 +63,7 @@ export interface DummyOptions {
   entry?: 'input' | 'frame';
   asks?: 'long' | 'off';
   live?: LiveScenario | 'off';
+  capture?: CaptureScenario;
   switches?: 'capture' | 'off';
   follow?: FollowScenario | 'off';
   vault?: VaultScenario | 'off';
@@ -92,6 +94,7 @@ export interface DummyModel extends SliccModel {
   tabs?: DummyTabs;
   approvals?: DummyApprovals;
   live?: DummyLive;
+  capture?: DummyCapture;
   switches?: DummySwitches;
   follow?: DummyFollow;
   vault?: DummyVault;
@@ -111,6 +114,24 @@ export const movedDocs = 'https://docs.eu.example/mcp';
 
 function hinted(login?: DummyLogin): boolean {
   return login === 'code' || login === 'url' || login === 'lookalike';
+}
+
+function capturePorts(
+  capture: CaptureScenario,
+  live: LiveScenario | 'off',
+  switches: 'capture' | 'off',
+  time: ReturnType<typeof clock>
+): { live?: DummyLive; capture?: DummyCapture; switches?: DummySwitches } {
+  const livePort =
+    live !== 'off' ? new DummyLive(live) : capture === 'off' ? undefined : new DummyLive('empty');
+  const switchPort = switches === 'off' ? undefined : new DummySwitches();
+  const capturePort =
+    capture === 'off' ? undefined : new DummyCapture(capture, time, livePort, switchPort);
+  return {
+    ...(livePort ? { live: livePort } : {}),
+    ...(capturePort ? { capture: capturePort } : {}),
+    ...(switchPort ? { switches: switchPort } : {}),
+  };
 }
 
 function signInChat(
@@ -230,6 +251,7 @@ export function createDummyModel({
   approvals = 'off',
   asks = 'off',
   live = 'off',
+  capture = 'off',
   switches = 'off',
   follow = 'off',
   vault = 'off',
@@ -252,6 +274,7 @@ export function createDummyModel({
   older = 'off',
 }: DummyOptions = {}): DummyModel {
   const time = clock(delay);
+  const capturePortsOn = capturePorts(capture, live, switches, time);
   const mount =
     mounts === 'off'
       ? null
@@ -329,8 +352,7 @@ export function createDummyModel({
     ...(noticePort ? { notices: noticePort } : {}),
     ...(tabs === 'off' ? {} : { tabs: new DummyTabs(tabs, time) }),
     ...(approvals === 'off' ? {} : { approvals: new DummyApprovals(approvals, time, vaultPort) }),
-    ...(live === 'off' ? {} : { live: new DummyLive(live) }),
-    ...(switches === 'off' ? {} : { switches: new DummySwitches() }),
+    ...capturePortsOn,
     ...(follow === 'off' ? {} : { follow: new DummyFollow(follow, time) }),
     ...(vaultPort ? { vault: vaultPort } : {}),
     ...guestsPort(guests, time),

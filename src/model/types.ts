@@ -1338,6 +1338,30 @@ export interface LivePort extends Subscribable<{ items: readonly LiveItem[] }> {
   act(id: string): void;
 }
 
+export type CaptureKind = 'audio' | 'video';
+
+export interface CaptureStill {
+  blob: Blob;
+  mimeType: string;
+  name: string;
+}
+
+export interface CaptureTake extends CaptureStill {
+  durationMs: number;
+}
+
+export interface Recording {
+  stop(): void;
+  cancel(): void;
+  finished: Promise<CaptureTake>;
+}
+
+export interface CapturePort {
+  kinds?: readonly CaptureKind[];
+  record(kind: CaptureKind): Promise<Recording>;
+  still?(): Promise<CaptureStill>;
+}
+
 export interface Switch {
   key: string;
   label: string;
@@ -1966,6 +1990,7 @@ export interface SliccModel {
   tabs?: TabsPort;
   approvals?: ApprovalsPort;
   live?: LivePort;
+  capture?: CapturePort;
   switches?: SwitchesPort;
   follow?: FollowPort;
   vault?: VaultPort;

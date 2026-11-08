@@ -1,9 +1,10 @@
 import { Emitter } from '../model/emitter.ts';
 import type { LiveItem, LivePort, Switch, SwitchesPort } from '../model/types.ts';
 
-export type LiveScenario = 'screen' | 'both';
+export type LiveScenario = 'screen' | 'both' | 'empty';
 
 export function liveFixtures(scenario: LiveScenario, now = Date.now()): LiveItem[] {
+  if (scenario === 'empty') return [];
   const screen: LiveItem = {
     id: 'live-screen',
     kind: 'screen',
