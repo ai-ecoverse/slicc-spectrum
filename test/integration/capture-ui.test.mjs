@@ -370,7 +370,7 @@ test('without endedAt a live chip stays red and ticking', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
-test('at 420 px an ended chip keeps the neutral dot, label and Dismiss', async (t) => {
+test('at 420 px an ended chip keeps Ended with the neutral dot, label and Dismiss', async (t) => {
   const page = await open(t, { live: 'ended' });
   await resize(page, 420);
   await page.until(() => window.$('slicc-app', 'slicc-live')?.hasAttribute('compact') === true);
@@ -385,6 +385,7 @@ test('at 420 px an ended chip keeps the neutral dot, label and Dismiss', async (
       const button = chip.querySelector('[data-action=live-act]').getBoundingClientRect();
       return {
         text: chip.querySelector('.text').innerText,
+        endedWord: chip.querySelector('.ended')?.textContent.trim() ?? null,
         ended: chip.hasAttribute('data-ended'),
         button: chip.querySelector('[data-action=live-act]').textContent.trim(),
         dot: getComputedStyle(chip.querySelector('.dot')).backgroundColor,
@@ -393,10 +394,28 @@ test('at 420 px an ended chip keeps the neutral dot, label and Dismiss', async (
     });
   });
   assert.deepEqual(
-    narrow.map(({ text, ended, button, fits }) => ({ text, ended, button, fits })),
+    narrow.map(({ text, endedWord, ended, button, fits }) => ({
+      text,
+      endedWord,
+      ended,
+      button,
+      fits,
+    })),
     [
-      { text: 'Recording screen', ended: false, button: 'Stop', fits: true },
-      { text: 'Recording microphone', ended: true, button: 'Dismiss', fits: true },
+      {
+        text: 'Recording screen',
+        endedWord: null,
+        ended: false,
+        button: 'Stop',
+        fits: true,
+      },
+      {
+        text: 'Recording microphone · Ended',
+        endedWord: '· Ended',
+        ended: true,
+        button: 'Dismiss',
+        fits: true,
+      },
     ]
   );
   assert.notEqual(narrow[0].dot, narrow[1].dot);

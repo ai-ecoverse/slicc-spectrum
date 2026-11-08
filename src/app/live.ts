@@ -118,10 +118,19 @@ export class SliccLive extends ModelElement {
 
   #chip(item: LiveItem): TemplateResult {
     const ended = item.endedAt != null;
-    const rest = liveLine({ ...item, label: '' }, this.now);
+    const rest = [item.what, item.asker].filter(Boolean).join(' · ');
+    const stamp = ended ? null : elapsed(this.now - item.since);
     return html`<div class="chip" role="listitem" data-id=${item.id} data-kind=${item.kind} ?data-ended=${ended}>
       <span class="dot" aria-hidden="true"></span>
-      <span class="text" title=${liveLine(item, this.now)}><span class="label">${item.label}</span><span class="detail"> · ${rest}</span></span>
+      <span class="text" title=${liveLine(item, this.now)}
+        ><span class="label">${item.label}</span>${
+          rest ? html`<span class="detail"> · ${rest}</span>` : nothing
+        }${
+          ended
+            ? html`<span class="ended"> · Ended</span>`
+            : html`<span class="detail"> · ${stamp}</span>`
+        }</span
+      >
       <swc-action-button size="s" quiet data-action="live-act" accessible-label=${`${item.action.label}: ${item.label}`} @click=${() => this.model?.live?.act(item.id)}>${item.action.label}</swc-action-button>
     </div>`;
   }
