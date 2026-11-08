@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
+import { clickApproval, waitApprovalArmed } from './approval-click.mjs';
 import { launch } from './chrome.mjs';
 
 const chrome = await launch();
@@ -131,9 +132,28 @@ test('a press that started before Always allow appeared does not count', async (
   await mouse(page, 'mouseReleased', always);
   await settle(300);
   assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), []);
-  await settle(1200);
+  await clickApproval(page, 'always');
+  await page.until(() => window.model.approvals.decisions.length === 1);
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
+    ['sudo-du', 'always'],
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('clickApproval waits for arming after Always allow appears', async (t) => {
+  const page = await open(t, 1440);
+  await arm(page, 800);
+  await page.evaluate(() => window.ask('sudo-du', { judging: true }));
+  await page.until(() => !!window.approvals().querySelector('[data-verdict=checking]'));
+  await waitApprovalArmed(page);
+  await page.evaluate((reason) => window.ask('sudo-du', { verdict: { level: 1, reason } }), reason);
+  await page.until(() => !!window.approvals().querySelector('[data-action=always]'));
+  const always = await page.evaluate(() => window.center('always'));
   await mouse(page, 'mousePressed', always);
   await mouse(page, 'mouseReleased', always);
+  await settle(100);
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), []);
+  await clickApproval(page, 'always');
   await page.until(() => window.model.approvals.decisions.length === 1);
   assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
     ['sudo-du', 'always'],

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
+import { clickApproval, waitApprovalArmed } from './approval-click.mjs';
 import { launch } from './chrome.mjs';
 
 const chrome = await launch();
@@ -15,7 +16,7 @@ async function open(t, approvals) {
   });
   await page.until(() => !!window.approvals().querySelector('dialog[open] pre.command'));
   await page.until(() => !!window.approvals().querySelector('[data-action=once]'));
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  await waitApprovalArmed(page);
   return page;
 }
 
@@ -65,9 +66,9 @@ for (const [scenario, control, shown] of [
         window.offered = { command: port.list().find((item) => item.id === id).command, decision };
         return decide(id, decision);
       };
-      window.approvals().querySelector('[data-action=always]').click();
       return true;
     });
+    await clickApproval(page, 'always');
     await page.until(() => window.model.approvals.decisions.length === 1);
     assert.deepEqual(await page.evaluate(() => window.offered), { command, decision: 'always' });
     assert.deepEqual(page.errors, []);
