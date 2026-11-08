@@ -109,6 +109,7 @@ export class SliccStatusLabel extends LitElement {
   }
 
   #wanted(): string {
+    if (this.state === 'stopped') return this.text;
     const base = this.#label() || this.text;
     return base && this.note ? `${this.note} · ${base}` : base;
   }

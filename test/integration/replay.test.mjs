@@ -479,3 +479,62 @@ test('stopping a tool-only reply that joined a run keeps it in that run, which r
     { own: false, steps: 2, top: before }
   );
 });
+
+test('stopping after a cluster label arrives leaves the header empty for Spectrum’s stopped text', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    const call = (id, title, status) => ({
+      id,
+      name: 'bash',
+      title,
+      input: title,
+      output: '',
+      status,
+      paths: [],
+    });
+    window.stopLabel = {
+      id: 'stop-label-run',
+      role: 'assistant',
+      status: 'done',
+      createdAt: now,
+      model: 'claude-opus-5-5',
+      parts: [
+        { type: 'tool', tool: call('stop-l1', 'Read the error log', 'done') },
+        { type: 'tool', tool: call('stop-l2', 'Check the working tree', 'done') },
+      ],
+    };
+    const added = [
+      { id: 'stop-label-user', role: 'user', text: 'Investigate then stop', createdAt: now },
+      window.stopLabel,
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    agent.toolLabel = async (_agentId, callIds) =>
+      callIds[0] === 'stop-l1' ? 'Find why Celsius requests get Fahrenheit' : null;
+    agent.select('cone-sliccy');
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.chatPart('swc-conversation-turn[data-id="stop-label-run"] slicc-status-label')
+        ?.textContent === 'Find why Celsius requests get Fahrenheit'
+  );
+  await page.evaluate(() => {
+    window.stopLabel.status = 'stopped';
+    window.stopLabel.parts[1].tool.status = 'cancelled';
+    window.model.agent.emit('message', { agentId: 'cone-sliccy', message: window.stopLabel });
+    return true;
+  });
+  await page.until(
+    () =>
+      window
+        .chatPart('swc-conversation-turn[data-id="stop-label-run"] swc-response-status')
+        ?.getAttribute('status') === 'stopped' &&
+      window.chatPart('swc-conversation-turn[data-id="stop-label-run"] slicc-status-label')
+        ?.textContent === ''
+  );
+  assert.deepEqual(page.errors, []);
+});

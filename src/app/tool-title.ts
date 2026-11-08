@@ -2,7 +2,7 @@ import type { ToolCall } from '../model/types.ts';
 import { guard } from './guard.ts';
 
 const shellLead =
-  /^(git|npm|npx|pnpm|yarn|bun|node|deno|python3?|pip3?|curl|wget|ls|cd|cat|rm|mv|cp|chmod|chown|mkdir|touch|tar|zip|unzip|docker|kubectl|gh|wrangler|lsof|find|grep|rg|sed|awk|ssh|scp|rsync|make|cargo|go|ruby|perl|php|java|javac|swift|xcodebuild|brew|apt|yum|sudo|env|export|echo|printf|true|false|test|bash|sh|zsh|fish|source|\.\/)/i;
+  /^(?:(?:git|npm|npx|pnpm|yarn|bun|node|deno|python3?|pip3?|curl|wget|ls|cd|cat|rm|mv|cp|chmod|chown|mkdir|touch|tar|zip|unzip|docker|kubectl|gh|wrangler|lsof|find|grep|rg|sed|awk|ssh|scp|rsync|make|cargo|go|ruby|perl|php|java|javac|swift|xcodebuild|brew|apt|yum|sudo|env|export|echo|printf|true|false|test|bash|sh|zsh|fish|source)(?=\s|$)|(?:\.\/))/;
 
 export function rawTitle(title: string): boolean {
   const text = title.trim();
@@ -10,7 +10,7 @@ export function rawTitle(title: string): boolean {
   if (text.length > 80) return true;
   if (/[|;&><`]|\$\(|&&|\|\|/.test(text)) return true;
   if (/^-[A-Za-z0-9]/.test(text)) return true;
-  if (shellLead.test(text)) return true;
+  if (/^[a-z]/.test(text) && shellLead.test(text)) return true;
   if (!/\s/.test(text) && (/^[./~]/.test(text) || /\.[A-Za-z0-9]+$/.test(text))) return true;
   return false;
 }
