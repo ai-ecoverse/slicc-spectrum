@@ -40,7 +40,10 @@ export function watchTitles(model: SliccModel, update: () => void): () => void {
   const seen = new Map<string, string>();
   const check = (id: string) => {
     const agent = model.agent.list().find((candidate) => candidate.id === id);
-    if (!agent) return;
+    if (!agent) {
+      if (seen.delete(id)) update();
+      return;
+    }
     const title = agentTitle(model, agent);
     if (seen.get(id) === title) return;
     seen.set(id, title);
@@ -49,6 +52,11 @@ export function watchTitles(model: SliccModel, update: () => void): () => void {
   const stops = [
     model.agent.on('messages', check),
     model.agent.on('message', ({ agentId }) => check(agentId)),
+    model.agent.on('agents', (agents) => {
+      const live = new Set(agents.map((agent) => agent.id));
+      for (const id of seen.keys()) if (!live.has(id)) check(id);
+      for (const agent of agents) check(agent.id);
+    }),
   ];
   return () => {
     for (const stop of stops) stop();

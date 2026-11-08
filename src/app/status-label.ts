@@ -1,6 +1,7 @@
 import { html, LitElement, type TemplateResult } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import type { AgentPort, SliccModel, ToolCall } from '../model/types.ts';
+import { rawTitle } from './tool-title.ts';
 
 interface Labels {
   done: Map<string, string>;
@@ -70,9 +71,15 @@ export class SliccStatusLabel extends LitElement {
     return `${this.agent} ${this.calls[0]?.id ?? ''}`;
   }
 
+  #needsLabel(): boolean {
+    if (this.calls.length >= 2) return true;
+    const only = this.calls[0];
+    return !!only && rawTitle(only.title);
+  }
+
   #ask(): void {
     const port = this.model?.agent;
-    if (this.calls.length < 2 || !port?.toolLabel) return;
+    if (!this.#needsLabel() || !port?.toolLabel) return;
     const store = cache(port);
     const key = this.#key;
     const anchor = this.#anchor;
@@ -102,7 +109,7 @@ export class SliccStatusLabel extends LitElement {
   }
 
   #wanted(): string {
-    const base = (this.state === 'complete' && this.#label()) || this.text;
+    const base = this.#label() || this.text;
     return base && this.note ? `${this.note} · ${base}` : base;
   }
 

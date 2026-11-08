@@ -440,6 +440,7 @@ const labels: Record<string, string> = {
   'Count the routes': 'Walk through every kind of tool',
   'Ask the API for Lisbon': 'Compare the docs with the live API',
   'Switch the page to Celsius': 'Move the forecast docs to Celsius, then build and test the site',
+  'git status --short': 'Summarise the working tree',
   [fixtures(`${repro}/round2/fixtures`)]: replayLabel,
 };
 

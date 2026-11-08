@@ -45,9 +45,9 @@ import type {
 } from '../model/types.ts';
 import { ansi, type Surface } from './ansi.ts';
 import { end } from './command.ts';
-import { guard } from './guard.ts';
 import { markdown } from './markdown.ts';
 import { type Copied, signInDetails, signInText } from './sign-in.ts';
+import { headline } from './tool-title.ts';
 import type { ViewSet } from './view-state.ts';
 
 export interface Handlers {
@@ -433,10 +433,6 @@ export function step(
       ${owner ? html`<span class=${owner.stamp === false ? 'sr' : 'ran'}>Ran at ${when(owner.at)}</span>` : nothing}
     </div>`,
   ];
-}
-
-function headline(call: ToolCall): string {
-  return guard(`${call.name} ${call.title}`.trim(), call.status === 'running');
 }
 
 type Phase = 'active' | 'complete' | 'stopped';
