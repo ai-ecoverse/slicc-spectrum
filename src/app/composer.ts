@@ -59,6 +59,10 @@ export function tooLarge(bytes: number): string {
   return `Too large: attachments are limited to ${size(bytes)}`;
 }
 
+export function smallest(limits: AttachmentLimits = {}): number {
+  return Math.min(limit, limits.image ?? limit, limits.text ?? limit, limits.file ?? limit);
+}
+
 export function together(bytes: number): string {
   return `These attachments add up to more than ${size(bytes)}; send them in separate messages.`;
 }
