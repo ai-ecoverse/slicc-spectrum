@@ -1195,6 +1195,10 @@ export class SliccComposer extends ThemedElement {
     return error.message || fallback;
   }
 
+  #errorDetail(error: string): string {
+    return error.replace(' is switched off.', ' is off.').replace(', Capture and devices.', '.');
+  }
+
   async screenshot(): Promise<void> {
     const capture = this.model?.capture;
     if (capture?.still) {
@@ -1751,8 +1755,11 @@ export class SliccComposer extends ThemedElement {
   }
 
   #attachment(attachment: Attachment): TemplateResult {
-    const detail =
-      attachment.error ?? (attachment.kind === 'secret' ? 'Secret' : size(attachment.size));
+    const detail = attachment.error
+      ? this.#errorDetail(attachment.error)
+      : attachment.kind === 'secret'
+        ? 'Secret'
+        : size(attachment.size);
     return html`<swc-upload-attachment
       slot="attachment"
       type="card"
@@ -1760,12 +1767,12 @@ export class SliccComposer extends ThemedElement {
       data-id=${attachment.id}
       data-kind=${attachment.kind}
       ?data-error=${!!attachment.error}
-      title=${attachment.path ?? attachment.name}
+      title=${attachment.error ?? attachment.path ?? attachment.name}
       @swc-upload-attachment-dismiss=${() => this.detach(attachment.id)}
     >
       ${this.#thumbnail(attachment)}
       <span slot="title">${attachment.name}</span>
-      <span slot="subtitle" class=${attachment.error ? 'failed' : ''}>${detail}</span>
+      <span slot="subtitle" class=${attachment.error ? 'failed' : ''} title=${attachment.error ?? nothing}>${detail}</span>
     </swc-upload-attachment>`;
   }
 

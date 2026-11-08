@@ -118,6 +118,7 @@ export class DummyCapture implements CapturePort {
     if (this.#deny || !allowed(this.#switches, 'screen')) denied('Screen capture');
     await this.#clock.sleep();
     const id = 'capture-still';
+    if (this.#active.has(id)) throw new DOMException('Already capturing', 'InvalidStateError');
     const item: LiveItem = {
       id,
       kind: 'screen',
@@ -127,13 +128,27 @@ export class DummyCapture implements CapturePort {
       since: Date.now(),
       action: { label: 'Cancel' },
     };
-    this.#live?.add(item);
-    await this.#clock.sleep();
-    if (this.#live?.items().some((row) => row.id === id)) this.#prior?.(id);
-    return {
-      blob: new Blob([PNG], { type: 'image/png' }),
-      mimeType: 'image/png',
-      name: 'screenshot.png',
-    };
+    return await new Promise<CaptureStill>((resolve, reject) => {
+      let done = false;
+      const finish = (still: CaptureStill | null, error?: Error) => {
+        if (done) return;
+        done = true;
+        this.#active.delete(id);
+        if (this.#live?.items().some((row) => row.id === id)) this.#prior?.(id);
+        if (error) reject(error);
+        else if (still) resolve(still);
+      };
+      const abort = () => finish(null, new DOMException('Screenshot cancelled', 'AbortError'));
+      this.#active.set(id, { stop: abort, cancel: abort });
+      this.#live?.add(item);
+      void this.#clock.sleep().then(() => {
+        if (done) return;
+        finish({
+          blob: new Blob([PNG], { type: 'image/png' }),
+          mimeType: 'image/png',
+          name: 'screenshot.png',
+        });
+      });
+    });
   }
 }

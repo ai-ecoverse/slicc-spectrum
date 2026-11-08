@@ -28,6 +28,7 @@ async function open(t, params = {}) {
         name: chip.querySelector('[slot=title]')?.textContent,
         error: chip.hasAttribute('data-error'),
         detail: chip.querySelector('[slot=subtitle]')?.textContent,
+        title: chip.getAttribute('title'),
       }));
     window.liveChips = () =>
       [
@@ -55,6 +56,7 @@ test('without a capture port, screenshot with no browser tab shows an error chip
       name: 'screenshot.png',
       error: true,
       detail: 'No screen or browser tab to screenshot',
+      title: 'No screen or browser tab to screenshot',
     },
   ]);
   assert.deepEqual(page.errors, []);
@@ -121,7 +123,13 @@ test('a denied capture with switches on shows the port’s own reason', async (t
     window.composer().shadowRoot.querySelector('sp-menu-item[value=screenshot]').click()
   );
   await page.until(() => window.chips().some((chip) => chip.error));
-  assert.equal(await page.evaluate(() => window.chips()[0].detail), 'Screen capture was denied');
+  assert.deepEqual(await page.evaluate(() => window.chips()[0]), {
+    kind: 'file',
+    name: 'screenshot.png',
+    error: true,
+    detail: 'Screen capture was denied',
+    title: 'Screen capture was denied',
+  });
   assert.deepEqual(page.errors, []);
 });
 
@@ -133,9 +141,16 @@ test('screenshot with Screen switched off points to Settings', async (t) => {
     window.composer().shadowRoot.querySelector('sp-menu-item[value=screenshot]').click()
   );
   await page.until(() => window.chips().some((chip) => chip.error));
-  assert.equal(
-    await page.evaluate(() => window.chips()[0].detail),
-    'Screen capture is switched off. Turn it on in Settings, Capture and devices.'
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const chip = window.chips()[0];
+      return { detail: chip.detail, title: chip.title, hasSettings: /Settings/.test(chip.detail) };
+    }),
+    {
+      detail: 'Screen capture is off. Turn it on in Settings.',
+      title: 'Screen capture is switched off. Turn it on in Settings, Capture and devices.',
+      hasSettings: true,
+    }
   );
   assert.deepEqual(page.errors, []);
 });
@@ -148,10 +163,36 @@ test('record audio with Microphone switched off points to Settings', async (t) =
     window.composer().shadowRoot.querySelector('sp-menu-item[value=record-audio]').click()
   );
   await page.until(() => window.chips().some((chip) => chip.error));
-  assert.equal(
-    await page.evaluate(() => window.chips()[0].detail),
-    'Microphone is switched off. Turn it on in Settings, Capture and devices.'
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const chip = window.chips()[0];
+      return { detail: chip.detail, title: chip.title, hasSettings: /Settings/.test(chip.detail) };
+    }),
+    {
+      detail: 'Microphone is off. Turn it on in Settings.',
+      title: 'Microphone is switched off. Turn it on in Settings, Capture and devices.',
+      hasSettings: true,
+    }
   );
+  assert.deepEqual(page.errors, []);
+});
+
+test('cancelling Taking a photo attaches nothing', async (t) => {
+  const page = await open(t, { capture: 'on', live: 'off', delay: '30' });
+  await openMenu(page);
+  await page.evaluate(() =>
+    window.composer().shadowRoot.querySelector('sp-menu-item[value=screenshot]').click()
+  );
+  await page.until(() => window.liveChips().includes('capture-still'));
+  await page.evaluate(() =>
+    window
+      .$('slicc-app', 'slicc-live')
+      .shadowRoot.querySelector('[data-id=capture-still] [data-action=live-act]')
+      .click()
+  );
+  await page.until(() => !window.liveChips().includes('capture-still'));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(await page.evaluate(() => window.composer().attachments.length), 0);
   assert.deepEqual(page.errors, []);
 });
 
