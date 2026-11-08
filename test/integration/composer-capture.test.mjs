@@ -114,13 +114,109 @@ test('Record audio shows a live chip and attaches after Stop', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
-test('a denied capture attaches a visible reason', async (t) => {
-  const page = await open(t, { capture: 'deny' });
+test('a denied capture with switches on shows the port’s own reason', async (t) => {
+  const page = await open(t, { capture: 'deny', switches: 'capture' });
   await openMenu(page);
   await page.evaluate(() =>
     window.composer().shadowRoot.querySelector('sp-menu-item[value=screenshot]').click()
   );
   await page.until(() => window.chips().some((chip) => chip.error));
   assert.equal(await page.evaluate(() => window.chips()[0].detail), 'Screen capture was denied');
+  assert.deepEqual(page.errors, []);
+});
+
+test('screenshot with Screen switched off points to Settings', async (t) => {
+  const page = await open(t, { capture: 'on', switches: 'capture' });
+  await page.evaluate(() => window.model.switches.set('screen', false));
+  await openMenu(page);
+  await page.evaluate(() =>
+    window.composer().shadowRoot.querySelector('sp-menu-item[value=screenshot]').click()
+  );
+  await page.until(() => window.chips().some((chip) => chip.error));
+  assert.equal(
+    await page.evaluate(() => window.chips()[0].detail),
+    'Screen capture is switched off. Turn it on in Settings, Capture and devices.'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('record audio with Microphone switched off points to Settings', async (t) => {
+  const page = await open(t, { capture: 'on', switches: 'capture' });
+  await page.evaluate(() => window.model.switches.set('microphone', false));
+  await openMenu(page);
+  await page.evaluate(() =>
+    window.composer().shadowRoot.querySelector('sp-menu-item[value=record-audio]').click()
+  );
+  await page.until(() => window.chips().some((chip) => chip.error));
+  assert.equal(
+    await page.evaluate(() => window.chips()[0].detail),
+    'Microphone is switched off. Turn it on in Settings, Capture and devices.'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('text with an error chip sends the text only', async (t) => {
+  const page = await open(t, { capture: 'deny', switches: 'capture' });
+  await page.evaluate(() => {
+    window.sent = [];
+    const send = window.model.agent.send.bind(window.model.agent);
+    window.model.agent.send = async (id, input) => {
+      window.sent.push({ id, input });
+      return send(id, input);
+    };
+  });
+  await openMenu(page);
+  await page.evaluate(() =>
+    window.composer().shadowRoot.querySelector('sp-menu-item[value=screenshot]').click()
+  );
+  await page.until(() => window.chips().some((chip) => chip.error));
+  await page.evaluate(() => {
+    window.composer().value = 'Keep the tide notes';
+    window.composer().send();
+  });
+  await page.until(() => window.sent.length === 1);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const input = window.sent[0].input;
+      return {
+        text: input.text,
+        attachments: (input.attachments ?? []).map((attachment) => [
+          attachment.name,
+          !!attachment.error,
+        ]),
+        left: window.composer().attachments.length,
+      };
+    }),
+    { text: 'Keep the tide notes', attachments: [], left: 0 }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('an error chip alone does not send', async (t) => {
+  const page = await open(t, { capture: 'deny', switches: 'capture' });
+  await page.evaluate(() => {
+    window.sent = [];
+    const send = window.model.agent.send.bind(window.model.agent);
+    window.model.agent.send = async (id, input) => {
+      window.sent.push({ id, input });
+      return send(id, input);
+    };
+  });
+  await openMenu(page);
+  await page.evaluate(() =>
+    window.composer().shadowRoot.querySelector('sp-menu-item[value=screenshot]').click()
+  );
+  await page.until(() => window.chips().some((chip) => chip.error));
+  await page.evaluate(() => window.composer().send());
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      sent: window.sent.length,
+      chips: window
+        .composer()
+        .attachments.map((attachment) => [attachment.name, !!attachment.error]),
+    })),
+    { sent: 0, chips: [['screenshot.png', true]] }
+  );
   assert.deepEqual(page.errors, []);
 });

@@ -1169,12 +1169,29 @@ export class SliccComposer extends ThemedElement {
     ];
   }
 
-  #captureError(error: unknown, fallback: string): string {
+  #switchOff(key: 'screen' | 'camera' | 'microphone'): boolean {
+    const found = this.model?.switches?.list().find((item) => item.key === key);
+    return !!found && !found.on;
+  }
+
+  #captureError(
+    error: unknown,
+    fallback: string,
+    switchKey?: 'screen' | 'camera' | 'microphone'
+  ): string {
     if (!(error instanceof Error)) return fallback;
+    if (error.name === 'AbortError') return '';
+    if (error.name === 'NotAllowedError' && switchKey && this.#switchOff(switchKey)) {
+      const labels = {
+        screen: 'Screen capture',
+        camera: 'Camera',
+        microphone: 'Microphone',
+      } as const;
+      return `${labels[switchKey]} is switched off. Turn it on in Settings, Capture and devices.`;
+    }
     if (error.name === 'NotAllowedError') return error.message || fallback;
     if (error.name === 'NotSupportedError')
       return error.message || 'Recording isn’t supported here';
-    if (error.name === 'AbortError') return '';
     return error.message || fallback;
   }
 
@@ -1185,7 +1202,7 @@ export class SliccComposer extends ThemedElement {
         const shot = await capture.still();
         await this.addFiles([new File([shot.blob], shot.name, { type: shot.mimeType })]);
       } catch (error) {
-        const message = this.#captureError(error, 'Screen capture was denied');
+        const message = this.#captureError(error, 'Screen capture was denied', 'screen');
         if (message) this.#failAttach('screenshot.png', message, 'image/png');
       }
       return;
@@ -1229,11 +1246,10 @@ export class SliccComposer extends ThemedElement {
     } catch (error) {
       this.#session = null;
       this.recording = null;
-      const fallback =
-        kind === 'audio' ? 'Microphone access was denied' : 'Camera access was denied';
-      const message = this.#captureError(error, fallback);
-      if (message)
-        this.#failAttach('recording.webm', message, kind === 'audio' ? 'audio/webm' : 'video/webm');
+      const mic = kind === 'audio';
+      const fallback = mic ? 'Microphone access was denied' : 'Camera access was denied';
+      const message = this.#captureError(error, fallback, mic ? 'microphone' : 'camera');
+      if (message) this.#failAttach('recording.webm', message, mic ? 'audio/webm' : 'video/webm');
     }
   }
 
