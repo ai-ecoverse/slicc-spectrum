@@ -1005,7 +1005,7 @@ Later backed by: BIOS.
 
 Later backed by: BIOS.
 `list()` returns the `Switch`es (`key`, `label`, `on`), in order; emit `switches` when they change. `set(key, on)` turns one on or off.
-Settings shows them under "Capture and devices", one switch each (`[data-surface=switches]`, each `sp-switch[data-id={key}]`), with "Programs can capture only what’s on here. Turning one off stops what’s live under it."; without the port, or with an empty list, the section isn't there.
+Settings shows them under "Capture and devices", one switch each (`[data-surface=switches]`, each `sp-switch[data-id={key}]`), with "Programs and linked devices can use only what’s on here. Turning one off stops what’s live under it."; without the port, or with an empty list, the section isn't there.
 
 #### `vault` (optional)
 

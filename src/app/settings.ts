@@ -841,7 +841,7 @@ export class SliccSettings extends ThemedElement {
                 html`<sp-switch .checked=${live(item.on)} data-id=${item.key} @change=${(event: Event) => port.set(item.key, this.#checked(event))}>${item.label}</sp-switch>`
             )}
           </div>
-          <p class="hint">Programs can capture only what’s on here. Turning one off stops what’s live under it.</p>
+          <p class="hint">Programs and linked devices can use only what’s on here. Turning one off stops what’s live under it.</p>
         </div>
       </div>
       </div>`;
