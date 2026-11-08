@@ -303,6 +303,106 @@ test('at 420 px a chip keeps the dot, the label and the button, and fits the wid
   assert.deepEqual(page.errors, []);
 });
 
+test('an ended chip is neutral, frozen, and Dismiss calls act', async (t) => {
+  const page = await open(t, { live: 'ended' });
+  await page.until(() => window.chips().length === 2);
+  const first = await page.evaluate(() => {
+    const chips = [...window.live().querySelectorAll('[data-id]')];
+    const colors = chips.map(
+      (chip) => getComputedStyle(chip.querySelector('.dot')).backgroundColor
+    );
+    return {
+      chips: window.chips(),
+      ended: chips.map((chip) => !!chip.hasAttribute('data-ended')),
+      colors,
+      same: colors[0] === colors[1],
+    };
+  });
+  assert.deepEqual(
+    first.chips.map(({ id, button }) => [id, button]),
+    [
+      ['live-screen', 'Stop'],
+      ['live-microphone', 'Dismiss'],
+    ]
+  );
+  assert.deepEqual(first.ended, [false, true]);
+  assert.equal(first.same, false);
+  assert.match(first.chips[0].text, /^Recording screen · Entire screen · sliccy · 0:4\d$/);
+  assert.equal(
+    first.chips[1].text,
+    'Recording microphone · Desk microphone · Seat 2 (Mara) via docs-pass · Ended'
+  );
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  const later = await page.evaluate(() => window.chips()[1].text);
+  assert.equal(later, first.chips[1].text);
+  assert.match((await page.evaluate(() => window.chips()))[0].text, /0:4\d$/);
+  await press(page, 'live', '[data-id=live-microphone][data-ended] [data-action=live-act]');
+  await page.until(() => window.chips().length === 1);
+  assert.deepEqual(await page.evaluate(() => window.model.live.acted), ['live-microphone']);
+  assert.equal(
+    await page.evaluate(() => !!window.live().querySelector('[data-id=live-screen][data-ended]')),
+    false
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('without endedAt a live chip stays red and ticking', async (t) => {
+  const page = await open(t, { live: 'screen' });
+  await page.until(() => window.chips().length === 1);
+  const first = await page.evaluate(() => {
+    const chip = window.live().querySelector('[data-id]');
+    return {
+      ended: chip.hasAttribute('data-ended'),
+      text: chip.querySelector('.text').innerText,
+      button: chip.querySelector('[data-action=live-act]').textContent.trim(),
+      red: getComputedStyle(chip.querySelector('.dot')).backgroundColor,
+    };
+  });
+  assert.equal(first.ended, false);
+  assert.equal(first.button, 'Stop');
+  assert.match(first.text, /^Recording screen · Entire screen · sliccy · 0:4\d$/);
+  assert.notEqual(first.red, 'rgba(0, 0, 0, 0)');
+  const seconds = (text) => Number(text.split(':').at(-1));
+  await page.until((before) => {
+    const now = window.chips()[0]?.text.split(':').at(-1);
+    return Number(now) > before;
+  }, seconds(first.text));
+  assert.deepEqual(page.errors, []);
+});
+
+test('at 420 px an ended chip keeps the neutral dot, label and Dismiss', async (t) => {
+  const page = await open(t, { live: 'ended' });
+  await resize(page, 420);
+  await page.until(() => window.$('slicc-app', 'slicc-live')?.hasAttribute('compact') === true);
+  await page.until(() => {
+    const ended = window.live()?.querySelector('[data-ended]');
+    return !!ended && ended.getBoundingClientRect().right <= innerWidth;
+  });
+  const narrow = await page.evaluate(() => {
+    const chips = [...window.live().querySelectorAll('[data-id]')];
+    return chips.map((chip) => {
+      const box = chip.getBoundingClientRect();
+      const button = chip.querySelector('[data-action=live-act]').getBoundingClientRect();
+      return {
+        text: chip.querySelector('.text').innerText,
+        ended: chip.hasAttribute('data-ended'),
+        button: chip.querySelector('[data-action=live-act]').textContent.trim(),
+        dot: getComputedStyle(chip.querySelector('.dot')).backgroundColor,
+        fits: box.right <= innerWidth && button.right <= innerWidth && button.width > 0,
+      };
+    });
+  });
+  assert.deepEqual(
+    narrow.map(({ text, ended, button, fits }) => ({ text, ended, button, fits })),
+    [
+      { text: 'Recording screen', ended: false, button: 'Stop', fits: true },
+      { text: 'Recording microphone', ended: true, button: 'Dismiss', fits: true },
+    ]
+  );
+  assert.notEqual(narrow[0].dot, narrow[1].dot);
+  assert.deepEqual(page.errors, []);
+});
+
 test('Settings lists the capture switches in order and each one calls set', async (t) => {
   const page = await open(t, { switches: 'capture' });
   await page.evaluate(() => {
