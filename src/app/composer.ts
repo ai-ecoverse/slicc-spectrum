@@ -22,6 +22,7 @@ import { live } from 'lit/directives/live.js';
 import type {
   AgentPort,
   Attachment,
+  AttachmentLimits,
   CaptureKind,
   Outgoing,
   Recording,
@@ -52,7 +53,21 @@ import {
   valueField,
 } from './vault.ts';
 
-export const limit = 25 * 1024 * 1024;
+export const limit = 100 * 1024 * 1024;
+
+export function tooLarge(bytes: number): string {
+  return `Too large: attachments are limited to ${size(bytes)}`;
+}
+
+export function together(bytes: number): string {
+  return `These attachments add up to more than ${size(bytes)}; send them in separate messages.`;
+}
+
+function carried(attachment: Attachment): boolean {
+  return (
+    attachment.url !== undefined || attachment.text !== undefined || attachment.path === undefined
+  );
+}
 
 type Kept = Pick<Attachment, 'name' | 'mimeType' | 'size'>;
 type Waiting = {
@@ -930,6 +945,7 @@ export class SliccComposer extends ThemedElement {
   }
 
   protected updated(changed: Map<string, unknown>): void {
+    this.#guard();
     if (changed.has('popup'))
       this.renderRoot
         .querySelector('.item[aria-selected="true"]')
@@ -1064,11 +1080,55 @@ export class SliccComposer extends ThemedElement {
     return this.model?.agent.busy(this.#agent) ?? false;
   }
 
+  #limits(): AttachmentLimits {
+    return this.model?.agent.attachmentLimits?.() ?? {};
+  }
+
+  #cap(attachment: Attachment): number {
+    return Math.min(limit, this.#limits()[attachment.kind] ?? limit);
+  }
+
+  #over(attachment: Attachment): boolean {
+    return (
+      carried(attachment) && attachment.size > (attachment.error ? limit : this.#cap(attachment))
+    );
+  }
+
+  #problem(attachment: Attachment): string | undefined {
+    return (
+      attachment.error ?? (this.#over(attachment) ? tooLarge(this.#cap(attachment)) : undefined)
+    );
+  }
+
+  #together(): string | null {
+    const total = this.#limits().total;
+    if (total === undefined) return null;
+    const sum = this.attachments
+      .filter((attachment) => !attachment.error && carried(attachment))
+      .reduce((bytes, attachment) => bytes + attachment.size, 0);
+    return sum > total ? together(total) : null;
+  }
+
+  #blocked(): boolean {
+    return this.attachments.some((attachment) => this.#over(attachment)) || !!this.#together();
+  }
+
+  #guard(): void {
+    const field = this.#field as Field & { disabled: boolean; generating: boolean };
+    const blocked = this.#blocked();
+    void field.updateComplete.then(() => {
+      const button = (field.shadowRoot as ShadowRoot).querySelector(
+        '.swc-PromptField-send, .swc-PromptField-stop'
+      ) as HTMLElement & { disabled: boolean };
+      button.disabled = (field.disabled || blocked) && !field.generating;
+    });
+  }
+
   send(mode: SendMode = 'send'): void {
     const model = this.model;
     const text = this.value.trim();
     const attachments = this.attachments.filter((attachment) => !attachment.error);
-    if (!model || (!text && attachments.length === 0) || this.#held()) return;
+    if (!model || (!text && attachments.length === 0) || this.#held() || this.#blocked()) return;
     if (model.seat) {
       this.#propose(model, text);
       return;
@@ -1128,7 +1188,7 @@ export class SliccComposer extends ThemedElement {
         added.push({
           ...base,
           kind: 'file',
-          error: `Too large: attachments are limited to ${size(limit)}`,
+          error: tooLarge(limit),
         });
         continue;
       }
@@ -1741,22 +1801,23 @@ export class SliccComposer extends ThemedElement {
     recognition.start();
   }
 
-  #thumbnail(attachment: Attachment): TemplateResult {
-    if (attachment.kind === 'image' && attachment.url && !attachment.error)
+  #thumbnail(attachment: Attachment, problem: string | undefined): TemplateResult {
+    if (attachment.kind === 'image' && attachment.url && !problem)
       return html`<img slot="thumbnail" src=${attachment.url} alt="" />`;
-    const icon = attachment.error
+    const icon = problem
       ? html`<swc-icon-alert-triangle></swc-icon-alert-triangle>`
       : attachment.kind === 'secret'
         ? html`<swc-icon-lock></swc-icon-lock>`
         : attachment.kind === 'text'
           ? html`<swc-icon-file-text></swc-icon-file-text>`
           : html`<swc-icon-file></swc-icon-file>`;
-    return html`<span slot="thumbnail" class="thumb" ?data-error=${!!attachment.error} aria-hidden="true">${icon}</span>`;
+    return html`<span slot="thumbnail" class="thumb" ?data-error=${!!problem} aria-hidden="true">${icon}</span>`;
   }
 
   #attachment(attachment: Attachment): TemplateResult {
-    const detail = attachment.error
-      ? this.#errorDetail(attachment.error)
+    const problem = this.#problem(attachment);
+    const detail = problem
+      ? this.#errorDetail(problem)
       : attachment.kind === 'secret'
         ? 'Secret'
         : size(attachment.size);
@@ -1766,13 +1827,13 @@ export class SliccComposer extends ThemedElement {
       dismissible
       data-id=${attachment.id}
       data-kind=${attachment.kind}
-      ?data-error=${!!attachment.error}
-      title=${attachment.error ?? attachment.path ?? attachment.name}
+      ?data-error=${!!problem}
+      title=${problem ?? attachment.path ?? attachment.name}
       @swc-upload-attachment-dismiss=${() => this.detach(attachment.id)}
     >
-      ${this.#thumbnail(attachment)}
+      ${this.#thumbnail(attachment, problem)}
       <span slot="title">${attachment.name}</span>
-      <span slot="subtitle" class=${attachment.error ? 'failed' : ''} title=${attachment.error ?? nothing}>${detail}</span>
+      <span slot="subtitle" class=${problem ? 'failed' : ''} title=${problem ?? nothing}>${detail}</span>
     </swc-upload-attachment>`;
   }
 
@@ -2051,12 +2112,18 @@ export class SliccComposer extends ThemedElement {
         .map((attachment) => attachment.name)
     );
     const missing = (this.reattach ?? []).filter((file) => !back.has(file.name));
+    const crowded = this.#together();
     return html`<div class="column" @drop=${this.#mark}>
         <span id="keys" class="sr" aria-hidden="true">${this.#instructions(busy)}</span>
         ${this.#hold()}
         ${this.#starters()}
         ${this.#queue()}
         ${this.#popup()}
+        ${
+          crowded
+            ? html`<p class="send-error" role="alert" data-send-error="together"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>${crowded}</span></p>`
+            : nothing
+        }
         <swc-prompt-field
           accessible-label="Message"
           loader=${this.#loader(busy)}

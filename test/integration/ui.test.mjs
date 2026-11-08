@@ -4734,7 +4734,7 @@ test('the drop zone over the chat says what it takes on an opaque surface, and h
     surface: 'drop',
     heading: 'Drop files to attach',
     description:
-      'Images, text and other files up to 25 MB each join your next message. Folders can’t be attached.',
+      'Images, text and other files up to 100 MB each join your next message. Folders can’t be attached.',
     icon: true,
     alpha: 1,
     status: 'Drop to attach files to your message',

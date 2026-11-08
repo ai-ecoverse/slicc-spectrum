@@ -355,7 +355,7 @@ const attachmentsMessage: UserMessage = {
       kind: 'file',
       mimeType: 'video/quicktime',
       size: 98_304_000,
-      error: 'Too large: attachments are limited to 25 MB',
+      error: 'Too large: attachments are limited to 100 MB',
     },
   ],
 };

@@ -55,6 +55,8 @@ export interface Attachment {
   error?: string;
 }
 
+export type AttachmentLimits = Partial<Record<AttachmentKind | 'total', number>>;
+
 export type MediaKind = 'image' | 'video' | 'audio';
 
 export interface Media {
@@ -294,6 +296,7 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   select(id: string): void;
   messages(agentId: string): readonly Message[];
   send(agentId: string, input: string | Outgoing): Promise<void>;
+  attachmentLimits?(): AttachmentLimits;
   stop(agentId: string): void;
   busy(agentId: string): boolean;
   queue(agentId: string): readonly UserMessage[];
