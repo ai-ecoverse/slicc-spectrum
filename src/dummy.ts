@@ -2,6 +2,8 @@ export type { ApprovalScenario } from './dummy/approvals.ts';
 export { approvalFixtures, DummyApprovals } from './dummy/approvals.ts';
 export type { ActionDraft, BrowserScenario } from './dummy/browser.ts';
 export { actionLimits, browserHistory, DummyBrowser, page } from './dummy/browser.ts';
+export type { CaptureScenario } from './dummy/capture.ts';
+export { DummyCapture } from './dummy/capture.ts';
 export type { ChangesScenario } from './dummy/changes.ts';
 export { DummyChanges } from './dummy/changes.ts';
 export type { DummyMount, MountScenario } from './dummy/files.ts';

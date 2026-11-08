@@ -22,7 +22,9 @@ import { live } from 'lit/directives/live.js';
 import type {
   AgentPort,
   Attachment,
+  CaptureKind,
   Outgoing,
+  Recording,
   Seat,
   SendMode,
   SliccModel,
@@ -516,6 +518,7 @@ export class SliccComposer extends ThemedElement {
     entry: { state: true },
     failure: { state: true },
     reattach: { state: true },
+    recording: { state: true },
     agent: {},
   };
   declare value: string;
@@ -531,6 +534,7 @@ export class SliccComposer extends ThemedElement {
   declare entry: { request: string; name: string; vault: VaultPort } | null;
   declare failure: string | null;
   declare reattach: Kept[] | null;
+  declare recording: CaptureKind | null;
   declare agent: string;
   #drafts = new Map<string, Draft>();
   #waiting = new PageQueue(this);
@@ -538,6 +542,7 @@ export class SliccComposer extends ThemedElement {
   #paths: string[] = [];
   #agent = '';
   #next = 1;
+  #session: Recording | null = null;
   #abandon: ReturnType<typeof setTimeout> | undefined;
   #recognition: { stop(): void } | null = null;
   #erase: ReturnType<typeof setTimeout> | undefined;
@@ -567,6 +572,7 @@ export class SliccComposer extends ThemedElement {
     this.entry = null;
     this.failure = null;
     this.reattach = null;
+    this.recording = null;
     this.agent = '';
   }
 
@@ -1149,22 +1155,86 @@ export class SliccComposer extends ThemedElement {
     this.attachments = this.attachments.filter((attachment) => attachment.id !== id);
   }
 
-  async screenshot(): Promise<void> {
-    const browser = this.model?.browser;
-    const tab = browser?.list().find((candidate) => candidate.id === browser.active());
-    if (!(browser && tab)) return;
-    const url = await browser.screenshot(tab.id);
+  #failAttach(name: string, error: string, mimeType = 'application/octet-stream'): void {
     this.attachments = [
       ...this.attachments,
       {
         id: this.#id(),
-        name: `${tab.title}.png`,
-        kind: 'image',
-        mimeType: 'image/png',
-        size: url.length,
-        url,
+        name,
+        kind: 'file',
+        mimeType,
+        size: 0,
+        error,
       },
     ];
+  }
+
+  #captureError(error: unknown, fallback: string): string {
+    if (!(error instanceof Error)) return fallback;
+    if (error.name === 'NotAllowedError') return error.message || fallback;
+    if (error.name === 'NotSupportedError')
+      return error.message || 'Recording isn’t supported here';
+    if (error.name === 'AbortError') return '';
+    return error.message || fallback;
+  }
+
+  async screenshot(): Promise<void> {
+    const capture = this.model?.capture;
+    if (capture?.still) {
+      try {
+        const shot = await capture.still();
+        await this.addFiles([new File([shot.blob], shot.name, { type: shot.mimeType })]);
+      } catch (error) {
+        const message = this.#captureError(error, 'Screen capture was denied');
+        if (message) this.#failAttach('screenshot.png', message, 'image/png');
+      }
+      return;
+    }
+    const browser = this.model?.browser;
+    const tab = browser?.list().find((candidate) => candidate.id === browser.active());
+    if (!(browser && tab)) {
+      this.#failAttach('screenshot.png', 'No screen or browser tab to screenshot', 'image/png');
+      return;
+    }
+    try {
+      const url = await browser.screenshot(tab.id);
+      this.attachments = [
+        ...this.attachments,
+        {
+          id: this.#id(),
+          name: `${tab.title}.png`,
+          kind: 'image',
+          mimeType: 'image/png',
+          size: url.length,
+          url,
+        },
+      ];
+    } catch (error) {
+      const message = this.#captureError(error, 'Could not take a screenshot');
+      if (message) this.#failAttach('screenshot.png', message, 'image/png');
+    }
+  }
+
+  async record(kind: CaptureKind): Promise<void> {
+    const capture = this.model?.capture;
+    if (!capture || this.#session) return;
+    try {
+      const session = await capture.record(kind);
+      this.#session = session;
+      this.recording = kind;
+      const take = await session.finished;
+      this.#session = null;
+      this.recording = null;
+      await this.addFiles([new File([take.blob], take.name, { type: take.mimeType })]);
+    } catch (error) {
+      this.#session = null;
+      this.recording = null;
+      const fallback =
+        kind === 'audio' ? 'Microphone access was denied' : 'Camera access was denied';
+      const message = this.#captureError(error, fallback);
+      if (message)
+        this.#failAttach('recording.webm', message, kind === 'audio' ? 'audio/webm' : 'video/webm');
+    }
   }
 
   async attachPath(path: string): Promise<void> {
@@ -1600,6 +1670,8 @@ export class SliccComposer extends ThemedElement {
     if (value === 'upload')
       this.renderRoot.querySelector<HTMLInputElement>('input[type=file]')?.click();
     else if (value === 'screenshot') void this.screenshot();
+    else if (value === 'record-audio') void this.record('audio');
+    else if (value === 'record-video') void this.record('video');
     else {
       this.openPopup(value as 'file' | 'secret');
       void this.updateComplete.then(() =>
@@ -1994,7 +2066,17 @@ export class SliccComposer extends ThemedElement {
         <swc-popover placement="top-start" accessible-label="Add to the message" @keydown=${this.#menuKey} @swc-after-open=${() => this.renderRoot.querySelector<HTMLElement>('sp-menu')?.focus()}>
           <sp-menu label="Add to the message" @change=${this.#add}>
             <sp-menu-item value="upload">Upload from this computer</sp-menu-item>
-            <sp-menu-item value="screenshot">Take a screenshot of the browser tab</sp-menu-item>
+            <sp-menu-item value="screenshot" ?disabled=${!!this.recording}>Take a screenshot</sp-menu-item>
+            ${
+              this.model?.capture
+                ? html`<sp-menu-item value="record-audio" data-action="record-audio" ?disabled=${!!this.recording}>Record audio</sp-menu-item>`
+                : nothing
+            }
+            ${
+              this.model?.capture?.kinds?.includes('video')
+                ? html`<sp-menu-item value="record-video" data-action="record-video" ?disabled=${!!this.recording}>Record video</sp-menu-item>`
+                : nothing
+            }
             <sp-menu-item value="file">Attach a file from SLICC</sp-menu-item>
             <sp-menu-item value="secret">Share a secret</sp-menu-item>
             ${
