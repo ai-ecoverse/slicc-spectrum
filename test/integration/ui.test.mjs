@@ -7804,13 +7804,28 @@ test('the chat header Thinking picker follows the active cone, not settings', as
     const picker = window
       .$('slicc-app', 'slicc-dock', 'slicc-chat')
       .shadowRoot.querySelector('header sp-picker[label=Thinking]');
+    const level = (id) =>
+      window.model.agent.list().find((agent) => agent.id === id).thinking ?? null;
     return {
       value: picker.value,
-      sliccy: window.model.agent.list().find((agent) => agent.id === 'cone-sliccy').thinking,
-      harbor: window.model.agent.list().find((agent) => agent.id === 'cone-harbor').thinking,
+      sliccy: level('cone-sliccy'),
+      harbor: level('cone-harbor'),
       settings: window.model.settings.get().thinking,
     };
   };
+  await page.evaluate(() => {
+    window.model.settings.update({ thinking: 'high' });
+    window.model.agent.select('cone-sliccy');
+    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    chat.requestUpdate();
+    return chat.updateComplete.then(() => true);
+  });
+  assert.deepEqual(await page.evaluate(thinking), {
+    value: 'high',
+    sliccy: null,
+    harbor: null,
+    settings: 'high',
+  });
   await page.evaluate(() => {
     window.model.settings.update({ thinking: 'medium' });
     window.model.agent.setThinking('cone-sliccy', 'off');
@@ -7850,6 +7865,20 @@ test('the chat header Thinking picker follows the active cone, not settings', as
     value: 'low',
     sliccy: 'off',
     harbor: 'low',
+    settings: 'medium',
+  });
+  await page.evaluate(() => {
+    const composer = window.$('slicc-app', 'slicc-dock', 'slicc-chat', 'slicc-composer');
+    composer.value = '/thinking high';
+    composer.send();
+    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    chat.requestUpdate();
+    return chat.updateComplete.then(() => true);
+  });
+  assert.deepEqual(await page.evaluate(thinking), {
+    value: 'high',
+    sliccy: 'off',
+    harbor: 'high',
     settings: 'medium',
   });
   assert.deepEqual(page.errors, []);

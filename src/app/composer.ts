@@ -350,9 +350,9 @@ export const commands: Command[] = [
     detail: 'Set the thinking level',
     args: () =>
       ['off', 'low', 'medium', 'high'].map((value) => ({ value, label: value, detail: '' })),
-    run: (model, _id, arg) => {
+    run: (model, id, arg) => {
       if (['off', 'low', 'medium', 'high'].includes(arg))
-        model.settings.update({ thinking: arg as Thinking });
+        model.agent.setThinking(id, arg as Thinking);
     },
   },
   {
