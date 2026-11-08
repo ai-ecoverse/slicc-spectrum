@@ -24,7 +24,7 @@ import type {
 import { readSurface } from './ansi.ts';
 import { chatModels, meterVariant, shared, statusDot, statusLight, ThemedElement } from './base.ts';
 import { Arming, Ends, endCss, layout, Watched } from './command.ts';
-import { fade, folders, limit, type SliccComposer } from './composer.ts';
+import { fade, folders, type SliccComposer, smallest } from './composer.ts';
 import { dipType } from './dips.ts';
 import { following, onWatch, watchOnly } from './follow.ts';
 import { markdownCss } from './markdown.ts';
@@ -1447,7 +1447,7 @@ export class SliccChat extends ThemedElement {
               <swc-illustrated-message>
                 <swc-icon-attach></swc-icon-attach>
                 <h2 slot="heading">Drop files to attach</h2>
-                <span slot="description">Images, text and other files up to ${limit / 1024 / 1024} MB each join your next message. Folders can’t be attached.</span>
+                <span slot="description">Images, text and other files up to ${Number((smallest(this.model?.agent.attachmentLimits?.()) / 1024 / 1024).toFixed(1))} MB each join your next message. Folders can’t be attached.</span>
               </swc-illustrated-message>
             </swc-dropzone>`
           : nothing

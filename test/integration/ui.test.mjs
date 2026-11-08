@@ -4782,10 +4782,30 @@ test('the drop zone over the chat says what it takes on an opaque surface, and h
     surface: 'drop',
     heading: 'Drop files to attach',
     description:
-      'Images, text and other files up to 25 MB each join your next message. Folders can’t be attached.',
+      'Images, text and other files up to 100 MB each join your next message. Folders can’t be attached.',
     icon: true,
     alpha: 1,
     status: 'Drop to attach files to your message',
+  });
+  await page.evaluate(() => {
+    window.model.agent.attachmentLimits = () => ({
+      image: 20 * 1024 * 1024,
+      file: 8 * 1024 * 1024,
+    });
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat').requestUpdate();
+    return true;
+  });
+  await page.until(
+    () =>
+      window
+        .$('slicc-app', 'slicc-dock', 'slicc-chat', 'swc-dropzone [slot=description]')
+        ?.textContent.trim() ===
+      'Images, text and other files up to 8 MB each join your next message. Folders can’t be attached.'
+  );
+  await page.evaluate(() => {
+    delete window.model.agent.attachmentLimits;
+    window.$('slicc-app', 'slicc-dock', 'slicc-chat').requestUpdate();
+    return true;
   });
 
   assert.equal(
