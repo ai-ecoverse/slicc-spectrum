@@ -29,7 +29,7 @@ async function open(t, scenario) {
         text: block?.textContent.trim() ?? null,
         icon: !!block?.querySelector('swc-icon-alert-triangle'),
         note: root.querySelector('[data-verdict-note]')?.textContent ?? null,
-        actions: [...root.querySelectorAll('[slot=button]')].map((button) => [
+        actions: [...root.querySelectorAll('[slot=button][data-action]')].map((button) => [
           button.dataset.action,
           button.textContent.trim(),
         ]),
@@ -216,7 +216,7 @@ test('Always allow shows exactly when the approval offers it', async (t) => {
     );
   const actions = () =>
     page.evaluate(() =>
-      [...window.approvals().shadowRoot.querySelectorAll('[slot=button]')].map(
+      [...window.approvals().shadowRoot.querySelectorAll('[slot=button][data-action]')].map(
         (button) => button.dataset.action
       )
     );

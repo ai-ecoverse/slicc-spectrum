@@ -4082,7 +4082,7 @@ for (const [width, height] of [
     );
     assert.deepEqual(
       await page.evaluate(() => [
-        [...window.approvals().querySelectorAll('[slot=button]')].map((b) => [
+        [...window.approvals().querySelectorAll('[slot=button][data-action]')].map((b) => [
           b.dataset.action,
           b.hasAttribute('disabled'),
         ]),
@@ -4128,9 +4128,11 @@ async function phoneDialog(t, approvals) {
   await page.evaluate(() => {
     window.approvals = () => window.$('slicc-app', 'slicc-approvals').shadowRoot;
     window.dialogActions = () =>
-      [...window.approvals().querySelectorAll('[slot=button]')].map((b) => b.dataset.action);
+      [...window.approvals().querySelectorAll('[slot=button][data-action]')].map(
+        (b) => b.dataset.action
+      );
     window.enabledActions = () =>
-      [...window.approvals().querySelectorAll('[slot=button]:not([disabled])')].map(
+      [...window.approvals().querySelectorAll('[slot=button][data-action]:not([disabled])')].map(
         (b) => b.dataset.action
       );
     window.allowHint = () =>
@@ -4195,7 +4197,7 @@ test('a 60-line command scrolls in its own box at 420, and Allow stays disabled 
   );
   await new Promise((resolve) => setTimeout(resolve, 600));
   const where = () =>
-    [...window.approvals().querySelectorAll('[slot=button]')].map((b) => {
+    [...window.approvals().querySelectorAll('[slot=button][data-action]')].map((b) => {
       const box = b.getBoundingClientRect();
       return [b.dataset.action, Math.round(box.left), Math.round(box.top)];
     });

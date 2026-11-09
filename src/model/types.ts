@@ -1169,7 +1169,7 @@ export interface NoticesPort extends Subscribable<{ notices: readonly Notice[] }
   dismiss(id: string): void;
 }
 
-export type ApprovalDecision = 'once' | 'always' | 'deny';
+export type ApprovalDecision = 'once' | 'always' | 'deny' | 'stop';
 
 export interface ApprovalRequester {
   kind: 'agent' | 'user' | 'guest';
@@ -1201,6 +1201,7 @@ export interface SudoApproval {
   verdict?: ApprovalVerdict;
   judging?: boolean;
   verdictError?: string;
+  stoppable?: boolean;
 }
 
 export interface GuestMessageApproval {

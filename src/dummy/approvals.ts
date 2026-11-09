@@ -7,6 +7,7 @@ import type {
   ApprovalsPort,
   PendingRequest,
   SecretApproval,
+  SudoApproval,
 } from '../model/types.ts';
 import type { Clock } from './clock.ts';
 import { longCommand } from './showcase.ts';
@@ -52,6 +53,7 @@ export type ApprovalScenario =
   | 'click'
   | 'click-remote'
   | 'capture'
+  | 'stop'
   | 'none';
 
 const minutes = 60_000;
@@ -503,6 +505,19 @@ function sudoFixtures(scenario: ApprovalScenario, now: number): Approval[] {
         alwaysScope: 'cwd',
       },
     ];
+  if (scenario === 'stop')
+    return [
+      { ...agent, stoppable: true },
+      {
+        ...agent,
+        id: 'sudo-docs-build',
+        command: 'npm run build --prefix /opt/harbor-docs',
+        createdAt: now + 1,
+        stoppable: true,
+      },
+      { ...user, createdAt: now + 2 },
+      { ...cache, stoppable: true },
+    ];
   if (scenario === 'user') return [user];
   if (scenario === 'many') return [agent, user, cache];
   if (scenario === 'elsewhere' || scenario === 'withdrawn') return [agent, user];
@@ -582,6 +597,21 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
       this.#quiet.add(id);
       await this.#vault.cancel(id);
     }
-    this.end(id, 'answered');
+    if (decision === 'stop' && approval?.kind === 'sudo' && approval.stoppable)
+      this.#stop(approval);
+    else this.end(id, 'answered');
+  }
+
+  #stop(approval: SudoApproval): void {
+    const agent = approval.requester.agentId;
+    const ended = this.#approvals.filter(
+      (item) =>
+        item.id === approval.id ||
+        ((item.kind === 'sudo' || item.kind === 'capture') && item.requester.agentId === agent)
+    );
+    for (const item of ended)
+      this.emit('ended', { id: item.id, reason: item === approval ? 'answered' : 'withdrawn' });
+    this.#approvals = this.#approvals.filter((item) => !ended.includes(item));
+    this.emit('approvals', this.list());
   }
 }
