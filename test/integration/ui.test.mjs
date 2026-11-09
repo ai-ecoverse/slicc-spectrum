@@ -1831,16 +1831,47 @@ test('the browser follows a driven tab live, lists its actions and stops the age
   await page.until(() => window.inBrowser('figure')?.dataset.view === 'live');
   assert.equal(
     await page.evaluate(() => window.inBrowser('.driving swc-status-light').textContent.trim()),
-    'harbor is using this tab'
+    'Watching harbor'
   );
-  assert.equal(
-    await page.evaluate(() => window.inBrowser('.address .url').textContent.trim()),
-    'localhost:8787/forecast'
-  );
-  await page.until(() => window.inBrowser('.actions.last li')?.dataset.status === 'running');
   assert.match(
-    await page.evaluate(() => window.inBrowser('details summary').textContent.trim()),
-    /^Recent actions \(\d+\)$/
+    await page.evaluate(() => window.inBrowser('.address .url').textContent.trim()),
+    /localhost:8787\/forecast/
+  );
+  assert.ok(
+    await page.evaluate(() => {
+      const picker = window.inBrowser('.bar sp-picker');
+      return !picker || picker.getBoundingClientRect().width > 120;
+    })
+  );
+  await page.until(() => window.inBrowser('.actions li')?.dataset.status === 'running');
+  assert.equal(
+    await page.evaluate(() => {
+      const rows = [...window.inBrowser('.actions').querySelectorAll('li')];
+      const tab = window.model.browser.list().find((item) => item.controlled);
+      const newest = window.model.browser
+        .actions()
+        .filter(
+          (action) =>
+            action.tabId === tab.id ||
+            (action.tabId === null && action.agentId !== null && action.agentId === tab.agentId)
+        )
+        .at(-1);
+      const feed = window.inBrowser('.feed');
+      const frame = window.inBrowser('.frame');
+      const feedStyle = getComputedStyle(feed);
+      const frameStyle = getComputedStyle(frame);
+      return (
+        rows[0]?.dataset.status === 'running' &&
+        rows[0]?.dataset.kind === newest?.kind &&
+        !!window.inBrowser('.feed .actions') &&
+        window.inBrowser('figcaption').textContent.replace(/\s+/g, ' ').trim() ===
+          'Live Watching only' &&
+        Number.parseFloat(feedStyle.flexGrow) > 0 &&
+        frameStyle.aspectRatio === '16 / 10' &&
+        feed.getBoundingClientRect().height > 80
+      );
+    }),
+    true
   );
   assert.equal(
     await page.evaluate(() => window.inBrowser('li[data-kind=request]').title),
@@ -1850,9 +1881,9 @@ test('the browser follows a driven tab live, lists its actions and stops the age
 
   await page.evaluate(() => window.inBrowser('.driving [data-action=stop-agent]').click());
   await page.until(() => window.inBrowser('.driving')?.dataset.driving === 'none');
-  await page.until(() => window.inBrowser('.actions.last li')?.dataset.status === 'failed');
+  await page.until(() => window.inBrowser('.actions li')?.dataset.status === 'failed');
   assert.equal(
-    await page.evaluate(() => window.inBrowser('.actions.last .failure').textContent.trim()),
+    await page.evaluate(() => window.inBrowser('.actions li .failure').textContent.trim()),
     'Stopped'
   );
 
@@ -1870,6 +1901,175 @@ test('the browser follows a driven tab live, lists its actions and stops the age
   );
   await page.evaluate(() => window.model.agent.stop('scoop-otter'));
   await page.until(() => !window.$('slicc-app', '.rail .badged .dot[data-driven]'));
+  assert.deepEqual(page.errors, []);
+});
+
+test('the browser folds identical done actions and keeps In use without an agent', async (t) => {
+  const page = await open(t, { browser: 'idle' });
+  await page.evaluate(() => {
+    window.inBrowser = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-browser', selector);
+    window.app.show('browser');
+  });
+  await page.until(() => !!window.inBrowser('li[data-id=tab-preview] .window'));
+  await page.evaluate(() => window.inBrowser('li[data-id=tab-preview] .window').click());
+  await page.until(() => !!window.inBrowser('.feed .actions, [data-actions=none], .driving'));
+  await page.evaluate(() => {
+    const tabId = 'tab-preview';
+    for (let i = 0; i < 3; i++) {
+      const id = window.model.browser.record({
+        tabId,
+        agentId: 'cone-harbor',
+        kind: 'eval',
+      });
+      window.model.browser.finish(id);
+    }
+    const id = window.model.browser.record({
+      tabId,
+      agentId: 'cone-harbor',
+      kind: 'scroll',
+    });
+    window.model.browser.finish(id);
+    const failed = window.model.browser.record({
+      tabId,
+      agentId: 'cone-harbor',
+      kind: 'click',
+      target: 'button "Nope"',
+    });
+    window.model.browser.finish(failed, 'no snapshot');
+    const listed = window.model.browser.list();
+    window.model.browser.list = () =>
+      listed.map((tab) => (tab.id === tabId ? { ...tab, controlled: true, agentId: null } : tab));
+    window.model.browser.emit('tabs', window.model.browser.list());
+  });
+  await page.until(() => window.inBrowser('.driving')?.dataset.driving === 'user');
+  assert.equal(
+    await page.evaluate(() => window.inBrowser('.driving swc-status-light').textContent.trim()),
+    'In use'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const rows = [...window.inBrowser('.actions').querySelectorAll('li')].slice(0, 3);
+      return {
+        kinds: rows.map((row) => row.dataset.kind),
+        fold: rows[2]?.querySelector('.count')?.textContent.trim() ?? null,
+        grouped: rows[2]?.hasAttribute('data-group') ?? false,
+        failed: rows[0]?.dataset.status === 'failed',
+        scrollAlone: rows[1]?.dataset.kind === 'scroll' && !rows[1]?.hasAttribute('data-group'),
+      };
+    }),
+    {
+      kinds: ['click', 'scroll', 'eval'],
+      fold: '×3',
+      grouped: true,
+      failed: true,
+      scrollAlone: true,
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('the browser watches at device pixels and keeps the live frame while watching', async (t) => {
+  const page = await open(t, { browser: 'driving' });
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 1280,
+    height: 800,
+    deviceScaleFactor: 2,
+    mobile: false,
+  });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await page.evaluate(() => {
+    window.inBrowser = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-browser', selector);
+    window.app.show('browser');
+  });
+  await page.until(() => window.inBrowser('figure')?.dataset.view === 'live');
+  await page.until(() => !!window.model.browser.lastWatch?.()?.size?.width);
+  assert.equal(
+    await page.evaluate(() => {
+      const frame = window.inBrowser('.frame').getBoundingClientRect();
+      const watched = window.model.browser.lastWatch();
+      const dpr = window.devicePixelRatio || 1;
+      const slack = Math.max(2, Math.round(2 * dpr));
+      return (
+        watched?.tabId === 'tab-preview' &&
+        Math.abs(watched.size.width - Math.round(frame.width * dpr)) <= slack &&
+        Math.abs(watched.size.height - Math.round(frame.height * dpr)) <= slack &&
+        watched.size.width > Math.round(frame.width) + slack
+      );
+    }),
+    true
+  );
+  const before = await page.evaluate(() => ({
+    src: window.inBrowser('.frame img')?.getAttribute('src'),
+    watches: 0,
+  }));
+  assert.ok(before.src);
+  await page.evaluate(() => {
+    window.__watchCalls = 0;
+    const port = window.model.browser;
+    const prior = port.watch.bind(port);
+    port.watch = (id, size) => {
+      window.__watchCalls += 1;
+      return prior(id, size);
+    };
+    const id = port.record({
+      tabId: 'tab-preview',
+      agentId: 'cone-harbor',
+      kind: 'screenshot',
+    });
+    port.finish(id);
+  });
+  await page.until(() => window.inBrowser('figure')?.dataset.view === 'live');
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      src: window.inBrowser('.frame img')?.getAttribute('src'),
+      view: window.inBrowser('figure')?.dataset.view,
+      restarts: window.__watchCalls,
+    })),
+    { src: before.src, view: 'live', restarts: 0 }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('the browser wide tab list scrolls to the last tab', async (t) => {
+  const page = await open(t, { browser: 'idle' });
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 1280,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await page.evaluate(() => {
+    window.inBrowser = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-browser', selector);
+    window.app.show('browser');
+    const host = window.$('slicc-app', 'slicc-dock').content('browser');
+    host.style.width = '822px';
+    host.style.height = '900px';
+  });
+  await page.until(() => !!window.inBrowser('li[data-id=tab-preview] .window'));
+  await page.evaluate(() => {
+    for (let i = 0; i < 25; i++) window.model.browser.open(`https://example.com/tab-${i}`);
+    window.inBrowser('li[data-id=tab-preview] .window').click();
+  });
+  await page.until(() => !!window.inBrowser('.focused.wide .tabs'));
+  await page.until(() => (window.inBrowser('.tabs')?.querySelectorAll('li').length ?? 0) >= 28);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const tabs = window.inBrowser('.tabs');
+      const last = tabs.querySelector('li:last-child');
+      const before = last.getBoundingClientRect().bottom;
+      const panel = window.$('slicc-app', 'slicc-dock').content('browser').getBoundingClientRect();
+      if (before <= panel.bottom + 1)
+        return { overflow: tabs.scrollHeight > tabs.clientHeight, visible: true };
+      last.scrollIntoView({ block: 'end' });
+      const after = last.getBoundingClientRect();
+      return {
+        overflow: tabs.scrollHeight > tabs.clientHeight,
+        visible: after.bottom <= panel.bottom + 1 && after.top >= panel.top - 1,
+      };
+    }),
+    { overflow: true, visible: true }
+  );
   assert.deepEqual(page.errors, []);
 });
 
@@ -1904,7 +2104,7 @@ for (const [width, height] of [
         return {
           driving: top('.driving'),
           figure: top('figure'),
-          actions: top('details, h3'),
+          actions: top('.feed h3, h3'),
           height: Math.round(window.inBrowser('.driving').getBoundingClientRect().height),
         };
       });

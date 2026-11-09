@@ -9,7 +9,6 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-camera.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chevron-down.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chevron-left.js';
-import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
 import '@adobe/spectrum-wc-icons/swc-icon-close.js';
 import '@adobe/spectrum-wc-icons/swc-icon-code.js';
 import '@adobe/spectrum-wc-icons/swc-icon-copy.js';
@@ -111,6 +110,61 @@ export function describe(action: BrowserAction): string {
   return verbs[action.kind](action);
 }
 
+export function recentActions(all: readonly BrowserAction[], shown: number): BrowserAction[] {
+  return all.slice(-shown).reverse();
+}
+
+export type FoldedAction = { action: BrowserAction; count: number };
+
+export function sameAction(a: BrowserAction, b: BrowserAction): boolean {
+  return (
+    a.status === 'done' &&
+    b.status === 'done' &&
+    a.kind === b.kind &&
+    a.agentId === b.agentId &&
+    a.target === b.target &&
+    a.value === b.value &&
+    a.length === b.length
+  );
+}
+
+export function foldActions(actions: readonly BrowserAction[]): FoldedAction[] {
+  const out: FoldedAction[] = [];
+  for (const action of actions) {
+    const prev = out.at(-1);
+    if (prev && sameAction(prev.action, action)) {
+      prev.count += 1;
+      continue;
+    }
+    out.push({ action, count: 1 });
+  }
+  return out;
+}
+
+export function pickImage(
+  frame: { src: string; at: number } | null | undefined,
+  shot: { src: string; at: number } | null | undefined,
+  watching: boolean
+): { src: string; at: number } | null {
+  if (watching && frame) return frame;
+  if (frame && (!shot || frame.at >= shot.at)) return frame;
+  return shot ?? null;
+}
+
+export function frameSize(
+  box: { width: number; height: number } | null | undefined,
+  dpr = 1,
+  prior?: { width: number; height: number } | null
+): { width: number; height: number; key: string } | null {
+  if (!box?.width || !box.height) return null;
+  const width = Math.max(1, Math.round(box.width * dpr));
+  const height = Math.max(1, Math.round(box.height * dpr));
+  const slack = Math.max(2, Math.round(2 * dpr));
+  if (prior && Math.abs(prior.width - width) <= slack && Math.abs(prior.height - height) <= slack)
+    return { width: prior.width, height: prior.height, key: `${prior.width}x${prior.height}` };
+  return { width, height, key: `${width}x${height}` };
+}
+
 const icons: Record<BrowserActionKind, TemplateResult> = {
   open: html`<swc-icon-open-in size="s"></swc-icon-open-in>`,
   goto: html`<swc-icon-link size="s"></swc-icon-link>`,
@@ -138,7 +192,7 @@ const wideWidth = 720;
 
 const offline = html`<svg viewBox="0 0 96 72" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="8" width="84" height="56" rx="6"/><path d="M6 22h84"/><circle cx="16" cy="15" r="1.5"/><circle cx="24" cy="15" r="1.5"/><path d="M38 34l20 20M58 34L38 54"/></svg>`;
 
-interface Image {
+interface Preview {
   src: string;
   at: number;
 }
@@ -149,14 +203,19 @@ export class SliccBrowser extends ModelElement {
     address: { state: true },
   };
   declare address: string;
-  #shots = new Map<string, Image & { key: string }>();
+  #shots = new Map<string, Preview & { key: string }>();
   #frames = new Map<string, BrowserFrame>();
   #queue = new Set<string>();
   #running = false;
   #focus: string | null = null;
   #driven = new Set<string>();
   #pulse = new Set<string>();
-  #watching: { tabId: string; size: string; stop: () => void } | null = null;
+  #watching: {
+    tabId: string;
+    size: string;
+    pixels: { width: number; height: number };
+    stop: () => void;
+  } | null = null;
   #ticker: ReturnType<typeof setInterval> | null = null;
   #width = 0;
   #copied: 'url' | 'failed' | null = null;
@@ -164,8 +223,9 @@ export class SliccBrowser extends ModelElement {
   #last: string | null = null;
   #shown = actionPage;
   #anchor: number | null = null;
+  #display = new Map<string, string>();
+  #loading = new Map<string, string>();
   #expanded = new ViewSet(this, 'browser');
-  #recent = new ViewState(this, 'browser:recent', () => false);
   #chosen = new ViewState<string | null | undefined>(this, 'browser:tab', () => undefined);
   #scroll = new ViewScroll(this, 'browser:scroll', {
     scroller: () => this.renderRoot.querySelector<HTMLElement>('.cards')?.parentElement ?? null,
@@ -346,24 +406,31 @@ export class SliccBrowser extends ModelElement {
       .focused {
         display: grid;
         grid-template-columns: minmax(0, 1fr);
-        gap: var(--swc-spacing-300);
-        padding: var(--swc-spacing-300);
+        gap: var(--swc-spacing-200);
+        height: 100%;
+        min-height: 0;
+        padding: var(--swc-spacing-200);
+        box-sizing: border-box;
       }
       .focused.wide {
         grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
-        align-items: start;
+        grid-template-rows: minmax(0, 1fr);
+        align-items: stretch;
       }
       .detail {
         display: flex;
         flex-direction: column;
-        gap: var(--swc-spacing-200);
+        gap: var(--swc-spacing-100);
         min-width: 0;
+        min-height: 0;
+        height: 100%;
       }
       .bar,
       .address {
         display: flex;
         align-items: center;
         gap: var(--swc-spacing-100);
+        flex: none;
         min-width: 0;
       }
       .bar sp-picker {
@@ -371,13 +438,14 @@ export class SliccBrowser extends ModelElement {
         min-width: 0;
         max-width: 100%;
       }
-      .url {
+      .address .url {
         flex: 1;
         min-width: 0;
         font-family: var(--swc-code-font-family-stack);
         color: var(--swc-neutral-subdued-content-color-default);
       }
       .detail .driving {
+        flex: none;
         flex-wrap: nowrap;
         min-block-size: var(--swc-component-height-75);
       }
@@ -387,6 +455,18 @@ export class SliccBrowser extends ModelElement {
       .detail .driving swc-button {
         flex: none;
       }
+      .detail figure {
+        flex: 0 1 auto;
+        width: 100%;
+        max-height: min(50vh, 100%);
+      }
+      .detail .feed {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 10rem;
+        min-height: 8rem;
+        min-width: 0;
+      }
       .swc-Link {
         font-size: inherit;
       }
@@ -394,6 +474,9 @@ export class SliccBrowser extends ModelElement {
         display: flex;
         flex-direction: column;
         gap: var(--swc-spacing-50);
+        min-height: 0;
+        overflow: auto;
+        overscroll-behavior: contain;
       }
       .tabs button {
         display: grid;
@@ -437,18 +520,19 @@ export class SliccBrowser extends ModelElement {
         flex-direction: column;
         gap: var(--swc-spacing-75);
         margin: 0;
+        min-height: 0;
       }
       .frame {
         display: grid;
         place-items: center;
+        box-sizing: border-box;
         aspect-ratio: 16 / 10;
+        width: 100%;
+        max-height: inherit;
         overflow: hidden;
         border: var(--swc-border-width-100) solid var(--swc-gray-200);
         border-radius: var(--swc-corner-radius-medium-default);
         background: var(--swc-card-background-well-color);
-      }
-      .wide .frame {
-        max-height: 50vh;
       }
       .frame img {
         width: 100%;
@@ -458,6 +542,7 @@ export class SliccBrowser extends ModelElement {
         user-select: none;
       }
       figcaption {
+        flex: none;
         min-block-size: var(--swc-component-height-50);
         display: flex;
         align-items: center;
@@ -550,10 +635,15 @@ export class SliccBrowser extends ModelElement {
         white-space: normal;
         user-select: text;
       }
+      .feed h3,
+      .feed .more {
+        flex: none;
+      }
       .actions {
         display: flex;
         flex-direction: column;
-        max-height: 20rem;
+        flex: 1;
+        min-height: 0;
         overflow: auto;
       }
       .actions li {
@@ -577,11 +667,10 @@ export class SliccBrowser extends ModelElement {
         min-width: 0;
         overflow-wrap: anywhere;
       }
-      .last .what > :not(.full),
-      .last .url-toggle > span {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+      .count {
+        margin-inline-start: var(--swc-spacing-100);
+        color: var(--swc-neutral-subdued-content-color-default);
+        font-weight: var(--swc-bold-font-weight);
       }
       .actions .failure {
         color: var(--swc-negative-content-color-default);
@@ -644,6 +733,8 @@ export class SliccBrowser extends ModelElement {
   protected subscribe(model: SliccModel): Array<() => void> {
     this.#shots.clear();
     this.#frames.clear();
+    this.#display.clear();
+    this.#loading.clear();
     this.#pulse.clear();
     this.#shown = actionPage;
     const tabs = model.browser.list();
@@ -767,11 +858,28 @@ export class SliccBrowser extends ModelElement {
     this.#running = false;
   }
 
-  #image(id: string): Image | null {
-    const frame = this.#frames.get(id);
-    const shot = this.#shots.get(id);
-    if (frame && (!shot || frame.at >= shot.at)) return frame;
-    return shot ?? null;
+  #image(id: string): Preview | null {
+    return pickImage(this.#frames.get(id), this.#shots.get(id), this.#watching?.tabId === id);
+  }
+
+  #hold(id: string, src: string): string {
+    const shown = this.#display.get(id);
+    if (shown === src) return src;
+    if (!shown) {
+      this.#display.set(id, src);
+      return src;
+    }
+    if (this.#loading.get(id) === src) return shown;
+    this.#loading.set(id, src);
+    const probe = document.createElement('img');
+    probe.onload = () => {
+      if (this.#loading.get(id) !== src) return;
+      this.#loading.delete(id);
+      this.#display.set(id, src);
+      this.requestUpdate();
+    };
+    probe.src = src;
+    return shown;
   }
 
   #show(id: string | null): void {
@@ -806,12 +914,12 @@ export class SliccBrowser extends ModelElement {
     if (visible && tab && !this.#ticker)
       this.#ticker = setInterval(() => this.requestUpdate(), 1000);
     if (!(visible && tab)) this.#still();
-    const list = this.renderRoot.querySelector('.actions:not(.last)');
-    const last = list?.lastElementChild?.getAttribute('data-action-id') ?? null;
-    if (list && this.#anchor !== null) list.scrollTop = list.scrollHeight - this.#anchor;
-    else if (list && last !== this.#last) list.scrollTop = list.scrollHeight;
+    const list = this.renderRoot.querySelector('.actions') as HTMLElement | null;
+    const head = list?.firstElementChild?.getAttribute('data-action-id') ?? null;
+    if (list && this.#anchor !== null) list.scrollTop = this.#anchor;
+    else if (list && head !== this.#last) list.scrollTop = 0;
     this.#anchor = null;
-    this.#last = last;
+    this.#last = head;
   }
 
   #still(): void {
@@ -820,19 +928,31 @@ export class SliccBrowser extends ModelElement {
   }
 
   #settle(id: string | null): void {
-    const box = id ? this.renderRoot.querySelector('.frame')?.getBoundingClientRect() : undefined;
-    const size = box?.width
-      ? { width: Math.round(box.width), height: Math.round(box.height) }
-      : undefined;
-    const key = size ? `${size.width}x${size.height}` : '';
-    if (this.#watching?.tabId === id && this.#watching?.size === key) return;
+    if (!id) {
+      this.#watching?.stop();
+      this.#watching = null;
+      return;
+    }
+    const box = this.renderRoot.querySelector('.frame')?.getBoundingClientRect();
+    const area = box ? { width: box.width, height: box.height } : null;
+    const prior = this.#watching?.tabId === id ? this.#watching.pixels : null;
+    const sized = frameSize(area, globalThis.devicePixelRatio || 1, prior);
+    const key = sized?.key ?? (this.#watching?.tabId === id ? this.#watching.size : '');
+    const pixels = sized
+      ? { width: sized.width, height: sized.height }
+      : this.#watching?.tabId === id
+        ? this.#watching.pixels
+        : { width: 0, height: 0 };
+    if (this.#watching?.tabId === id && this.#watching.size === key) return;
     this.#watching?.stop();
-    this.#watching = null;
-    if (!id) return;
     this.#watching = {
       tabId: id,
       size: key,
-      stop: (this.model as SliccModel).browser.watch?.(id, size) as () => void,
+      pixels,
+      stop: (this.model as SliccModel).browser.watch?.(
+        id,
+        sized ? { width: sized.width, height: sized.height } : undefined
+      ) as () => void,
     };
   }
 
@@ -969,18 +1089,18 @@ export class SliccBrowser extends ModelElement {
   #view(tab: BrowserTab): TemplateResult {
     const image = this.#image(tab.id);
     const now = Date.now();
-    const view = !image
-      ? 'none'
-      : this.#watching?.tabId === tab.id &&
-          this.#frames.get(tab.id) === image &&
-          now - image.at < fresh
-        ? 'live'
-        : 'shot';
+    const liveFrame =
+      !!image &&
+      this.#watching?.tabId === tab.id &&
+      this.#frames.get(tab.id) === image &&
+      now - image.at < fresh;
+    const view = !image ? 'none' : liveFrame ? 'live' : 'shot';
+    const src = image ? this.#hold(tab.id, image.src) : null;
     return html`<figure data-view=${view}>
       <div class="frame">
         ${
-          image
-            ? html`<img src=${image.src} alt=${`${tab.title}, as the agent sees it`} draggable="false" />`
+          src
+            ? html`<img src=${src} alt=${`${tab.title}, as the agent sees it`} draggable="false" />`
             : html`<swc-progress-circle size="m" label="Loading preview"></swc-progress-circle>`
         }
       </div>
@@ -990,18 +1110,18 @@ export class SliccBrowser extends ModelElement {
             ? html`<swc-status-light size="s" variant="positive">Live</swc-status-light>`
             : html`<span>${image ? since(image.at, now) : 'No preview yet'}</span>`
         }
-        <span>View only</span>
+        <span>Watching only</span>
       </figcaption>
     </figure>`;
   }
 
   #more(total: number): void {
-    const list = this.renderRoot.querySelector('.actions:not(.last)') as Element;
-    this.#anchor = list.scrollHeight - list.scrollTop;
+    const list = this.renderRoot.querySelector('.actions') as HTMLElement;
+    this.#anchor = list.scrollTop;
     this.#shown += actionPage;
     const done = this.#shown >= total;
     void this.updateComplete.then(() => {
-      if (done) this.focusOn('.actions:not(.last)');
+      if (done) this.focusOn('.actions');
     });
     this.requestUpdate();
   }
@@ -1017,10 +1137,10 @@ export class SliccBrowser extends ModelElement {
     return html`<button class="url-toggle" data-action="action-url" aria-expanded=${open ? 'true' : 'false'} aria-controls=${`url-${action.id}`} @click=${() => this.#toggle(action.id)}><span>${describe(action)}</span><swc-icon-chevron-down class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-down></button>${open ? html`<span class="full" id=${`url-${action.id}`}>${url}</span>` : nothing}`;
   }
 
-  #row(action: BrowserAction): TemplateResult {
+  #row(action: BrowserAction, count = 1): TemplateResult {
     const failed = action.status === 'failed';
     const url = linked.has(action.kind) ? action.value : undefined;
-    return html`<li data-action-id=${action.id} data-kind=${action.kind} data-status=${action.status} title=${url ?? nothing}>
+    return html`<li data-action-id=${action.id} data-kind=${action.kind} data-status=${action.status} ?data-group=${count > 1} title=${url ?? nothing}>
       <span>${
         action.status === 'running'
           ? html`<swc-progress-circle size="s" indeterminate label="Running"></swc-progress-circle>`
@@ -1028,7 +1148,9 @@ export class SliccBrowser extends ModelElement {
             ? html`<swc-icon-alert-triangle size="s" aria-label="Failed"></swc-icon-alert-triangle>`
             : icons[action.kind]
       }</span>
-      <span class="what">${this.#what(action)}${failed && action.error ? html`<span class="failure">${action.error}</span>` : nothing}</span>
+      <span class="what">${this.#what(action)}${
+        count > 1 ? html`<span class="count">×${count}</span>` : nothing
+      }${failed && action.error ? html`<span class="failure">${action.error}</span>` : nothing}</span>
       <span class="who">${agentName(this.model as SliccModel, action.agentId)} ${time(action.at)}</span>
     </li>`;
   }
@@ -1044,21 +1166,18 @@ export class SliccBrowser extends ModelElement {
           (action.tabId === null && action.agentId !== null && action.agentId === tab.agentId)
       );
     if (!all.length)
-      return html`<h3>Recent actions</h3><p class="muted" data-actions="none">No actions yet.</p>`;
-    const actions = all.slice(-this.#shown);
+      return html`<div class="feed"><h3>Recent actions</h3><p class="muted" data-actions="none">No actions yet.</p></div>`;
+    const actions = recentActions(all, this.#shown);
+    const folded = foldActions(actions);
     const more =
       all.length > actions.length
         ? html`<div class="more"><span>Showing the latest ${actions.length} of ${all.length}</span><swc-button size="s" variant="secondary" fill-style="outline" data-action="more-actions" @click=${() => this.#more(all.length)}>Show more</swc-button></div>`
         : nothing;
-    if (this.#width >= narrowWidth)
-      return html`<h3>Recent actions</h3>${more}<ol class="actions" aria-label="Recent actions" tabindex="0">${actions.map((action) => this.#row(action))}</ol>`;
-    const last = actions.at(-1) as BrowserAction;
-    return html`<details ?open=${this.#recent.value} @toggle=${(event: Event) => (this.#recent.value = (event.currentTarget as HTMLDetailsElement).open)}>
-        <summary><swc-icon-chevron-right class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-right>Recent actions (${all.length})</summary>
-        ${more}
-        <ol class="actions" aria-label="Earlier actions" tabindex="0">${actions.slice(0, -1).map((action) => this.#row(action))}</ol>
-      </details>
-      <ol class="actions last" aria-label="Last action">${this.#row(last)}</ol>`;
+    return html`<div class="feed">
+      <h3>Recent actions</h3>
+      ${more}
+      <ol class="actions" aria-label="Recent actions" tabindex="0">${folded.map((item) => this.#row(item.action, item.count))}</ol>
+    </div>`;
   }
 
   #detail(tabs: readonly BrowserTab[], tab: BrowserTab): TemplateResult {
@@ -1066,6 +1185,11 @@ export class SliccBrowser extends ModelElement {
     const wide = this.#width >= wideWidth;
     const copy =
       this.#copied === 'url' ? 'Copied' : this.#copied === 'failed' ? 'Couldn’t copy' : 'Copy';
+    const watching = tab.controlled
+      ? tab.agentId
+        ? `Watching ${agentName(this.model as SliccModel, tab.agentId)}`
+        : 'In use'
+      : 'No agent is using this tab';
     return html`<div class=${`focused${wide ? ' wide' : ''}${narrow ? ' narrow' : ''}`}>
       ${wide ? this.#list(tabs, tab) : nothing}
       <section class="detail" aria-label=${tab.title}>
@@ -1084,7 +1208,7 @@ export class SliccBrowser extends ModelElement {
           <swc-action-button size="s" quiet data-action="open-tab" accessible-label="Show in the browser" @click=${() => this.model?.browser.activate(tab.id)}><swc-icon-open-in slot="icon"></swc-icon-open-in>${narrow ? nothing : 'Open'}</swc-action-button>
         </div>
         <div class="driving" data-driving=${tab.controlled ? (tab.agentId ? 'agent' : 'user') : 'none'}>
-          <swc-status-light size="m" variant=${tab.controlled ? 'info' : 'neutral'}>${tab.controlled ? this.#who(tab) : 'No agent is using this tab'}</swc-status-light>
+          <swc-status-light size="m" variant=${tab.controlled ? 'info' : 'neutral'}>${watching}</swc-status-light>
           ${tab.controlled ? this.#stopButton(tab, '[data-action="all-tabs"]') : nothing}
         </div>
         ${this.#view(tab)}
@@ -1115,6 +1239,6 @@ export class SliccBrowser extends ModelElement {
     const tabs = this.model?.browser.list() ?? [];
     if (!tabs.length && this.model?.network?.status().browser?.via === null) return this.#offline();
     const tab = tabs.find((candidate) => candidate.id === this.#focus);
-    return tab ? html`<div class="scroll">${this.#detail(tabs, tab)}</div>` : this.#overview(tabs);
+    return tab ? this.#detail(tabs, tab) : this.#overview(tabs);
   }
 }
