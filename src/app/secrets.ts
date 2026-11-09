@@ -604,12 +604,6 @@ export class SliccSecrets extends ThemedElement {
         font-size: var(--swc-font-size-100);
         font-weight: var(--swc-bold-font-weight);
       }
-      [data-exec] {
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 3;
-        overflow: hidden;
-      }
       .removed {
         margin-top: var(--swc-spacing-200);
         border-top: var(--swc-border-width-100) solid var(--swc-gray-200);

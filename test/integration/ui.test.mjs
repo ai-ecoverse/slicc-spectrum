@@ -10017,6 +10017,113 @@ test('a due backup reminder sits below the secrets list and offers Export backup
   assert.deepEqual(page.errors, []);
 });
 
+test('Programs keeps a long allow-list and clips only a long last argv', async (t) => {
+  const page = await secretsPage(t, { vault: 'secrets' });
+  const long = `pier publish ${'x'.repeat(140)}`;
+  const short = 'pier publish --tag next';
+  await page.evaluate(
+    (argv, keep) => {
+      const vault = window.model.vault;
+      const list = vault.list();
+      const now = Date.now();
+      const next = {
+        ...list,
+        secrets: list.secrets.map((secret) =>
+          secret.name === 'PIER_PUBLISH_TOKEN'
+            ? {
+                ...secret,
+                exec: 'argv',
+                execArgv: [
+                  ['pier', 'publish'],
+                  ['pier', 'publish', '--dry-run'],
+                  ['pier', 'publish', '--tag', 'next'],
+                  ['pier', 'release', 'cut'],
+                  ['pier', 'release', 'push'],
+                  ['harbor', 'deploy', '--env', 'staging'],
+                ],
+              }
+            : secret.name === 'HARBOR_API_KEY'
+              ? { ...secret, exec: 'argv', execArgv: [['curl', 'quay.harbor.example']] }
+              : secret
+        ),
+        audit: [
+          {
+            type: 'materialize',
+            seq: 99,
+            id: 'audit-long-argv',
+            at: now,
+            name: 'PIER_PUBLISH_TOKEN',
+            uid: null,
+            tag: 'bash',
+            path: '/usr/bin/bash',
+            argv,
+            argvSha256: 'long',
+            cwd: '/home/cone',
+            pid: 1,
+            ppid: 0,
+            ticket: 't',
+            consumed: true,
+          },
+          {
+            type: 'materialize',
+            seq: 98,
+            id: 'audit-short-argv',
+            at: now - 1,
+            name: 'HARBOR_API_KEY',
+            uid: null,
+            tag: 'bash',
+            path: '/usr/bin/bash',
+            argv: keep,
+            argvSha256: 'short',
+            cwd: '/home/cone',
+            pid: 2,
+            ppid: 0,
+            ticket: 'u',
+            consumed: true,
+          },
+          ...list.audit,
+        ],
+      };
+      vault.list = () => next;
+      vault.emit('list', next);
+      return true;
+    },
+    long,
+    short
+  );
+  await page.until(() =>
+    window
+      .settingsPart('slicc-secrets', '[data-secret=PIER_PUBLISH_TOKEN] [data-exec]')
+      ?.textContent.includes('harbor deploy --env staging')
+  );
+  const programs = await page.evaluate(() => {
+    const textOf = (name) =>
+      window
+        .settingsPart('slicc-secrets', `[data-secret=${name}] [data-exec]`)
+        .textContent.replace(/\s+/g, ' ')
+        .trim();
+    const pier = window.settingsPart(
+      'slicc-secrets',
+      '[data-secret=PIER_PUBLISH_TOKEN] [data-exec]'
+    );
+    return {
+      pier: textOf('PIER_PUBLISH_TOKEN'),
+      harbor: textOf('HARBOR_API_KEY'),
+      unclamped: pier.scrollHeight === pier.clientHeight,
+    };
+  });
+  assert.match(programs.pier, /Revealed only to pier publish,/);
+  assert.match(programs.pier, /harbor deploy --env staging/);
+  assert.match(programs.pier, /Revealed to programs/);
+  assert.match(programs.pier, /with pier publish x+…/);
+  assert.equal(programs.pier.includes(long), false);
+  assert.equal(programs.unclamped, true);
+  assert.match(programs.harbor, /pier publish --tag next/);
+  assert.equal(programs.harbor.includes('…'), false);
+  await views(page, 'secrets-programs-clip', '[data-secret=PIER_PUBLISH_TOKEN]');
+  assert.deepEqual(page.errors, []);
+});
+
 test('a locked vault offers Unlock, says to unlock to continue and shows requests as untrusted text', async (t) => {
   const page = await secretsPage(t, { vault: 'locked' });
   await page.evaluate(() => {
