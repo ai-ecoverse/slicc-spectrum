@@ -362,12 +362,6 @@ export class SliccChat extends ThemedElement {
       header .dot {
         align-self: center;
       }
-      @media (forced-colors: active) {
-        header .dot[data-agent-status] {
-          forced-color-adjust: none;
-          background: CanvasText;
-        }
-      }
       header swc-meter {
         flex: 0 1 calc(var(--swc-spacing-400) * 6);
         min-width: calc(var(--swc-spacing-400) * 4.5);

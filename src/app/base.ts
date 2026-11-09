@@ -1,4 +1,5 @@
-import { css, html, LitElement, type PropertyValues, type TemplateResult } from 'lit';
+import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
+import { css, html, LitElement, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import type {
   AgentStatus,
   ChangesPort,
@@ -203,27 +204,160 @@ export function statusLight(status: AgentStatus): TemplateResult {
   return html`<swc-status-light size="s" variant=${statusVariant[status]}>${statusLabel[status]}</swc-status-light>`;
 }
 
+export function statusMark(status: AgentStatus): TemplateResult | typeof nothing {
+  if (status !== 'error') return nothing;
+  return html`<swc-icon-alert-triangle size="xs" aria-hidden="true"></swc-icon-alert-triangle>`;
+}
+
 export function statusDot(status: AgentStatus): TemplateResult {
-  return html`<span class="dot" data-agent-status=${status} data-variant=${statusVariant[status]} role="img" aria-label=${statusLabel[status]} title=${statusLabel[status]}></span>`;
+  return html`<span
+    class="dot"
+    data-agent-status=${status}
+    data-variant=${statusVariant[status]}
+    role="img"
+    aria-label=${statusLabel[status]}
+    title=${statusLabel[status]}
+    tabindex="0"
+    >${statusMark(status)}</span
+  >`;
 }
 
 export const shared = css`
+  @keyframes status-working {
+    50% {
+      opacity: 0.45;
+    }
+  }
   .dot {
-    display: inline-block;
+    display: inline-flex;
     flex: none;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
     width: var(--swc-spacing-100);
     height: var(--swc-spacing-100);
+    border: var(--swc-border-width-200) solid transparent;
     border-radius: var(--swc-corner-radius-full);
     background: var(--swc-neutral-visual-color);
+    color: var(--swc-neutral-visual-color);
+  }
+  .dot:focus {
+    outline: none;
+  }
+  .dot:focus-visible {
+    outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
+    outline-offset: var(--swc-focus-ring-gap);
   }
   .dot[data-variant='info'] {
     background: var(--swc-informative-visual-color);
+    color: var(--swc-informative-visual-color);
   }
   .dot[data-variant='notice'] {
     background: var(--swc-notice-visual-color);
+    color: var(--swc-notice-visual-color);
   }
   .dot[data-variant='negative'] {
     background: var(--swc-negative-visual-color);
+    color: var(--swc-negative-visual-color);
+  }
+  .dot[data-agent-status] {
+    margin-inline: var(--swc-border-width-200);
+  }
+  .dot[data-agent-status='thinking'] {
+    background: transparent;
+    border-style: dashed;
+    border-color: var(--swc-informative-visual-color);
+  }
+  .dot[data-agent-status='waiting'] {
+    background: transparent;
+    border-color: var(--swc-notice-visual-color);
+  }
+  .dot[data-agent-status='working'] {
+    box-shadow: 0 0 0 var(--swc-border-width-200) var(--swc-informative-visual-color);
+    animation: status-working calc(var(--swc-animation-duration-600) * 4)
+      var(--swc-animation-ease-in-out) infinite;
+  }
+  .dot[data-agent-status='error'] {
+    width: var(--swc-spacing-200);
+    height: var(--swc-spacing-200);
+    margin-inline: calc(
+      var(--swc-border-width-200) - (var(--swc-spacing-200) - var(--swc-spacing-100)) / 2
+    );
+    border: none;
+    background: transparent;
+    color: var(--swc-negative-visual-color);
+  }
+  .dot[data-agent-status='error'] swc-icon-alert-triangle {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    --swc-icon-inline-size: 100%;
+    --swc-icon-block-size: 100%;
+    --swc-icon-color: currentColor;
+  }
+  .marker.status {
+    border: var(--swc-border-width-200) solid transparent;
+    margin-inline-end: var(--swc-border-width-200);
+  }
+  .marker.status[data-status='thinking'] {
+    background: transparent;
+    border-style: dashed;
+    border-color: var(--status-color);
+  }
+  .marker.status[data-status='waiting'] {
+    background: transparent;
+    border-color: var(--status-color);
+  }
+  .marker.status[data-status='working'] {
+    box-shadow: 0 0 0 var(--swc-border-width-200) var(--status-color);
+    animation: status-working calc(var(--swc-animation-duration-600) * 4)
+      var(--swc-animation-ease-in-out) infinite;
+  }
+  .marker.status[data-status='error'] {
+    border: none;
+    background: transparent;
+    color: var(--status-color);
+  }
+  .marker.status[data-status='error'] swc-icon-alert-triangle {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    --swc-icon-inline-size: 100%;
+    --swc-icon-block-size: 100%;
+    --swc-icon-color: currentColor;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dot[data-agent-status='working'],
+    .marker.status[data-status='working'] {
+      animation: none;
+    }
+  }
+  @media (forced-colors: active) {
+    .dot[data-agent-status],
+    .marker.status[data-status] {
+      forced-color-adjust: none;
+      background: CanvasText;
+      color: CanvasText;
+      border-color: CanvasText;
+      box-shadow: none;
+    }
+    .dot[data-agent-status='thinking'],
+    .dot[data-agent-status='waiting'],
+    .dot[data-agent-status='error'],
+    .marker.status[data-status='thinking'],
+    .marker.status[data-status='waiting'],
+    .marker.status[data-status='error'] {
+      background: transparent;
+    }
+    .dot[data-agent-status='working'],
+    .marker.status[data-status='working'] {
+      box-shadow:
+        0 0 0 var(--swc-border-width-100) Canvas,
+        0 0 0 calc(var(--swc-border-width-100) + var(--swc-border-width-200)) CanvasText;
+    }
+    .dot:focus-visible {
+      outline-color: Highlight;
+    }
   }
   .count {
     display: inline-block;
