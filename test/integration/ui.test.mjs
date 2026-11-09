@@ -9988,9 +9988,26 @@ test('Secrets says it waits for the vault until the vault answers', async (t) =>
   assert.deepEqual(page.errors, []);
 });
 
-test('a due backup reminder offers Export backup and Not now', async (t) => {
+test('a due backup reminder sits below the secrets list and offers Export backup and Not now', async (t) => {
   const page = await secretsPage(t, { vault: 'backup' });
   await page.until(() => !!window.settingsPart('slicc-secrets', '[data-backup]'));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const root = window.settingsPart('slicc-secrets').shadowRoot;
+      const tools = root.querySelector('[data-tools]');
+      const secrets = root.querySelector('.secrets');
+      const backup = root.querySelector('[data-backup]');
+      const follows = (earlier, later) =>
+        !!(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING);
+      return {
+        afterTools: follows(tools, backup),
+        afterSecrets: follows(secrets, backup),
+        statusInAside:
+          [...root.querySelectorAll('[data-secret] .aside swc-status-light')].length > 0,
+      };
+    }),
+    { afterTools: true, afterSecrets: true, statusInAside: true }
+  );
   await views(page, 'secrets-backup');
   await page.evaluate(() =>
     window.settingsPart('slicc-secrets', '[data-action=dismiss-backup]').click()
