@@ -168,7 +168,9 @@ export function revealed(
   const when = today
     ? `${partial ? 'at least ' : ''}${today} ${today === 1 ? 'time' : 'times'} today`
     : since(last.at, now);
-  return html`Revealed to programs ${when}, last by ${shown(who(last))} with <code>${shown(last.argv)}</code>`;
+  const argv = Array.from(last.argv);
+  const clipped = argv.length > 120 ? `${argv.slice(0, 119).join('')}…` : last.argv;
+  return html`Revealed to programs ${when}, last by ${shown(who(last))} with <code>${shown(clipped)}</code>`;
 }
 
 export function changes(entry: PolicyEntry, devices: readonly LinkedDevice[]): string[][] {
@@ -580,8 +582,15 @@ export class SliccSecrets extends ThemedElement {
       .secret .form {
         grid-column: 1 / -1;
       }
-      .secret .buttons {
+      .aside {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: var(--swc-spacing-200);
         align-self: start;
+      }
+      .secret .buttons {
         justify-content: flex-end;
       }
       .name {
@@ -697,8 +706,11 @@ export class SliccSecrets extends ThemedElement {
         .secret {
           grid-template-columns: minmax(0, 1fr);
         }
-        .secret .buttons {
+        .aside {
           order: 1;
+          justify-content: flex-start;
+        }
+        .secret .buttons {
           justify-content: flex-start;
         }
         .secret .form {
@@ -1421,9 +1433,11 @@ export class SliccSecrets extends ThemedElement {
       <div class="name">
         <code>${secret.name}</code>
         ${kind ? html`<swc-badge size="s" variant="neutral" subtle>${kind}</swc-badge>` : nothing}
-        ${this.#state(secret)}
       </div>
-      ${this.#controls(vault, secret)}
+      <div class="aside">
+        ${this.#state(secret)}
+        ${this.#controls(vault, secret)}
+      </div>
       <dl>
         ${this.#reach(secret, gone)}
         ${secret.exits ? html`<dt>${gone ? 'Left through' : 'Leaves through'}</dt><dd data-exits>${secret.exits.length ? list(secret.exits.map((exit) => exitLabel(exit, devices))) : 'No exit'}</dd>` : nothing}
@@ -1646,7 +1660,6 @@ export class SliccSecrets extends ThemedElement {
       ${this.#feedback()}
       ${this.failure ? this.#error(this.failure, 'vault') : nothing}
       ${waiting.length ? html`<h3>Waiting for you</h3>${waiting.map((request) => this.#request(vault, request))}` : nothing}
-      ${this.#backup(vault, status)}
       ${this.#tools(vault, locked)}
       ${
         !current
@@ -1657,6 +1670,7 @@ export class SliccSecrets extends ThemedElement {
             ? this.#secrets(vault, current, entries, devices, locked)
             : html`<p data-empty>No secrets yet. Add one here, or enter the value when an agent or program asks for one.</p>`
       }
+      ${this.#backup(vault, status)}
       ${this.#refused(current?.refused ?? [])}
       <p class="muted" data-policy>Rules live in <code>/etc/fnox/config.toml</code> and <code>/etc/slicc/secrets-policy.toml</code>. Change them with sudo; SLICC asks you before every change.</p>
       ${current ? this.#audit(vault, current, entries, devices) : nothing}
