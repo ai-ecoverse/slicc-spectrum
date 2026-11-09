@@ -1721,7 +1721,7 @@ test('the browser lists its tabs with thumbnails, focuses one, and follows agent
   await page.until(() => !!window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.focused'));
   assert.equal(
     await page.evaluate(() =>
-      window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.address .url').textContent.trim()
+      window.$('slicc-app', 'slicc-dock', 'slicc-browser', '.bar .url').textContent.trim()
     ),
     'api.example.com/docs/v2/forecast'
   );
@@ -1831,16 +1831,41 @@ test('the browser follows a driven tab live, lists its actions and stops the age
   await page.until(() => window.inBrowser('figure')?.dataset.view === 'live');
   assert.equal(
     await page.evaluate(() => window.inBrowser('.driving swc-status-light').textContent.trim()),
-    'harbor is using this tab'
+    'Watching harbor'
   );
-  assert.equal(
-    await page.evaluate(() => window.inBrowser('.address .url').textContent.trim()),
-    'localhost:8787/forecast'
-  );
-  await page.until(() => window.inBrowser('.actions.last li')?.dataset.status === 'running');
   assert.match(
-    await page.evaluate(() => window.inBrowser('details summary').textContent.trim()),
-    /^Recent actions \(\d+\)$/
+    await page.evaluate(() => window.inBrowser('.bar .url').textContent.trim()),
+    /localhost:8787\/forecast/
+  );
+  await page.until(() => window.inBrowser('.actions li')?.dataset.status === 'running');
+  assert.equal(
+    await page.evaluate(() => {
+      const rows = [...window.inBrowser('.actions').querySelectorAll('li')];
+      const tab = window.model.browser.list().find((item) => item.controlled);
+      const newest = window.model.browser
+        .actions()
+        .filter(
+          (action) =>
+            action.tabId === tab.id ||
+            (action.tabId === null && action.agentId !== null && action.agentId === tab.agentId)
+        )
+        .at(-1);
+      const feed = window.inBrowser('.feed');
+      const figure = window.inBrowser('figure');
+      const feedStyle = getComputedStyle(feed);
+      const figureStyle = getComputedStyle(figure);
+      return (
+        rows[0]?.dataset.status === 'running' &&
+        rows[0]?.dataset.kind === newest?.kind &&
+        !!window.inBrowser('.feed .actions') &&
+        window.inBrowser('figcaption').textContent.replace(/\s+/g, ' ').trim() ===
+          'Live Watching only' &&
+        Number.parseFloat(feedStyle.flexGrow) > 0 &&
+        Number.parseFloat(figureStyle.flexGrow) > 0 &&
+        feed.getBoundingClientRect().height > 80
+      );
+    }),
+    true
   );
   assert.equal(
     await page.evaluate(() => window.inBrowser('li[data-kind=request]').title),
@@ -1850,9 +1875,9 @@ test('the browser follows a driven tab live, lists its actions and stops the age
 
   await page.evaluate(() => window.inBrowser('.driving [data-action=stop-agent]').click());
   await page.until(() => window.inBrowser('.driving')?.dataset.driving === 'none');
-  await page.until(() => window.inBrowser('.actions.last li')?.dataset.status === 'failed');
+  await page.until(() => window.inBrowser('.actions li')?.dataset.status === 'failed');
   assert.equal(
-    await page.evaluate(() => window.inBrowser('.actions.last .failure').textContent.trim()),
+    await page.evaluate(() => window.inBrowser('.actions li .failure').textContent.trim()),
     'Stopped'
   );
 
@@ -1904,7 +1929,7 @@ for (const [width, height] of [
         return {
           driving: top('.driving'),
           figure: top('figure'),
-          actions: top('details, h3'),
+          actions: top('.feed h3, h3'),
           height: Math.round(window.inBrowser('.driving').getBoundingClientRect().height),
         };
       });

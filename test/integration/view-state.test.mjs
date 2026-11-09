@@ -277,7 +277,7 @@ const panels = [
     held: () => !!window.part('browser', '[data-action=all-tabs]'),
   },
   {
-    name: 'the open recent actions in Browser',
+    name: 'the filled recent actions in Browser',
     id: 'browser',
     widths: [420, 1280, 420],
     params: { browser: 'idle' },
@@ -291,14 +291,20 @@ const panels = [
         });
       return true;
     },
-    ready: '.actions.last',
+    ready: '.feed .actions li',
     act: () => {
-      const summary = window.part('browser', 'details > summary');
-      if (!summary) return false;
-      summary.click();
+      const row = window.part(
+        'browser',
+        '.feed .actions li[data-kind=goto] [data-action=action-url]'
+      );
+      if (!row) return false;
+      row.click();
       return true;
     },
-    held: () => window.part('browser', 'details:has(> summary)')?.open === true,
+    held: () =>
+      window
+        .part('browser', '.feed .actions [data-action=action-url]')
+        ?.getAttribute('aria-expanded') === 'true',
   },
   {
     name: 'an open disclosure in Network',
