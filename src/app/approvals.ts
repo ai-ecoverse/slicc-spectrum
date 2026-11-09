@@ -343,11 +343,11 @@ function extras(approval: Approval): unknown[] {
   return [];
 }
 
-const paired = (approval: Approval): boolean =>
-  approval.kind === 'sudo' && approval.requester.kind === 'agent' && !!approval.requester.agentId;
-
 const stops = (approval: Approval): boolean =>
-  paired(approval) && (approval as SudoApproval).stoppable === true;
+  approval.kind === 'sudo' &&
+  approval.stoppable === true &&
+  approval.requester.kind === 'agent' &&
+  !!approval.requester.agentId;
 
 const denies = (decision: ApprovalDecision): boolean => decision === 'deny' || decision === 'stop';
 
@@ -920,8 +920,7 @@ export class SliccApprovals extends ModelElement {
       return html`<swc-button slot="button" variant="secondary" fill-style="outline" data-action="close" @click=${() => this.#dismiss(approval)}>Close</swc-button>`;
     const click = approval.kind === 'click';
     return html`${this.#button(approval, 'deny', click ? 'Cancel' : 'Deny', 'secondary')}
-      ${stops(approval) ? this.#button(approval, 'stop', 'Deny and stop', 'secondary') : nothing}
-      ${paired(approval) ? html`<span slot="button" class="break" aria-hidden="true"></span>` : nothing}
+      ${stops(approval) ? html`${this.#button(approval, 'stop', 'Deny and stop', 'secondary')}<span slot="button" class="break" aria-hidden="true"></span>` : nothing}
       ${always ? this.#button(approval, 'always', inCwd(approval) ? 'Always allow in this directory' : 'Always allow', 'secondary') : nothing}
       ${answerable(approval, 'once') ? this.#button(approval, 'once', click ? approval.action : 'Allow once', 'accent') : nothing}`;
   }

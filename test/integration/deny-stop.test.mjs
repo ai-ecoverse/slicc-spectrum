@@ -19,6 +19,12 @@ async function open(t, approvals, width = 1440) {
     mobile: false,
   });
   t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))
+      )
+  );
   await page.evaluate(() => {
     window.element = () => window.$('slicc-app', 'slicc-approvals');
     window.approvals = () => window.element().shadowRoot;
@@ -250,48 +256,51 @@ test('a terminal user’s request never offers Deny and stop, even when it says 
 for (const width of [1440, 420]) {
   for (const scope of [{}, { alwaysScope: 'cwd' }]) {
     const label = scope.alwaysScope ? ' in this directory' : '';
-    test(`no button moves when stoppable and the verdict arrive late${label} at ${width}`, async (t) => {
+    test(`a stoppable request keeps every button in place while the verdict arrives${label} at ${width}`, async (t) => {
       const page = await open(t, 'none', width);
-      await page.evaluate((scope) => window.ask('sudo-du', { judging: true, ...scope }), scope);
+      await page.evaluate(
+        (scope) => window.ask('sudo-du', { judging: true, stoppable: true, ...scope }),
+        scope
+      );
       await shown(page, 'sudo-du');
       await waitApprovalArmed(page);
       const first = await page.evaluate(() => [window.where(), window.frame()]);
       const steps = [
-        { stoppable: true },
-        { stoppable: true, verdict: { level: 1, reason: 'It reads sizes.' } },
-        { stoppable: true, verdict: { level: 2, reason: 'It reads sizes.' } },
-        { stoppable: true, verdictError: 'The check didn’t answer in time.' },
-        { stoppable: false, verdict: { level: 1, reason: 'It reads sizes.' } },
+        { verdict: { level: 1, reason: 'It reads sizes.' } },
+        { verdict: { level: 2, reason: 'It reads sizes.' } },
+        { verdictError: 'The check didn’t answer in time.' },
+        { verdict: { level: 1, reason: 'It reads sizes.' } },
       ];
       const seen = [];
       for (const patch of steps) {
-        await page.evaluate((patch) => window.ask('sudo-du', { judging: false, ...patch }), {
+        await page.evaluate((patch) => window.ask('sudo-du', patch), {
+          judging: false,
+          stoppable: true,
           ...scope,
           ...patch,
         });
         await settle(300);
         seen.push(await page.evaluate(() => [window.where(), window.frame()]));
       }
-      const [, withStop] = seen;
+      const [always] = seen;
       for (const [buttons, frame] of seen) {
         assert.deepEqual(frame, first[1], JSON.stringify(seen));
-        assert.deepEqual(buttons.deny, first[0].deny, JSON.stringify(seen));
-        assert.deepEqual(buttons.once, first[0].once, JSON.stringify(seen));
-        if (buttons.stop) assert.deepEqual(buttons.stop, withStop[0].stop, JSON.stringify(seen));
+        for (const action of ['deny', 'stop', 'once'])
+          assert.deepEqual(buttons[action], first[0][action], JSON.stringify(seen));
         if (buttons.always)
-          assert.deepEqual(buttons.always, withStop[0].always, JSON.stringify(seen));
+          assert.deepEqual(buttons.always, always[0].always, JSON.stringify(seen));
       }
       assert.deepEqual(
-        seen.map(([buttons]) => Object.keys(buttons)),
+        [first, ...seen].map(([buttons]) => Object.keys(buttons)),
         [
           ['deny', 'stop', 'once'],
           ['deny', 'stop', 'always', 'once'],
           ['deny', 'stop', 'always', 'once'],
           ['deny', 'stop', 'once'],
-          ['deny', 'always', 'once'],
+          ['deny', 'stop', 'always', 'once'],
         ]
       );
-      const [buttons] = withStop;
+      const [buttons] = always;
       assert.equal(buttons.deny[1], buttons.stop[1]);
       assert.ok(buttons.stop[0] > buttons.deny[0]);
       assert.ok(buttons.once[1] > buttons.deny[1]);
@@ -301,3 +310,21 @@ for (const width of [1440, 420]) {
     });
   }
 }
+
+test('a sudo request from a cone without stoppable keeps one row, as from an older agent', async (t) => {
+  const page = await open(t, 'none');
+  await page.evaluate(() =>
+    window.ask('sudo-old', { verdict: { level: 1, reason: 'It reads sizes.' } })
+  );
+  await shown(page, 'sudo-old');
+  assert.deepEqual(await page.evaluate(() => window.actions().map(([action]) => action)), [
+    'deny',
+    'always',
+    'once',
+  ]);
+  assert.equal(await page.evaluate(() => !!window.approvals().querySelector('.break')), false);
+  const where = await page.evaluate(() => window.where());
+  assert.equal(where.deny[1], where.once[1]);
+  assert.equal(where.always[1], where.once[1]);
+  assert.deepEqual(page.errors, []);
+});
