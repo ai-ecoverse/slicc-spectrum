@@ -2030,6 +2030,49 @@ test('the browser watches at device pixels and keeps the live frame while watchi
   assert.deepEqual(page.errors, []);
 });
 
+test('the browser wide tab list scrolls to the last tab', async (t) => {
+  const page = await open(t, { browser: 'idle' });
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 1280,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await page.evaluate(() => {
+    window.inBrowser = (selector) => window.$('slicc-app', 'slicc-dock', 'slicc-browser', selector);
+    window.app.show('browser');
+    const host = window.$('slicc-app', 'slicc-dock').content('browser');
+    host.style.width = '822px';
+    host.style.height = '900px';
+  });
+  await page.until(() => !!window.inBrowser('li[data-id=tab-preview] .window'));
+  await page.evaluate(() => {
+    for (let i = 0; i < 25; i++) window.model.browser.open(`https://example.com/tab-${i}`);
+    window.inBrowser('li[data-id=tab-preview] .window').click();
+  });
+  await page.until(() => !!window.inBrowser('.focused.wide .tabs'));
+  await page.until(() => (window.inBrowser('.tabs')?.querySelectorAll('li').length ?? 0) >= 28);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const tabs = window.inBrowser('.tabs');
+      const last = tabs.querySelector('li:last-child');
+      const before = last.getBoundingClientRect().bottom;
+      const panel = window.$('slicc-app', 'slicc-dock').content('browser').getBoundingClientRect();
+      if (before <= panel.bottom + 1)
+        return { overflow: tabs.scrollHeight > tabs.clientHeight, visible: true };
+      last.scrollIntoView({ block: 'end' });
+      const after = last.getBoundingClientRect();
+      return {
+        overflow: tabs.scrollHeight > tabs.clientHeight,
+        visible: after.bottom <= panel.bottom + 1 && after.top >= panel.top - 1,
+      };
+    }),
+    { overflow: true, visible: true }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 for (const [width, height] of [
   [1280, 800],
   [420, 860],

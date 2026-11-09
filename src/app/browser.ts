@@ -414,6 +414,7 @@ export class SliccBrowser extends ModelElement {
       }
       .focused.wide {
         grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr);
         align-items: stretch;
       }
       .detail {
@@ -473,6 +474,9 @@ export class SliccBrowser extends ModelElement {
         display: flex;
         flex-direction: column;
         gap: var(--swc-spacing-50);
+        min-height: 0;
+        overflow: auto;
+        overscroll-behavior: contain;
       }
       .tabs button {
         display: grid;
@@ -521,6 +525,7 @@ export class SliccBrowser extends ModelElement {
       .frame {
         display: grid;
         place-items: center;
+        box-sizing: border-box;
         aspect-ratio: 16 / 10;
         width: 100%;
         max-height: inherit;
@@ -940,7 +945,6 @@ export class SliccBrowser extends ModelElement {
         : { width: 0, height: 0 };
     if (this.#watching?.tabId === id && this.#watching.size === key) return;
     this.#watching?.stop();
-    this.#shots.delete(id);
     this.#watching = {
       tabId: id,
       size: key,
