@@ -216,9 +216,16 @@ export class DummyBrowser extends Emitter<BrowserEvents> implements BrowserPort 
     if (changed) this.emit('tabs', this.list());
   }
 
-  watch(tabId: string): () => void {
+  #watch: { tabId: string; size?: { width: number; height: number } } | null = null;
+
+  lastWatch(): { tabId: string; size?: { width: number; height: number } } | null {
+    return this.#watch;
+  }
+
+  watch(tabId: string, size?: { width: number; height: number }): () => void {
     const tab = () => this.#tabs.find((candidate) => candidate.id === tabId);
     if (!tab()?.controlled) return () => {};
+    this.#watch = { tabId, size: size ? { ...size } : undefined };
     const send = () => {
       const now = tab();
       if (!now?.controlled) return;
@@ -226,7 +233,10 @@ export class DummyBrowser extends Emitter<BrowserEvents> implements BrowserPort 
     };
     const timer = setInterval(send, 500);
     void this.#clock.sleep(0).then(send);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      if (this.#watch?.tabId === tabId) this.#watch = null;
+    };
   }
 
   #changed(): void {

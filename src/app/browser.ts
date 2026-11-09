@@ -424,7 +424,8 @@ export class SliccBrowser extends ModelElement {
         min-height: 0;
         height: 100%;
       }
-      .bar {
+      .bar,
+      .address {
         display: flex;
         align-items: center;
         gap: var(--swc-spacing-100);
@@ -436,7 +437,7 @@ export class SliccBrowser extends ModelElement {
         min-width: 0;
         max-width: 100%;
       }
-      .bar .url {
+      .address .url {
         flex: 1;
         min-width: 0;
         font-family: var(--swc-code-font-family-stack);
@@ -454,8 +455,9 @@ export class SliccBrowser extends ModelElement {
         flex: none;
       }
       .detail figure {
-        flex: 1.35 1 12rem;
-        min-height: 8rem;
+        flex: 0 1 auto;
+        width: 100%;
+        max-height: min(50vh, 100%);
       }
       .detail .feed {
         display: flex;
@@ -519,8 +521,9 @@ export class SliccBrowser extends ModelElement {
       .frame {
         display: grid;
         place-items: center;
-        flex: 1;
-        min-height: 0;
+        aspect-ratio: 16 / 10;
+        width: 100%;
+        max-height: inherit;
         overflow: hidden;
         border: var(--swc-border-width-100) solid var(--swc-gray-200);
         border-radius: var(--swc-corner-radius-medium-default);
@@ -1181,7 +1184,7 @@ export class SliccBrowser extends ModelElement {
     const watching = tab.controlled
       ? tab.agentId
         ? `Watching ${agentName(this.model as SliccModel, tab.agentId)}`
-        : 'Watching this tab'
+        : 'In use'
       : 'No agent is using this tab';
     return html`<div class=${`focused${wide ? ' wide' : ''}${narrow ? ' narrow' : ''}`}>
       ${wide ? this.#list(tabs, tab) : nothing}
@@ -1194,6 +1197,8 @@ export class SliccBrowser extends ModelElement {
             );
           }}><swc-icon-chevron-left slot="icon"></swc-icon-chevron-left>All tabs (${tabs.length})</swc-action-button>
           ${wide ? nothing : this.#picker(tabs, tab)}
+        </div>
+        <div class="address">
           <span class="url" title=${tab.url}>${narrow ? place(tab.url) : tab.url}</span>
           <swc-action-button size="s" quiet data-action="copy-url" accessible-label=${copy === 'Copy' ? 'Copy URL' : copy} @click=${() => this.#copy(tab.url)}><swc-icon-copy slot="icon"></swc-icon-copy>${narrow ? nothing : copy}</swc-action-button>
           <swc-action-button size="s" quiet data-action="open-tab" accessible-label="Show in the browser" @click=${() => this.model?.browser.activate(tab.id)}><swc-icon-open-in slot="icon"></swc-icon-open-in>${narrow ? nothing : 'Open'}</swc-action-button>
