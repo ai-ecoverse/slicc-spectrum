@@ -1334,6 +1334,7 @@ export interface LiveItem {
   what: string;
   asker: string;
   since: number;
+  endedAt?: number;
   action: { label: string };
 }
 

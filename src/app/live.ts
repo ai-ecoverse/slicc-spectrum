@@ -10,7 +10,8 @@ export function elapsed(ms: number): string {
 }
 
 export function liveLine(item: LiveItem, now: number): string {
-  return [item.label, item.what, item.asker, elapsed(now - item.since)].filter(Boolean).join(' · ');
+  const tail = item.endedAt != null ? 'Ended' : elapsed(now - item.since);
+  return [item.label, item.what, item.asker, tail].filter(Boolean).join(' · ');
 }
 
 export class SliccLive extends ModelElement {
@@ -56,6 +57,9 @@ export class SliccLive extends ModelElement {
       border-radius: 50%;
       background: var(--swc-negative-visual-color);
     }
+    .chip[data-ended] .dot {
+      background: var(--swc-neutral-visual-color);
+    }
     .text {
       flex: 0 1 auto;
       min-width: 0;
@@ -95,6 +99,10 @@ export class SliccLive extends ModelElement {
     return this.model?.live?.items() ?? [];
   }
 
+  #live(): boolean {
+    return this.#items().some((item) => item.endedAt == null);
+  }
+
   #tick(on: boolean): void {
     if (on && !this.#timer) this.#timer = setInterval(() => (this.now = Date.now()), 1000);
     if (!on && this.#timer) {
@@ -105,14 +113,24 @@ export class SliccLive extends ModelElement {
 
   protected updated(changed: PropertyValues): void {
     super.updated(changed);
-    this.#tick(this.isConnected && this.#items().length > 0);
+    this.#tick(this.isConnected && this.#live());
   }
 
   #chip(item: LiveItem): TemplateResult {
-    const rest = liveLine({ ...item, label: '' }, this.now);
-    return html`<div class="chip" role="listitem" data-id=${item.id} data-kind=${item.kind}>
+    const ended = item.endedAt != null;
+    const rest = [item.what, item.asker].filter(Boolean).join(' · ');
+    const stamp = ended ? null : elapsed(this.now - item.since);
+    return html`<div class="chip" role="listitem" data-id=${item.id} data-kind=${item.kind} ?data-ended=${ended}>
       <span class="dot" aria-hidden="true"></span>
-      <span class="text" title=${liveLine(item, this.now)}><span class="label">${item.label}</span><span class="detail"> · ${rest}</span></span>
+      <span class="text" title=${liveLine(item, this.now)}
+        ><span class="label">${item.label}</span>${
+          rest ? html`<span class="detail"> · ${rest}</span>` : nothing
+        }${
+          ended
+            ? html`<span class="ended"> · Ended</span>`
+            : html`<span class="detail"> · ${stamp}</span>`
+        }</span
+      >
       <swc-action-button size="s" quiet data-action="live-act" accessible-label=${`${item.action.label}: ${item.label}`} @click=${() => this.model?.live?.act(item.id)}>${item.action.label}</swc-action-button>
     </div>`;
   }

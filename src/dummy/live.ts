@@ -1,7 +1,7 @@
 import { Emitter } from '../model/emitter.ts';
 import type { LiveItem, LivePort, Switch, SwitchesPort } from '../model/types.ts';
 
-export type LiveScenario = 'screen' | 'both' | 'empty';
+export type LiveScenario = 'screen' | 'both' | 'ended' | 'empty';
 
 export function liveFixtures(scenario: LiveScenario, now = Date.now()): LiveItem[] {
   if (scenario === 'empty') return [];
@@ -15,18 +15,26 @@ export function liveFixtures(scenario: LiveScenario, now = Date.now()): LiveItem
     action: { label: 'Stop' },
   };
   if (scenario === 'screen') return [screen];
-  return [
-    screen,
-    {
-      id: 'live-microphone',
-      kind: 'microphone',
-      label: 'Recording microphone',
-      what: 'Desk microphone',
-      asker: 'Seat 2 (Mara) via docs-pass',
-      since: now - 7_000,
-      action: { label: 'Stop' },
-    },
-  ];
+  const microphone: LiveItem = {
+    id: 'live-microphone',
+    kind: 'microphone',
+    label: 'Recording microphone',
+    what: 'Desk microphone',
+    asker: 'Seat 2 (Mara) via docs-pass',
+    since: now - 7_000,
+    action: { label: 'Stop' },
+  };
+  if (scenario === 'ended') {
+    return [
+      screen,
+      {
+        ...microphone,
+        endedAt: now - 1_000,
+        action: { label: 'Dismiss' },
+      },
+    ];
+  }
+  return [screen, microphone];
 }
 
 export class DummyLive extends Emitter<{ items: readonly LiveItem[] }> implements LivePort {
