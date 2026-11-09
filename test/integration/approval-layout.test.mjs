@@ -38,7 +38,7 @@ async function open(t, width) {
       return true;
     };
     window.where = () =>
-      [...window.approvals().querySelectorAll('[slot=button]')].map((button) => {
+      [...window.approvals().querySelectorAll('[slot=button][data-action]')].map((button) => {
         const box = button.getBoundingClientRect();
         return [button.dataset.action, Math.round(box.left), Math.round(box.top)];
       });

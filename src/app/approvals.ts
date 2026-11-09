@@ -343,8 +343,17 @@ function extras(approval: Approval): unknown[] {
   return [];
 }
 
+const stops = (approval: Approval): boolean =>
+  approval.kind === 'sudo' &&
+  approval.stoppable === true &&
+  approval.requester.kind === 'agent' &&
+  !!approval.requester.agentId;
+
+const denies = (decision: ApprovalDecision): boolean => decision === 'deny' || decision === 'stop';
+
 function answerable(approval: Approval, decision: ApprovalDecision): boolean {
   if (decision === 'deny') return true;
+  if (decision === 'stop') return stops(approval);
   if (approval.kind === 'secret') return false;
   return approval.kind !== 'click' || approval.here;
 }
@@ -525,8 +534,22 @@ export class SliccApprovals extends ModelElement {
       .judged p {
         margin: 0;
       }
-      [slot='button'][data-action='deny'] {
+      [slot='button'][data-action='deny'],
+      [slot='button'][data-action='stop'] {
         margin-inline-end: auto;
+      }
+      [slot='button'][data-action='deny']:has(+ [data-action='stop']) {
+        margin-inline-end: 0;
+      }
+      sp-alert-dialog {
+        --mod-buttongroup-spacing: var(--swc-spacing-300);
+      }
+      .break {
+        flex-basis: 100%;
+        block-size: 0;
+      }
+      .break ~ [slot='button'] {
+        margin-block-start: calc(-1 * var(--swc-spacing-300));
       }
       .prompt {
         margin-block-start: var(--swc-spacing-200);
@@ -650,11 +673,12 @@ export class SliccApprovals extends ModelElement {
       this.#done.has(id) ||
       this.#closed.has(id) ||
       !answerable(approval, decision) ||
-      (decision !== 'deny' && (!this.#arming.settled() || !this.#whole(approval)))
+      (!denies(decision) && (!this.#arming.settled() || !this.#whole(approval)))
     )
       return;
     const live = port.list().find(({ id }) => id === approval.id);
     if (decision === 'always' && !(live && offersAlways(live))) return;
+    if (decision === 'stop' && !(live && stops(live))) return;
     this.busy = decision;
     this.failure = null;
     this.#pending.add(approval.id);
@@ -827,7 +851,7 @@ export class SliccApprovals extends ModelElement {
       fill-style=${variant === 'accent' ? nothing : 'outline'}
       data-action=${decision}
       ?pending=${this.busy === decision}
-      ?disabled=${(!!this.busy && this.busy !== decision) || (decision !== 'deny' && !this.#whole(approval))}
+      ?disabled=${(!!this.busy && this.busy !== decision) || (!denies(decision) && !this.#whole(approval))}
       @click=${(event: MouseEvent) => this.#click(event, approval, decision)}
       >${label}</swc-button
     >`;
@@ -896,6 +920,7 @@ export class SliccApprovals extends ModelElement {
       return html`<swc-button slot="button" variant="secondary" fill-style="outline" data-action="close" @click=${() => this.#dismiss(approval)}>Close</swc-button>`;
     const click = approval.kind === 'click';
     return html`${this.#button(approval, 'deny', click ? 'Cancel' : 'Deny', 'secondary')}
+      ${stops(approval) ? html`${this.#button(approval, 'stop', 'Deny and stop', 'secondary')}<span slot="button" class="break" aria-hidden="true"></span>` : nothing}
       ${always ? this.#button(approval, 'always', inCwd(approval) ? 'Always allow in this directory' : 'Always allow', 'secondary') : nothing}
       ${answerable(approval, 'once') ? this.#button(approval, 'once', click ? approval.action : 'Allow once', 'accent') : nothing}`;
   }
