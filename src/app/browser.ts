@@ -280,6 +280,7 @@ export class SliccBrowser extends ModelElement {
       }
       .cards {
         display: grid;
+        grid-template-columns: minmax(0, 1fr);
         gap: var(--swc-spacing-200);
         padding: var(--swc-spacing-300);
       }
@@ -382,7 +383,27 @@ export class SliccBrowser extends ModelElement {
       }
       .cards .driving,
       .cards .driver {
+        min-block-size: var(--swc-component-height-75);
         padding: 0 var(--swc-spacing-200) var(--swc-spacing-200);
+      }
+      .cards .driver {
+        line-height: var(--swc-component-height-75);
+      }
+      .cards .driving {
+        flex-wrap: nowrap;
+      }
+      .cards .driving swc-status-light {
+        align-self: center;
+        min-width: 0;
+      }
+      .cards .driving swc-status-light span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .cards .driving swc-button {
+        flex: none;
       }
       .driving {
         display: flex;
@@ -1024,7 +1045,7 @@ export class SliccBrowser extends ModelElement {
       </button>
       ${
         tab.controlled
-          ? html`<div class="driving"><swc-status-light size="s" variant="info">${this.#who(tab)}</swc-status-light>${this.#stopButton(tab, `li[data-id="${tab.id}"] .window`)}</div>`
+          ? html`<div class="driving"><swc-status-light size="s" variant="info" title=${this.#who(tab)}><span>${this.#who(tab)}</span></swc-status-light>${this.#stopButton(tab, `li[data-id="${tab.id}"] .window`)}</div>`
           : tab.agentId
             ? html`<span class="driver">Last used by ${agentName(model, tab.agentId)}</span>`
             : nothing
