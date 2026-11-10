@@ -43,6 +43,17 @@ async function openMenu(page) {
   await page.until(() => window.addMenu().open === true);
 }
 
+async function clickLiveAct(page, id) {
+  await page.until((id) => {
+    const button = window
+      .$('slicc-app', 'slicc-live')
+      ?.shadowRoot?.querySelector(`[data-id="${id}"] [data-action=live-act]`);
+    if (!button || button.disabled || button.hasAttribute('disabled')) return false;
+    button.click();
+    return true;
+  }, id);
+}
+
 test('without a capture port, screenshot with no browser tab shows an error chip', async (t) => {
   const page = await open(t, { browser: 'off', capture: 'off' });
   await openMenu(page);
@@ -102,13 +113,7 @@ test('Record audio shows a live chip and attaches after Stop', async (t) => {
   await page.evaluate(() =>
     window.composer().shadowRoot.querySelector('sp-menu-item[value=record-audio]').click()
   );
-  await page.until(() => window.liveChips().includes('capture-audio'));
-  await page.evaluate(() =>
-    window
-      .$('slicc-app', 'slicc-live')
-      .shadowRoot.querySelector('[data-id=capture-audio] [data-action=live-act]')
-      .click()
-  );
+  await clickLiveAct(page, 'capture-audio');
   await page.until(() => window.composer().attachments.length === 1);
   assert.equal(await page.evaluate(() => window.composer().attachments[0].kind), 'file');
   assert.equal(await page.evaluate(() => window.composer().attachments[0].mimeType), 'audio/webm');
@@ -183,13 +188,7 @@ test('cancelling Taking a photo attaches nothing', async (t) => {
   await page.evaluate(() =>
     window.composer().shadowRoot.querySelector('sp-menu-item[value=screenshot]').click()
   );
-  await page.until(() => window.liveChips().includes('capture-still'));
-  await page.evaluate(() =>
-    window
-      .$('slicc-app', 'slicc-live')
-      .shadowRoot.querySelector('[data-id=capture-still] [data-action=live-act]')
-      .click()
-  );
+  await clickLiveAct(page, 'capture-still');
   await page.until(() => !window.liveChips().includes('capture-still'));
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.equal(await page.evaluate(() => window.composer().attachments.length), 0);
