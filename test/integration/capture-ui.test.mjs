@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
+import { clickApproval, waitApprovalArmed } from './approval-click.mjs';
 import { launch } from './chrome.mjs';
 
 const chrome = await launch();
@@ -57,7 +58,7 @@ async function ask(page, id) {
       window.approvals().activeElement?.dataset.action === 'deny',
     id
   );
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  await waitApprovalArmed(page);
 }
 
 async function press(page, where, selector) {
@@ -70,7 +71,7 @@ async function press(page, where, selector) {
     await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
 }
 
-const inDialog = (page, action) => press(page, 'dialog', `[data-action=${action}]`);
+const inDialog = (page, action) => clickApproval(page, action);
 
 async function resize(page, width) {
   await page.send('Emulation.setDeviceMetricsOverride', {
@@ -513,6 +514,7 @@ for (const [approvals, id, refused, allowed] of refusals) {
       ]),
       [[], id]
     );
+    await waitApprovalArmed(page);
     await page.evaluate((decision) => {
       const element = window.$('slicc-app', 'slicc-approvals');
       const [item] = window.model.approvals.list();

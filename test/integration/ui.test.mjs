@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
+import { clickApproval, waitApprovalArmed } from './approval-click.mjs';
 import { launch } from './chrome.mjs';
 
 const chrome = await launch();
@@ -4071,7 +4072,7 @@ for (const [width, height] of [
         !!window.approvals().querySelector('dialog[data-approval=sudo-release]') &&
         window.focused().includes('swc-button')
     );
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await waitApprovalArmed(page);
     await cutCommand(page, 'dialog');
     const wrap = ['pre-wrap', 'anywhere', 'clip', 'none'];
     const shown = await page.evaluate(() => window.cutCommand('sudo-release'));
@@ -4101,12 +4102,7 @@ for (const [width, height] of [
         'deny',
       ]
     );
-    const { x, y } = await page.evaluate(() => {
-      const box = window.approvals().querySelector('[data-action=once]').getBoundingClientRect();
-      return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-    });
-    for (const type of ['mousePressed', 'mouseReleased'])
-      await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+    await clickApproval(page, 'once');
     await page.until(() => !window.approvals().querySelector('dialog'));
     assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
       ['sudo-release', 'once'],
@@ -4139,14 +4135,7 @@ async function phoneDialog(t, approvals) {
       window.approvals().querySelector('[data-allow-hint]')?.textContent ?? null;
     return true;
   });
-  const click = async (selector) => {
-    const { x, y } = await page.evaluate((selector) => {
-      const box = window.approvals().querySelector(selector).getBoundingClientRect();
-      return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-    }, selector);
-    for (const type of ['mousePressed', 'mouseReleased'])
-      await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
-  };
+  const click = async (selector) => clickApproval(page, selector);
   const wheel = async (deltaY) => {
     const { x, y } = await page.evaluate(() => {
       const box = window.approvals().querySelector('.command .lines').getBoundingClientRect();
@@ -4195,7 +4184,7 @@ test('a 60-line command scrolls in its own box at 420, and Allow stays disabled 
       !!window.approvals().querySelector('dialog[data-approval=sudo-huge] [data-allow-hint]') &&
       window.focused().includes('swc-button')
   );
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  await waitApprovalArmed(page);
   const where = () =>
     [...window.approvals().querySelectorAll('[slot=button][data-action]')].map((b) => {
       const box = b.getBoundingClientRect();
@@ -4231,7 +4220,7 @@ test('a 60-line command scrolls in its own box at 420, and Allow stays disabled 
   assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), []);
   await toEnd();
   await page.until(() => window.enabledActions().length === 3);
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  await waitApprovalArmed(page);
   assert.deepEqual(await page.evaluate(where), before);
   const visible = () =>
     ['[data-timer]', '[data-action=deny]', '[data-action=always]', '[data-action=once]'].map(
@@ -4280,7 +4269,7 @@ test('a guest tool call with a blank summary shows its tool and args whole, and 
       !!window.approvals().querySelector('dialog[data-approval=guest-write]') &&
       window.focused().includes('swc-button')
   );
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  await waitApprovalArmed(page);
   await cutCommand(page, 'dialog');
   const shown = await page.evaluate(() => window.cutCommand('guest-write'));
   assert.deepEqual(
@@ -4311,7 +4300,7 @@ test('a guest tool call with no summary and no args says it has no details, and 
       !!window.approvals().querySelector('dialog[data-approval=guest-write]') &&
       window.focused().includes('swc-button')
   );
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  await waitApprovalArmed(page);
   assert.deepEqual(
     await page.evaluate(() => [
       window.approvals().querySelector('[data-id=no-details]')?.textContent,
@@ -4332,7 +4321,7 @@ test('a guest tool call whose args came truncated never offers Allow, even with 
       !!window.approvals().querySelector('dialog[data-approval=guest-write] [data-allow-hint]') &&
       window.focused().includes('swc-button')
   );
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  await waitApprovalArmed(page);
   const tooLong = 'This request is too long to show in full, so it can’t be allowed.';
   assert.deepEqual(
     await page.evaluate(() => [
@@ -7735,11 +7724,7 @@ test('following without Control, approvals and Guests still show and work', asyn
       window.approvals().querySelector('dialog')?.dataset.approval === 'sudo-jq' &&
       window.focused().includes('swc-button')
   );
-  await new Promise((resolve) => setTimeout(resolve, 600));
-  await page.evaluate(() => {
-    window.approvals().querySelector('[data-action=once]').click();
-    return true;
-  });
+  await clickApproval(page, 'once');
   await page.until(() => !window.approvals().querySelector('dialog'));
   assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
     ['sudo-jq', 'once'],
@@ -10857,19 +10842,10 @@ async function sudoFromTerminal(t) {
         window.focused().includes('swc-button'),
       id
     );
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await waitApprovalArmed(page);
     return id;
   };
-  const click = async (action) => {
-    const { x, y } = await page.evaluate((action) => {
-      const box = window
-        .$('slicc-app', 'slicc-approvals', `[data-action=${action}]`)
-        .getBoundingClientRect();
-      return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-    }, action);
-    for (const type of ['mousePressed', 'mouseReleased'])
-      await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
-  };
+  const click = async (action) => clickApproval(page, action);
   const back = async (line) => {
     await page.until(() => !window.$('slicc-app', 'slicc-approvals', 'dialog'));
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -10964,19 +10940,9 @@ test('a guest message is asked as plain text, Deny is focused, and a rejected de
         window.focused().includes('swc-button'),
       id
     );
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await waitApprovalArmed(page);
   };
-  const click = async (action) => {
-    const { x, y } = await page.evaluate((action) => {
-      const box = window
-        .approvals()
-        .querySelector(`[data-action=${action}]`)
-        .getBoundingClientRect();
-      return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-    }, action);
-    for (const type of ['mousePressed', 'mouseReleased'])
-      await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
-  };
+  const click = async (action) => clickApproval(page, action);
   await ask('guest-note');
   assert.deepEqual(
     await page.evaluate(() => {
@@ -11062,7 +11028,7 @@ test('a guest approval with always offers Always allow, says what it covers and 
       window.approvals().querySelector('dialog')?.dataset.approval === 'guest-read' &&
       window.focused().includes('swc-button')
   );
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  await waitApprovalArmed(page);
   assert.deepEqual(
     await page.evaluate(() => {
       const root = window.approvals();
@@ -11093,7 +11059,7 @@ test('a guest approval with always offers Always allow, says what it covers and 
   });
   t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
   await page.until(() => document.querySelector('slicc-app').screen === 'phone');
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  await waitApprovalArmed(page);
   assert.deepEqual(
     await page.evaluate(() => {
       const root = window.approvals();
@@ -11111,10 +11077,7 @@ test('a guest approval with always offers Always allow, says what it covers and 
     }),
     { order: ['deny', 'always', 'once'], rows: 1, inside: true, apart: true, focused: 'deny' }
   );
-  await page.evaluate(() => {
-    window.approvals().querySelector('[data-action=always]').click();
-    return true;
-  });
+  await clickApproval(page, 'always');
   await page.until(() => !window.approvals().querySelector('dialog'));
   assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
     ['guest-read', 'always'],
@@ -11157,7 +11120,7 @@ test('a rejected decide leaves only Close, which moves on, and the body fills th
         window.focused().includes('swc-button'),
       id
     );
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await waitApprovalArmed(page);
   };
   const flush = [
     ['grid', 0, 0],
@@ -11174,10 +11137,7 @@ test('a rejected decide leaves only Close, which moves on, and the body fills th
   });
   await ask('guest-late');
   assert.deepEqual(await page.evaluate(() => window.span()), flush);
-  await page.evaluate(() => {
-    window.approvals().querySelector('[data-action=once]').click();
-    return true;
-  });
+  await clickApproval(page, 'once');
   await page.until(() => window.approvals().activeElement?.dataset.action === 'close');
   assert.deepEqual(
     await page.evaluate(() => {

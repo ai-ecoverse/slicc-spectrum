@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
+import { clickApproval, waitApprovalArmed } from './approval-click.mjs';
 import { launch } from './chrome.mjs';
 
 const chrome = await launch();
@@ -45,7 +46,7 @@ async function open(t, scenario) {
   });
   await page.until(() => !!window.approvals().shadowRoot.querySelector('[data-action=once]'));
   await page.until(() => window.approvals().shadowRoot.activeElement?.dataset.action === 'deny');
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  await waitApprovalArmed(page);
   return page;
 }
 
@@ -132,10 +133,7 @@ test('a level 3 verdict warns in red and offers only Deny and Allow once', async
       .then(() => true)
   );
   assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), []);
-  await page.evaluate(() => {
-    window.approvals().shadowRoot.querySelector('[data-action=once]').click();
-    return true;
-  });
+  await clickApproval(page, 'once');
   await page.until(() => window.model.approvals.decisions.length === 1);
   assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
     ['sudo-level-3', 'once'],
@@ -175,11 +173,7 @@ test('Checking shows until the verdict lands, then Always appears with it', asyn
     actions: [deny, always, once],
     rules: false,
   });
-  await new Promise((resolve) => setTimeout(resolve, 600));
-  await page.evaluate(() => {
-    window.approvals().shadowRoot.querySelector('[data-action=always]').click();
-    return true;
-  });
+  await clickApproval(page, 'always');
   await page.until(() => window.model.approvals.decisions.length === 1);
   assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
     ['sudo-checking', 'always'],
@@ -359,7 +353,7 @@ test('guest approvals show the same verdict block', async (t) => {
 });
 
 async function asking(page, id, patch) {
-  return page.evaluate(
+  await page.evaluate(
     async ({ id, patch }) => {
       const now = Date.now();
       const port = window.model.approvals;
@@ -381,21 +375,23 @@ async function asking(page, id, patch) {
         !root.querySelector('[data-action=once]')
       )
         await new Promise((resolve) => setTimeout(resolve, 20));
-      await new Promise((resolve) => setTimeout(resolve, 600));
       return true;
     },
     { id, patch }
   );
+  await waitApprovalArmed(page);
 }
 
-const tried = (page, id) =>
-  page.evaluate(async (id) => {
+async function tried(page, id) {
+  await waitApprovalArmed(page);
+  return page.evaluate(async (id) => {
     const root = window.approvals().shadowRoot;
     const port = window.model.approvals;
     const always = !!root.querySelector('[data-action=always]');
     await window.approvals().decide(port.list()[0], 'always');
     return { always, decided: port.decisions.some(([decided]) => decided === id) };
   }, id);
+}
 
 test('without a level, a sudo with always true never offers Always', async (t) => {
   const page = await open(t, 'judge-denied');
@@ -440,10 +436,7 @@ test('a level-less guest with always still offers Always', async (t) => {
     actions: [deny, always, once],
     rules: false,
   });
-  await page.evaluate(() => {
-    window.approvals().shadowRoot.querySelector('[data-action=always]').click();
-    return true;
-  });
+  await clickApproval(page, 'always');
   await page.until(() => window.model.approvals.decisions.length === 1);
   assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
     ['guest-read', 'always'],

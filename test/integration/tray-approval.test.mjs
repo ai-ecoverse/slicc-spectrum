@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
+import { clickApproval, waitApprovalArmed } from './approval-click.mjs';
 import { launch } from './chrome.mjs';
 
 const chrome = await launch();
@@ -37,17 +38,10 @@ async function ask(page, id) {
       window.approvals().activeElement?.dataset.action === 'deny',
     id
   );
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  await waitApprovalArmed(page);
 }
 
-async function click(page, action) {
-  const { x, y } = await page.evaluate((action) => {
-    const box = window.approvals().querySelector(`[data-action=${action}]`).getBoundingClientRect();
-    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-  }, action);
-  for (const type of ['mousePressed', 'mouseReleased'])
-    await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
-}
+const click = clickApproval;
 
 const buttons = [
   ['deny', 'Deny'],

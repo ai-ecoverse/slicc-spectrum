@@ -3,6 +3,8 @@ export async function waitApprovalArmed(page) {
     const host = window.$('slicc-app', 'slicc-approvals');
     const root = host.shadowRoot;
     const ms = () => host.arming;
+    const frames = () =>
+      new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     const sig = () => {
       const dialog = root.querySelector('dialog');
       const buttons = [...root.querySelectorAll('[slot=button]')];
@@ -23,6 +25,7 @@ export async function waitApprovalArmed(page) {
         }),
       ]);
     };
+    await frames();
     let last = sig();
     let changed = performance.now();
     const deadline = performance.now() + 15000;
@@ -32,6 +35,8 @@ export async function waitApprovalArmed(page) {
       const next = sig();
       if (next !== last) {
         last = next;
+        await frames();
+        last = sig();
         changed = performance.now();
       }
     }
