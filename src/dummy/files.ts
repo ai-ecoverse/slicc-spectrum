@@ -7,6 +7,18 @@ function parents(path: string): string[] {
   return parts.map((_, i) => `/${parts.slice(0, i + 1).join('/')}`);
 }
 
+function mimeOf(name: string): string {
+  if (/\.png$/i.test(name)) return 'image/png';
+  if (/\.jpe?g$/i.test(name)) return 'image/jpeg';
+  if (/\.gif$/i.test(name)) return 'image/gif';
+  if (/\.webp$/i.test(name)) return 'image/webp';
+  if (/\.svg$/i.test(name)) return 'image/svg+xml';
+  if (/\.pdf$/i.test(name)) return 'application/pdf';
+  if (/\.json$/i.test(name)) return 'application/json';
+  if (/\.(md|txt|csv|ya?ml|toml|ts|js|css|html)$/i.test(name)) return 'text/plain';
+  return 'application/octet-stream';
+}
+
 export type MountScenario = 'mount' | 'cancel' | 'fail' | 'needs';
 
 export interface DummyMount {
@@ -91,6 +103,21 @@ export class DummyFiles extends Emitter<FileEvents> implements FilePort {
     const text = this.#contents.get(path);
     if (text === undefined) throw new Error(`ENOENT: ${path}`);
     return text;
+  }
+
+  async readBytes(path: string): Promise<Blob> {
+    await this.#clock.sleep();
+    const text = this.#contents.get(path);
+    if (text === undefined) throw new Error(`ENOENT: ${path}`);
+    const name = path.slice(path.lastIndexOf('/') + 1);
+    const type = mimeOf(name);
+    if (
+      type.startsWith('image/') ||
+      type === 'application/pdf' ||
+      type === 'application/octet-stream'
+    )
+      return new Blob([Uint8Array.from(text, (char) => char.charCodeAt(0) & 0xff)], { type });
+    return new Blob([text], { type });
   }
 
   #record(path: string, after: string | null, agentId: string | null): void {

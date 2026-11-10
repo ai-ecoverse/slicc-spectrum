@@ -394,6 +394,7 @@ export interface MountInfo {
 export interface FilePort extends Subscribable<FileEvents> {
   list(): Promise<readonly FileEntry[]>;
   read(path: string): Promise<string>;
+  readBytes?(path: string): Promise<Blob | Uint8Array>;
   write(path: string, text: string, agentId?: string | null): Promise<void>;
   remove(path: string, agentId?: string | null): Promise<void>;
   changes(): readonly Change[];

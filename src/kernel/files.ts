@@ -229,6 +229,15 @@ export class KernelFiles extends Emitter<FileEvents> implements FilePort {
     }
   }
 
+  async readBytes(path: string): Promise<Blob> {
+    try {
+      const [dir, name] = await this.#parent(path);
+      return await (await dir.getFileHandle(name)).getFile();
+    } catch {
+      throw new Error(`ENOENT: ${path}`);
+    }
+  }
+
   async write(path: string, text: string): Promise<void> {
     const parts = split(path);
     const name = parts.pop();

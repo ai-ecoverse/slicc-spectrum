@@ -73,6 +73,18 @@ function carried(attachment: Attachment): boolean {
   );
 }
 
+export function mimeOf(name: string): string {
+  if (/\.png$/i.test(name)) return 'image/png';
+  if (/\.jpe?g$/i.test(name)) return 'image/jpeg';
+  if (/\.gif$/i.test(name)) return 'image/gif';
+  if (/\.webp$/i.test(name)) return 'image/webp';
+  if (/\.svg$/i.test(name)) return 'image/svg+xml';
+  if (/\.pdf$/i.test(name)) return 'application/pdf';
+  if (/\.json$/i.test(name)) return 'application/json';
+  if (/\.(md|txt|csv|ya?ml|toml|ts|js|css|html)$/i.test(name)) return 'text/plain';
+  return 'application/octet-stream';
+}
+
 type Kept = Pick<Attachment, 'name' | 'mimeType' | 'size'>;
 type Waiting = {
   id: string;
@@ -973,12 +985,22 @@ export class SliccComposer extends ThemedElement {
     });
   }
 
+  #takePaths(entries: readonly { kind: string; path: string }[]): void {
+    this.#paths = entries.filter((entry) => entry.kind === 'file').map((entry) => entry.path);
+    if (this.popup?.kind === 'file')
+      this.popup = { ...this.popup, items: this.#choices('file', this.popup.query) };
+  }
+
+  async #loadPaths(): Promise<void> {
+    const model = this.model;
+    if (!model || model.seat) return;
+    this.#takePaths(await model.files.list());
+    this.requestUpdate();
+  }
+
   protected subscribe(model: SliccModel): Array<() => void> {
     this.#switch(this.agent || model.agent.active());
-    if (!model.seat)
-      void model.files.list().then((entries) => {
-        this.#paths = entries.filter((entry) => entry.kind === 'file').map((entry) => entry.path);
-      });
+    void this.#loadPaths();
     const update = () => this.requestUpdate();
     return [
       ...super.subscribe(model),
@@ -1007,6 +1029,14 @@ export class SliccComposer extends ThemedElement {
       ...(model.vault
         ? [model.vault.on('availability', update), model.vault.on('status', update)]
         : []),
+      ...(model.seat
+        ? []
+        : [
+            model.files.on('files', (entries) => {
+              this.#takePaths(entries);
+              update();
+            }),
+          ]),
     ];
   }
 
@@ -1322,8 +1352,28 @@ export class SliccComposer extends ThemedElement {
   }
 
   async attachPath(path: string): Promise<void> {
-    const text = await this.model?.files.read(path).catch(() => null);
+    const port = this.model?.files;
     const name = path.slice(path.lastIndexOf('/') + 1);
+    if (!port) {
+      this.#failAttach(name, 'Could not read the file');
+      return;
+    }
+    if (port.readBytes) {
+      try {
+        const bytes = await port.readBytes(path);
+        const type = (bytes instanceof Blob && bytes.type) || mimeOf(name);
+        const blob = bytes instanceof Blob ? bytes : new Blob([bytes as BlobPart], { type });
+        const before = this.attachments.length;
+        await this.addFiles([new File([blob], name, { type })]);
+        this.attachments = this.attachments.map((attachment, index) =>
+          index < before ? attachment : { ...attachment, path }
+        );
+      } catch {
+        this.#failAttach(name, 'Could not read the file');
+      }
+      return;
+    }
+    const text = await port.read(path).catch(() => null);
     const base = { id: this.#id(), name, path, mimeType: 'text/plain' };
     this.attachments = [
       ...this.attachments,
@@ -1576,6 +1626,7 @@ export class SliccComposer extends ThemedElement {
       items: kind === 'file' ? this.#choices('file', '') : [],
       index: 0,
     };
+    if (kind === 'file') void this.#loadPaths();
   }
 
   pick(choice: Choice): void {
