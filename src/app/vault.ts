@@ -18,7 +18,7 @@ import type {
   VaultValueFrame,
   Widening,
 } from '../model/types.ts';
-import { isPolicyPaused, isVaultFailure } from '../model/values.ts';
+import { isVaultFailure } from '../model/values.ts';
 
 const exitNames: Record<string, string> = {
   page: 'This page',
@@ -99,6 +99,13 @@ export function changeLine(change: PolicyChange, devices: readonly LinkedDevice[
 const codeTexts: Partial<Record<string, string>> = {
   EACCES: 'Unlock the vault first',
   ENOTSUP: 'This arrives with a later vault version',
+  EIO: "The vault couldn't finish that",
+};
+
+const causeTexts: Partial<Record<string, string>> = {
+  'policy-paused': 'Secrets are paused until the missing policy file is back',
+  'oauth-reauth-required': 'Sign in again',
+  'oauth-refresh-failed': "Couldn't refresh this sign-in",
 };
 
 export function widening(change: Widening, devices: readonly LinkedDevice[]): string {
@@ -119,7 +126,8 @@ export function widening(change: Widening, devices: readonly LinkedDevice[]): st
 }
 
 export function failureText(error: unknown): string {
-  if (isPolicyPaused(error)) return 'Secrets are paused until the missing policy file is back';
+  const cause = isVaultFailure(error) && error.cause ? causeTexts[error.cause] : undefined;
+  if (cause) return cause;
   const text = isVaultFailure(error) ? codeTexts[error.code] : undefined;
   return text ?? (error instanceof Error ? error.message : 'The vault did not answer');
 }

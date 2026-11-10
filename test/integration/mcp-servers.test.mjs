@@ -799,6 +799,20 @@ test('a paused policy refusal after the agent agreed does not say to unlock', as
   assert.deepEqual(page.errors, []);
 });
 
+test('an oauth reauth refusal after the agent agreed does not say to unlock', async (t) => {
+  const page = await open(t);
+  await registered(page, {});
+  await page.evaluate(() => {
+    window.model.vault.fail('EACCES', '', 'oauth-reauth-required');
+    return true;
+  });
+  await removedWith(
+    page,
+    'docs is removed, but its token stayed in the vault. Open Secrets to remove it.'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a URL the vault kept with no registration on record is written down for the next Remove', async (t) => {
   const page = await open(t, { vault: 'endpoints-fail' });
   const { url } = await page.evaluate(() => ({ url: window.account('mcp:docs').url }));
