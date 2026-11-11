@@ -213,3 +213,53 @@ test('kernel-ui Attach from SLICC lists a new OPFS file and attaches text and PN
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('kernel-ui Attach from SLICC keeps incomplete UTF-8 as a file', async (t) => {
+  const page = await chrome.page(t);
+  await bootKernel(page);
+  await page.evaluate(async () => {
+    const home = await (await navigator.storage.getDirectory()).getDirectoryHandle('home', {
+      create: true,
+    });
+    const handle = await home.getFileHandle('blob.bin', { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(Uint8Array.of(0x61, 0xe2, 0x82));
+    await writable.close();
+    await window.model.files.refresh();
+  });
+  await page.until(async () =>
+    (await window.model.files.list()).some((entry) => entry.path === '/home/blob.bin')
+  );
+  await page.evaluate(async () => {
+    const host = document.createElement('slicc-composer');
+    host.model = window.model;
+    document.body.append(host);
+    window.host = host;
+    await host.updateComplete;
+  });
+  await page.until(() => !!window.host?.updateComplete);
+  await page.evaluate(() => window.host.attachPath('/home/blob.bin'));
+  await page.until(() => window.host.attachments.some((item) => item.name === 'blob.bin'));
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const attachment = window.host.attachments.find((item) => item.name === 'blob.bin');
+      return {
+        kind: attachment.kind,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        path: attachment.path,
+        error: attachment.error ?? null,
+        text: attachment.text ?? null,
+      };
+    }),
+    {
+      kind: 'file',
+      name: 'blob.bin',
+      mimeType: 'application/octet-stream',
+      path: '/home/blob.bin',
+      error: null,
+      text: null,
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
