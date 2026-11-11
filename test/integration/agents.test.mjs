@@ -424,7 +424,7 @@ test('An unread count sits beside the status dot, and caps at 99+ with the exact
         /140 unread/.test(many.getAttribute('title')),
       ];
     }),
-    [true, '1', true, true, [16, 16], [12, 12], true, '99+', true, true]
+    [true, '1', true, true, [16, 16], [10, 10], true, '99+', true, true]
   );
   assert.deepEqual(page.errors, []);
 });
@@ -1330,6 +1330,50 @@ for (const color of ['light', 'dark']) {
     assert.deepEqual(page.errors, []);
   });
 }
+
+test('Without scoops the rows drop the chevron column, and every status dot keeps the medium status light footprint', async (t) => {
+  const page = await open(t);
+  await page.until(() => Boolean(window.agentRow('cone-release')));
+  await page.evaluate(() => {
+    const port = window.model.agent;
+    const list = port.list.bind(port);
+    const statuses = ['idle', 'working', 'thinking', 'waiting', 'error'];
+    port.list = () =>
+      list()
+        .filter((agent) => agent.kind === 'cone')
+        .map((agent, i) => ({ ...agent, status: statuses[i % statuses.length], unread: 0 }));
+    port.select('cone-tides');
+    return true;
+  });
+  await page.until(() => window.agents().shadowRoot.querySelector('ul')?.hasAttribute('data-flat'));
+  const rows = await page.evaluate(() =>
+    [...window.agents().shadowRoot.querySelectorAll('li')].map((row) => {
+      const box = row.getBoundingClientRect();
+      const marker = row.querySelector('.marker.status');
+      const dot = marker.getBoundingClientRect();
+      const shadow = getComputedStyle(marker).boxShadow;
+      const ring = shadow === 'none' ? 0 : Number.parseFloat(shadow.split(' ').at(-1));
+      return {
+        status: marker.dataset.status,
+        inset: Math.round(row.querySelector('.title').getBoundingClientRect().left - box.left),
+        size: Math.round(dot.width + 2 * ring),
+        name: Math.round(row.querySelector('.name').getBoundingClientRect().left - box.left),
+      };
+    })
+  );
+  assert.deepEqual(
+    rows.map(({ status, inset, size }) => [status, inset, size]),
+    rows.map(({ status }) => [status, 12, status === 'error' ? 12 : 10])
+  );
+  assert.equal(new Set(rows.map((row) => row.name)).size, 1, 'names line up whatever the status');
+  assert.equal(
+    await page.evaluate(
+      () => window.agents().shadowRoot.querySelectorAll('[data-action=toggle-cone]').length
+    ),
+    0
+  );
+  assert.deepEqual(page.errors, []);
+});
 
 test('Rows leave the status to the dot: no status word in the description, and it keeps its width as the agent works', async (t) => {
   const page = await open(t);

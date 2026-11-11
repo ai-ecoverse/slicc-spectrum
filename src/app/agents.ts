@@ -151,6 +151,14 @@ export class SliccAgents extends ModelElement {
     li.scoop {
       padding-inline-start: calc(var(--swc-spacing-100) + var(--swc-spacing-300));
     }
+    ul[data-flat] li {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        'head fill'
+        'description strip'
+        'error error';
+      padding-inline-start: var(--swc-spacing-200);
+    }
     li:hover {
       --row-background: var(--swc-gray-100);
     }
@@ -198,8 +206,8 @@ export class SliccAgents extends ModelElement {
       align-items: center;
       justify-content: center;
       box-sizing: border-box;
-      inline-size: var(--swc-spacing-200);
-      block-size: var(--swc-spacing-200);
+      inline-size: var(--swc-status-light-dot-size-medium);
+      block-size: var(--swc-status-light-dot-size-medium);
       border-radius: var(--swc-corner-radius-full);
       background: var(--status-color);
       color: var(--status-color);
@@ -647,7 +655,7 @@ export class SliccAgents extends ModelElement {
     );
     const shown = rows.find((agent) => agent.id === active);
     const anchor = shown ? active : (list.find((agent) => agent.id === active)?.parentId ?? '');
-    return html`<div class="list"><ul role="tree" aria-label="Cones and scoops" @keydown=${this.#keydown} @focusin=${this.#focusin} @focusout=${this.#focusout}>
+    return html`<div class="list"><ul role="tree" aria-label="Cones and scoops" ?data-flat=${!list.some((agent) => agent.kind === 'scoop')} @keydown=${this.#keydown} @focusin=${this.#focusin} @focusout=${this.#focusout}>
         ${repeat(
           rows,
           (agent) => agent.id,
