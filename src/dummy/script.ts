@@ -19,6 +19,7 @@ export type Step =
       output: string;
       paths: string[];
       ticks: number;
+      label?: string;
       streamed?: boolean;
       chunks?: string[];
       effect?: (effects: Effects) => Promise<unknown> | unknown;
@@ -335,6 +336,7 @@ function replay(): Step[] {
       name: 'write_file',
       title: `${repro}/cache-keys.ts`,
       input: entries(),
+      label: 'Write one cache entry per city',
       output: `Wrote ${repro}/cache-keys.ts`,
       paths: [`${repro}/cache-keys.ts`],
       ticks: 30,
@@ -344,6 +346,7 @@ function replay(): Step[] {
       name: 'bash',
       title: fixtures(`${repro}/fixtures`),
       input: fixtures(`${repro}/fixtures`),
+      label: 'Write the fixtures and check them with jq',
       output:
         '  412 cache-keys.json\n 1288 forecast-all.json\n  655 forecast-celsius.json\n  731 expected.json',
       paths: [],
@@ -360,6 +363,7 @@ function replay(): Step[] {
       name: 'edit_file',
       title: `${repro}/cache-keys.ts`,
       input: entries().replaceAll("'C')", 'unit)'),
+      label: 'Add the unit to every cache key',
       output: 'Replaced 8 blocks',
       paths: [`${repro}/cache-keys.ts`],
       ticks: 25,
@@ -370,6 +374,7 @@ function replay(): Step[] {
       name: 'bash',
       title: `cd ${repro} && wc -lc cache-keys.ts fixtures/*.json && grep -c "cacheKey(" cache-keys.ts`,
       input: `cd ${repro} && wc -lc cache-keys.ts fixtures/*.json && grep -c "cacheKey(" cache-keys.ts`,
+      label: 'Count the fixture sizes and cache keys',
       output: '  8  611 cache-keys.ts\n  1 1288 fixtures/forecast-all.json\n8',
       paths: [],
       ticks: 15,
@@ -394,6 +399,7 @@ function replay(): Step[] {
       name: 'bash',
       title: fixtures(`${round}/fixtures`),
       input: fixtures(`${round}/fixtures`),
+      label: 'Write the round two fixtures',
       output: '  412 cache-keys.json\n 1288 forecast-all.json',
       paths: [],
       ticks: 15,
@@ -406,6 +412,7 @@ function replay(): Step[] {
         name: 'bash',
         title: check(`${round}/fixtures`, city),
         input: check(`${round}/fixtures`, city),
+        label: `Check the ${city} forecast and its cache key`,
         output: `{ "city": "${city}", "unit": "C", "cached": true, "high": 23 }\n1`,
         paths: [],
         ticks: 12,
@@ -417,6 +424,7 @@ function replay(): Step[] {
       type: 'tool',
       name: 'write_file',
       title: `${round}/NOTES.md`,
+      label: 'Write the round two notes',
       input: `# Round two\n\n${cities.map((city) => `- ${city}: key includes the unit`).join('\n')}`,
       output: `Wrote ${round}/NOTES.md`,
       paths: [`${round}/NOTES.md`],

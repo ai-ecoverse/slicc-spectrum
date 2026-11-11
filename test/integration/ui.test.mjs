@@ -1845,35 +1845,32 @@ test('the browser follows a driven tab live, lists its actions and stops the age
     })
   );
   await page.until(() => window.inBrowser('.actions li')?.dataset.status === 'running');
-  assert.equal(
-    await page.evaluate(() => {
-      const rows = [...window.inBrowser('.actions').querySelectorAll('li')];
-      const tab = window.model.browser.list().find((item) => item.controlled);
-      const newest = window.model.browser
-        .actions()
-        .filter(
-          (action) =>
-            action.tabId === tab.id ||
-            (action.tabId === null && action.agentId !== null && action.agentId === tab.agentId)
-        )
-        .at(-1);
-      const feed = window.inBrowser('.feed');
-      const frame = window.inBrowser('.frame');
-      const feedStyle = getComputedStyle(feed);
-      const frameStyle = getComputedStyle(frame);
-      return (
-        rows[0]?.dataset.status === 'running' &&
-        rows[0]?.dataset.kind === newest?.kind &&
-        !!window.inBrowser('.feed .actions') &&
-        window.inBrowser('figcaption').textContent.replace(/\s+/g, ' ').trim() ===
-          'Live Watching only' &&
-        Number.parseFloat(feedStyle.flexGrow) > 0 &&
-        frameStyle.aspectRatio === '16 / 10' &&
-        feed.getBoundingClientRect().height > 80
-      );
-    }),
-    true
-  );
+  await page.until(() => {
+    const rows = [...window.inBrowser('.actions').querySelectorAll('li')];
+    const tab = window.model.browser.list().find((item) => item.controlled);
+    const newest = window.model.browser
+      .actions()
+      .filter(
+        (action) =>
+          action.tabId === tab.id ||
+          (action.tabId === null && action.agentId !== null && action.agentId === tab.agentId)
+      )
+      .at(-1);
+    const feed = window.inBrowser('.feed');
+    const frame = window.inBrowser('.frame');
+    const feedStyle = getComputedStyle(feed);
+    const frameStyle = getComputedStyle(frame);
+    return (
+      rows[0]?.dataset.status === 'running' &&
+      rows[0]?.dataset.kind === newest?.kind &&
+      !!window.inBrowser('.feed .actions') &&
+      window.inBrowser('figcaption').textContent.replace(/\s+/g, ' ').trim() ===
+        'Live Watching only' &&
+      Number.parseFloat(feedStyle.flexGrow) > 0 &&
+      frameStyle.aspectRatio === '16 / 10' &&
+      feed.getBoundingClientRect().height > 80
+    );
+  });
   assert.equal(
     await page.evaluate(() => window.inBrowser('li[data-kind=request]').title),
     'GET https://api.example.com/v2/tides'
@@ -2782,7 +2779,7 @@ test('tool steps join across messages, keep their states, and open from the keyb
   assert.deepEqual(page.errors, []);
 });
 
-test('a single raw command asks toolLabel and keeps the expand region on the command', async (t) => {
+test('a single raw command shows its step label in the header and the row, and keeps the command to expand', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {
     const agent = window.model.agent;
@@ -2809,9 +2806,14 @@ test('a single raw command asks toolLabel and keeps the expand region on the com
     ];
     const messages = agent.messages.bind(agent);
     agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    window.clusters = [];
     const label = agent.toolLabel.bind(agent);
-    agent.toolLabel = async (agentId, callIds) =>
-      callIds.includes('raw-t1') ? 'Summarise the working tree' : label(agentId, callIds);
+    agent.toolLabel = async (agentId, callIds) => {
+      window.clusters.push(callIds.join(' '));
+      return label(agentId, callIds);
+    };
+    agent.stepLabel = async (_agentId, callId) =>
+      callId === 'raw-t1' ? 'Show what changed in the working tree' : null;
     agent.select('cone-sliccy');
     agent.emit('messages', 'cone-sliccy');
     return true;
@@ -2819,13 +2821,356 @@ test('a single raw command asks toolLabel and keeps the expand region on the com
   await page.until(
     () =>
       window.chatPart('swc-conversation-turn[data-id=raw-run] slicc-status-label')?.textContent ===
-      'Summarise the working tree'
+      'Show what changed in the working tree'
+  );
+  await page.evaluate(() =>
+    window
+      .chatPart('swc-conversation-turn[data-id=raw-run] swc-response-status')
+      .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
+      .click()
+  );
+  await page.until(
+    () =>
+      window.chatPart('#run-raw-t1 [slot=label]')?.textContent ===
+      'Show what changed in the working tree'
   );
   await page.evaluate(() => window.chatPart('#run-raw-t1 .run-toggle').click());
   await page.until(() => window.chatPart('#run-raw-t1').hasAttribute('data-open'));
   assert.match(
     await page.evaluate(() => window.chatPart('#detail-raw-t1 pre.input')?.textContent ?? ''),
     /git status --short/
+  );
+  assert.equal(
+    await page.evaluate(() => window.chatPart('#detail-raw-t1').getAttribute('aria-labelledby')),
+    'label-raw-t1'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => window.clusters.filter((key) => key.includes('raw-t1'))),
+    []
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a finished status asks for its steps’ labels only once it is opened, and keeps a step’s verdict', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    const call = (id, title, status) => ({
+      id,
+      name: 'bash',
+      title,
+      input: title,
+      output: '',
+      status,
+      paths: [],
+    });
+    const added = [
+      { id: 'lazy-user', role: 'user', text: 'Check the build', createdAt: now },
+      {
+        id: 'lazy-run',
+        role: 'assistant',
+        status: 'done',
+        createdAt: now,
+        model: 'claude-opus-5-5',
+        parts: [
+          { type: 'tool', tool: call('lazy-1', 'npm ci', 'done') },
+          { type: 'tool', tool: call('lazy-2', 'npm run build', 'error') },
+        ],
+      },
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    agent.toolLabel = async (_agentId, callIds) =>
+      callIds.join(' ') === 'lazy-1 lazy-2' ? 'Install and build the site' : null;
+    window.stepsAsked = [];
+    const names = { 'lazy-1': 'Install the dependencies', 'lazy-2': 'Build the site' };
+    agent.stepLabel = async (_agentId, callId) => {
+      window.stepsAsked.push(callId);
+      return names[callId] ?? null;
+    };
+    agent.select('cone-sliccy');
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.chatPart('swc-conversation-turn[data-id=lazy-run] slicc-status-label')?.textContent ===
+      '1 failed · Install and build the site'
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.stepsAsked.filter((id) => id.startsWith('lazy-')),
+      window.chatPart('#run-lazy-2 [slot=label]').textContent,
+    ]),
+    [[], 'bash npm run build · Failed']
+  );
+  await page.evaluate(() =>
+    window
+      .chatPart('swc-conversation-turn[data-id=lazy-run] swc-response-status')
+      .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
+      .click()
+  );
+  await page.until(
+    () =>
+      window.chatPart('#run-lazy-1 [slot=label]')?.textContent === 'Install the dependencies' &&
+      window.chatPart('#run-lazy-2 [slot=label]')?.textContent === 'Build the site · Failed'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => window.stepsAsked.filter((id) => id.startsWith('lazy-')).sort()),
+    ['lazy-1', 'lazy-2']
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a model step label that repeats a secret is cut like a title, in the header and the row', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    const call = (id, title) => ({
+      id,
+      name: 'bash',
+      title,
+      input: title,
+      output: '',
+      status: 'done',
+      paths: [],
+    });
+    const added = [
+      { id: 'leak-user', role: 'user', text: 'Check the token', createdAt: now },
+      {
+        id: 'leak-one',
+        role: 'assistant',
+        status: 'done',
+        createdAt: now,
+        model: 'claude-opus-5-5',
+        parts: [{ type: 'tool', tool: call('leak-1', 'gh auth status') }],
+      },
+      { id: 'leak-user2', role: 'user', text: 'And sign in', createdAt: now },
+      {
+        id: 'leak-two',
+        role: 'assistant',
+        status: 'done',
+        createdAt: now,
+        model: 'claude-opus-5-5',
+        parts: [
+          { type: 'tool', tool: call('leak-2', 'gh auth login') },
+          { type: 'tool', tool: call('leak-3', 'gh auth status') },
+        ],
+      },
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    const said = {
+      'leak-1': 'Verify token=ghp_INVENTEDEXAMPLE0000',
+      'leak-2': 'Sign in with ghp_INVENTEDEXAMPLE0000 now',
+      'leak-3': 'Check the login',
+    };
+    agent.stepLabel = async (_agentId, callId) => said[callId] ?? null;
+    agent.toolLabel = async (_agentId, callIds) =>
+      callIds.join(' ') === 'leak-2 leak-3' ? 'Log in with password: hunter2-example' : null;
+    agent.select('cone-sliccy');
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  const header = (id) => `swc-conversation-turn[data-id=${id}] slicc-status-label`;
+  await page.until(
+    (selectors) =>
+      window.chatPart(selectors[0])?.textContent === 'Verify token= …' &&
+      window.chatPart(selectors[1])?.textContent === 'Log in with password: …',
+    [header('leak-one'), header('leak-two')]
+  );
+  await page.evaluate(() =>
+    window
+      .chatPart('swc-conversation-turn[data-id=leak-two] swc-response-status')
+      .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
+      .click()
+  );
+  await page.until(() => window.chatPart('#label-leak-3')?.textContent === 'Check the login');
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.chatPart('#label-leak-1').textContent,
+      window.chatPart('#label-leak-2').textContent,
+      window.chatPart('.log').textContent.includes('ghp_') ||
+        window.chatPart('.log').textContent.includes('hunter2'),
+    ]),
+    ['Verify token= …', 'Sign in with …', false]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a step label and a header moved before their label comes still show it', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    const call = {
+      id: 'move-1',
+      name: 'bash',
+      title: 'git status --short',
+      input: 'git status --short',
+      output: '',
+      status: 'done',
+      paths: [],
+    };
+    const added = [
+      { id: 'move-user', role: 'user', text: 'Show the tree', createdAt: now },
+      {
+        id: 'move-run',
+        role: 'assistant',
+        status: 'done',
+        createdAt: now,
+        model: 'claude-opus-5-5',
+        parts: [{ type: 'tool', tool: call }],
+      },
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    window.moveAnswer = Promise.withResolvers();
+    agent.stepLabel = (_agentId, callId) =>
+      callId === 'move-1' ? window.moveAnswer.promise : Promise.resolve(null);
+    agent.select('cone-sliccy');
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.chatPart('swc-conversation-turn[data-id=move-run] slicc-status-label')?.textContent ===
+      'bash git status --short'
+  );
+  const moved = await page.evaluate(async () => {
+    const header = window.chatPart('swc-conversation-turn[data-id=move-run] slicc-status-label');
+    const row = window.chatPart('#label-move-1 slicc-step-label');
+    const shelf = document.createElement('div');
+    document.body.append(shelf);
+    shelf.append(header, row);
+    window.moveAnswer.resolve('Show what changed in the tree');
+    for (let i = 0; i < 50 && header.textContent !== 'Show what changed in the tree'; i++)
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    await row.updateComplete;
+    const seen = [header.textContent, row.textContent];
+    shelf.remove();
+    return seen;
+  });
+  assert.deepEqual(moved, ['Show what changed in the tree', 'Show what changed in the tree']);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a step without a model label follows its call as it streams and finishes', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    window.growingCall = {
+      id: 'grow-1',
+      name: 'bash',
+      title: '',
+      input: '',
+      output: '',
+      status: 'running',
+      paths: [],
+    };
+    window.growingReply = {
+      id: 'grow-run',
+      role: 'assistant',
+      status: 'streaming',
+      createdAt: now,
+      model: 'claude-opus-5-5',
+      parts: [{ type: 'tool', tool: window.growingCall }],
+    };
+    const added = [
+      { id: 'grow-user', role: 'user', text: 'List it', createdAt: now },
+      window.growingReply,
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    agent.stepLabel = async () => null;
+    agent.select('cone-sliccy');
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  await page.until(() => window.chatPart('#label-grow-1')?.textContent === 'bash');
+  await page.evaluate(() => {
+    window.growingCall.title = 'List the forecast files';
+    window.model.agent.emit('message', { agentId: 'cone-sliccy', message: window.growingReply });
+    return true;
+  });
+  await page.until(
+    () => window.chatPart('#label-grow-1')?.textContent === 'List the forecast files'
+  );
+  await page.evaluate(() => {
+    window.growingCall.status = 'error';
+    window.growingReply.status = 'done';
+    window.model.agent.emit('message', { agentId: 'cone-sliccy', message: window.growingReply });
+    return true;
+  });
+  await page.until(
+    () => window.chatPart('#label-grow-1')?.textContent === 'List the forecast files · Failed'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('an agent without stepLabel still labels a single raw command and a running run from toolLabel', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    const call = (id, title, status) => ({
+      id,
+      name: 'bash',
+      title,
+      input: title,
+      output: '',
+      status,
+      paths: [],
+    });
+    window.oldReply = {
+      id: 'old-run',
+      role: 'assistant',
+      status: 'streaming',
+      createdAt: now,
+      model: 'claude-opus-5-5',
+      parts: [
+        { type: 'tool', tool: call('old-1', 'npm ci', 'done') },
+        { type: 'tool', tool: call('old-2', 'npm run build', 'running') },
+      ],
+    };
+    const added = [
+      { id: 'old-user', role: 'user', text: 'Show the tree', createdAt: now },
+      {
+        id: 'old-single',
+        role: 'assistant',
+        status: 'done',
+        createdAt: now,
+        model: 'claude-opus-5-5',
+        parts: [{ type: 'tool', tool: call('old-0', 'git status --short', 'done') }],
+      },
+      { id: 'old-user2', role: 'user', text: 'Build it', createdAt: now },
+      window.oldReply,
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    agent.stepLabel = undefined;
+    agent.toolLabel = async (_agentId, callIds) =>
+      ({ 'old-0': 'Summarise the working tree', 'old-1 old-2': 'Install and build the site' })[
+        callIds.join(' ')
+      ] ?? null;
+    agent.select('cone-sliccy');
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.chatPart('swc-conversation-turn[data-id=old-single] slicc-status-label')
+        ?.textContent === 'Summarise the working tree' &&
+      window.chatPart('swc-conversation-turn[data-id=old-run] slicc-status-label')?.textContent ===
+        'Install and build the site'
+  );
+  assert.equal(
+    await page.evaluate(() => window.chatPart('#label-old-0').textContent),
+    'bash git status --short'
   );
   assert.deepEqual(page.errors, []);
 });

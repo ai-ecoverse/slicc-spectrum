@@ -257,6 +257,63 @@ test('the response status stays after the reply as complete, with the run’s la
   assert.equal(statuses[2][0].label, 'Rebuild the cache-key fixtures for every city');
 });
 
+test('a running status shows its running step’s label, every step keeps its own, and the finished status labels them all', async (t) => {
+  const page = await open(t);
+  const { seen, messages } = await replay(page);
+  const active = seen.labels.filter((entry) => entry.state === 'active').map((entry) => entry.text);
+  const cluster = 'Rebuild the cache-key fixtures for every city';
+  assert.ok(active.includes('Write the round two fixtures'), JSON.stringify(active));
+  assert.ok(
+    active.some((text) => /^Check the (Porto|Lisbon|Faro) forecast and its cache key$/.test(text)),
+    JSON.stringify(active)
+  );
+  assert.deepEqual(
+    active.filter((text) => text === cluster),
+    [],
+    'the label of the whole run waits until it finishes'
+  );
+  const merged = owners(messages);
+  const last = messages.filter(
+    (message) => message.role === 'assistant' && message.calls.length && !merged.has(message.id)
+  )[2];
+  await page.evaluate(
+    (id) =>
+      window
+        .chatPart(`.log swc-conversation-turn[data-id="${id}"] swc-response-status`)
+        .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
+        .click(),
+    last.id
+  );
+  await page.until(
+    (id) =>
+      window.chatPart(`.log swc-conversation-turn[data-id="${id}"] swc-response-status`)?.open ===
+      true,
+    last.id
+  );
+  const shown = await page.evaluate(
+    (id) => ({
+      header: window.chatPart(`.log swc-conversation-turn[data-id="${id}"] slicc-status-label`)
+        .textContent,
+      steps: [
+        ...window
+          .chatPart(`.log swc-conversation-turn[data-id="${id}"]`)
+          .querySelectorAll('swc-response-status-step [slot=label]'),
+      ].map((label) => label.textContent),
+    }),
+    last.id
+  );
+  assert.deepEqual(shown, {
+    header: cluster,
+    steps: [
+      'Write the round two fixtures',
+      'Check the Porto forecast and its cache key',
+      'Check the Lisbon forecast and its cache key',
+      'Check the Faro forecast and its cache key',
+      'Write the round two notes',
+    ],
+  });
+});
+
 test('tool-only follow-ups join the open response status instead of starting a turn', async (t) => {
   const page = await open(t);
   const { seen, messages } = await replay(page);

@@ -415,16 +415,18 @@ export function step(
   const owner = context.owners?.get(call.id);
   const runs = context.runs;
   const verdict = verdicts[call.status];
-  const label = `${headline(call)}${verdict ? ` · ${verdict}` : ''}`;
+  const cluster = `status:${context.anchor ?? call.id}`;
+  const ask = call.status === 'running' || (runs?.has(cluster) ?? false);
+  const label = html`<slicc-step-label .callId=${call.id} .fallback=${headline(call)} .agent=${context.agentId ?? ''} .model=${context.model} .ask=${ask}></slicc-step-label>${verdict ? ` · ${verdict}` : ''}`;
   const open = described(call, owner) && (runs?.has(call.id) ?? false);
   const toggle = described(call, owner)
     ? html`<button type="button" class="run-toggle" aria-expanded=${open ? 'true' : 'false'} aria-controls=${`detail-${call.id}`} @click=${() => runs?.toggle(call.id)}>${label}</button>`
     : label;
-  const row = html`<swc-response-status-step id=${`run-${call.id}`} status=${stepStates[call.status]} data-id=${owner?.id ?? id ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id} data-action="open-run" data-target=${call.id} ?data-open=${open} @click=${(event: Event) => openStep(event, call, runs, `status:${context.anchor ?? call.id}`)}><span slot="label">${toggle}</span></swc-response-status-step>`;
+  const row = html`<swc-response-status-step id=${`run-${call.id}`} status=${stepStates[call.status]} data-id=${owner?.id ?? id ?? nothing} data-status=${call.status} data-tool=${call.name} data-kind=${kind.id} data-action="open-run" data-target=${call.id} ?data-open=${open} @click=${(event: Event) => openStep(event, call, runs, cluster)}><span slot="label" id=${`label-${call.id}`}>${toggle}</span></swc-response-status-step>`;
   if (!described(call, owner)) return row;
   return [
     row,
-    html`<div class="call run-detail" id=${`detail-${call.id}`} role="listitem" aria-label=${label} data-target=${call.id} ?hidden=${!open}>
+    html`<div class="call run-detail" id=${`detail-${call.id}`} role="listitem" aria-labelledby=${`label-${call.id}`} data-target=${call.id} ?hidden=${!open}>
       ${body(call, context.color)}
       ${call.output ? html`<pre class="output">${ansi(call.output, call.status === 'running', context.surface)}</pre>` : nothing}
       ${call.notes?.length ? notes(call.notes) : nothing}

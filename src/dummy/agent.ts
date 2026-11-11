@@ -67,6 +67,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   #ice = new Map<string, Array<{ agent: Agent; messages: Message[] }>>();
   #suggestions = new Map<string, string>();
   #runs = new Map<string, Run>();
+  #steps = new Map<string, string>();
   #earlier = new Map<string, Message[]>();
   #page = 0;
   #failing = 0;
@@ -188,6 +189,11 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     return first ? label(first.title) : null;
   }
 
+  async stepLabel(_agentId: string, callId: string): Promise<string | null> {
+    await this.#clock.sleep(15);
+    return this.#steps.get(callId) ?? null;
+  }
+
   #post(agentId: string, message: Message): void {
     this.#messages.get(agentId)?.push(message);
     this.emit('message', { agentId, message });
@@ -238,6 +244,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
       status: 'running' as const,
       paths: step.paths,
     };
+    if (step.label) this.#steps.set(tool.id, step.label);
     reply.parts.push({ type: 'tool', tool });
     this.emit('message', { agentId, message: reply });
     const streamed = step.streamed ? step.title : '';
