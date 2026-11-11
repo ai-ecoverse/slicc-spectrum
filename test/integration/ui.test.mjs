@@ -3004,6 +3004,63 @@ test('a model step label that repeats a secret is cut like a title, in the heade
   assert.deepEqual(page.errors, []);
 });
 
+test('a step label and a header moved before their label comes still show it', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    const call = {
+      id: 'move-1',
+      name: 'bash',
+      title: 'git status --short',
+      input: 'git status --short',
+      output: '',
+      status: 'done',
+      paths: [],
+    };
+    const added = [
+      { id: 'move-user', role: 'user', text: 'Show the tree', createdAt: now },
+      {
+        id: 'move-run',
+        role: 'assistant',
+        status: 'done',
+        createdAt: now,
+        model: 'claude-opus-5-5',
+        parts: [{ type: 'tool', tool: call }],
+      },
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    window.moveAnswer = Promise.withResolvers();
+    agent.stepLabel = (_agentId, callId) =>
+      callId === 'move-1' ? window.moveAnswer.promise : Promise.resolve(null);
+    agent.select('cone-sliccy');
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.chatPart('swc-conversation-turn[data-id=move-run] slicc-status-label')?.textContent ===
+      'bash git status --short'
+  );
+  const moved = await page.evaluate(async () => {
+    const header = window.chatPart('swc-conversation-turn[data-id=move-run] slicc-status-label');
+    const row = window.chatPart('#label-move-1 slicc-step-label');
+    const shelf = document.createElement('div');
+    document.body.append(shelf);
+    shelf.append(header, row);
+    window.moveAnswer.resolve('Show what changed in the tree');
+    for (let i = 0; i < 50 && header.textContent !== 'Show what changed in the tree'; i++)
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    await row.updateComplete;
+    const seen = [header.textContent, row.textContent];
+    shelf.remove();
+    return seen;
+  });
+  assert.deepEqual(moved, ['Show what changed in the tree', 'Show what changed in the tree']);
+  assert.deepEqual(page.errors, []);
+});
+
 test('a step without a model label follows its call as it streams and finishes', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {

@@ -30,6 +30,11 @@ export class SliccStepLabel extends LitElement {
     return this;
   }
 
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.requestUpdate();
+  }
+
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.#watch.stop();

@@ -57,6 +57,11 @@ export class SliccStatusLabel extends LitElement {
     return this;
   }
 
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.requestUpdate();
+  }
+
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.#cancel();
