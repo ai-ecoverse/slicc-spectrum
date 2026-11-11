@@ -1,5 +1,6 @@
 import { Emitter } from '../model/emitter.ts';
 import type { Change, FileEntry, FileEvents, FilePort, MountInfo } from '../model/types.ts';
+import { mimeOf } from '../model/values.ts';
 import type { Clock } from './clock.ts';
 
 function parents(path: string): string[] {
@@ -91,6 +92,21 @@ export class DummyFiles extends Emitter<FileEvents> implements FilePort {
     const text = this.#contents.get(path);
     if (text === undefined) throw new Error(`ENOENT: ${path}`);
     return text;
+  }
+
+  async readBytes(path: string): Promise<Blob> {
+    await this.#clock.sleep();
+    const text = this.#contents.get(path);
+    if (text === undefined) throw new Error(`ENOENT: ${path}`);
+    const name = path.slice(path.lastIndexOf('/') + 1);
+    const type = mimeOf(name);
+    if (
+      type.startsWith('image/') ||
+      type === 'application/pdf' ||
+      type === 'application/octet-stream'
+    )
+      return new Blob([Uint8Array.from(text, (char) => char.charCodeAt(0) & 0xff)], { type });
+    return new Blob([text], { type });
   }
 
   #record(path: string, after: string | null, agentId: string | null): void {

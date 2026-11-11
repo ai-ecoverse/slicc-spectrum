@@ -33,7 +33,7 @@ import type {
   UserMessage,
   VaultPort,
 } from '../model/types.ts';
-import { nameProblem, valueProblem } from '../model/values.ts';
+import { looksLikeText, mimeOf, nameProblem, valueProblem } from '../model/values.ts';
 import { chatModels, shared, speech, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import { deadline, mine, size } from './messages.ts';
@@ -559,6 +559,7 @@ export class SliccComposer extends ThemedElement {
   #waiting = new PageQueue(this);
   #history = -1;
   #paths: string[] = [];
+  #pathsGen = 0;
   #agent = '';
   #next = 1;
   #session: Recording | null = null;
@@ -973,12 +974,28 @@ export class SliccComposer extends ThemedElement {
     });
   }
 
+  #takePaths(entries: readonly { kind: string; path: string }[]): void {
+    this.#paths = entries.filter((entry) => entry.kind === 'file').map((entry) => entry.path);
+    if (this.popup?.kind === 'file') {
+      const items = this.#choices('file', this.popup.query);
+      const index = items.length ? Math.min(this.popup.index, items.length - 1) : 0;
+      this.popup = { ...this.popup, items, index };
+    }
+  }
+
+  async #loadPaths(): Promise<void> {
+    const model = this.model;
+    if (!model || model.seat) return;
+    const gen = ++this.#pathsGen;
+    const entries = await model.files.list();
+    if (this.model !== model || gen !== this.#pathsGen) return;
+    this.#takePaths(entries);
+    this.requestUpdate();
+  }
+
   protected subscribe(model: SliccModel): Array<() => void> {
     this.#switch(this.agent || model.agent.active());
-    if (!model.seat)
-      void model.files.list().then((entries) => {
-        this.#paths = entries.filter((entry) => entry.kind === 'file').map((entry) => entry.path);
-      });
+    void this.#loadPaths();
     const update = () => this.requestUpdate();
     return [
       ...super.subscribe(model),
@@ -1007,6 +1024,15 @@ export class SliccComposer extends ThemedElement {
       ...(model.vault
         ? [model.vault.on('availability', update), model.vault.on('status', update)]
         : []),
+      ...(model.seat
+        ? []
+        : [
+            model.files.on('files', (entries) => {
+              this.#pathsGen++;
+              this.#takePaths(entries);
+              update();
+            }),
+          ]),
     ];
   }
 
@@ -1179,7 +1205,10 @@ export class SliccComposer extends ThemedElement {
     capture: true,
   };
 
-  async addFiles(files: readonly File[], dropped: ReadonlySet<File> = new Set()): Promise<void> {
+  async addFiles(
+    files: readonly File[],
+    dropped: ReadonlySet<File> = new Set()
+  ): Promise<Attachment[]> {
     const added: Attachment[] = [];
     for (const file of files) {
       const base = {
@@ -1212,6 +1241,7 @@ export class SliccComposer extends ThemedElement {
       else added.push({ ...base, kind: 'file', url: URL.createObjectURL(file) });
     }
     this.attachments = [...this.attachments, ...added];
+    return added;
   }
 
   detach(id: string): void {
@@ -1322,8 +1352,30 @@ export class SliccComposer extends ThemedElement {
   }
 
   async attachPath(path: string): Promise<void> {
-    const text = await this.model?.files.read(path).catch(() => null);
+    const port = this.model?.files;
     const name = path.slice(path.lastIndexOf('/') + 1);
+    if (!port) {
+      this.#failAttach(name, 'Could not read the file');
+      return;
+    }
+    if (port.readBytes) {
+      try {
+        const bytes = await port.readBytes(path);
+        let type = (bytes instanceof Blob && bytes.type) || mimeOf(name);
+        if (type === 'application/octet-stream')
+          type = (await looksLikeText(bytes)) ? 'text/plain' : 'application/octet-stream';
+        const blob = new Blob([bytes instanceof Blob ? bytes : (bytes as BlobPart)], { type });
+        const added = await this.addFiles([new File([blob], name, { type })]);
+        const ids = new Set(added.map((attachment) => attachment.id));
+        this.attachments = this.attachments.map((attachment) =>
+          ids.has(attachment.id) ? { ...attachment, path } : attachment
+        );
+      } catch {
+        this.#failAttach(name, 'Could not read the file');
+      }
+      return;
+    }
+    const text = await port.read(path).catch(() => null);
     const base = { id: this.#id(), name, path, mimeType: 'text/plain' };
     this.attachments = [
       ...this.attachments,
@@ -1576,6 +1628,7 @@ export class SliccComposer extends ThemedElement {
       items: kind === 'file' ? this.#choices('file', '') : [],
       index: 0,
     };
+    if (kind === 'file') void this.#loadPaths();
   }
 
   pick(choice: Choice): void {
