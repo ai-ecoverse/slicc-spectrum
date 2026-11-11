@@ -101,6 +101,49 @@ test('the OS file picker keeps a PNG as an image', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
+test('Attach a file from SLICC keeps UTF-8 in an extensionless dummy file as text', async (t) => {
+  const page = await openUi(t);
+  await page.evaluate(() => window.model.files.write('/tmp/note', 'é'));
+  await openMenu(page);
+  await page.evaluate(() =>
+    window.composer().shadowRoot.querySelector('sp-menu-item[value=file]').click()
+  );
+  await page.until(() => window.composer().popup?.kind === 'file');
+  await page.until(() => window.popupValues().includes('/tmp/note'));
+  await page.evaluate(() =>
+    window.composer().pick({
+      value: '/tmp/note',
+      label: 'note',
+      detail: '/tmp/note',
+    })
+  );
+  await page.until(() =>
+    window.composer().attachments.some((attachment) => attachment.name === 'note')
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const attachment = window.composer().attachments.find((item) => item.name === 'note');
+      return {
+        kind: attachment.kind,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        path: attachment.path,
+        error: attachment.error ?? null,
+        text: attachment.text ?? null,
+      };
+    }),
+    {
+      kind: 'text',
+      name: 'note',
+      mimeType: 'text/plain',
+      path: '/tmp/note',
+      error: null,
+      text: 'é',
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 async function bootKernel(page) {
   await page.goto('/kernel-ui/');
   await page.until(() => typeof window.boot === 'function');
