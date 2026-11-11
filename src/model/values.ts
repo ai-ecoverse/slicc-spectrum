@@ -18,13 +18,17 @@ export function mimeOf(name: string): string {
 }
 
 export async function looksLikeText(data: Blob | ArrayBufferView): Promise<boolean> {
+  const total = data instanceof Blob ? data.size : data.byteLength;
   const bytes =
     data instanceof Blob
       ? new Uint8Array(await data.slice(0, 8192).arrayBuffer())
       : new Uint8Array(data.buffer, data.byteOffset, Math.min(data.byteLength, 8192));
   if (bytes.includes(0)) return false;
   try {
-    new TextDecoder('utf-8', { fatal: true }).decode(bytes, { stream: true });
+    new TextDecoder('utf-8', { fatal: true }).decode(
+      bytes,
+      total > 8192 ? { stream: true } : undefined
+    );
     return true;
   } catch {
     return false;
