@@ -312,6 +312,7 @@ export interface AgentPort extends Subscribable<AgentEvents> {
   hasOlder?(agentId: string): boolean;
   commands(agentId: string): readonly SlashCommand[];
   toolLabel?(agentId: string, callIds: readonly string[]): Promise<string | null>;
+  stepLabel?(agentId: string, callId: string): Promise<string | null>;
   ready(): Promise<void>;
   createScoop(parentId: string, name: string): Agent;
   frozen(): readonly FrozenCone[];

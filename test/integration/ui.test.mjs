@@ -2782,7 +2782,7 @@ test('tool steps join across messages, keep their states, and open from the keyb
   assert.deepEqual(page.errors, []);
 });
 
-test('a single raw command asks toolLabel and keeps the expand region on the command', async (t) => {
+test('a single raw command shows its step label in the header and the row, and keeps the command to expand', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {
     const agent = window.model.agent;
@@ -2809,9 +2809,14 @@ test('a single raw command asks toolLabel and keeps the expand region on the com
     ];
     const messages = agent.messages.bind(agent);
     agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    window.clusters = [];
     const label = agent.toolLabel.bind(agent);
-    agent.toolLabel = async (agentId, callIds) =>
-      callIds.includes('raw-t1') ? 'Summarise the working tree' : label(agentId, callIds);
+    agent.toolLabel = async (agentId, callIds) => {
+      window.clusters.push(callIds.join(' '));
+      return label(agentId, callIds);
+    };
+    agent.stepLabel = async (_agentId, callId) =>
+      callId === 'raw-t1' ? 'Show what changed in the working tree' : null;
     agent.select('cone-sliccy');
     agent.emit('messages', 'cone-sliccy');
     return true;
@@ -2819,13 +2824,105 @@ test('a single raw command asks toolLabel and keeps the expand region on the com
   await page.until(
     () =>
       window.chatPart('swc-conversation-turn[data-id=raw-run] slicc-status-label')?.textContent ===
-      'Summarise the working tree'
+      'Show what changed in the working tree'
+  );
+  await page.evaluate(() =>
+    window
+      .chatPart('swc-conversation-turn[data-id=raw-run] swc-response-status')
+      .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
+      .click()
+  );
+  await page.until(
+    () =>
+      window.chatPart('#run-raw-t1 [slot=label]')?.textContent ===
+      'Show what changed in the working tree'
   );
   await page.evaluate(() => window.chatPart('#run-raw-t1 .run-toggle').click());
   await page.until(() => window.chatPart('#run-raw-t1').hasAttribute('data-open'));
   assert.match(
     await page.evaluate(() => window.chatPart('#detail-raw-t1 pre.input')?.textContent ?? ''),
     /git status --short/
+  );
+  assert.equal(
+    await page.evaluate(() => window.chatPart('#detail-raw-t1').getAttribute('aria-labelledby')),
+    'label-raw-t1'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => window.clusters.filter((key) => key.includes('raw-t1'))),
+    []
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a finished status asks for its steps’ labels only once it is opened, and keeps a step’s verdict', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    const call = (id, title, status) => ({
+      id,
+      name: 'bash',
+      title,
+      input: title,
+      output: '',
+      status,
+      paths: [],
+    });
+    const added = [
+      { id: 'lazy-user', role: 'user', text: 'Check the build', createdAt: now },
+      {
+        id: 'lazy-run',
+        role: 'assistant',
+        status: 'done',
+        createdAt: now,
+        model: 'claude-opus-5-5',
+        parts: [
+          { type: 'tool', tool: call('lazy-1', 'npm ci', 'done') },
+          { type: 'tool', tool: call('lazy-2', 'npm run build', 'error') },
+        ],
+      },
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    agent.toolLabel = async (_agentId, callIds) =>
+      callIds.join(' ') === 'lazy-1 lazy-2' ? 'Install and build the site' : null;
+    window.stepsAsked = [];
+    const names = { 'lazy-1': 'Install the dependencies', 'lazy-2': 'Build the site' };
+    agent.stepLabel = async (_agentId, callId) => {
+      window.stepsAsked.push(callId);
+      return names[callId] ?? null;
+    };
+    agent.select('cone-sliccy');
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.chatPart('swc-conversation-turn[data-id=lazy-run] slicc-status-label')?.textContent ===
+      '1 failed · Install and build the site'
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.stepsAsked.filter((id) => id.startsWith('lazy-')),
+      window.chatPart('#run-lazy-2 [slot=label]').textContent,
+    ]),
+    [[], 'bash npm run build · Failed']
+  );
+  await page.evaluate(() =>
+    window
+      .chatPart('swc-conversation-turn[data-id=lazy-run] swc-response-status')
+      .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
+      .click()
+  );
+  await page.until(
+    () =>
+      window.chatPart('#run-lazy-1 [slot=label]')?.textContent === 'Install the dependencies' &&
+      window.chatPart('#run-lazy-2 [slot=label]')?.textContent === 'Build the site · Failed'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => window.stepsAsked.filter((id) => id.startsWith('lazy-')).sort()),
+    ['lazy-1', 'lazy-2']
   );
   assert.deepEqual(page.errors, []);
 });
