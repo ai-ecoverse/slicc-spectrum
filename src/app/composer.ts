@@ -33,7 +33,7 @@ import type {
   UserMessage,
   VaultPort,
 } from '../model/types.ts';
-import { mimeOf, nameProblem, valueProblem } from '../model/values.ts';
+import { looksLikeText, mimeOf, nameProblem, valueProblem } from '../model/values.ts';
 import { chatModels, shared, speech, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import { deadline, mine, size } from './messages.ts';
@@ -982,7 +982,9 @@ export class SliccComposer extends ThemedElement {
   async #loadPaths(): Promise<void> {
     const model = this.model;
     if (!model || model.seat) return;
-    this.#takePaths(await model.files.list());
+    const entries = await model.files.list();
+    if (this.model !== model) return;
+    this.#takePaths(entries);
     this.requestUpdate();
   }
 
@@ -1197,7 +1199,10 @@ export class SliccComposer extends ThemedElement {
     capture: true,
   };
 
-  async addFiles(files: readonly File[], dropped: ReadonlySet<File> = new Set()): Promise<void> {
+  async addFiles(
+    files: readonly File[],
+    dropped: ReadonlySet<File> = new Set()
+  ): Promise<Attachment[]> {
     const added: Attachment[] = [];
     for (const file of files) {
       const base = {
@@ -1230,6 +1235,7 @@ export class SliccComposer extends ThemedElement {
       else added.push({ ...base, kind: 'file', url: URL.createObjectURL(file) });
     }
     this.attachments = [...this.attachments, ...added];
+    return added;
   }
 
   detach(id: string): void {
@@ -1349,12 +1355,14 @@ export class SliccComposer extends ThemedElement {
     if (port.readBytes) {
       try {
         const bytes = await port.readBytes(path);
-        const type = (bytes instanceof Blob && bytes.type) || mimeOf(name);
-        const blob = bytes instanceof Blob ? bytes : new Blob([bytes as BlobPart], { type });
-        const before = this.attachments.length;
-        await this.addFiles([new File([blob], name, { type })]);
-        this.attachments = this.attachments.map((attachment, index) =>
-          index < before ? attachment : { ...attachment, path }
+        let type = (bytes instanceof Blob && bytes.type) || mimeOf(name);
+        if (type === 'application/octet-stream')
+          type = (await looksLikeText(bytes)) ? 'text/plain' : 'application/octet-stream';
+        const blob = new Blob([bytes instanceof Blob ? bytes : (bytes as BlobPart)], { type });
+        const added = await this.addFiles([new File([blob], name, { type })]);
+        const ids = new Set(added.map((attachment) => attachment.id));
+        this.attachments = this.attachments.map((attachment) =>
+          ids.has(attachment.id) ? { ...attachment, path } : attachment
         );
       } catch {
         this.#failAttach(name, 'Could not read the file');

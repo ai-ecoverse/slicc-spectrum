@@ -8,8 +8,27 @@ export function mimeOf(name: string): string {
   if (/\.svg$/i.test(name)) return 'image/svg+xml';
   if (/\.pdf$/i.test(name)) return 'application/pdf';
   if (/\.json$/i.test(name)) return 'application/json';
-  if (/\.(md|txt|csv|ya?ml|toml|ts|js|css|html)$/i.test(name)) return 'text/plain';
+  if (
+    /\.(md|txt|csv|ya?ml|toml|ts|tsx|js|jsx|mjs|cjs|css|html|htm|sh|jsh|bash|zsh|py|rb|go|rs|php|sql|xml|log|env|ini|cfg|conf)$/i.test(
+      name
+    )
+  )
+    return 'text/plain';
   return 'application/octet-stream';
+}
+
+export async function looksLikeText(data: Blob | ArrayBufferView): Promise<boolean> {
+  const bytes =
+    data instanceof Blob
+      ? new Uint8Array(await data.slice(0, 8192).arrayBuffer())
+      : new Uint8Array(data.buffer, data.byteOffset, Math.min(data.byteLength, 8192));
+  if (bytes.includes(0)) return false;
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function valueProblem(value: string): string | null {

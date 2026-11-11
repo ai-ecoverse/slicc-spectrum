@@ -125,16 +125,24 @@ test('kernel-ui Attach from SLICC lists a new OPFS file and attaches text and PN
       const home = await (await navigator.storage.getDirectory()).getDirectoryHandle('home', {
         create: true,
       });
-      const handle = await home.getFileHandle('radar.png', { create: true });
-      const writable = await handle.createWritable();
-      await writable.write(new Uint8Array(bytes));
-      await writable.close();
+      const write = async (name, data) => {
+        const handle = await home.getFileHandle(name, { create: true });
+        const writable = await handle.createWritable();
+        await writable.write(data);
+        await writable.close();
+      };
+      await write('radar.png', new Uint8Array(bytes));
+      await write('review.py', 'print(1)\n');
+      await write('.bashrc', 'export PATH\n');
       await window.model.files.refresh();
     },
     [...PNG]
   );
   await page.until(async () =>
     (await window.model.files.list()).some((entry) => entry.path === '/home/radar.png')
+  );
+  await page.until(async () =>
+    (await window.model.files.list()).some((entry) => entry.path === '/home/review.py')
   );
   await page.evaluate(async () => {
     const host = document.createElement('slicc-composer');
@@ -153,6 +161,10 @@ test('kernel-ui Attach from SLICC lists a new OPFS file and attaches text and PN
   await page.until(() => window.host.attachments.some((item) => item.name === 'attach-me.txt'));
   await page.evaluate(() => window.host.attachPath('/home/radar.png'));
   await page.until(() => window.host.attachments.some((item) => item.name === 'radar.png'));
+  await page.evaluate(() => window.host.attachPath('/home/review.py'));
+  await page.until(() => window.host.attachments.some((item) => item.name === 'review.py'));
+  await page.evaluate(() => window.host.attachPath('/home/.bashrc'));
+  await page.until(() => window.host.attachments.some((item) => item.name === '.bashrc'));
   assert.deepEqual(
     await page.evaluate(() =>
       window.host.attachments.map((attachment) => ({
@@ -161,6 +173,7 @@ test('kernel-ui Attach from SLICC lists a new OPFS file and attaches text and PN
         mimeType: attachment.mimeType,
         path: attachment.path,
         error: attachment.error ?? null,
+        text: attachment.text ?? null,
       }))
     ),
     [
@@ -170,6 +183,7 @@ test('kernel-ui Attach from SLICC lists a new OPFS file and attaches text and PN
         mimeType: 'text/plain',
         path: '/home/attach-me.txt',
         error: null,
+        text: 'kernel note\n',
       },
       {
         kind: 'image',
@@ -177,6 +191,23 @@ test('kernel-ui Attach from SLICC lists a new OPFS file and attaches text and PN
         mimeType: 'image/png',
         path: '/home/radar.png',
         error: null,
+        text: null,
+      },
+      {
+        kind: 'text',
+        name: 'review.py',
+        mimeType: 'text/plain',
+        path: '/home/review.py',
+        error: null,
+        text: 'print(1)\n',
+      },
+      {
+        kind: 'text',
+        name: '.bashrc',
+        mimeType: 'text/plain',
+        path: '/home/.bashrc',
+        error: null,
+        text: 'export PATH\n',
       },
     ]
   );
