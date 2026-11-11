@@ -1,22 +1,11 @@
 import { Emitter } from '../model/emitter.ts';
 import type { Change, FileEntry, FileEvents, FilePort, MountInfo } from '../model/types.ts';
+import { mimeOf } from '../model/values.ts';
 import type { Clock } from './clock.ts';
 
 function parents(path: string): string[] {
   const parts = path.split('/').slice(1, -1);
   return parts.map((_, i) => `/${parts.slice(0, i + 1).join('/')}`);
-}
-
-function mimeOf(name: string): string {
-  if (/\.png$/i.test(name)) return 'image/png';
-  if (/\.jpe?g$/i.test(name)) return 'image/jpeg';
-  if (/\.gif$/i.test(name)) return 'image/gif';
-  if (/\.webp$/i.test(name)) return 'image/webp';
-  if (/\.svg$/i.test(name)) return 'image/svg+xml';
-  if (/\.pdf$/i.test(name)) return 'application/pdf';
-  if (/\.json$/i.test(name)) return 'application/json';
-  if (/\.(md|txt|csv|ya?ml|toml|ts|js|css|html)$/i.test(name)) return 'text/plain';
-  return 'application/octet-stream';
 }
 
 export type MountScenario = 'mount' | 'cancel' | 'fail' | 'needs';

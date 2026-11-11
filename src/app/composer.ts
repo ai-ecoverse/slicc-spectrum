@@ -33,7 +33,7 @@ import type {
   UserMessage,
   VaultPort,
 } from '../model/types.ts';
-import { nameProblem, valueProblem } from '../model/values.ts';
+import { mimeOf, nameProblem, valueProblem } from '../model/values.ts';
 import { chatModels, shared, speech, ThemedElement } from './base.ts';
 import { confirm } from './confirm.ts';
 import { deadline, mine, size } from './messages.ts';
@@ -71,18 +71,6 @@ function carried(attachment: Attachment): boolean {
   return (
     attachment.url !== undefined || attachment.text !== undefined || attachment.path === undefined
   );
-}
-
-export function mimeOf(name: string): string {
-  if (/\.png$/i.test(name)) return 'image/png';
-  if (/\.jpe?g$/i.test(name)) return 'image/jpeg';
-  if (/\.gif$/i.test(name)) return 'image/gif';
-  if (/\.webp$/i.test(name)) return 'image/webp';
-  if (/\.svg$/i.test(name)) return 'image/svg+xml';
-  if (/\.pdf$/i.test(name)) return 'application/pdf';
-  if (/\.json$/i.test(name)) return 'application/json';
-  if (/\.(md|txt|csv|ya?ml|toml|ts|js|css|html)$/i.test(name)) return 'text/plain';
-  return 'application/octet-stream';
 }
 
 type Kept = Pick<Attachment, 'name' | 'mimeType' | 'size'>;

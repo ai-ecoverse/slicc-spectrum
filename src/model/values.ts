@@ -1,5 +1,17 @@
 import type { ErrorCode, VaultFailure } from './types.ts';
 
+export function mimeOf(name: string): string {
+  if (/\.png$/i.test(name)) return 'image/png';
+  if (/\.jpe?g$/i.test(name)) return 'image/jpeg';
+  if (/\.gif$/i.test(name)) return 'image/gif';
+  if (/\.webp$/i.test(name)) return 'image/webp';
+  if (/\.svg$/i.test(name)) return 'image/svg+xml';
+  if (/\.pdf$/i.test(name)) return 'application/pdf';
+  if (/\.json$/i.test(name)) return 'application/json';
+  if (/\.(md|txt|csv|ya?ml|toml|ts|js|css|html)$/i.test(name)) return 'text/plain';
+  return 'application/octet-stream';
+}
+
 export function valueProblem(value: string): string | null {
   if (new TextEncoder().encode(value).length < 8)
     return "Values shorter than 8 bytes can't be protected from the model";
