@@ -559,6 +559,7 @@ export class SliccComposer extends ThemedElement {
   #waiting = new PageQueue(this);
   #history = -1;
   #paths: string[] = [];
+  #pathsGen = 0;
   #agent = '';
   #next = 1;
   #session: Recording | null = null;
@@ -975,15 +976,19 @@ export class SliccComposer extends ThemedElement {
 
   #takePaths(entries: readonly { kind: string; path: string }[]): void {
     this.#paths = entries.filter((entry) => entry.kind === 'file').map((entry) => entry.path);
-    if (this.popup?.kind === 'file')
-      this.popup = { ...this.popup, items: this.#choices('file', this.popup.query) };
+    if (this.popup?.kind === 'file') {
+      const items = this.#choices('file', this.popup.query);
+      const index = items.length ? Math.min(this.popup.index, items.length - 1) : 0;
+      this.popup = { ...this.popup, items, index };
+    }
   }
 
   async #loadPaths(): Promise<void> {
     const model = this.model;
     if (!model || model.seat) return;
+    const gen = ++this.#pathsGen;
     const entries = await model.files.list();
-    if (this.model !== model) return;
+    if (this.model !== model || gen !== this.#pathsGen) return;
     this.#takePaths(entries);
     this.requestUpdate();
   }
@@ -1023,6 +1028,7 @@ export class SliccComposer extends ThemedElement {
         ? []
         : [
             model.files.on('files', (entries) => {
+              this.#pathsGen++;
               this.#takePaths(entries);
               update();
             }),
