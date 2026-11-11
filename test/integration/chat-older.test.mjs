@@ -224,9 +224,20 @@ test('a failed load shows a retry row instead of asking again, and Retry loads t
 test('a load still running for one agent never moves the log of the agent shown since', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {
-    window.model.agent.paginate(0, 2, ['cone-sliccy']);
-    window.model.agent.olderTicks = 200;
-    window.model.agent.select('cone-sliccy');
+    const agent = window.model.agent;
+    agent.paginate(0, 2, ['cone-sliccy']);
+    agent.olderTicks = 1;
+    let release;
+    const held = new Promise((resolve) => {
+      release = resolve;
+    });
+    window.releaseOlder = () => release();
+    const load = agent.older.bind(agent);
+    agent.older = async (id, before) => {
+      await held;
+      return load(id, before);
+    };
+    agent.select('cone-sliccy');
     return true;
   });
   await page.until(() => window.row()?.getAttribute('aria-busy') === 'true');
@@ -238,8 +249,14 @@ test('a load still running for one agent never moves the log of the agent shown 
   await page.until(() => window.gap() <= 1);
   const top = await wheel(page, -1500);
   assert.equal(await page.evaluate(() => window.shown('cone-sliccy')), 0);
+  await page.evaluate(() => window.releaseOlder());
   await page.until(() => window.shown('cone-sliccy') === 2);
-  await wait(500);
+  await page.evaluate(async () => {
+    const chat = window.$('slicc-app', 'slicc-dock', 'slicc-chat');
+    await chat.updateComplete;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return true;
+  });
   assert.deepEqual(
     await page.evaluate(() => ({
       top: window.log().scrollTop,
@@ -250,7 +267,6 @@ test('a load still running for one agent never moves the log of the agent shown 
     { top, row: false, kitchen: 0, sliccy: 1 }
   );
   await page.evaluate(() => {
-    window.model.agent.olderTicks = 1;
     window.model.agent.select('cone-sliccy');
     return true;
   });
