@@ -142,6 +142,7 @@ export class SliccAgents extends ModelElement {
         'toggle description strip'
         'toggle ribbon ribbon'
         'toggle error error';
+      grid-template-rows: auto minmax(var(--swc-component-height-100), auto);
       align-items: start;
       column-gap: var(--swc-spacing-100);
       padding: var(--swc-spacing-75) var(--swc-spacing-200) var(--swc-spacing-75) var(--swc-spacing-100);

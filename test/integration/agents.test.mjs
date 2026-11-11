@@ -1331,7 +1331,7 @@ for (const color of ['light', 'dark']) {
   });
 }
 
-test('Without scoops the rows drop the chevron column, and every status dot keeps the medium status light footprint', async (t) => {
+test('Without scoops the rows drop the chevron column, every status dot keeps the medium status light footprint, and every row has one height', async (t) => {
   const page = await open(t);
   await page.until(() => Boolean(window.agentRow('cone-release')));
   await page.evaluate(() => {
@@ -1358,6 +1358,8 @@ test('Without scoops the rows drop the chevron column, and every status dot keep
         inset: Math.round(row.querySelector('.title').getBoundingClientRect().left - box.left),
         size: Math.round(dot.width + 2 * ring),
         name: Math.round(row.querySelector('.name').getBoundingClientRect().left - box.left),
+        height: Math.round(box.height),
+        strip: Boolean(row.querySelector('.drop-cell')),
       };
     })
   );
@@ -1366,6 +1368,8 @@ test('Without scoops the rows drop the chevron column, and every status dot keep
     rows.map(({ status }) => [status, 12, status === 'error' ? 12 : 10])
   );
   assert.equal(new Set(rows.map((row) => row.name)).size, 1, 'names line up whatever the status');
+  assert.ok(rows.some((row) => row.strip) && rows.some((row) => !row.strip));
+  assert.equal(new Set(rows.map((row) => row.height)).size, 1, 'a hidden strip adds no height');
   assert.equal(
     await page.evaluate(
       () => window.agents().shadowRoot.querySelectorAll('[data-action=toggle-cone]').length
