@@ -253,10 +253,37 @@ test('a terminal user’s request never offers Deny and stop, even when it says 
   assert.deepEqual(page.errors, []);
 });
 
-for (const width of [1440, 420]) {
+const boxes = (page) =>
+  page.evaluate(() =>
+    Object.fromEntries(
+      [...window.approvals().querySelectorAll('[slot=button][data-action]')].map((button) => {
+        const { left, top, right, bottom } = button.getBoundingClientRect();
+        return [button.dataset.action, [left, top, right, bottom].map(Math.round)];
+      })
+    )
+  );
+
+const resize = async (page, width) => {
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await page.until((width) => window.innerWidth === width, width);
+};
+
+const ruledOut = {
+  judging: false,
+  always: false,
+  verdict: { level: 3, aligned: false, reason: 'It changes permissions on system files.' },
+};
+
+for (const width of [1280, 420]) {
   for (const scope of [{}, { alwaysScope: 'cwd' }]) {
     const label = scope.alwaysScope ? ' in this directory' : '';
-    test(`a stoppable request keeps every button in place while the verdict arrives${label} at ${width}`, async (t) => {
+    const rows = width === 420 || scope.alwaysScope ? 2 : 1;
+    test(`a stoppable request keeps every button in place from Checking to Always allow${label} at ${width}, on ${rows} row${rows === 1 ? '' : 's'}`, async (t) => {
       const page = await open(t, 'none', width);
       await page.evaluate(
         (scope) => window.ask('sudo-du', { judging: true, stoppable: true, ...scope }),
@@ -265,51 +292,122 @@ for (const width of [1440, 420]) {
       await shown(page, 'sudo-du');
       await waitApprovalArmed(page);
       const first = await page.evaluate(() => [window.where(), window.frame()]);
-      const steps = [
-        { verdict: { level: 1, reason: 'It reads sizes.' } },
-        { verdict: { level: 2, reason: 'It reads sizes.' } },
-        { verdictError: 'The check didn’t answer in time.' },
-        { verdict: { level: 1, reason: 'It reads sizes.' } },
-      ];
-      const seen = [];
-      for (const patch of steps) {
-        await page.evaluate((patch) => window.ask('sudo-du', patch), {
-          judging: false,
-          stoppable: true,
-          ...scope,
-          ...patch,
-        });
-        await settle(300);
-        seen.push(await page.evaluate(() => [window.where(), window.frame()]));
-      }
-      const [always] = seen;
-      for (const [buttons, frame] of seen) {
-        assert.deepEqual(frame, first[1], JSON.stringify(seen));
-        for (const action of ['deny', 'stop', 'once'])
-          assert.deepEqual(buttons[action], first[0][action], JSON.stringify(seen));
-        if (buttons.always)
-          assert.deepEqual(buttons.always, always[0].always, JSON.stringify(seen));
-      }
-      assert.deepEqual(
-        [first, ...seen].map(([buttons]) => Object.keys(buttons)),
-        [
-          ['deny', 'stop', 'once'],
-          ['deny', 'stop', 'always', 'once'],
-          ['deny', 'stop', 'always', 'once'],
-          ['deny', 'stop', 'once'],
-          ['deny', 'stop', 'always', 'once'],
-        ]
+      assert.deepEqual(Object.keys(first[0]), ['deny', 'stop', 'once']);
+      await page.evaluate(
+        (scope) =>
+          window.ask('sudo-du', {
+            judging: false,
+            stoppable: true,
+            verdict: { level: 1, reason: 'It reads sizes.' },
+            ...scope,
+          }),
+        scope
       );
-      const [buttons] = always;
-      assert.equal(buttons.deny[1], buttons.stop[1]);
-      assert.ok(buttons.stop[0] > buttons.deny[0]);
-      assert.ok(buttons.once[1] > buttons.deny[1]);
-      assert.ok(buttons.always[0] < buttons.once[0]);
-      assert.equal(buttons.always[1], buttons.once[1]);
+      await page.until(() => !!window.approvals().querySelector('[data-action=always]'));
+      await settle(300);
+      const [buttons, frame] = await page.evaluate(() => [window.where(), window.frame()]);
+      assert.deepEqual(frame, first[1]);
+      for (const action of ['deny', 'stop', 'once'])
+        assert.deepEqual(buttons[action], first[0][action]);
+      const box = await boxes(page);
+      const gap = box.stop[0] - box.deny[2];
+      assert.ok(gap > 0);
+      assert.equal(box.always[1], box.once[1]);
+      assert.equal(box.once[0] - box.always[2], gap);
+      if (rows === 1) {
+        assert.equal(box.once[1], box.deny[1]);
+        assert.ok(box.always[0] > box.stop[2]);
+      } else {
+        assert.equal(box.once[1] - box.deny[3], gap);
+        assert.equal(box.stop[1], box.deny[1]);
+      }
       assert.deepEqual(page.errors, []);
     });
   }
 }
+
+for (const width of [1280, 420]) {
+  test(`a stoppable request without Always allow lays out one row at ${width}`, async (t) => {
+    const page = await open(t, 'none', width);
+    await page.evaluate(
+      (ruledOut) => window.ask('sudo-chmod', { stoppable: true, ...ruledOut }),
+      ruledOut
+    );
+    await shown(page, 'sudo-chmod');
+    await waitApprovalArmed(page);
+    assert.deepEqual(await page.evaluate(() => window.actions().map(([action]) => action)), [
+      'deny',
+      'stop',
+      'once',
+    ]);
+    const box = await boxes(page);
+    assert.equal(box.stop[1], box.deny[1]);
+    assert.equal(box.once[1], box.deny[1]);
+    assert.ok(box.once[0] > box.stop[2]);
+    assert.equal(
+      await page.evaluate(() => window.approvals().querySelectorAll('.break, .room').length),
+      0
+    );
+    assert.deepEqual(page.errors, []);
+  });
+}
+
+test('Allow once comes up to the first row when the verdict rules Always allow out, and waits again', async (t) => {
+  const page = await open(t, 'none', 420);
+  await page.evaluate(() => window.ask('sudo-chmod', { judging: true, stoppable: true }));
+  await shown(page, 'sudo-chmod');
+  await waitApprovalArmed(page);
+  const before = await boxes(page);
+  assert.ok(before.once[1] > before.deny[3]);
+  await page.evaluate(() => {
+    window.element().arming = 2000;
+    return true;
+  });
+  await page.evaluate(
+    (ruledOut) => window.ask('sudo-chmod', { stoppable: true, ...ruledOut }),
+    ruledOut
+  );
+  await page.until(() => !window.approvals().querySelector('.break'));
+  await settle(100);
+  const after = await boxes(page);
+  assert.equal(after.once[1], after.deny[1]);
+  const once = await page.evaluate(() => {
+    const box = window.approvals().querySelector('[data-action=once]').getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  });
+  for (const type of ['mousePressed', 'mouseReleased'])
+    await page.send('Input.dispatchMouseEvent', { type, ...once, button: 'left', clickCount: 1 });
+  await settle(300);
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), []);
+  await clickApproval(page, 'once');
+  await page.until(() => window.model.approvals.decisions.length === 1);
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
+    ['sudo-chmod', 'once'],
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a stoppable request wraps when the window narrows and goes back to one row when it widens', async (t) => {
+  const page = await open(t, 'none', 1280);
+  await page.evaluate(() =>
+    window.ask('sudo-du', { stoppable: true, verdict: { level: 1, reason: 'It reads sizes.' } })
+  );
+  await shown(page, 'sudo-du');
+  await waitApprovalArmed(page);
+  const wide = await boxes(page);
+  assert.equal(wide.once[1], wide.deny[1]);
+  await resize(page, 420);
+  await page.until(() => !!window.approvals().querySelector('.break'));
+  await waitApprovalArmed(page);
+  const narrow = await boxes(page);
+  assert.equal(narrow.once[1] - narrow.deny[3], narrow.stop[0] - narrow.deny[2]);
+  assert.equal(narrow.always[1], narrow.once[1]);
+  await resize(page, 1280);
+  await page.until(() => !window.approvals().querySelector('.break'));
+  await waitApprovalArmed(page);
+  assert.deepEqual(await boxes(page), wide);
+  assert.deepEqual(page.errors, []);
+});
 
 test('a sudo request from a cone without stoppable keeps one row, as from an older agent', async (t) => {
   const page = await open(t, 'none');

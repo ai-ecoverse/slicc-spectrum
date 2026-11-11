@@ -349,6 +349,24 @@ const stops = (approval: Approval): boolean =>
   approval.requester.kind === 'agent' &&
   !!approval.requester.agentId;
 
+const awaitsAlways = (approval: Approval): boolean =>
+  approval.kind === 'sudo' && approval.always && !approval.verdict && !approval.verdictError;
+
+const alwaysLabel = (approval: Approval): string =>
+  inCwd(approval) ? 'Always allow in this directory' : 'Always allow';
+
+function oneRow(group: Element | null | undefined, items: readonly HTMLElement[]): boolean {
+  if (!group) return true;
+  const style = getComputedStyle(group);
+  const room =
+    group.clientWidth -
+    (Number.parseFloat(style.paddingInlineStart) || 0) -
+    (Number.parseFloat(style.paddingInlineEnd) || 0);
+  const gap = Number.parseFloat(style.columnGap) || 0;
+  const need = items.reduce((sum, item) => sum + item.getBoundingClientRect().width, 0);
+  return need + gap * (items.length - 1) <= room + 0.5;
+}
+
 const denies = (decision: ApprovalDecision): boolean => decision === 'deny' || decision === 'stop';
 
 function answerable(approval: Approval, decision: ApprovalDecision): boolean {
@@ -375,12 +393,14 @@ export class SliccApprovals extends ModelElement {
     failure: { state: true },
     gone: { state: true },
     frameError: { state: true },
+    wrapped: { state: true },
   };
   declare now: number;
   declare busy: ApprovalDecision | '';
   declare failure: { id: string; message: string } | null;
   declare gone: { approval: Approval; reason: 'elsewhere' | 'expired' } | null;
   declare frameError: { id: string; message: string } | null;
+  declare wrapped: boolean;
   arming = 500;
   #arming = new Arming(() => this.arming);
   #moves = new Watched(new ResizeObserver(() => this.#settle()));
@@ -408,6 +428,7 @@ export class SliccApprovals extends ModelElement {
     this.failure = null;
     this.gone = null;
     this.frameError = null;
+    this.wrapped = false;
   }
 
   static styles = [
@@ -543,6 +564,9 @@ export class SliccApprovals extends ModelElement {
       }
       sp-alert-dialog {
         --mod-buttongroup-spacing: var(--swc-spacing-300);
+      }
+      .room {
+        visibility: hidden;
       }
       .break {
         flex-basis: 100%;
@@ -753,6 +777,15 @@ export class SliccApprovals extends ModelElement {
   #settle(): void {
     const dialog = this.renderRoot.querySelector('dialog');
     const buttons = [...this.renderRoot.querySelectorAll<HTMLElement>('[slot=button]')];
+    const group = dialog
+      ?.querySelector('sp-alert-dialog')
+      ?.shadowRoot?.querySelector('.button-group');
+    this.wrapped =
+      !!dialog?.querySelector('[data-action=stop]') &&
+      !oneRow(
+        group,
+        buttons.filter((button) => !button.classList.contains('break'))
+      );
     this.#arming.watch(layout(buttons, [dialog?.dataset.approval, dialog?.dataset.gone]));
   }
 
@@ -920,8 +953,8 @@ export class SliccApprovals extends ModelElement {
       return html`<swc-button slot="button" variant="secondary" fill-style="outline" data-action="close" @click=${() => this.#dismiss(approval)}>Close</swc-button>`;
     const click = approval.kind === 'click';
     return html`${this.#button(approval, 'deny', click ? 'Cancel' : 'Deny', 'secondary')}
-      ${stops(approval) ? html`${this.#button(approval, 'stop', 'Deny and stop', 'secondary')}<span slot="button" class="break" aria-hidden="true"></span>` : nothing}
-      ${always ? this.#button(approval, 'always', inCwd(approval) ? 'Always allow in this directory' : 'Always allow', 'secondary') : nothing}
+      ${stops(approval) ? html`${this.#button(approval, 'stop', 'Deny and stop', 'secondary')}${this.wrapped ? html`<span slot="button" class="break" aria-hidden="true"></span>` : nothing}` : nothing}
+      ${always ? this.#button(approval, 'always', alwaysLabel(approval), 'secondary') : stops(approval) && awaitsAlways(approval) ? html`<swc-button slot="button" class="room" variant="secondary" fill-style="outline" aria-hidden="true" inert>${alwaysLabel(approval)}</swc-button>` : nothing}
       ${answerable(approval, 'once') ? this.#button(approval, 'once', click ? approval.action : 'Allow once', 'accent') : nothing}`;
   }
 
