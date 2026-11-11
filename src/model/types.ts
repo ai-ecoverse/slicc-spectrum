@@ -1438,7 +1438,8 @@ export type ErrorCode =
   | 'EAGAIN'
   | 'ETIMEDOUT'
   | 'ENOTCONN'
-  | 'ENOTSUP';
+  | 'ENOTSUP'
+  | 'EIO';
 
 export type ErrorCause =
   | 'policy-paused'
@@ -1454,6 +1455,8 @@ export type ErrorCause =
   | 'record-kind'
   | 'record-expired'
   | 'vault-locked'
+  | 'oauth-reauth-required'
+  | 'oauth-refresh-failed'
   | 'no-rule'
   | 'rule-domain'
   | 'rule-request'

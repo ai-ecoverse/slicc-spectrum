@@ -134,7 +134,12 @@ export function serverLeft(account: Account, left: readonly ServerLeft[]): strin
   const record = left.some(([part]) => part === 'record');
   const held = account.auth === 'oauth' ? 'sign-in' : 'token';
   const locked = left.some(
-    ([, error]) => isVaultFailure(error) && error.code === 'EACCES' && !isPolicyPaused(error)
+    ([, error]) =>
+      isVaultFailure(error) &&
+      error.code === 'EACCES' &&
+      !isPolicyPaused(error) &&
+      error.cause !== 'oauth-reauth-required' &&
+      error.cause !== 'oauth-refresh-failed'
   );
   const what = !url
     ? `its ${held} stayed in the vault`

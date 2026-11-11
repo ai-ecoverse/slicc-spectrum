@@ -10259,6 +10259,32 @@ test('a paused refusal is not worded as a locked vault', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
+test('EIO and oauth refresh refusals show their own words, not a locked vault', async (t) => {
+  const page = await secretsPage(t, { vault: 'secrets' });
+  await page.evaluate(() => {
+    window.model.vault.fail('EIO', 'Invalid OAuth response');
+    return true;
+  });
+  await save(page, 'tide_token', sample);
+  assert.equal(await page.evaluate(said, '[data-error=form]'), "The vault couldn't finish that");
+  await clean(page);
+  await page.evaluate(() => {
+    window.model.vault.fail('EACCES', '', 'oauth-reauth-required');
+    return true;
+  });
+  await save(page, 'tide_token', sample);
+  assert.equal(await page.evaluate(said, '[data-error=form]'), 'Sign in again');
+  await clean(page);
+  await page.evaluate(() => {
+    window.model.vault.fail('EACCES', '', 'oauth-refresh-failed');
+    return true;
+  });
+  await save(page, 'tide_token', sample);
+  assert.equal(await page.evaluate(said, '[data-error=form]'), "Couldn't refresh this sign-in");
+  await clean(page);
+  assert.deepEqual(page.errors, []);
+});
+
 test('the secrets activity log lists uses and reveals, pages back and filters to reveals', async (t) => {
   const page = await secretsPage(t, { vault: 'secrets' });
   const seqs = () =>
