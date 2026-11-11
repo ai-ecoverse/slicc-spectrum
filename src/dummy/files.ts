@@ -100,11 +100,7 @@ export class DummyFiles extends Emitter<FileEvents> implements FilePort {
     if (text === undefined) throw new Error(`ENOENT: ${path}`);
     const name = path.slice(path.lastIndexOf('/') + 1);
     const type = mimeOf(name);
-    if (
-      type.startsWith('image/') ||
-      type === 'application/pdf' ||
-      type === 'application/octet-stream'
-    )
+    if (type.startsWith('image/') || type === 'application/pdf')
       return new Blob([Uint8Array.from(text, (char) => char.charCodeAt(0) & 0xff)], { type });
     return new Blob([text], { type });
   }
