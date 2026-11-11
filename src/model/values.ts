@@ -24,7 +24,7 @@ export async function looksLikeText(data: Blob | ArrayBufferView): Promise<boole
       : new Uint8Array(data.buffer, data.byteOffset, Math.min(data.byteLength, 8192));
   if (bytes.includes(0)) return false;
   try {
-    new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    new TextDecoder('utf-8', { fatal: true }).decode(bytes, { stream: true });
     return true;
   } catch {
     return false;
