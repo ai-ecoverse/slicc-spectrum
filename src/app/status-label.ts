@@ -1,7 +1,9 @@
 import { html, LitElement, type TemplateResult } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import type { AgentPort, SliccModel, ToolCall } from '../model/types.ts';
-import { askStep, hearSteps, stepLabel } from './step-labels.ts';
+import { guard } from './guard.ts';
+import { askStep, StepWatch, stepLabel } from './step-labels.ts';
+import { rawTitle } from './tool-title.ts';
 
 interface Labels {
   done: Map<string, string>;
@@ -39,8 +41,7 @@ export class SliccStatusLabel extends LitElement {
   #shown = '';
   #at = Number.NEGATIVE_INFINITY;
   #timer: ReturnType<typeof setTimeout> | undefined;
-  #port: AgentPort | undefined;
-  #off: () => void = () => undefined;
+  #watch = new StepWatch(() => this.requestUpdate());
 
   constructor() {
     super();
@@ -56,22 +57,10 @@ export class SliccStatusLabel extends LitElement {
     return this;
   }
 
-  connectedCallback(): void {
-    super.connectedCallback();
-    this.#listen(this.model?.agent);
-  }
-
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.#cancel();
-    this.#listen(undefined);
-  }
-
-  #listen(port: AgentPort | undefined): void {
-    if (port === this.#port) return;
-    this.#off();
-    this.#port = port;
-    this.#off = hearSteps(port, () => this.requestUpdate());
+    this.#watch.stop();
   }
 
   get shown(): string {
@@ -86,7 +75,14 @@ export class SliccStatusLabel extends LitElement {
     return `${this.agent} ${this.calls[0]?.id ?? ''}`;
   }
 
+  #needsLabel(): boolean {
+    if (this.calls.length >= 2) return true;
+    const only = this.calls[0];
+    return !!only && rawTitle(only.title);
+  }
+
   #step(): ToolCall | undefined {
+    if (!this.model?.agent?.stepLabel) return undefined;
     if (this.state === 'active')
       return this.calls.findLast((call) => call.status === 'running') ?? this.calls.at(-1);
     return this.calls.length === 1 ? this.calls[0] : undefined;
@@ -100,7 +96,7 @@ export class SliccStatusLabel extends LitElement {
       askStep(port, this.agent, step.id);
       return;
     }
-    if (!port?.toolLabel) return;
+    if (!this.#needsLabel() || !port?.toolLabel) return;
     const store = cache(port);
     const key = this.#key;
     const anchor = this.#anchor;
@@ -113,7 +109,7 @@ export class SliccStatusLabel extends LitElement {
       )
       .then(
         (text) => {
-          const label = text?.trim();
+          const label = guard(text?.trim() ?? '');
           if (!label) return;
           store.done.set(key, label);
           store.latest.set(anchor, label);
@@ -143,7 +139,7 @@ export class SliccStatusLabel extends LitElement {
   }
 
   protected willUpdate(): void {
-    if (this.isConnected) this.#listen(this.model?.agent);
+    if (this.isConnected) this.#watch.watch(this.model?.agent, this.agent, this.#step()?.id);
     this.#ask();
     const wanted = this.#wanted();
     if (wanted === this.#shown) {

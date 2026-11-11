@@ -2927,6 +2927,200 @@ test('a finished status asks for its steps’ labels only once it is opened, and
   assert.deepEqual(page.errors, []);
 });
 
+test('a model step label that repeats a secret is cut like a title, in the header and the row', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    const call = (id, title) => ({
+      id,
+      name: 'bash',
+      title,
+      input: title,
+      output: '',
+      status: 'done',
+      paths: [],
+    });
+    const added = [
+      { id: 'leak-user', role: 'user', text: 'Check the token', createdAt: now },
+      {
+        id: 'leak-one',
+        role: 'assistant',
+        status: 'done',
+        createdAt: now,
+        model: 'claude-opus-5-5',
+        parts: [{ type: 'tool', tool: call('leak-1', 'gh auth status') }],
+      },
+      { id: 'leak-user2', role: 'user', text: 'And sign in', createdAt: now },
+      {
+        id: 'leak-two',
+        role: 'assistant',
+        status: 'done',
+        createdAt: now,
+        model: 'claude-opus-5-5',
+        parts: [
+          { type: 'tool', tool: call('leak-2', 'gh auth login') },
+          { type: 'tool', tool: call('leak-3', 'gh auth status') },
+        ],
+      },
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    const said = {
+      'leak-1': 'Verify token=ghp_INVENTEDEXAMPLE0000',
+      'leak-2': 'Sign in with ghp_INVENTEDEXAMPLE0000 now',
+      'leak-3': 'Check the login',
+    };
+    agent.stepLabel = async (_agentId, callId) => said[callId] ?? null;
+    agent.toolLabel = async (_agentId, callIds) =>
+      callIds.join(' ') === 'leak-2 leak-3' ? 'Log in with password: hunter2-example' : null;
+    agent.select('cone-sliccy');
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  const header = (id) => `swc-conversation-turn[data-id=${id}] slicc-status-label`;
+  await page.until(
+    (selectors) =>
+      window.chatPart(selectors[0])?.textContent === 'Verify token= …' &&
+      window.chatPart(selectors[1])?.textContent === 'Log in with password: …',
+    [header('leak-one'), header('leak-two')]
+  );
+  await page.evaluate(() =>
+    window
+      .chatPart('swc-conversation-turn[data-id=leak-two] swc-response-status')
+      .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
+      .click()
+  );
+  await page.until(() => window.chatPart('#label-leak-3')?.textContent === 'Check the login');
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.chatPart('#label-leak-1').textContent,
+      window.chatPart('#label-leak-2').textContent,
+      window.chatPart('.log').textContent.includes('ghp_') ||
+        window.chatPart('.log').textContent.includes('hunter2'),
+    ]),
+    ['Verify token= …', 'Sign in with …', false]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a step without a model label follows its call as it streams and finishes', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    window.growingCall = {
+      id: 'grow-1',
+      name: 'bash',
+      title: '',
+      input: '',
+      output: '',
+      status: 'running',
+      paths: [],
+    };
+    window.growingReply = {
+      id: 'grow-run',
+      role: 'assistant',
+      status: 'streaming',
+      createdAt: now,
+      model: 'claude-opus-5-5',
+      parts: [{ type: 'tool', tool: window.growingCall }],
+    };
+    const added = [
+      { id: 'grow-user', role: 'user', text: 'List it', createdAt: now },
+      window.growingReply,
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    agent.stepLabel = async () => null;
+    agent.select('cone-sliccy');
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  await page.until(() => window.chatPart('#label-grow-1')?.textContent === 'bash');
+  await page.evaluate(() => {
+    window.growingCall.title = 'List the forecast files';
+    window.model.agent.emit('message', { agentId: 'cone-sliccy', message: window.growingReply });
+    return true;
+  });
+  await page.until(
+    () => window.chatPart('#label-grow-1')?.textContent === 'List the forecast files'
+  );
+  await page.evaluate(() => {
+    window.growingCall.status = 'error';
+    window.growingReply.status = 'done';
+    window.model.agent.emit('message', { agentId: 'cone-sliccy', message: window.growingReply });
+    return true;
+  });
+  await page.until(
+    () => window.chatPart('#label-grow-1')?.textContent === 'List the forecast files · Failed'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('an agent without stepLabel still labels a single raw command and a running run from toolLabel', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    const call = (id, title, status) => ({
+      id,
+      name: 'bash',
+      title,
+      input: title,
+      output: '',
+      status,
+      paths: [],
+    });
+    window.oldReply = {
+      id: 'old-run',
+      role: 'assistant',
+      status: 'streaming',
+      createdAt: now,
+      model: 'claude-opus-5-5',
+      parts: [
+        { type: 'tool', tool: call('old-1', 'npm ci', 'done') },
+        { type: 'tool', tool: call('old-2', 'npm run build', 'running') },
+      ],
+    };
+    const added = [
+      { id: 'old-user', role: 'user', text: 'Show the tree', createdAt: now },
+      {
+        id: 'old-single',
+        role: 'assistant',
+        status: 'done',
+        createdAt: now,
+        model: 'claude-opus-5-5',
+        parts: [{ type: 'tool', tool: call('old-0', 'git status --short', 'done') }],
+      },
+      { id: 'old-user2', role: 'user', text: 'Build it', createdAt: now },
+      window.oldReply,
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    agent.stepLabel = undefined;
+    agent.toolLabel = async (_agentId, callIds) =>
+      ({ 'old-0': 'Summarise the working tree', 'old-1 old-2': 'Install and build the site' })[
+        callIds.join(' ')
+      ] ?? null;
+    agent.select('cone-sliccy');
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  await page.until(
+    () =>
+      window.chatPart('swc-conversation-turn[data-id=old-single] slicc-status-label')
+        ?.textContent === 'Summarise the working tree' &&
+      window.chatPart('swc-conversation-turn[data-id=old-run] slicc-status-label')?.textContent ===
+        'Install and build the site'
+  );
+  assert.equal(
+    await page.evaluate(() => window.chatPart('#label-old-0').textContent),
+    'bash git status --short'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a growing status keeps one header row while runs join, and ends on the run’s label', async (t) => {
   const page = await open(t, { delay: '30' });
   const viewport = (width) =>

@@ -417,7 +417,7 @@ export function step(
   const verdict = verdicts[call.status];
   const cluster = `status:${context.anchor ?? call.id}`;
   const ask = call.status === 'running' || (runs?.has(cluster) ?? false);
-  const label = html`<slicc-step-label .call=${call} .agent=${context.agentId ?? ''} .model=${context.model} .ask=${ask}></slicc-step-label>${verdict ? ` · ${verdict}` : ''}`;
+  const label = html`<slicc-step-label .callId=${call.id} .fallback=${headline(call)} .agent=${context.agentId ?? ''} .model=${context.model} .ask=${ask}></slicc-step-label>${verdict ? ` · ${verdict}` : ''}`;
   const open = described(call, owner) && (runs?.has(call.id) ?? false);
   const toggle = described(call, owner)
     ? html`<button type="button" class="run-toggle" aria-expanded=${open ? 'true' : 'false'} aria-controls=${`detail-${call.id}`} @click=${() => runs?.toggle(call.id)}>${label}</button>`

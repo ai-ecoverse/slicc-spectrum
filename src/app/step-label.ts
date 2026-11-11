@@ -1,25 +1,26 @@
 import { LitElement } from 'lit';
-import type { AgentPort, SliccModel, ToolCall } from '../model/types.ts';
-import { askStep, hearSteps, stepLabel } from './step-labels.ts';
-import { headline } from './tool-title.ts';
+import type { SliccModel } from '../model/types.ts';
+import { askStep, StepWatch, stepLabel } from './step-labels.ts';
 
 export class SliccStepLabel extends LitElement {
   static properties = {
-    call: { attribute: false },
+    callId: { attribute: false },
+    fallback: { attribute: false },
     agent: { attribute: false },
     model: { attribute: false },
     ask: { attribute: false },
   };
-  declare call: ToolCall | null;
+  declare callId: string;
+  declare fallback: string;
   declare agent: string;
   declare model: SliccModel | null;
   declare ask: boolean;
-  #port: AgentPort | undefined;
-  #off: () => void = () => undefined;
+  #watch = new StepWatch(() => this.requestUpdate());
 
   constructor() {
     super();
-    this.call = null;
+    this.callId = '';
+    this.fallback = '';
     this.agent = '';
     this.model = null;
     this.ask = false;
@@ -29,31 +30,19 @@ export class SliccStepLabel extends LitElement {
     return this;
   }
 
-  connectedCallback(): void {
-    super.connectedCallback();
-    this.#listen(this.model?.agent);
-  }
-
   disconnectedCallback(): void {
     super.disconnectedCallback();
-    this.#listen(undefined);
-  }
-
-  #listen(port: AgentPort | undefined): void {
-    if (port === this.#port) return;
-    this.#off();
-    this.#port = port;
-    this.#off = hearSteps(port, () => this.requestUpdate());
+    this.#watch.stop();
   }
 
   get text(): string {
-    if (!this.call) return '';
-    return stepLabel(this.model?.agent, this.agent, this.call.id) || headline(this.call);
+    return (this.callId && stepLabel(this.model?.agent, this.agent, this.callId)) || this.fallback;
   }
 
   protected willUpdate(): void {
-    if (this.isConnected) this.#listen(this.model?.agent);
-    if (this.ask && this.call) askStep(this.model?.agent, this.agent, this.call.id);
+    const port = this.model?.agent;
+    if (this.isConnected) this.#watch.watch(port, this.agent, this.callId);
+    if (this.ask && this.callId) askStep(port, this.agent, this.callId);
   }
 
   render(): string {
