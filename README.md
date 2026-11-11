@@ -253,12 +253,14 @@ Events: `layout-change`, `active-panel-change`, `panel-close`.
 
 A tree (`role="tree"`) of cones, with their scoops listed under them.
 A cone with scoops starts with a quiet disclosure chevron (`data-action="toggle-cone"`, `swc-icon-chevron-right`, turned down when open and mirrored right to left); it's `aria-hidden` and out of the Tab order, since the row's `aria-expanded` carries the state.
+With no scoops anywhere the tree is flat (`ul[data-flat]`): there is no chevron column, and rows start at the same padding they end with. With any scoop, every row keeps the chevron's column so the names line up.
 The chevron only expands and collapses; a click on the row, <kbd>Enter</kbd> or <kbd>Space</kbd> selects the agent and makes it the active one, which also expands its cone.
 <kbd>→</kbd> expands a cone and then moves to its first scoop, <kbd>←</kbd> moves from a scoop to its cone and then collapses it, and neither changes the active agent.
 Several cones can be open at once, and they stay open for every view of the panel on the same model, so a layout switch keeps them; when the active agent has changed since the panel last showed it, its cone opens again as the panel mounts, so on a phone a cone you tapped still shows its scoops when you come back to Agents, and a cone you closed stays closed.
 When the active scoop's cone is collapsed, the cone row takes the Tab stop.
-A row's first line starts with a status mark shaped by status (a filled disk when idle, a pulsing ringed disk when working that `prefers-reduced-motion` stills, a dashed ring when thinking, a hollow ring when waiting, and an alert triangle when in error), always in the same place, and, when there are unread messages, the unread count beside it (`99+` from a hundred up, at `--swc-font-size-50`, white on the accent fill, or on the negative fill when the cone is in error).
-Then comes the name; the context fill, when it's high, sits in the top right corner.
+A row's first line starts with one leading mark (`.lead[data-lead]`), never two: an alert triangle in error, a hollow ring when waiting, otherwise the unread count when there are unread messages (`99+` from a hundred up, at `--swc-font-size-50`, white on the accent fill), else a pulsing ringed disk when working that `prefers-reduced-motion` stills, or a dashed ring when thinking. An idle row keeps the slot empty so the names line up. Status dots are the medium status light size (`--swc-status-light-dot-size-medium`, 10px); a working dot's ring stays within that size, and the error triangle is the large size (12px).
+Then comes the name; from 80% the context fill sits in the top right corner, in regular weight, in the notice or negative colour.
+A hidden drop or delete button adds no height, so every row is the same height.
 Every row has up to two lines of conversation title, aligned to the top under the name, with no status word, so nothing moves when the status changes; the accessible name and the tooltip say the status and the exact unread count.
 A cone with scoops has a ribbon line below: one segment per scoop, coloured by status at 3:1 or more on every row background, then its scoops in words, naming only the busy ones, as in "2 scoops · 1 waiting" ("2 scoops" when all are idle).
 Its `aria-description` sums up every status, as in "2 scoops: 1 working, 1 idle".
@@ -266,7 +268,7 @@ Rows without scoops or errors have no empty ribbon or error line.
 With no agents while the agent port's `starting()` returns a line, the panel says "The agent shows up here once it starts." (`[data-empty="starting"]`, subdued) and has no **New cone**; the line goes, and New cone comes back, once an agent arrives or the line clears.
 The drop or delete button sits in its own column on the row's right edge, under the context fill, so the title ellipsizes before it and the focus ring stays whole; it shows on hover, on keyboard focus of the row, when <kbd>Tab</kbd> from the selected row reaches it, and always on touch, and it hides again once a pointer that clicked it leaves.
 The selected row has an accent bar on its inline-start edge.
-Under forced colors, the status marks keep their shapes in `CanvasText`, and the segments, unread circle and selection bar keep `CanvasText`, `Highlight` and `HighlightText`.
+Under forced colors, the status marks keep their shapes in `CanvasText` (an idle row has none), and the segments, unread circle and selection bar keep `CanvasText`, `Highlight` and `HighlightText`.
 A cone with scoops carries `aria-expanded`, and `aria-controls` names its scoop rows while they show.
 Expanding and collapsing have no motion.
 **New cone** sits at the bottom.

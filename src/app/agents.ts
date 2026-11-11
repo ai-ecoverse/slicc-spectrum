@@ -76,7 +76,14 @@ export function unreadCount(unread: number): string {
 }
 
 export function fillShown(fill: number): boolean {
-  return fill >= 0.5;
+  return fill >= 0.8;
+}
+
+export type Lead = 'error' | 'waiting' | 'unread' | 'working' | 'thinking' | 'idle';
+
+export function lead(status: Agent['status'], unread: number): Lead {
+  if (status === 'error' || status === 'waiting') return status;
+  return unread > 0 ? 'unread' : status;
 }
 
 type Tooltip = HTMLElement & { triggerElement: HTMLElement | null };
@@ -142,6 +149,7 @@ export class SliccAgents extends ModelElement {
         'toggle description strip'
         'toggle ribbon ribbon'
         'toggle error error';
+      grid-template-rows: auto minmax(var(--swc-component-height-100), auto);
       align-items: start;
       column-gap: var(--swc-spacing-100);
       padding: var(--swc-spacing-75) var(--swc-spacing-200) var(--swc-spacing-75) var(--swc-spacing-100);
@@ -150,6 +158,14 @@ export class SliccAgents extends ModelElement {
     }
     li.scoop {
       padding-inline-start: calc(var(--swc-spacing-100) + var(--swc-spacing-300));
+    }
+    ul[data-flat] li {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        'head fill'
+        'description strip'
+        'error error';
+      padding-inline-start: var(--swc-spacing-200);
     }
     li:hover {
       --row-background: var(--swc-gray-100);
@@ -191,6 +207,12 @@ export class SliccAgents extends ModelElement {
     .head > * {
       flex: none;
     }
+    .lead {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-inline-size: var(--swc-spacing-300);
+    }
     .marker {
       --status-color: var(--swc-gray-600);
       flex: none;
@@ -198,8 +220,8 @@ export class SliccAgents extends ModelElement {
       align-items: center;
       justify-content: center;
       box-sizing: border-box;
-      inline-size: var(--swc-spacing-200);
-      block-size: var(--swc-spacing-200);
+      inline-size: var(--swc-status-light-dot-size-medium);
+      block-size: var(--swc-status-light-dot-size-medium);
       border-radius: var(--swc-corner-radius-full);
       background: var(--status-color);
       color: var(--status-color);
@@ -215,9 +237,6 @@ export class SliccAgents extends ModelElement {
       font-variant-numeric: tabular-nums;
       font-weight: var(--swc-bold-font-weight);
       line-height: var(--swc-line-height-100);
-    }
-    .marker.unread[data-status='error'] {
-      --status-color: var(--swc-negative-background-color-default);
     }
     .name {
       flex: 0 1 auto;
@@ -291,11 +310,9 @@ export class SliccAgents extends ModelElement {
     }
     .fill[data-variant='notice'] {
       color: var(--swc-notice-color-1000);
-      font-weight: var(--swc-bold-font-weight);
     }
     .fill[data-variant='negative'] {
       color: var(--swc-negative-color-1000);
-      font-weight: var(--swc-bold-font-weight);
     }
     .drop-cell {
       grid-area: strip;
@@ -567,6 +584,17 @@ export class SliccAgents extends ModelElement {
     ></swc-action-button>`;
   }
 
+  #lead(agent: Agent, unread: number): TemplateResult {
+    const mark = lead(agent.status, unread);
+    const inner =
+      mark === 'idle'
+        ? nothing
+        : mark === 'unread'
+          ? html`<span class="marker unread" data-status=${agent.status}>${unreadCount(unread)}</span>`
+          : html`<span class="marker status" data-status=${agent.status}>${statusMark(agent.status)}</span>`;
+    return html`<span class="lead" data-lead=${mark} aria-hidden="true">${inner}</span>`;
+  }
+
   #row(agent: Agent, active: string, anchor: string): TemplateResult {
     const selected = agent.id === active;
     const current = agent.id === anchor;
@@ -598,8 +626,7 @@ export class SliccAgents extends ModelElement {
     >
       ${this.#disclosure(agent, scoops, open)}
       <div class="head">
-        <span class="marker status" data-status=${agent.status} aria-hidden="true">${statusMark(agent.status)}</span>
-        ${unread ? html`<span class="marker unread" data-status=${agent.status} aria-hidden="true">${unreadCount(unread)}</span>` : nothing}
+        ${this.#lead(agent, unread)}
         <span class="name">${agent.name}</span>
       </div>
       ${
@@ -647,7 +674,7 @@ export class SliccAgents extends ModelElement {
     );
     const shown = rows.find((agent) => agent.id === active);
     const anchor = shown ? active : (list.find((agent) => agent.id === active)?.parentId ?? '');
-    return html`<div class="list"><ul role="tree" aria-label="Cones and scoops" @keydown=${this.#keydown} @focusin=${this.#focusin} @focusout=${this.#focusout}>
+    return html`<div class="list"><ul role="tree" aria-label="Cones and scoops" ?data-flat=${!list.some((agent) => agent.kind === 'scoop')} @keydown=${this.#keydown} @focusin=${this.#focusin} @focusout=${this.#focusout}>
         ${repeat(
           rows,
           (agent) => agent.id,

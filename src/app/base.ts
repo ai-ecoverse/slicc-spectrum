@@ -297,7 +297,6 @@ export const shared = css`
   }
   .marker.status {
     border: var(--swc-border-width-200) solid transparent;
-    margin-inline-end: var(--swc-border-width-200);
   }
   .marker.status[data-status='thinking'] {
     background: transparent;
@@ -309,11 +308,19 @@ export const shared = css`
     border-color: var(--status-color);
   }
   .marker.status[data-status='working'] {
+    inline-size: calc(var(--swc-status-light-dot-size-medium) - 2 * var(--swc-border-width-200));
+    block-size: calc(var(--swc-status-light-dot-size-medium) - 2 * var(--swc-border-width-200));
+    margin-inline: var(--swc-border-width-200);
     box-shadow: 0 0 0 var(--swc-border-width-200) var(--status-color);
     animation: status-working calc(var(--swc-animation-duration-600) * 4)
       var(--swc-animation-ease-in-out) infinite;
   }
   .marker.status[data-status='error'] {
+    inline-size: var(--swc-status-light-dot-size-large);
+    block-size: var(--swc-status-light-dot-size-large);
+    margin-inline: calc(
+      (var(--swc-status-light-dot-size-medium) - var(--swc-status-light-dot-size-large)) / 2
+    );
     border: none;
     background: transparent;
     color: var(--status-color);
