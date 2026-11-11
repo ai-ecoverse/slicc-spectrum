@@ -1845,35 +1845,32 @@ test('the browser follows a driven tab live, lists its actions and stops the age
     })
   );
   await page.until(() => window.inBrowser('.actions li')?.dataset.status === 'running');
-  assert.equal(
-    await page.evaluate(() => {
-      const rows = [...window.inBrowser('.actions').querySelectorAll('li')];
-      const tab = window.model.browser.list().find((item) => item.controlled);
-      const newest = window.model.browser
-        .actions()
-        .filter(
-          (action) =>
-            action.tabId === tab.id ||
-            (action.tabId === null && action.agentId !== null && action.agentId === tab.agentId)
-        )
-        .at(-1);
-      const feed = window.inBrowser('.feed');
-      const frame = window.inBrowser('.frame');
-      const feedStyle = getComputedStyle(feed);
-      const frameStyle = getComputedStyle(frame);
-      return (
-        rows[0]?.dataset.status === 'running' &&
-        rows[0]?.dataset.kind === newest?.kind &&
-        !!window.inBrowser('.feed .actions') &&
-        window.inBrowser('figcaption').textContent.replace(/\s+/g, ' ').trim() ===
-          'Live Watching only' &&
-        Number.parseFloat(feedStyle.flexGrow) > 0 &&
-        frameStyle.aspectRatio === '16 / 10' &&
-        feed.getBoundingClientRect().height > 80
-      );
-    }),
-    true
-  );
+  await page.until(() => {
+    const rows = [...window.inBrowser('.actions').querySelectorAll('li')];
+    const tab = window.model.browser.list().find((item) => item.controlled);
+    const newest = window.model.browser
+      .actions()
+      .filter(
+        (action) =>
+          action.tabId === tab.id ||
+          (action.tabId === null && action.agentId !== null && action.agentId === tab.agentId)
+      )
+      .at(-1);
+    const feed = window.inBrowser('.feed');
+    const frame = window.inBrowser('.frame');
+    const feedStyle = getComputedStyle(feed);
+    const frameStyle = getComputedStyle(frame);
+    return (
+      rows[0]?.dataset.status === 'running' &&
+      rows[0]?.dataset.kind === newest?.kind &&
+      !!window.inBrowser('.feed .actions') &&
+      window.inBrowser('figcaption').textContent.replace(/\s+/g, ' ').trim() ===
+        'Live Watching only' &&
+      Number.parseFloat(feedStyle.flexGrow) > 0 &&
+      frameStyle.aspectRatio === '16 / 10' &&
+      feed.getBoundingClientRect().height > 80
+    );
+  });
   assert.equal(
     await page.evaluate(() => window.inBrowser('li[data-kind=request]').title),
     'GET https://api.example.com/v2/tides'
