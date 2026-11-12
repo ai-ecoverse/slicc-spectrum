@@ -65,6 +65,7 @@ export interface Handlers {
   dropping(messageId: string): number;
   open(path: string): void;
   show(surfaceId: string, section?: string): void;
+  offers?(surfaceId: string): boolean;
   suggest(text: string): void;
   owners?: ReadonlyMap<string, Owner>;
   agentId?: string;
@@ -1113,7 +1114,7 @@ function reactions(
 
 function runLink(message: LickMessage, handlers: Handlers): TemplateResult | typeof nothing {
   const id = message.approval;
-  if (message.channel !== 'sudo-run' || !id || !handlers.model?.approvals?.history) return nothing;
+  if (message.channel !== 'sudo-run' || !id || !handlers.offers?.('approvals')) return nothing;
   return html`<swc-action-button size="s" quiet class="run-link" data-action="show-approval" data-approval=${id} @click=${() => handlers.show('approvals', id)}>Show in Approvals</swc-action-button>`;
 }
 

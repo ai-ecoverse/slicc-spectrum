@@ -619,6 +619,15 @@ export class SliccChat extends ThemedElement {
       this.dispatchEvent(
         new CustomEvent('show-surface', { detail: { id, section }, bubbles: true, composed: true })
       ),
+    offers: (id) => {
+      const ask = new CustomEvent('offers-surface', {
+        detail: { id, offered: false },
+        bubbles: true,
+        composed: true,
+      });
+      this.dispatchEvent(ask);
+      return ask.detail.offered;
+    },
     suggest: (text) => void this.model?.agent.send(this.#id(), text),
   };
 

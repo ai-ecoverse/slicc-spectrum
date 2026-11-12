@@ -49,3 +49,24 @@ test('a sudo-run lick has no link without an Approvals panel', async (t) => {
   assert.equal(await page.evaluate(() => !!window.chatPart('[data-action=show-approval]')), false);
   assert.deepEqual(page.errors, []);
 });
+
+test('a sudo-run lick has no link when the app doesn’t offer the Approvals panel', async (t) => {
+  const page = await open(chrome, t);
+  await answerDialog(page);
+  await page.evaluate(async () => {
+    const { surfaces } = await import('/dist/slicc-ui.js');
+    window.app.surfaces = surfaces.filter((item) => item.id !== 'approvals');
+    await window.app.updateComplete;
+    window.model.agent.select('cone-kitchen');
+    return true;
+  });
+  await page.until(() => !!window.chatPart('.lick[data-channel=sudo-run]'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.chatPart().shadowRoot.querySelectorAll('.lick[data-channel=sudo-run]').length,
+      !!window.chatPart('[data-action=show-approval]'),
+    ]),
+    [2, false]
+  );
+  assert.deepEqual(page.errors, []);
+});

@@ -727,6 +727,11 @@ export class SliccApp extends ThemedElement {
     this.show(id, section);
   }
 
+  #offersSurface = (event: Event): void => {
+    const { detail } = event as CustomEvent<{ id: string; offered: boolean }>;
+    detail.offered = this.#offers(detail.id);
+  };
+
   show(id: string, section?: string): void {
     this.#open(id, true, section);
   }
@@ -1173,6 +1178,7 @@ export class SliccApp extends ThemedElement {
             @open-diff=${(event: Event) => this.#request('diff', event)}
             @new-terminal=${() => this.newTerminal()}
             @show-surface=${this.#showSurface}
+            @offers-surface=${this.#offersSurface}
           ></slicc-dock>
           ${rails.right}
         </main>
