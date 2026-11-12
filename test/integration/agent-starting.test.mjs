@@ -634,7 +634,7 @@ test('with two chats open the rows go once each', async (t) => {
   await page.until(() => window.composers().every((node) => node?.isConnected));
   await say(page, 'Check the harbor tides');
   await say(page, 'Then list the moorings');
-  await page.until(() => window.shown().every((count) => count === 2));
+  await page.until(() => window.shown().join() === '2,0');
   await page.evaluate(() => {
     window.model.agent.setStarting(null);
     return true;

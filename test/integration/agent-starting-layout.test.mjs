@@ -144,3 +144,129 @@ test('a boot where the agent only starts leaves Install / Update closed and says
   );
   assert.deepEqual(page.errors, []);
 });
+
+function helpers() {
+  window.composerOf = (id) =>
+    window.app.dock.content(id)?.shadowRoot?.querySelector('slicc-composer') ?? null;
+  window.rowsIn = (id) =>
+    [
+      ...(window.composerOf(id)?.shadowRoot?.querySelectorAll('li.queued[data-mode=starting]') ??
+        []),
+    ].map((row) => row.querySelector('.text').textContent.trim());
+  window.users = (id) =>
+    window.model.agent
+      .messages(id)
+      .filter((message) => message.role === 'user')
+      .map((message) => message.text);
+  window.sendIn = (id, text) => {
+    const composer = window.composerOf(id);
+    composer.value = text;
+    composer.send();
+    return true;
+  };
+  window.reveal = (id) => {
+    window.app.dock.api.getPanel(id).api.setActive();
+    return true;
+  };
+  return true;
+}
+
+test('a prompt sent from a kept chat while the agent starts goes to that chat’s agent only', async (t) => {
+  const { page } = await arranged(t);
+  await page.evaluate(helpers);
+  await page.evaluate(() => window.reveal('chat:cone-harbor'));
+  await page.until(() => !!window.composerOf('chat:cone-harbor')?.hasUpdated);
+  await page.evaluate(() => window.sendIn('chat:cone-harbor', 'Check the harbor tides'));
+  await page.until(() => window.rowsIn('chat:cone-harbor').length === 1);
+  await page.evaluate(() => window.reveal('chat:cone-sliccy'));
+  await page.until(() => !!window.composerOf('chat:cone-sliccy')?.hasUpdated);
+  assert.deepEqual(await page.evaluate(() => window.rowsIn('chat:cone-sliccy')), []);
+  await page.evaluate(() => {
+    window.model.agent.arrive();
+    return true;
+  });
+  await page.until(() => window.users('cone-harbor').includes('Check the harbor tides'));
+  assert.equal(
+    await page.evaluate(() => window.users('cone-sliccy').includes('Check the harbor tides')),
+    false
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a prompt whose chat isn’t there once the agent starts is held with Put back, not sent elsewhere', async (t) => {
+  const page = await chrome.page(t);
+  await page.goto(`/ui/?${new URLSearchParams({ delay: '5', color: 'light', agent: 'waiting' })}`);
+  await page.until(() => window.ready === true && window.app.dock.has('chat'));
+  await page.evaluate(helpers);
+  await page.evaluate(() => {
+    window.app.dock.open({
+      id: 'chat:cone-gone',
+      component: 'chat',
+      title: 'gone',
+      params: { agent: 'cone-gone' },
+      position: { referencePanel: 'chat', direction: 'within' },
+    });
+    return true;
+  });
+  await page.until(() => !!window.composerOf('chat:cone-gone')?.hasUpdated);
+  await page.evaluate(() => window.sendIn('chat:cone-gone', 'Ask the gone cone'));
+  await page.until(() => window.rowsIn('chat:cone-gone').length === 1);
+  await page.evaluate(() => {
+    window.model.agent.arrive();
+    return true;
+  });
+  await page.until(() => !window.app.dock.has('chat:cone-gone'));
+  await page.until(
+    () =>
+      !!window
+        .composerOf('chat:cone-sliccy')
+        ?.shadowRoot?.querySelector('li.queued[data-held] [data-gone]')
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const node = window
+        .composerOf('chat:cone-sliccy')
+        .shadowRoot.querySelector('li.queued[data-held]');
+      return [
+        node.querySelector('.text').textContent.trim(),
+        node.querySelector('[data-gone]').textContent.trim(),
+        !!node.querySelector('[data-action=restore-starting]'),
+      ];
+    }),
+    ['Held: Ask the gone cone', ', Not sent: its conversation isn’t here anymore.', true]
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window.model.agent
+        .list()
+        .some((agent) => window.users(agent.id).includes('Ask the gone cone'))
+    ),
+    false
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a chat tab whose cone is frozen while a starting line shows with cones listed closes', async (t) => {
+  const page = await chrome.page(t);
+  await page.goto(`/ui/?${new URLSearchParams({ delay: '5', color: 'light' })}`);
+  await page.until(() => window.ready === true && window.app.dock.has('chat:cone-sliccy'));
+  await page.evaluate(() => {
+    window.app.dock.open({
+      id: 'chat:cone-harbor',
+      component: 'chat',
+      title: 'harbor',
+      params: { agent: 'cone-harbor' },
+      position: { referencePanel: 'chat:cone-sliccy', direction: 'within' },
+    });
+    window.model.agent.setStarting('Seven is updating its agent.');
+    return true;
+  });
+  await page.until(() => window.app.dock.has('chat:cone-harbor'));
+  await page.evaluate(() => {
+    window.model.agent.freeze('cone-harbor');
+    return true;
+  });
+  await page.until(() => !window.app.dock.has('chat:cone-harbor'));
+  assert.equal(await page.evaluate(() => window.app.dock.has('chat:cone-sliccy')), true);
+  assert.deepEqual(page.errors, []);
+});

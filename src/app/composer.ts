@@ -80,6 +80,7 @@ type Waiting = {
   mode: SendMode;
   attachments: Attachment[];
   lost?: Kept[];
+  agent?: string;
 };
 
 export const startingKey = 'slicc-spectrum.starting';
@@ -145,12 +146,13 @@ function restore(owned: Set<string>): Waiting[] {
     taken.add(row.id);
     owned.add(row.id);
   }
-  return fresh.map(({ id, text, mode, attachments, lost = [] }) => ({
+  return fresh.map(({ id, text, mode, attachments, lost = [], agent }) => ({
     id,
     text,
     mode,
     attachments: [],
     lost: [...lost, ...attachments],
+    ...(agent ? { agent } : {}),
   }));
 }
 
@@ -170,6 +172,7 @@ function keep(owned: Set<string>, rows: readonly Waiting[]): void {
       mode: row.mode,
       attachments: row.attachments.map(meta),
       lost: (row.lost ?? []).map(meta),
+      ...(row.agent ? { agent: row.agent } : {}),
     })),
   ]);
 }
@@ -233,14 +236,29 @@ function arrived(page: Page, model: SliccModel): void {
   const agents = model.agent.list();
   if (!(waiting.length && agents.length) || model.agent.starting?.()) return;
   const active = model.agent.active();
-  const id = agents.some((agent) => agent.id === active) ? active : agents[0].id;
-  const sendable = (row: Waiting) => !!(row.text || row.attachments.length) && !row.lost?.length;
-  const [first, ...rest] = waiting.filter(sendable);
-  if (!first) return;
-  const held = waiting.filter((row) => !sendable(row));
-  settle(page, held);
-  deliver(model, id, first, 'queue');
-  for (const { text, attachments } of rest) post(model, id, { text, attachments, mode: 'queue' });
+  const fallback = agents.some((agent) => agent.id === active) ? active : agents[0].id;
+  const sendable = (row: Waiting) =>
+    !!(row.text || row.attachments.length) && !row.lost?.length && !stray(model, row);
+  const going = waiting.filter(sendable);
+  if (!going.length) return;
+  settle(
+    page,
+    waiting.filter((row) => !sendable(row))
+  );
+  const started = new Set<string>();
+  for (const row of going) {
+    const id = row.agent ?? fallback;
+    if (started.has(id))
+      post(model, id, { text: row.text, attachments: row.attachments, mode: 'queue' });
+    else deliver(model, id, row, 'queue');
+    started.add(id);
+  }
+}
+
+function stray(model: SliccModel | null | undefined, row: Waiting): boolean {
+  if (!(row.agent && model) || model.agent.starting?.()) return false;
+  const agents = model.agent.list();
+  return agents.length > 0 && !agents.some((agent) => agent.id === row.agent);
 }
 
 function watch(page: Page, model: SliccModel): () => void {
@@ -1170,7 +1188,11 @@ export class SliccComposer extends ThemedElement {
     this.popup = null;
     this.#history = -1;
     if (this.#starting()) {
-      this.#waiting.value = [...this.#waiting.value, { id: this.#id(), text, mode, attachments }];
+      const row = { id: this.#id(), text, mode, attachments };
+      this.#waiting.value = [
+        ...this.#waiting.value,
+        this.#agent ? { ...row, agent: this.#agent } : row,
+      ];
       return;
     }
     if (known) {
@@ -2078,7 +2100,9 @@ export class SliccComposer extends ThemedElement {
   }
 
   #starters(): TemplateResult | typeof nothing {
-    const waiting = this.#waiting.value;
+    const waiting = this.#waiting.value.filter(
+      (row) => !row.agent || row.agent === this.#agent || stray(this.model, row)
+    );
     if (waiting.length === 0) return nothing;
     return html`<ul class="queue" aria-label="Waiting for the agent">
       ${waiting.map((message) => this.#starter(message))}
@@ -2088,7 +2112,8 @@ export class SliccComposer extends ThemedElement {
   #starter(message: Waiting): TemplateResult {
     const lost = message.lost ?? [];
     const empty = !(message.text || message.attachments.length);
-    const held = !empty && lost.length > 0;
+    const gone = stray(this.model, message);
+    const held = !empty && (lost.length > 0 || gone);
     const alert = empty || held;
     const files = message.attachments.length;
     return html`<li class="queued" data-id=${message.id} data-mode="starting" ?data-unsent=${empty} ?data-held=${held}>
@@ -2096,6 +2121,7 @@ export class SliccComposer extends ThemedElement {
       ${message.text ? nothing : html`<swc-icon-file size="xs" aria-hidden="true"></swc-icon-file>`}
       <span class="body">
         <span class="text"><span class="sr">${held ? 'Held: ' : 'Queued: '}</span>${message.text || names(message.attachments) || names(lost)}</span>
+        ${gone && !lost.length ? html`<span class="lost" data-gone><span class="sr">, </span>Not sent: its conversation isn’t here anymore.</span>` : nothing}
         ${lost.length ? html`<span class="lost" data-lost title=${names(lost)}><span class="sr">, </span>${held ? notKept(lost) : 'Not kept after reload'}${lost.length > 1 ? html`<span class="sr"> (${names(lost)})</span>` : nothing}</span>` : nothing}
       </span>
       ${message.text && files ? html`<span class="next" data-files><swc-icon-file size="xs" aria-hidden="true"></swc-icon-file><span class="sr">, </span>${files === 1 ? '1 file' : `${files} files`}</span>` : nothing}

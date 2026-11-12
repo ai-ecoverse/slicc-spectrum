@@ -684,7 +684,7 @@ export class SliccApp extends ThemedElement {
     const dock = this.renderRoot.querySelector('slicc-dock') as SliccDock | null;
     if (!dock || !this.#started) return;
     const known = new Set(this.model?.agent.list().map((agent) => agent.id));
-    const starting = !!this.model?.agent.starting?.();
+    const starting = !known.size && !!this.model?.agent.starting?.();
     const agent = this.#active();
     const held = !!agent && !!dock.content('chat')?.shadowRoot?.activeElement;
     this.panels.quietly(() => {
