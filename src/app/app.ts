@@ -552,7 +552,9 @@ export class SliccApp extends ThemedElement {
     const port = this.model?.updates;
     if (port !== this.#updatesPort) {
       this.#updatesPort = port;
-      this.#updatesVisibility = port ? new UpdateVisibility(port.ready()) : null;
+      this.#updatesVisibility = port
+        ? new UpdateVisibility(port.ready() || port.opensAtBoot?.() === false)
+        : null;
     }
     if (!port || !this.#offers('updates')) return;
     const change = this.#updatesVisibility?.change(port, layout);

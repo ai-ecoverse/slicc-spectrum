@@ -974,6 +974,7 @@ export interface UpdatesEvents {
 export interface UpdatesPort extends Subscribable<UpdatesEvents> {
   list(): readonly UpdateItem[];
   ready(): boolean;
+  opensAtBoot?(): boolean;
   act(id: string, action: UpdateAction): Promise<void>;
   packages?(): readonly PackageItem[];
   actPackage?(id: string, action: PackageAction): Promise<void>;

@@ -122,3 +122,25 @@ test('chat tabs of agents that are gone close once the line clears', async (t) =
   await page.until(() => !window.app.dock.api.panels.some((panel) => panel.id.startsWith('chat:')));
   assert.deepEqual(page.errors, []);
 });
+
+test('a boot where the agent only starts leaves Install / Update closed and says Starting in the header', async (t) => {
+  const page = await chrome.page(t);
+  await page.goto(
+    `/ui/?${new URLSearchParams({ delay: '5', color: 'light', updates: 'starting' })}`
+  );
+  await page.until(() => window.ready === true && window.app.dock.api.panels.length > 0);
+  await settle();
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.model.updates.ready(),
+      window.model.updates.opensAtBoot(),
+      window.app.dock.has('updates'),
+      window
+        .$('slicc-app', '[data-updates]')
+        ?.getAttribute('accessible-label')
+        ?.replace('Install / Update: ', ''),
+    ]),
+    [false, false, false, 'starting']
+  );
+  assert.deepEqual(page.errors, []);
+});
