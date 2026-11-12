@@ -3,6 +3,7 @@ import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/dropzone/swc-dropzone.js';
 import '@adobe/spectrum-wc/components/illustrated-message/swc-illustrated-message.js';
+import '@adobe/spectrum-wc/components/progress-circle/swc-progress-circle.js';
 import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc/patterns/ai-toolkit/conversation-thread/swc-conversation-thread.js';
 import '@adobe/spectrum-wc-icons/swc-icon-attach.js';
@@ -565,6 +566,12 @@ export class SliccChat extends ThemedElement {
         text-align: center;
         padding: var(--swc-spacing-700) 0;
         font-size: var(--swc-font-size-100);
+      }
+      .empty[data-loading] {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--swc-spacing-200);
       }
     `,
   ];
@@ -1377,7 +1384,12 @@ export class SliccChat extends ThemedElement {
     this.#handlers.surface = readSurface(this.renderRoot);
   }
 
-  #thread(items: Entry[], older: boolean, blank: string): TemplateResult | typeof nothing {
+  #thread(
+    items: Entry[],
+    older: boolean,
+    blank: string,
+    agent: Agent | undefined
+  ): TemplateResult | typeof nothing {
     if (items.length)
       return html`<swc-conversation-thread>${repeat(
         items,
@@ -1386,7 +1398,11 @@ export class SliccChat extends ThemedElement {
       )}</swc-conversation-thread>`;
     if (this.model?.tabs?.state().role === 'connecting')
       return html`<div class="empty" data-connecting>${connecting}</div>`;
-    if (this.model?.agent.starting?.() || older) return nothing;
+    if (this.model?.agent.starting?.())
+      return agent
+        ? nothing
+        : html`<div class="empty" data-loading="starting"><swc-progress-circle size="m" indeterminate label="Starting the agent"></swc-progress-circle><span>The conversation shows up here once the agent starts.</span></div>`;
+    if (older) return nothing;
     return html`<div class="empty" data-empty>${blank}</div>`;
   }
 
@@ -1430,7 +1446,7 @@ export class SliccChat extends ThemedElement {
         >
           <div class="column" @keydown=${this.#keys}>
             ${older}
-            ${this.#thread(items, older !== nothing, empty(watch, seat, agent?.name ?? 'the agent'))}
+            ${this.#thread(items, older !== nothing, empty(watch, seat, agent?.name ?? 'the agent'), agent)}
           </div>
         </div>
         ${this.behind ? this.#latest(seen < 0 ? 0 : keys.length - 1 - seen) : nothing}

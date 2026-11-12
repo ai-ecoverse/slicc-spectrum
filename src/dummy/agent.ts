@@ -731,6 +731,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   }
 
   frozen(): readonly FrozenCone[] {
+    if (this.#absent.length && !this.#agents.length) return [];
     const live = this.#agents
       .filter((agent) => !agent.frozen)
       .map((agent): FrozenCone => {

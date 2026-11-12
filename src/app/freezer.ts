@@ -1,5 +1,6 @@
 import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/dropzone/swc-dropzone.js';
+import '@adobe/spectrum-wc/components/progress-circle/swc-progress-circle.js';
 import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-close.js';
@@ -118,6 +119,11 @@ export class SliccFreezer extends ModelElement {
       .bar [data-action='import-v6'] {
         margin-inline-start: auto;
       }
+      .note[data-empty='starting'] {
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-100);
+      }
       .error span {
         flex: 1;
         min-width: 0;
@@ -222,6 +228,7 @@ export class SliccFreezer extends ModelElement {
       model.agent.on('frozen', update),
       model.agent.on('active', update),
       model.agent.on('agents', update),
+      ...(model.agent.starting ? [model.agent.on('starting', update)] : []),
       ...onWatch(model, update),
     ];
   }
@@ -413,8 +420,9 @@ export class SliccFreezer extends ModelElement {
 
   render(): TemplateResult {
     const rows = freezerOrder(this.model?.agent.frozen() ?? []);
+    const starting = !rows.length && !!this.model?.agent.starting?.();
     return html`<div class="bar">
-        <span>${rows.length} ${rows.length === 1 ? 'conversation' : 'conversations'}</span>
+        <span>${starting ? 'Starting…' : `${rows.length} ${rows.length === 1 ? 'conversation' : 'conversations'}`}</span>
         ${
           this.importable
             ? html`<swc-action-button id="import-v6" size="s" quiet data-action="import-v6" accessible-label="Import from SLICC 6" @click=${() => this.#pick()}><swc-icon-import slot="icon"></swc-icon-import><span class="long">Import from SLICC 6</span><span class="short">Import</span></swc-action-button><swc-tooltip for="import-v6" placement="bottom">Import from SLICC 6</swc-tooltip><input type="file" accept=${['.zip', ...zipTypes].join(',')} hidden data-action="import-file" @change=${this.#picked} />`
@@ -438,7 +446,9 @@ export class SliccFreezer extends ModelElement {
                 'Frozen',
                 rows.filter((cone) => !cone.live)
               )}`
-            : html`<div class="note">No conversations yet. A new conversation or a deleted cone leaves the old one here.</div>`
+            : starting
+              ? html`<div class="note" data-empty="starting"><swc-progress-circle size="s" indeterminate label="Starting the agent"></swc-progress-circle>Conversations show up here once the agent starts.</div>`
+              : html`<div class="note">No conversations yet. A new conversation or a deleted cone leaves the old one here.</div>`
         }
       </div>
       ${this.dropping ? html`<swc-dropzone dragged size="l" aria-label="Import from SLICC 6" dragged-message="Drop to import"><p>Drop to import</p></swc-dropzone>` : nothing}`;
