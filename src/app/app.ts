@@ -533,7 +533,7 @@ export class SliccApp extends ThemedElement {
     this.#painted = color;
     const model = this.model;
     if (!model) return;
-    if (changed.has('surfaces') && this.#started) this.#resurface();
+    if (changed.has('surfaces') && this.#started) this.#resurface(model);
     this.panels.quietly(() => {
       const layout = this.#started !== this.screen;
       if (layout) this.#start(model);
@@ -543,7 +543,8 @@ export class SliccApp extends ThemedElement {
     });
   }
 
-  #resurface(): void {
+  #resurface(model: SliccModel): void {
+    this.dock.factories = this.#factories(model);
     for (const id of chats(this.dock)) (this.dock.content(id) as LitElement).requestUpdate();
   }
 

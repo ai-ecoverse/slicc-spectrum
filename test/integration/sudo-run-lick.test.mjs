@@ -92,3 +92,26 @@ test('the Show in Approvals link follows the app’s surfaces while the chat sho
   assert.equal(await flip(true), true);
   assert.deepEqual(page.errors, []);
 });
+
+test('Approvals added to the app’s surfaces later opens a working panel from a lick', async (t) => {
+  const page = await open(chrome, t, 'history', '&without=approvals');
+  await answerDialog(page);
+  await page.evaluate(() => {
+    window.model.agent.select('cone-kitchen');
+    return true;
+  });
+  await page.until(() => !!window.chatPart('.lick[data-channel=sudo-run]'));
+  assert.equal(await page.evaluate(() => !!window.chatPart('[data-action=show-approval]')), false);
+  await page.evaluate(async () => {
+    const { surfaces } = await import('/dist/slicc-ui.js');
+    window.app.surfaces = surfaces;
+    return true;
+  });
+  await page.until(() => !!window.chatPart('[data-action=show-approval]'));
+  await press(page, () =>
+    [...window.chatPart().shadowRoot.querySelectorAll('[data-action=show-approval]')].at(-1)
+  );
+  await page.until(() => window.row('apr-exit')?.hasAttribute('data-highlight'));
+  assert.equal(await page.evaluate(() => !!window.part('.bar[data-surface=approvals]')), true);
+  assert.deepEqual(page.errors, []);
+});
