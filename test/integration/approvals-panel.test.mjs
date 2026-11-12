@@ -97,6 +97,7 @@ test('the filters split decided and timed-out requests, and withdrawn ones fold 
     'apr-running',
     'apr-late',
     'apr-done',
+    'apr-survivors',
     'apr-moved',
     'apr-frozen',
     'apr-terminal',
@@ -210,6 +211,38 @@ test('Run now asks first, then walks starting, running and done, and View output
   const file = 'file:/home/cone/.slicc/sudo-runs/apr-late.out';
   await page.until((file) => !!window.app.dock.api.getPanel(file), file);
   assert.deepEqual(await page.evaluate(() => window.model.approvals.past.runs), ['apr-late']);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a done run with survivors shows Still running and Stop, and Stop clears them', async (t) => {
+  const page = await open(chrome, t);
+  await answerDialog(page);
+  await showPanel(page);
+  await filter(page, 'timed-out');
+  await page.until(() => !!window.inRow('apr-survivors', '[data-survivors]'));
+  assert.equal(
+    await page.evaluate(() => window.inRow('apr-survivors', '[data-survivors]').textContent),
+    'Still running: pid 1234, 5678'
+  );
+  assert.equal(
+    await page.evaluate(() => !!window.inRow('apr-survivors', '[data-action=stop-run]')),
+    true
+  );
+  assert.equal(
+    await page.evaluate(() => !!window.inRow('apr-done', '[data-action=stop-run]')),
+    false
+  );
+  assert.equal(await page.evaluate(() => !!window.inRow('apr-done', '[data-survivors]')), false);
+  await press(page, () => window.inRow('apr-survivors', '[data-action=stop-run]'));
+  await page.until(
+    () =>
+      window.model.approvals.past.stops.includes('apr-survivors') &&
+      !window.inRow('apr-survivors', '[data-survivors]')
+  );
+  assert.equal(
+    await page.evaluate(() => !!window.inRow('apr-survivors', '[data-action=stop-run]')),
+    false
+  );
   assert.deepEqual(page.errors, []);
 });
 
