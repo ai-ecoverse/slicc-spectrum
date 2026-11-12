@@ -578,3 +578,87 @@ test('the revealed row loses its mark once the reader clicks or types in the pan
   await page.until(() => !window.row('apr-failed').hasAttribute('data-highlight'));
   assert.deepEqual(page.errors, []);
 });
+
+test('a request raised again with the same id replaces its history record', async (t) => {
+  const page = await open(chrome, t);
+  await answerDialog(page);
+  await showPanel(page);
+  await filter(page, 'decided');
+  await page.until(() => window.inRow('apr-open', '[data-badge]')?.textContent.trim() === 'Denied');
+  await page.evaluate(() => {
+    const old = window.model.approvals
+      .history()
+      .find((record) => record.approval.id === 'apr-open').approval;
+    window.model.approvals.raise({
+      ...old,
+      command: 'apt install ripgrep',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 5 * 60_000,
+    });
+    return true;
+  });
+  await page.evaluate(() => {
+    window.panel().filter = 'open';
+    return true;
+  });
+  await page.until(
+    () => window.inRow('apr-open', '[data-command]')?.textContent === 'apt install ripgrep'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.model.approvals.history().filter((record) => record.approval.id === 'apr-open').length,
+      window.inRow('apr-open', '[data-badge]').textContent.trim(),
+      window.dialog()?.dataset.approval,
+    ]),
+    [1, 'Open', 'apr-open']
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a request raised again during its old run keeps the old run off the new record', async (t) => {
+  const page = await open(chrome, t);
+  const seen = await page.evaluate(async () => {
+    const { DummyHistory, historyFixtures } = await import('/dist/slicc-dummy.js');
+    const held = [];
+    const time = {
+      delay: 0,
+      sleep: () => new Promise((resolve) => held.push(resolve)),
+    };
+    const release = async () => {
+      while (held.length) held.shift()();
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    };
+    const licks = [];
+    const past = new DummyHistory(
+      time,
+      { emit() {}, write() {}, lick: (agentId, title) => licks.push(title) },
+      historyFixtures()
+    );
+    past.runTicks = 1;
+    const record = () => past.list().find((item) => item.approval.id === 'apr-late');
+    const asking = past.run('apr-late');
+    await release();
+    await asking;
+    const started = record().run.state;
+    const fresh = { ...record().approval, command: 'systemctl reload nginx' };
+    past.raise(fresh);
+    await release();
+    await release();
+    await release();
+    return {
+      started,
+      state: record().state,
+      run: record().run ?? null,
+      command: record().approval.command,
+      licks,
+    };
+  });
+  assert.deepEqual(seen, {
+    started: 'starting',
+    state: 'pending',
+    run: null,
+    command: 'systemctl reload nginx',
+    licks: [],
+  });
+  assert.deepEqual(page.errors, []);
+});

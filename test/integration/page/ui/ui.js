@@ -102,6 +102,10 @@ if (model.follow) {
     location.search = params.toString();
   };
 }
+if (params.has('without')) {
+  const without = new Set(params.get('without').split(','));
+  app.surfaces = app.surfaces.filter((surface) => !without.has(surface.id));
+}
 app.model = model;
 window.model = model;
 window.app = app;
