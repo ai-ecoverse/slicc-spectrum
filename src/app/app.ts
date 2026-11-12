@@ -152,6 +152,7 @@ export class SliccApp extends ThemedElement {
   #unlock!: () => void;
   #hold!: DocumentHold;
   #updatesVisibility: UpdateVisibility | null = null;
+  #quietBoot = false;
 
   constructor() {
     super();
@@ -552,9 +553,8 @@ export class SliccApp extends ThemedElement {
     const port = this.model?.updates;
     if (port !== this.#updatesPort) {
       this.#updatesPort = port;
-      this.#updatesVisibility = port
-        ? new UpdateVisibility(port.ready() || port.opensAtBoot?.() === false)
-        : null;
+      this.#quietBoot = port?.opensAtBoot?.() === false;
+      this.#updatesVisibility = port ? new UpdateVisibility(port.ready() || this.#quietBoot) : null;
     }
     if (!port || !this.#offers('updates')) return;
     const change = this.#updatesVisibility?.change(port, layout);
@@ -563,13 +563,13 @@ export class SliccApp extends ThemedElement {
       if (restored) this.dock.reveal('updates');
       else this.show('updates');
       const panel = this.dock.api.getPanel('updates');
-      if (!port.ready() && restored?.params?.boot !== false)
+      if (!(port.ready() || this.#quietBoot) && restored?.params?.boot !== false)
         panel?.api.updateParameters({ boot: true });
       else if (!restored) panel?.api.updateParameters({ boot: undefined });
       this.#save();
     } else if (
       this.dock.api.getPanel('updates')?.params?.boot &&
-      port.ready() &&
+      (port.ready() || this.#quietBoot) &&
       !port.list().some((item) => item.state === 'failed')
     ) {
       this.dock.close('updates');

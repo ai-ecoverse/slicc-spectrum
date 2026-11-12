@@ -270,3 +270,92 @@ test('a chat tab whose cone is frozen while a starting line shows with cones lis
   assert.equal(await page.evaluate(() => window.app.dock.has('chat:cone-sliccy')), true);
   assert.deepEqual(page.errors, []);
 });
+
+test('a reload that only starts the agent closes the Install / Update panel a boot left in the saved layout', async (t) => {
+  const page = await chrome.page(t);
+  await page.goto(`/ui/?${new URLSearchParams({ delay: '5', color: 'light', updates: 'boot' })}`);
+  await page.until(
+    () => window.ready === true && window.app.dock.api.getPanel('updates')?.params?.boot === true
+  );
+  await settle();
+  await page.goto(
+    `/ui/?${new URLSearchParams({ delay: '5', color: 'light', updates: 'starting' })}`
+  );
+  await page.until(() => window.ready === true && window.app.dock.api.panels.length > 0);
+  await page.until(() => !window.app.dock.has('updates'));
+  await settle();
+  assert.equal(await page.evaluate(() => window.app.dock.has('updates')), false);
+  assert.deepEqual(page.errors, []);
+});
+
+test('Put back on a prompt held because its chat is gone brings back its text and its files', async (t) => {
+  const page = await chrome.page(t);
+  await page.goto(`/ui/?${new URLSearchParams({ delay: '5', color: 'light', agent: 'waiting' })}`);
+  await page.until(() => window.ready === true && window.app.dock.has('chat'));
+  await page.evaluate(helpers);
+  await page.evaluate(() => {
+    window.app.dock.open({
+      id: 'chat:cone-gone',
+      component: 'chat',
+      title: 'gone',
+      params: { agent: 'cone-gone' },
+      position: { referencePanel: 'chat', direction: 'within' },
+    });
+    return true;
+  });
+  await page.until(() => !!window.composerOf('chat:cone-gone')?.hasUpdated);
+  await page.evaluate(() => {
+    const composer = window.composerOf('chat:cone-gone');
+    composer.attachments = [
+      { id: 'g1', name: 'tides.csv', kind: 'text', mimeType: 'text/csv', size: 3, text: 'a,b' },
+    ];
+    window.sendIn('chat:cone-gone', 'Compare the tides');
+    composer.attachments = [
+      { id: 'g2', name: 'radar.txt', kind: 'text', mimeType: 'text/plain', size: 3, text: 'abc' },
+    ];
+    composer.send();
+    return true;
+  });
+  await page.until(() => window.rowsIn('chat:cone-gone').length === 2);
+  await page.evaluate(() => {
+    window.model.agent.arrive();
+    return true;
+  });
+  await page.until(() => !window.app.dock.has('chat:cone-gone'));
+  const putBack = async (index) => {
+    await page.until(
+      (index) =>
+        window
+          .composerOf('chat:cone-sliccy')
+          ?.shadowRoot?.querySelectorAll('li.queued[data-held] [data-action=restore-starting]')
+          .length >
+        1 - index,
+      index
+    );
+    return page.evaluate(() => {
+      const composer = window.composerOf('chat:cone-sliccy');
+      composer.shadowRoot
+        .querySelector('li.queued[data-held] [data-action=restore-starting]')
+        .click();
+      return [composer.value, composer.attachments.map((file) => [file.name, file.text])];
+    });
+  };
+  assert.deepEqual(await putBack(0), ['Compare the tides', [['tides.csv', 'a,b']]]);
+  assert.deepEqual(await putBack(1), [
+    'Compare the tides',
+    [
+      ['tides.csv', 'a,b'],
+      ['radar.txt', 'abc'],
+    ],
+  ]);
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window
+          .composerOf('chat:cone-sliccy')
+          .shadowRoot.querySelectorAll('li.queued[data-mode=starting]').length
+    ),
+    0
+  );
+  assert.deepEqual(page.errors, []);
+});

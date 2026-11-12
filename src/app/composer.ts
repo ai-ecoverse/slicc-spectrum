@@ -1063,20 +1063,21 @@ export class SliccComposer extends ThemedElement {
   }
 
   #putBack(row: Waiting): void {
-    this.value = this.value.trim() ? `${this.value}\n${row.text}` : row.text;
+    if (row.text) this.value = this.value.trim() ? `${this.value}\n${row.text}` : row.text;
     const listed = new Set((this.reattach ?? []).map((file) => file.name));
     const fresh = (row.lost ?? []).filter(
       (file) => !listed.has(file.name) && listed.add(file.name)
     );
     this.reattach = [...(this.reattach ?? []), ...fresh];
+    this.attachments = [...this.attachments, ...row.attachments];
     this.#history = -1;
-    this.#unwait(row.id);
+    this.#unwait(row.id, false);
     this.focus();
   }
 
-  #unwait(id: string): void {
+  #unwait(id: string, drop = true): void {
     const waiting = this.#waiting.value;
-    release(waiting.find((message) => message.id === id)?.attachments ?? []);
+    if (drop) release(waiting.find((message) => message.id === id)?.attachments ?? []);
     this.#waiting.value = waiting.filter((message) => message.id !== id);
   }
 
