@@ -127,6 +127,7 @@ export const lickLabels: Record<LickChannel, [string, string]> = {
   'scoop-idle': ['Scoop idle', 'neutral'],
   'scoop-wait': ['Scoop wait', 'yellow'],
   'sudo-request': ['Permission', 'notice'],
+  'sudo-run': ['Sudo run', 'neutral'],
   'cone-message': ['Cone message', 'indigo'],
 };
 
@@ -949,6 +950,7 @@ const lickIcons: Record<LickChannel, string> = {
   'scoop-idle': '💤',
   'scoop-wait': '⏳',
   'sudo-request': '🔐',
+  'sudo-run': '💻',
   'cone-message': '💬',
 };
 

@@ -207,6 +207,7 @@ export type LickChannel =
   | 'scoop-idle'
   | 'scoop-wait'
   | 'sudo-request'
+  | 'sudo-run'
   | 'cone-message';
 
 export type LickState = 'pending' | 'confirmed' | 'dismissed';
@@ -225,6 +226,7 @@ export interface LickMessage {
   expiresAt?: number;
   summary?: string;
   report?: string;
+  approval?: string;
 }
 
 export type Message = UserMessage | AssistantMessage | SystemMessage | ToolMessage | LickMessage;
@@ -1319,14 +1321,48 @@ export type Approval =
 
 export type ApprovalEnd = 'answered' | 'withdrawn' | 'expired';
 
+export type ApprovalState = 'pending' | 'approved' | 'rejected' | 'unanswered' | 'withdrawn';
+
+export type ApprovalRunState = 'starting' | 'running' | 'done' | 'failed' | 'stopped';
+
+export interface ApprovalRun {
+  state: ApprovalRunState;
+  by: string;
+  device?: string;
+  at: number;
+  pid?: number;
+  status?: number;
+  signal?: string;
+  endedAt?: number;
+  error?: string;
+  stdout?: string;
+  stderr?: string;
+}
+
+export interface ApprovalRecord {
+  approval: Approval;
+  state: ApprovalState;
+  reason?: string;
+  decidedBy?: string;
+  device?: string;
+  decidedAt?: number;
+  answer?: 'once' | 'always';
+  run?: ApprovalRun;
+  runnable?: true | { reason: string };
+}
+
 export interface ApprovalsEvents {
   approvals: readonly Approval[];
   ended: { id: string; reason: ApprovalEnd };
+  history: readonly ApprovalRecord[];
 }
 
 export interface ApprovalsPort extends Subscribable<ApprovalsEvents> {
   list(): readonly Approval[];
   decide?(id: string, decision: ApprovalDecision, reason?: string): Promise<void>;
+  history?(): readonly ApprovalRecord[];
+  run?(id: string): Promise<void>;
+  stopRun?(id: string): Promise<void>;
 }
 
 export interface LiveItem {

@@ -596,6 +596,7 @@ export class SliccApp extends ThemedElement {
       if (element && 'model' in element) element.model = model;
     }
     if (!model.network && !model.guests && dock.has('network')) dock.close('network');
+    if (!model.approvals?.history && dock.has('approvals')) dock.close('approvals');
     this.#prune();
     const agent = this.#active();
     if (agent && this.#offers('chat')) openChat(dock, agent, this.screen, false, false);
@@ -1022,6 +1023,7 @@ export class SliccApp extends ThemedElement {
     return this.surfaces.filter(
       (item) =>
         (item.id !== 'network' || model?.network || model?.guests) &&
+        (item.id !== 'approvals' || model?.approvals?.history) &&
         (item.id !== 'terminal' || terminals)
     );
   }

@@ -2,6 +2,7 @@ import './app/spectrum.ts';
 import { SliccAgents } from './app/agents.ts';
 import { SliccApp } from './app/app.ts';
 import { approvalKinds, SliccApprovals } from './app/approvals.ts';
+import { SliccApprovalsPanel } from './app/approvals-panel.ts';
 import { SliccBrowser } from './app/browser.ts';
 import { SliccChanges, SliccDiffPanel } from './app/changes.ts';
 import { SliccChat } from './app/chat.ts';
@@ -65,6 +66,7 @@ export {
   SliccAgents,
   SliccApp,
   SliccApprovals,
+  SliccApprovalsPanel,
   SliccBrowser,
   SliccChanges,
   SliccChat,
@@ -117,6 +119,7 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-network': SliccNetwork,
   'slicc-notices': SliccNotices,
   'slicc-approvals': SliccApprovals,
+  'slicc-approvals-panel': SliccApprovalsPanel,
   'slicc-secrets': SliccSecrets,
   'slicc-vault-button': SliccVaultButton,
   'slicc-vault-value': SliccVaultValue,

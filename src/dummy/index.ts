@@ -351,7 +351,9 @@ export function createDummyModel({
     ...(changes === 'files' ? {} : { changes: new DummyChanges(files, changes === 'git') }),
     ...(noticePort ? { notices: noticePort } : {}),
     ...(tabs === 'off' ? {} : { tabs: new DummyTabs(tabs, time) }),
-    ...(approvals === 'off' ? {} : { approvals: new DummyApprovals(approvals, time, vaultPort) }),
+    ...(approvals === 'off'
+      ? {}
+      : { approvals: new DummyApprovals(approvals, time, vaultPort, { files, agent }) }),
     ...capturePortsOn,
     ...(follow === 'off' ? {} : { follow: new DummyFollow(follow, time) }),
     ...(vaultPort ? { vault: vaultPort } : {}),

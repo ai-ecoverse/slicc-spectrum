@@ -3,13 +3,17 @@ import type {
   Approval,
   ApprovalDecision,
   ApprovalEnd,
+  ApprovalRecord,
   ApprovalsEvents,
   ApprovalsPort,
   PendingRequest,
   SecretApproval,
   SudoApproval,
 } from '../model/types.ts';
+import type { DummyAgent } from './agent.ts';
+import { DummyHistory } from './approval-history.ts';
 import type { Clock } from './clock.ts';
+import type { DummyFiles } from './files.ts';
 import { longCommand } from './showcase.ts';
 import type { DummyVault } from './vault.ts';
 
@@ -54,6 +58,7 @@ export type ApprovalScenario =
   | 'click-remote'
   | 'capture'
   | 'stop'
+  | 'history'
   | 'none';
 
 const minutes = 60_000;
@@ -532,10 +537,20 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
   #quiet = new Set<string>();
   decisions: Array<[string, ApprovalDecision]> = [];
   decide?: (id: string, decision: ApprovalDecision) => Promise<void>;
+  past?: DummyHistory;
+  history?: () => readonly ApprovalRecord[];
+  run?: (id: string) => Promise<void>;
+  stopRun?: (id: string) => Promise<void>;
 
-  constructor(scenario: ApprovalScenario, time: Clock, vault?: DummyVault) {
+  constructor(
+    scenario: ApprovalScenario,
+    time: Clock,
+    vault?: DummyVault,
+    host: { files?: DummyFiles; agent?: DummyAgent } = {}
+  ) {
     super();
     this.#approvals = approvalFixtures(scenario);
+    if (scenario === 'history') this.#remember(time, host);
     this.#time = time;
     this.#vault = vault;
     if (vault) {
@@ -554,7 +569,25 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
       void time.sleep(100).then(() => this.end('tray-url', 'expired'));
   }
 
+  #remember(time: Clock, { files, agent }: { files?: DummyFiles; agent?: DummyAgent }): void {
+    const past = new DummyHistory(time, {
+      emit: () => this.emit('history', past.list()),
+      write: (path, text) => void files?.write(path, text).then(() => files.accept(path)),
+      lick: (agentId, title, text, extra) =>
+        agent?.lick(agentId, 'sudo-run', title, text, undefined, extra),
+    });
+    this.past = past;
+    this.#approvals = past
+      .list()
+      .filter((record) => record.state === 'pending')
+      .map((record) => record.approval);
+    this.history = () => past.list();
+    this.run = (id) => past.run(id);
+    this.stopRun = (id) => past.stopRun(id);
+  }
+
   raise(approval: Approval): void {
+    this.past?.raise(approval);
     if (approval.kind === 'secret') this.#vault?.hold(pendingAsk(approval));
     this.#approvals = [...this.#approvals.filter(({ id }) => id !== approval.id), approval];
     this.emit('approvals', this.list());
@@ -576,6 +609,7 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
 
   end(id: string, reason: ApprovalEnd): void {
     if (!this.#approvals.some((approval) => approval.id === id)) return;
+    this.past?.ended(id, reason);
     this.emit('ended', { id, reason });
     this.#approvals = this.#approvals.filter((approval) => approval.id !== id);
     this.emit('approvals', this.list());
@@ -593,6 +627,7 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
     if (approval?.kind === 'secret' && decision !== 'deny')
       throw new Error('Save or Allow in the vault’s frame.');
     this.decisions.push([id, decision]);
+    this.past?.decided(id, decision);
     if (approval?.kind === 'secret' && this.#vault?.ask(id)) {
       this.#quiet.add(id);
       await this.#vault.cancel(id);
@@ -609,8 +644,10 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
         item.id === approval.id ||
         ((item.kind === 'sudo' || item.kind === 'capture') && item.requester.agentId === agent)
     );
-    for (const item of ended)
+    for (const item of ended) {
+      if (item !== approval) this.past?.ended(item.id, 'withdrawn');
       this.emit('ended', { id: item.id, reason: item === approval ? 'answered' : 'withdrawn' });
+    }
     this.#approvals = this.#approvals.filter((item) => !ended.includes(item));
     this.emit('approvals', this.list());
   }

@@ -206,19 +206,19 @@ export function guestWaiting(approval: GuestMessageApproval | GuestToolApproval)
     : `${approval.agentName ?? 'This cone'} wants to run ${approval.tool} for ${approval.requester.name}, which waits for the owner's approval.`;
 }
 
-const levels: Record<ApprovalLevel, { name: string; label: string }> = {
+export const levels: Record<ApprovalLevel, { name: string; label: string }> = {
   1: { name: 'routine', label: 'Routine.' },
   2: { name: 'permissions', label: 'Changes permissions.' },
   3: { name: 'harm', label: 'Could harm the system.' },
 };
 
-const captureLevels: Record<ApprovalLevel, { name: string; label: string }> = {
+export const captureLevels: Record<ApprovalLevel, { name: string; label: string }> = {
   1: { name: 'routine', label: 'Routine capture.' },
   2: { name: 'permissions', label: 'Records what you share.' },
   3: { name: 'harm', label: 'Could expose something private.' },
 };
 
-type Judged = GuestMessageApproval | GuestToolApproval | SudoApproval | CaptureApproval;
+export type Judged = GuestMessageApproval | GuestToolApproval | SudoApproval | CaptureApproval;
 
 const fits = (aligned: boolean | undefined): string =>
   aligned === undefined
@@ -227,7 +227,7 @@ const fits = (aligned: boolean | undefined): string =>
       ? ' It fits what you asked for.'
       : ' It isn’t clear it serves what you asked for.';
 
-function leveled(approval: Judged): ApprovalLevel | null {
+export function leveled(approval: Judged): ApprovalLevel | null {
   const level = approval.verdict?.level;
   return level === 1 || level === 2 || level === 3 ? level : null;
 }
@@ -343,7 +343,7 @@ function extras(approval: Approval): unknown[] {
   return [];
 }
 
-const stops = (approval: Approval): boolean =>
+export const stops = (approval: Approval): boolean =>
   approval.kind === 'sudo' &&
   approval.stoppable === true &&
   approval.requester.kind === 'agent' &&
@@ -352,7 +352,7 @@ const stops = (approval: Approval): boolean =>
 const awaitsAlways = (approval: Approval): boolean =>
   approval.kind === 'sudo' && approval.always && !approval.verdict && !approval.verdictError;
 
-const alwaysLabel = (approval: Approval): string =>
+export const alwaysLabel = (approval: Approval): string =>
   inCwd(approval) ? 'Always allow in this directory' : 'Always allow';
 
 function oneRow(group: Element | null | undefined, items: readonly HTMLElement[]): boolean {
@@ -369,7 +369,7 @@ function oneRow(group: Element | null | undefined, items: readonly HTMLElement[]
 
 const denies = (decision: ApprovalDecision): boolean => decision === 'deny' || decision === 'stop';
 
-function answerable(approval: Approval, decision: ApprovalDecision): boolean {
+export function answerable(approval: Approval, decision: ApprovalDecision): boolean {
   if (decision === 'deny') return true;
   if (decision === 'stop') return stops(approval);
   if (approval.kind === 'secret') return false;

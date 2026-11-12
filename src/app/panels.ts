@@ -130,6 +130,15 @@ export const surfaces: Surface[] = [
     open: [],
     width: 340,
   },
+  {
+    id: 'approvals',
+    title: 'Approvals',
+    tag: 'slicc-approvals-panel',
+    icon: 'swc-icon-lock',
+    side: 'right',
+    open: [],
+    width: 360,
+  },
 ];
 
 export type DocumentKind = 'file' | 'diff';

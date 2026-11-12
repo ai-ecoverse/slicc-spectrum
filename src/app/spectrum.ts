@@ -29,6 +29,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-checkmark-circle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-data.js';
 import '@adobe/spectrum-wc-icons/swc-icon-history.js';
 import '@adobe/spectrum-wc-icons/swc-icon-lightbulb.js';
+import '@adobe/spectrum-wc-icons/swc-icon-lock.js';
 import '@adobe/spectrum-wc-icons/swc-icon-save-floppy.js';
 import '@adobe/spectrum-wc-icons/swc-icon-open-in.js';
 import '@adobe/spectrum-wc-icons/swc-icon-globe-grid.js';
