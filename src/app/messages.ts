@@ -13,6 +13,7 @@ import '@adobe/spectrum-wc/patterns/ai-toolkit/user-message/swc-user-message.js'
 import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-triangle.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
+import '@adobe/spectrum-wc-icons/swc-icon-code.js';
 import '@adobe/spectrum-wc-icons/swc-icon-file.js';
 import '@adobe/spectrum-wc-icons/swc-icon-file-text.js';
 import '@adobe/spectrum-wc-icons/swc-icon-info-circle.js';
@@ -63,7 +64,7 @@ export interface Handlers {
   copySignIn?(account: string, messageId: string, code: string): void;
   dropping(messageId: string): number;
   open(path: string): void;
-  show(surfaceId: string): void;
+  show(surfaceId: string, section?: string): void;
   suggest(text: string): void;
   owners?: ReadonlyMap<string, Owner>;
   agentId?: string;
@@ -1097,6 +1098,25 @@ function lickContent(
   return html`<div class="report">${shown}${report ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="open-report" @click=${() => handlers.open(report)}>Open the report</swc-button>` : nothing}</div>`;
 }
 
+function reactions(
+  message: LickMessage,
+  icon: string,
+  label: string,
+  outcome: string
+): TemplateResult {
+  const outcomeIcon =
+    message.state === 'confirmed' ? '👍' : message.state === 'dismissed' ? '👎' : '';
+  const glyph =
+    message.channel === 'sudo-run' ? html`<swc-icon-code size="s"></swc-icon-code>` : icon;
+  return html`<span class="reactions"><span class="reaction" title=${label} aria-hidden="true">${glyph}</span>${outcomeIcon ? html`<span class="reaction" title=${outcome} aria-hidden="true">${outcomeIcon}</span>` : nothing}</span>`;
+}
+
+function runLink(message: LickMessage, handlers: Handlers): TemplateResult | typeof nothing {
+  const id = message.approval;
+  if (message.channel !== 'sudo-run' || !id || !handlers.model?.approvals?.history) return nothing;
+  return html`<swc-action-button size="s" quiet class="run-link" data-action="show-approval" data-approval=${id} @click=${() => handlers.show('approvals', id)}>Show in Approvals</swc-action-button>`;
+}
+
 export function lick(message: LickMessage, handlers: Handlers, stamp = true): TemplateResult {
   if (pendingApproval(message)) return decision(message, handlers);
   const [line, failed, icon, label] = scoopLine(message);
@@ -1107,11 +1127,9 @@ export function lick(message: LickMessage, handlers: Handlers, stamp = true): Te
     ${outcome ? html`<span class="sr">${outcome}. </span>` : nothing}
     <span class="text" data-summary=${message.summary ? '' : nothing}>${message.summary || line}</span>
     ${message.count && message.count > 1 ? html`<span class="times" title="Coalesced events">×${message.count}</span>` : nothing}`;
-  const outcomeIcon =
-    message.state === 'confirmed' ? '👍' : message.state === 'dismissed' ? '👎' : '';
-  const reaction = html`<span class="reactions"><span class="reaction" title=${label} aria-hidden="true">${icon}</span>${outcomeIcon ? html`<span class="reaction" title=${outcome} aria-hidden="true">${outcomeIcon}</span>` : nothing}</span>`;
+  const reaction = reactions(message, icon, label, outcome);
   const name = `${severity ? severities[severity].prefix : ''}${label} event`;
-  const byline = html`<div class="meta">${severity ? html`<span class="severity-icon">${severities[severity].icon}</span>` : nothing}<span class="who">${message.title}</span>${stamp ? when(message.createdAt) : unseen(message.createdAt)}</div>`;
+  const byline = html`<div class="meta">${severity ? html`<span class="severity-icon">${severities[severity].icon}</span>` : nothing}<span class="who">${message.title}</span>${stamp ? when(message.createdAt) : unseen(message.createdAt)}${runLink(message, handlers)}</div>`;
   const body = lickBody(message);
   if (!body && !message.report) {
     return outside(
@@ -1151,7 +1169,8 @@ export const messageCss = css`
     font-weight: 700;
     color: var(--swc-neutral-content-color-default);
   }
-  .meta swc-badge {
+  .meta swc-badge,
+  .meta .run-link {
     align-self: center;
   }
   .bubble,
