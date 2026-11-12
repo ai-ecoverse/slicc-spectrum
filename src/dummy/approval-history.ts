@@ -227,8 +227,8 @@ export class DummyHistory {
   }
 
   raise(approval: Approval): void {
-    if (this.#find(approval.id)) return;
-    this.#records = [{ approval, state: 'pending' }, ...this.#records];
+    const others = this.#records.filter((record) => record.approval.id !== approval.id);
+    this.#records = [{ approval, state: 'pending' }, ...others];
     this.#host.emit();
   }
 

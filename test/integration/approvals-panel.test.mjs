@@ -578,3 +578,39 @@ test('the revealed row loses its mark once the reader clicks or types in the pan
   await page.until(() => !window.row('apr-failed').hasAttribute('data-highlight'));
   assert.deepEqual(page.errors, []);
 });
+
+test('a request raised again with the same id replaces its history record', async (t) => {
+  const page = await open(chrome, t);
+  await answerDialog(page);
+  await showPanel(page);
+  await filter(page, 'decided');
+  await page.until(() => window.inRow('apr-open', '[data-badge]')?.textContent.trim() === 'Denied');
+  await page.evaluate(() => {
+    const old = window.model.approvals
+      .history()
+      .find((record) => record.approval.id === 'apr-open').approval;
+    window.model.approvals.raise({
+      ...old,
+      command: 'apt install ripgrep',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 5 * 60_000,
+    });
+    return true;
+  });
+  await page.evaluate(() => {
+    window.panel().filter = 'open';
+    return true;
+  });
+  await page.until(
+    () => window.inRow('apr-open', '[data-command]')?.textContent === 'apt install ripgrep'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.model.approvals.history().filter((record) => record.approval.id === 'apr-open').length,
+      window.inRow('apr-open', '[data-badge]').textContent.trim(),
+      window.dialog()?.dataset.approval,
+    ]),
+    [1, 'Open', 'apr-open']
+  );
+  assert.deepEqual(page.errors, []);
+});
