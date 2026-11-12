@@ -540,6 +540,7 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
   declare setDeveloper?: (on: boolean) => Promise<void>;
   #beta: BetaScenario | undefined;
   #developer = true;
+  #opens = true;
 
   constructor(scenario: UpdateScenario, clock: Clock, options: DummyUpdatesOptions = {}) {
     super();
@@ -550,6 +551,7 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
       this.setDeveloper = (on) => this.#setDeveloper(on);
     }
     this.#ready = scenario !== 'boot' && scenario !== 'starting';
+    this.#opens = scenario !== 'starting';
     this.#clock = clock;
     this.#confirm = options.confirm;
     if (options.packages) {
@@ -710,6 +712,10 @@ export class DummyUpdates extends Emitter<UpdatesEvents> implements UpdatesPort 
 
   ready(): boolean {
     return this.#ready;
+  }
+
+  opensAtBoot(): boolean {
+    return this.#opens;
   }
 
   #fixtures(scenario: UpdateScenario): readonly UpdateItem[] {
