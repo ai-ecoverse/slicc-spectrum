@@ -622,10 +622,19 @@ export class SliccChat extends ThemedElement {
       this.dispatchEvent(
         new CustomEvent('open-file', { detail: { path }, bubbles: true, composed: true })
       ),
-    show: (id) =>
+    show: (id, section) =>
       this.dispatchEvent(
-        new CustomEvent('show-surface', { detail: { id }, bubbles: true, composed: true })
+        new CustomEvent('show-surface', { detail: { id, section }, bubbles: true, composed: true })
       ),
+    offers: (id) => {
+      const ask = new CustomEvent('offers-surface', {
+        detail: { id, offered: false },
+        bubbles: true,
+        composed: true,
+      });
+      this.dispatchEvent(ask);
+      return ask.detail.offered;
+    },
     suggest: (text) => void this.model?.agent.send(this.#id(), text),
   };
 

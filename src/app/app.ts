@@ -606,6 +606,7 @@ export class SliccApp extends ThemedElement {
       if (element && 'model' in element) element.model = model;
     }
     if (!model.network && !model.guests && dock.has('network')) dock.close('network');
+    if (!model.approvals?.history && dock.has('approvals')) dock.close('approvals');
     this.#prune();
     const agent = this.#active();
     if (agent && this.#offers('chat')) openChat(dock, agent, this.screen, false, false);
@@ -736,6 +737,11 @@ export class SliccApp extends ThemedElement {
     const { id, section } = (event as CustomEvent<{ id: string; section?: string }>).detail;
     this.show(id, section);
   }
+
+  #offersSurface = (event: Event): void => {
+    const { detail } = event as CustomEvent<{ id: string; offered: boolean }>;
+    detail.offered = this.#offers(detail.id);
+  };
 
   show(id: string, section?: string): void {
     this.#open(id, true, section);
@@ -1033,6 +1039,7 @@ export class SliccApp extends ThemedElement {
     return this.surfaces.filter(
       (item) =>
         (item.id !== 'network' || model?.network || model?.guests) &&
+        (item.id !== 'approvals' || model?.approvals?.history) &&
         (item.id !== 'terminal' || terminals)
     );
   }
@@ -1182,12 +1189,13 @@ export class SliccApp extends ThemedElement {
             @open-diff=${(event: Event) => this.#request('diff', event)}
             @new-terminal=${() => this.newTerminal()}
             @show-surface=${this.#showSurface}
+            @offers-surface=${this.#offersSurface}
           ></slicc-dock>
           ${rails.right}
         </main>
         ${rails.bottom}
       </div>
-      <slicc-approvals .model=${this.model}></slicc-approvals>
+      <slicc-approvals .model=${this.model} ?panel=${this.#offers('approvals')} @show-surface=${this.#showSurface}></slicc-approvals>
       <slicc-value-request .model=${this.model}></slicc-value-request>
     </sp-theme></div>`;
   }

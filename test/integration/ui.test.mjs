@@ -3297,7 +3297,7 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     };
   });
   assert.deepEqual(kinds, {
-    channels: 18,
+    channels: 19,
     user: 6,
     steered: 1,
     assistant: 8,

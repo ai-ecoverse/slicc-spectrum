@@ -310,6 +310,20 @@ const licks: Array<[LickChannel, string, string, string | undefined, Partial<Mes
     'Can you take the Friday on-call?',
     {},
   ],
+  [
+    'sudo-run',
+    'sudo runs now: make -C /opt/harbor install',
+    'The owner ran your timed-out sudo request',
+    'Your sudo request from 09:12 (/usr/bin/make -C /opt/harbor install as www-data in /home/cone/harbor) timed out.\nThe owner ran it at 10:40 with Run now. It runs in the background (pid 655), with no terminal and no input.\nIts result follows as another sudo-run lick. Output: /home/cone/.slicc/sudo-runs/apr-exit.out (.err)',
+    { approval: 'apr-exit' } as Partial<Message>,
+  ],
+  [
+    'sudo-run',
+    'sudo run ended: make -C /opt/harbor install',
+    'Exited with status 2 after 1 min 35 s',
+    'stderr:\ninstall: cannot create directory /opt/harbor/bin: Permission denied\nmake: *** [install] Error 2\n\nOutput: /home/cone/.slicc/sudo-runs/apr-exit.out\nErrors: /home/cone/.slicc/sudo-runs/apr-exit.err',
+    { approval: 'apr-exit', severity: 'warn' } as Partial<Message>,
+  ],
 ];
 
 const attachmentsMessage: UserMessage = {

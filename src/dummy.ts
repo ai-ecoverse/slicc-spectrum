@@ -1,3 +1,13 @@
+export type { RunHost } from './dummy/approval-history.ts';
+export {
+  DummyHistory,
+  historyFixtures,
+  runFailure,
+  runFiles,
+  runOutput,
+  runRefusal,
+  runsDir,
+} from './dummy/approval-history.ts';
 export type { ApprovalScenario } from './dummy/approvals.ts';
 export { approvalFixtures, DummyApprovals } from './dummy/approvals.ts';
 export type { ActionDraft, BrowserScenario } from './dummy/browser.ts';

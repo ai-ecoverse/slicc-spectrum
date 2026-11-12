@@ -9,6 +9,7 @@ import type {
   DeliveredAs,
   FrozenCone,
   LickChannel,
+  LickMessage,
   LickState,
   Message,
   MessagePart,
@@ -659,7 +660,14 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     return { ...agent };
   }
 
-  lick(agentId: string, channel: LickChannel, title: string, text: string, body?: string): void {
+  lick(
+    agentId: string,
+    channel: LickChannel,
+    title: string,
+    text: string,
+    body?: string,
+    extra: Partial<LickMessage> = {}
+  ): void {
     if (!this.#agent(agentId)) return;
     this.#post(agentId, {
       id: this.#id('m'),
@@ -669,6 +677,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
       text,
       createdAt: Date.now(),
       ...(body ? { body } : {}),
+      ...extra,
     });
   }
 
