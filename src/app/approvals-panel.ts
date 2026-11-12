@@ -7,6 +7,7 @@ import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
 import '@spectrum-web-components/alert-dialog/sp-alert-dialog.js';
 import { css, html, type LitElement, nothing, type PropertyValues, type TemplateResult } from 'lit';
+import { keyed } from 'lit/directives/keyed.js';
 import { repeat } from 'lit/directives/repeat.js';
 import type {
   Approval,
@@ -33,7 +34,7 @@ import {
   truncated,
 } from './approvals.ts';
 import { ModelElement } from './base.ts';
-import { Arming, Ends, end, endCss, layout, toScroll } from './command.ts';
+import { Arming, Ends, end, endCss, layout, toScroll, Watched } from './command.ts';
 import { commandText, controlStyles } from './command-display.ts';
 import { dialogStyles } from './confirm.ts';
 import { errorCss, panelCss, request } from './files.ts';
@@ -222,6 +223,9 @@ export class SliccApprovalsPanel extends ModelElement {
     () => this.requestUpdate()
   );
   #seen = new Map<string, string>();
+  #asked = '';
+  #moves = new Watched(new ResizeObserver(() => this.#settle()));
+  #moved = (): void => this.#settle();
   #timer: ReturnType<typeof setInterval> | null = null;
   #fast = false;
   #trigger: HTMLElement | null = null;
@@ -442,12 +446,15 @@ export class SliccApprovalsPanel extends ModelElement {
   connectedCallback(): void {
     super.connectedCallback();
     this.#tick();
+    globalThis.addEventListener('resize', this.#moved);
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.#stopTick();
     this.#ends.disconnect();
+    this.#moves.disconnect();
+    globalThis.removeEventListener('resize', this.#moved);
   }
 
   #stopTick(): void {
@@ -542,14 +549,20 @@ export class SliccApprovalsPanel extends ModelElement {
     return record && offersRun(record, port) && record.runnable === true ? record : null;
   }
 
+  #identity(id: string): string {
+    return JSON.stringify((this.#record(id) as ApprovalRecord).approval);
+  }
+
   #ask(id: string, trigger: HTMLElement): void {
     if (!this.#runnable(id)) return;
     this.#trigger = trigger;
+    this.#asked = this.#identity(id);
     this.confirming = id;
   }
 
   #cancel(): void {
     if (this.confirming) this.#ends.forget(`run:${this.confirming}`);
+    this.#asked = '';
     this.confirming = null;
   }
 
@@ -561,7 +574,13 @@ export class SliccApprovalsPanel extends ModelElement {
   run(id: string): Promise<void> {
     const port = this.model?.approvals;
     if (!port?.run || !this.#runnable(id)) return Promise.resolve();
-    if (!(this.#ends.has(`run:${id}`) && this.#confirmArming.settled())) return Promise.resolve();
+    if (
+      this.confirming !== id ||
+      this.#asked !== this.#identity(id) ||
+      !(this.#ends.has(`run:${id}`) && this.#confirmArming.settled())
+    )
+      return Promise.resolve();
+    this.#asked = '';
     this.confirming = null;
     const run = port.run.bind(port);
     return this.#act(id, 'run-now', () => run(id));
@@ -580,7 +599,13 @@ export class SliccApprovalsPanel extends ModelElement {
 
   protected willUpdate(changed: PropertyValues): void {
     super.willUpdate(changed);
-    if (this.confirming && !this.#runnable(this.confirming)) this.#cancel();
+    const asked = this.confirming;
+    if (asked && !this.#runnable(asked)) this.#cancel();
+    else if (asked && this.#asked !== this.#identity(asked)) {
+      this.#asked = this.#identity(asked);
+      this.#ends.forget(`run:${asked}`);
+      this.#confirmArming.arm();
+    }
     for (const { approval, state } of this.records()) {
       if (state !== 'pending') continue;
       const key = JSON.stringify([approval.kind, approval.createdAt, approved(approval)]);
@@ -592,10 +617,14 @@ export class SliccApprovalsPanel extends ModelElement {
   protected updated(changed: PropertyValues): void {
     super.updated(changed);
     this.#tick();
-    const buttons = [...this.renderRoot.querySelectorAll<HTMLElement>('.row [data-decision]')];
-    this.#arming.watch(layout(buttons));
     this.#ends.observe();
     this.#dialog(changed);
+    this.#moves.sync(
+      this.renderRoot.querySelectorAll(
+        '.list, .row, [data-decision], dialog sp-alert-dialog, dialog [slot=button]'
+      )
+    );
+    this.#settle();
     const id = this.#reveal;
     if (!id) return;
     this.#reveal = null;
@@ -604,6 +633,16 @@ export class SliccApprovalsPanel extends ModelElement {
     ) as HTMLElement;
     row.scrollIntoView({ block: 'center' });
     row.focus({ preventScroll: true });
+  }
+
+  #settle(): void {
+    const list = this.renderRoot.querySelector<HTMLElement>('.list');
+    const buttons = [...this.renderRoot.querySelectorAll<HTMLElement>('.row [data-decision]')];
+    this.#arming.watch(layout(buttons, [], list));
+    const dialog = this.renderRoot.querySelector('dialog');
+    if (!dialog) return;
+    const actions = [...dialog.querySelectorAll<HTMLElement>('[slot=button]')];
+    this.#confirmArming.watch(layout(actions, [this.#asked], dialog));
   }
 
   #dialog(changed: PropertyValues): void {
@@ -683,9 +722,11 @@ export class SliccApprovalsPanel extends ModelElement {
     const level = levelOf(approval);
     const who = decided(record, this.now);
     const error = this.errors.get(id);
+    const mark =
+      record.state === 'pending' ? keyed(this.#seen.get(id) as string, end(id)) : nothing;
     return html`<li class="row" tabindex="-1" data-id=${id} data-kind=${approval.kind} data-state=${record.state} ?data-highlight=${this.highlight === id}>
       <div class="head"><span class="kind">${kindLabels[approval.kind]}</span><span class="who" data-requester>${commandText(asking(approval), false)}</span><span class="when">${since(approval.createdAt, this.now)}</span></div>
-      ${mono ? html`<pre class="command" data-command>${commandText(text)}${record.state === 'pending' ? end(id) : nothing}</pre>` : html`<p class="summary" data-summary>${commandText(text)}${record.state === 'pending' ? end(id) : nothing}</p>`}
+      ${mono ? html`<pre class="command" data-command>${commandText(text)}${mark}</pre>` : html`<p class="summary" data-summary>${commandText(text)}${mark}</p>`}
       ${where ? html`<span class="place" data-place>${commandText(where, false)}</span>` : nothing}
       <div class="state">
         <swc-badge size="s" variant=${variants[record.state]} subtle data-badge>${stateLabel(record)}</swc-badge>
@@ -709,7 +750,7 @@ export class SliccApprovalsPanel extends ModelElement {
       <sp-alert-dialog variant="confirmation">
         <h2 id="run-title" slot="heading">Run this now?</h2>
         <p>${commandText(`${asking(approval)} asked to run this with sudo ${age(approval.createdAt, this.now)} ago, and nobody answered in time:`, false)}</p>
-        <pre class="command" data-command>${commandText(approval.command)}${end(`run:${id}`)}</pre>
+        <pre class="command" data-command>${commandText(approval.command)}${keyed(this.#asked, end(`run:${id}`))}</pre>
         <ul class="facts">
           <li data-target>As ${commandText(approval.target ?? 'root', false)}</li>
           ${approval.cwd ? html`<li data-cwd>In ${commandText(approval.cwd, false)}</li>` : nothing}
@@ -757,7 +798,7 @@ export class SliccApprovalsPanel extends ModelElement {
           ([filter, label]) => this.#filterButton(filter, label, count(filter).length)
         )}</swc-action-group>
       </div>
-      <div class="list" data-filter-shown=${this.filter}>
+      <div class="list" data-filter-shown=${this.filter} @pointerdown=${this.#arming.press}>
         ${shown.length ? this.#rows(shown) : html`<p class="note" data-empty>${empty[this.filter]}</p>`}
         ${this.#withdrawn(withdrawn)}
       </div>

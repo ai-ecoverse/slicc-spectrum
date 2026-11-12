@@ -349,3 +349,135 @@ test('a disabled Run now says why in visible text next to it', async (t) => {
   assert.equal(await page.evaluate(() => !!window.part('swc-tooltip')), false);
   assert.deepEqual(page.errors, []);
 });
+
+async function confirmOpen(page, id) {
+  await press(page, (id) => window.inRow(id, '[data-action=run-now]'), id);
+  await page.until(() => window.part('dialog[data-run-confirm]')?.open);
+  await page.until(() => !window.part('dialog [data-action=run-confirm]').hasAttribute('disabled'));
+}
+
+test('the Run now confirm asks again when the request changes under it', async (t) => {
+  const page = await open(chrome, t);
+  await answerDialog(page);
+  await showPanel(page);
+  await filter(page, 'timed-out');
+  await page.evaluate(() => {
+    window.model.approvals.past.runTicks = null;
+    const port = window.model.approvals;
+    const history = port.history;
+    window.swap = (patch) => {
+      port.history = () =>
+        history().map((record) =>
+          record.approval.id === 'apr-late'
+            ? { ...record, approval: { ...record.approval, ...patch } }
+            : record
+        );
+      port.emit('history', port.history());
+      return true;
+    };
+    return true;
+  });
+  await confirmOpen(page, 'apr-late');
+  await page.evaluate(() => {
+    window.panel().arming = 1500;
+    return true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 1700));
+  const lines = Array.from({ length: 80 }, (_, index) => `echo step ${index} && \\`);
+  await page.evaluate(
+    (command) => window.swap({ command, cwd: '/srv/harbor' }),
+    `${lines.join('\n')}\nsystemctl restart nginx`
+  );
+  await page.until(() => window.part('dialog [data-action=run-confirm]').hasAttribute('disabled'));
+  await page.until(() => !!window.part('dialog [data-allow-hint]'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.part('dialog [data-cwd]').textContent,
+      !!window.part('dialog [data-allow-hint]'),
+    ]),
+    ['In /srv/harbor', true]
+  );
+  await page.evaluate(() => window.panel().run('apr-late'));
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.past.runs), []);
+  await page.evaluate(() => {
+    const pre = window.part('dialog [data-command]');
+    pre.scrollTop = pre.scrollHeight;
+    return true;
+  });
+  await page.until(() => !window.part('dialog [data-action=run-confirm]').hasAttribute('disabled'));
+  await page.evaluate(() => window.panel().run('apr-late'));
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.past.runs), []);
+  await page.evaluate(() => window.swap({ cwd: '/srv/tides' }));
+  await page.until(() => window.part('dialog [data-cwd]').textContent === 'In /srv/tides');
+  await page.until(() => !window.part('dialog [data-action=run-confirm]').hasAttribute('disabled'));
+  await page.evaluate(() => window.panel().run('apr-late'));
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.past.runs), []);
+  await new Promise((resolve) => setTimeout(resolve, 1700));
+  await page.evaluate(() => window.panel().run('apr-late'));
+  await page.until(() => window.model.approvals.past.runs.includes('apr-late'));
+  assert.deepEqual(page.errors, []);
+});
+
+test('a resize re-arms Allow and Run now, so a click right after it is ignored', async (t) => {
+  const page = await open(chrome, t);
+  const size = (width) =>
+    page.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+  t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
+  await size(1440);
+  await page.until(() => window.dialog()?.dataset.approval === 'apr-open');
+  await page.evaluate(() => {
+    window.$('slicc-app', 'slicc-approvals').remove();
+    return true;
+  });
+  await showPanel(page);
+  await page.until(() => !!window.inRow('apr-open', '[data-action=once]'));
+  const frames = () =>
+    page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))
+        )
+    );
+  await page.evaluate(() => {
+    window.panel().arming = 1500;
+    return true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 1700));
+  const before = await page.evaluate(
+    () => window.inRow('apr-open', '[data-action=once]').getBoundingClientRect().left
+  );
+  await size(1320);
+  await frames();
+  assert.notEqual(
+    await page.evaluate(
+      () => window.inRow('apr-open', '[data-action=once]').getBoundingClientRect().left
+    ),
+    before
+  );
+  await press(page, () => window.inRow('apr-open', '[data-action=once]'));
+  await page.evaluate(() => window.panel().decide('apr-open', 'once'));
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), []);
+  await new Promise((resolve) => setTimeout(resolve, 1700));
+  await press(page, () => window.inRow('apr-open', '[data-action=once]'));
+  await page.until(() => window.model.approvals.decisions.length === 1);
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.decisions), [
+    ['apr-open', 'once'],
+  ]);
+  await filter(page, 'timed-out');
+  await confirmOpen(page, 'apr-late');
+  await new Promise((resolve) => setTimeout(resolve, 1700));
+  await size(1200);
+  await frames();
+  await press(page, () => window.part('dialog [data-action=run-confirm]'));
+  await page.evaluate(() => window.panel().run('apr-late'));
+  assert.deepEqual(await page.evaluate(() => window.model.approvals.past.runs), []);
+  await new Promise((resolve) => setTimeout(resolve, 1700));
+  await press(page, () => window.part('dialog [data-action=run-confirm]'));
+  await page.until(() => window.model.approvals.past.runs.includes('apr-late'));
+  assert.deepEqual(page.errors, []);
+});
