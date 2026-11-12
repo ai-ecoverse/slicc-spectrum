@@ -47,3 +47,25 @@ test('the dialog says nothing about Run now without a run method', async (t) => 
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('the dialog says nothing about Approvals when the app doesn’t offer the panel', async (t) => {
+  const page = await open(chrome, t);
+  await page.until(() => window.dialog()?.dataset.approval === 'apr-open');
+  await page.evaluate(async () => {
+    const { surfaces } = await import('/dist/slicc-ui.js');
+    window.app.surfaces = surfaces.filter((item) => item.id !== 'approvals');
+    await window.app.updateComplete;
+    window.model.approvals.end('apr-open', 'expired');
+    return true;
+  });
+  await page.until(() => window.dialog()?.dataset.gone === 'expired');
+  assert.deepEqual(
+    await page.evaluate(() => [
+      !!window.dialog().querySelector('[data-run-later]'),
+      !!window.dialog().querySelector('[data-action=open-approvals]'),
+      !!window.$('slicc-app', '[data-surface=approvals]'),
+    ]),
+    [false, false, false]
+  );
+  assert.deepEqual(page.errors, []);
+});

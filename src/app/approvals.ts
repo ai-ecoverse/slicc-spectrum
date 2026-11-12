@@ -404,6 +404,7 @@ export class SliccApprovals extends ModelElement {
     gone: { state: true },
     frameError: { state: true },
     wrapped: { state: true },
+    panel: { type: Boolean },
   };
   declare now: number;
   declare busy: ApprovalDecision | '';
@@ -411,6 +412,7 @@ export class SliccApprovals extends ModelElement {
   declare gone: { approval: Approval; reason: 'elsewhere' | 'expired' } | null;
   declare frameError: { id: string; message: string } | null;
   declare wrapped: boolean;
+  declare panel: boolean;
   arming = 500;
   #arming = new Arming(() => this.arming);
   #moves = new Watched(new ResizeObserver(() => this.#settle()));
@@ -439,6 +441,7 @@ export class SliccApprovals extends ModelElement {
     this.gone = null;
     this.frameError = null;
     this.wrapped = false;
+    this.panel = false;
   }
 
   static styles = [
@@ -983,7 +986,7 @@ export class SliccApprovals extends ModelElement {
   }
 
   #goneDialog(approval: Approval, reason: 'elsewhere' | 'expired'): unknown {
-    const later = reason === 'expired' && runsLater(approval, this.model?.approvals);
+    const later = this.panel && reason === 'expired' && runsLater(approval, this.model?.approvals);
     return this.#dialog(
       approval,
       `gone:${approval.id}`,
