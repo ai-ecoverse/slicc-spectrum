@@ -695,3 +695,40 @@ test('a request raised again during its old run keeps the old run off the new re
   });
   assert.deepEqual(page.errors, []);
 });
+
+test('a decide in flight does not mark a replacement request as decided', async (t) => {
+  const page = await open(chrome, t);
+  const seen = await page.evaluate(async () => {
+    const { DummyApprovals } = await import('/dist/slicc-dummy.js');
+    const held = [];
+    const time = {
+      delay: 0,
+      sleep: () => new Promise((resolve) => held.push(resolve)),
+    };
+    const release = async () => {
+      while (held.length) held.shift()();
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    };
+    const approvals = new DummyApprovals('history', time);
+    const past = approvals.past;
+    const record = () => past.list().find((item) => item.approval.id === 'apr-open');
+    const deciding = approvals.decide('apr-open', 'once');
+    const fresh = { ...record().approval, command: 'apt install ripgrep' };
+    approvals.raise(fresh);
+    await release();
+    await deciding;
+    return {
+      state: record().state,
+      command: record().approval.command,
+      listed: approvals.list().some((item) => item.id === 'apr-open'),
+      decisions: approvals.decisions,
+    };
+  });
+  assert.deepEqual(seen, {
+    state: 'pending',
+    command: 'apt install ripgrep',
+    listed: true,
+    decisions: [],
+  });
+  assert.deepEqual(page.errors, []);
+});

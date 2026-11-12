@@ -620,14 +620,16 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
   }
 
   async #decide(id: string, decision: ApprovalDecision): Promise<void> {
+    const generation = this.past?.generation(id) ?? 0;
     await this.#time.sleep(10);
     if (this.#fail) throw new Error('The kernel stopped waiting. Run the command again.');
     if (id === 'guest-late') throw new Error('Someone else already answered this.');
+    if (this.past && this.past.generation(id) !== generation) return;
     const approval = this.#approvals.find((item) => item.id === id);
     if (approval?.kind === 'secret' && decision !== 'deny')
       throw new Error('Save or Allow in the vault’s frame.');
     this.decisions.push([id, decision]);
-    this.past?.decided(id, decision);
+    this.past?.decided(id, decision, generation);
     if (approval?.kind === 'secret' && this.#vault?.ask(id)) {
       this.#quiet.add(id);
       await this.#vault.cancel(id);

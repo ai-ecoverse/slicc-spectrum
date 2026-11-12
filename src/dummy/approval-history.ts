@@ -251,6 +251,10 @@ export class DummyHistory {
     return (this.#generations.get(id) ?? 0) === generation;
   }
 
+  generation(id: string): number {
+    return this.#generations.get(id) ?? 0;
+  }
+
   raise(approval: Approval): void {
     this.#generations.set(approval.id, (this.#generations.get(approval.id) ?? 0) + 1);
     this.#ends.delete(approval.id);
@@ -259,7 +263,8 @@ export class DummyHistory {
     this.#host.emit();
   }
 
-  decided(id: string, decision: ApprovalDecision): void {
+  decided(id: string, decision: ApprovalDecision, generation?: number): void {
+    if (generation !== undefined && !this.#live(id, generation)) return;
     const deny = decision === 'deny' || decision === 'stop';
     this.#update(id, {
       state: deny ? 'rejected' : 'approved',
