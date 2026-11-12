@@ -3,7 +3,6 @@ import '@adobe/spectrum-wc/components/action-group/swc-action-group.js';
 import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/progress-circle/swc-progress-circle.js';
-import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chevron-right.js';
 import '@spectrum-web-components/alert-dialog/sp-alert-dialog.js';
@@ -197,8 +196,6 @@ function place(approval: Approval): string {
   return '';
 }
 
-type Tooltip = HTMLElement & { triggerElement: HTMLElement | null };
-
 export class SliccApprovalsPanel extends ModelElement {
   static properties = {
     ...ModelElement.properties,
@@ -390,13 +387,12 @@ export class SliccApprovalsPanel extends ModelElement {
         gap: var(--swc-spacing-75);
         color: var(--swc-negative-content-color-default);
       }
-      .blocked {
-        display: inline-flex;
-        border-radius: var(--swc-corner-radius-medium-default);
+      .actions:has([data-run-reason]) {
+        align-items: center;
       }
-      .blocked:focus-visible {
-        outline: var(--swc-focus-indicator-thickness) solid var(--swc-focus-indicator-color);
-        outline-offset: var(--swc-focus-ring-gap);
+      .reason {
+        color: var(--swc-neutral-subdued-content-color-default);
+        overflow-wrap: anywhere;
       }
       .more {
         align-self: flex-start;
@@ -596,9 +592,6 @@ export class SliccApprovalsPanel extends ModelElement {
   protected updated(changed: PropertyValues): void {
     super.updated(changed);
     this.#tick();
-    for (const tip of this.renderRoot.querySelectorAll<Tooltip>('swc-tooltip')) {
-      tip.triggerElement = tip.previousElementSibling as HTMLElement;
-    }
     const buttons = [...this.renderRoot.querySelectorAll<HTMLElement>('.row [data-decision]')];
     this.#arming.watch(layout(buttons));
     this.#ends.observe();
@@ -660,7 +653,7 @@ export class SliccApprovalsPanel extends ModelElement {
     const busy = this.busy.get(id) === 'run-now';
     const button = html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="run-now" ?pending=${busy} ?disabled=${!!reason} @click=${(event: MouseEvent) => this.#ask(id, event.currentTarget as HTMLElement)}>Run now</swc-button>`;
     if (!reason) return html`<div class="actions">${button}</div>`;
-    return html`<div class="actions"><span class="blocked" tabindex="0" data-blocked aria-label=${`Run now isn’t available: ${reason}`}>${button}</span><swc-tooltip placement="top" data-reason>${reason}</swc-tooltip></div>`;
+    return html`<div class="actions">${button}<span class="reason" data-run-reason>${commandText(reason, false)}</span></div>`;
   }
 
   #run(record: ApprovalRecord): TemplateResult | typeof nothing {

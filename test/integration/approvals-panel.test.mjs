@@ -106,7 +106,7 @@ test('the filters split decided and timed-out requests, and withdrawn ones fold 
   const blocked = await page.evaluate(() =>
     ['apr-frozen', 'apr-terminal'].map((id) => [
       window.inRow(id, '[data-action=run-now]').hasAttribute('disabled'),
-      window.inRow(id, 'swc-tooltip[data-reason]').textContent,
+      window.inRow(id, '[data-run-reason]').textContent,
     ])
   );
   assert.deepEqual(blocked, [
@@ -313,5 +313,39 @@ test('Allow and Run now wait until the end of a long command has been in view', 
   await armed(page, 'dialog [slot=button]');
   await press(page, () => window.part('dialog [data-action=run-confirm]'));
   await page.until(() => window.model.approvals.past.runs.includes('apr-long'));
+  assert.deepEqual(page.errors, []);
+});
+
+test('a disabled Run now says why in visible text next to it', async (t) => {
+  const page = await open(chrome, t);
+  await answerDialog(page);
+  await showPanel(page);
+  await filter(page, 'timed-out');
+  await page.until(() => !!window.inRow('apr-frozen', '[data-run-reason]'));
+  const seen = await page.evaluate(() =>
+    ['apr-frozen', 'apr-terminal', 'apr-late'].map((id) => {
+      window.row(id).scrollIntoView({ block: 'center' });
+      const button = window.inRow(id, '[data-action=run-now]');
+      const reason = window.inRow(id, '[data-run-reason]');
+      if (!reason) return [id, button.hasAttribute('disabled'), null];
+      const a = button.getBoundingClientRect();
+      const b = reason.getBoundingClientRect();
+      const style = getComputedStyle(reason);
+      return [
+        id,
+        button.hasAttribute('disabled'),
+        reason.textContent,
+        b.width > 0 && b.height > 0 && style.visibility === 'visible' && style.display !== 'none',
+        b.left >= a.right && Math.abs(b.top + b.height / 2 - (a.top + a.height / 2)) < a.height,
+        reason.parentElement === button.parentElement,
+      ];
+    })
+  );
+  assert.deepEqual(seen, [
+    ['apr-frozen', true, 'Thaw harbor first.', true, true, true],
+    ['apr-terminal', true, 'Run it again in the terminal.', true, true, true],
+    ['apr-late', false, null],
+  ]);
+  assert.equal(await page.evaluate(() => !!window.part('swc-tooltip')), false);
   assert.deepEqual(page.errors, []);
 });
