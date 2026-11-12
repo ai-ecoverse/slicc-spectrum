@@ -614,3 +614,51 @@ test('a request raised again with the same id replaces its history record', asyn
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('a request raised again during its old run keeps the old run off the new record', async (t) => {
+  const page = await open(chrome, t);
+  const seen = await page.evaluate(async () => {
+    const { DummyHistory, historyFixtures } = await import('/dist/slicc-dummy.js');
+    const held = [];
+    const time = {
+      delay: 0,
+      sleep: () => new Promise((resolve) => held.push(resolve)),
+    };
+    const release = async () => {
+      while (held.length) held.shift()();
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    };
+    const licks = [];
+    const past = new DummyHistory(
+      time,
+      { emit() {}, write() {}, lick: (agentId, title) => licks.push(title) },
+      historyFixtures()
+    );
+    past.runTicks = 1;
+    const record = () => past.list().find((item) => item.approval.id === 'apr-late');
+    const asking = past.run('apr-late');
+    await release();
+    await asking;
+    const started = record().run.state;
+    const fresh = { ...record().approval, command: 'systemctl reload nginx' };
+    past.raise(fresh);
+    await release();
+    await release();
+    await release();
+    return {
+      started,
+      state: record().state,
+      run: record().run ?? null,
+      command: record().approval.command,
+      licks,
+    };
+  });
+  assert.deepEqual(seen, {
+    started: 'starting',
+    state: 'pending',
+    run: null,
+    command: 'systemctl reload nginx',
+    licks: [],
+  });
+  assert.deepEqual(page.errors, []);
+});

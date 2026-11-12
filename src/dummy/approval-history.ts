@@ -193,6 +193,7 @@ export class DummyHistory {
   #time: Clock;
   #host: RunHost;
   #ends = new Map<string, (stopped: boolean) => void>();
+  #generations = new Map<string, number>();
   #pid = 812;
   runTicks: number | null = 100;
   runs: string[] = [];
@@ -226,7 +227,13 @@ export class DummyHistory {
     return run;
   }
 
+  #live(id: string, generation: number): boolean {
+    return (this.#generations.get(id) ?? 0) === generation;
+  }
+
   raise(approval: Approval): void {
+    this.#generations.set(approval.id, (this.#generations.get(approval.id) ?? 0) + 1);
+    this.#ends.delete(approval.id);
     const others = this.#records.filter((record) => record.approval.id !== approval.id);
     this.#records = [{ approval, state: 'pending' }, ...others];
     this.#host.emit();
@@ -303,7 +310,9 @@ export class DummyHistory {
 
   async #walk(approval: SudoApproval): Promise<void> {
     const { id } = approval;
+    const generation = this.#generations.get(id) ?? 0;
     await this.#time.sleep(10);
+    if (!this.#live(id, generation)) return;
     if (id === 'apr-moved') {
       this.#running(id, { state: 'failed', error: runFailure });
       return;
@@ -323,6 +332,7 @@ export class DummyHistory {
       }
     );
     const stopped = await ended;
+    if (!this.#live(id, generation)) return;
     const endedAt = Date.now();
     const took = Math.round((endedAt - run.at) / 1000);
     const text = stopped ? `Stopped after ${took} s` : `Exited with status 0 after ${took} s`;
@@ -347,7 +357,7 @@ export class DummyHistory {
     const ticks = this.runTicks;
     if (ticks !== null) void this.#time.sleep(ticks).then(() => resolve(false));
     return promise.then((stopped) => {
-      this.#ends.delete(id);
+      if (this.#ends.get(id) === resolve) this.#ends.delete(id);
       return stopped;
     });
   }
