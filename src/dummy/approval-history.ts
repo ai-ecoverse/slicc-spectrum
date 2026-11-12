@@ -310,6 +310,7 @@ export class DummyHistory {
     }
     const pid = this.#pid++;
     const output = runOutput(id);
+    const ended = this.#wait(id);
     const run = this.#running(id, { state: 'running', pid, ...output });
     const agentId = approval.requester.agentId as string;
     this.#host.lick(
@@ -321,7 +322,7 @@ export class DummyHistory {
         body: `It runs in the background (pid ${pid}), with no terminal and no input.\nIts result follows as another sudo-run lick. Output: ${output.stdout} (.err)`,
       }
     );
-    const stopped = await this.#wait(id);
+    const stopped = await ended;
     const endedAt = Date.now();
     const took = Math.round((endedAt - run.at) / 1000);
     const text = stopped ? `Stopped after ${took} s` : `Exited with status 0 after ${took} s`;

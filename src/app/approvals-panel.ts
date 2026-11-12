@@ -127,11 +127,18 @@ export function decided(record: ApprovalRecord, now = Date.now()): string {
   return [who, when].filter(Boolean).join(', ');
 }
 
+export function runParts(run: ApprovalRun, now = Date.now()): [string, string] {
+  if (run.state !== 'running') return [runOutcome(run), ''];
+  return [
+    `Running${run.pid === undefined ? '' : ` · pid ${run.pid}`}`,
+    ` · ${elapsed(now - run.at)}`,
+  ];
+}
+
 export function runOutcome(run: ApprovalRun, now = Date.now()): string {
   const took = run.endedAt === undefined ? '' : ` after ${elapsed(run.endedAt - run.at)}`;
   if (run.state === 'starting') return 'Starting…';
-  if (run.state === 'running')
-    return `Running${run.pid === undefined ? '' : ` · pid ${run.pid}`} · ${elapsed(now - run.at)}`;
+  if (run.state === 'running') return runParts(run, now).join('');
   if (run.state === 'failed') return run.error ?? 'It didn’t start.';
   if (run.state === 'stopped') return `Stopped${took}`;
   if (run.status !== undefined) return `Exited with status ${run.status}${took}`;
@@ -240,6 +247,8 @@ export class SliccApprovalsPanel extends ModelElement {
     this.errors = new Map();
     this.confirming = null;
     this.highlight = null;
+    this.addEventListener('pointerdown', this.#unmark, true);
+    this.addEventListener('keydown', this.#unmark, true);
   }
 
   static styles = [
@@ -566,6 +575,10 @@ export class SliccApprovalsPanel extends ModelElement {
     this.confirming = null;
   }
 
+  #unmark = (): void => {
+    if (this.highlight) this.highlight = null;
+  };
+
   #escape = (event: Event): void => {
     event.preventDefault();
     this.#cancel();
@@ -703,8 +716,9 @@ export class SliccApprovalsPanel extends ModelElement {
     const warn = run.state === 'done' && run.status !== undefined && run.status !== 0;
     const port = this.model?.approvals;
     const stopping = this.busy.get(id) === 'stop-run';
-    return html`<div class="run" data-run=${run.state} data-exit=${run.status ?? nothing} ?data-exit-warn=${warn} aria-live="polite">
-      <div class="line">${live ? html`<swc-progress-circle size="s" indeterminate label="Running" aria-hidden="true"></swc-progress-circle>` : nothing}<span data-run-line>${commandText(runOutcome(run, this.now), false)}</span></div>
+    const [said, ticking] = runParts(run, this.now);
+    return html`<div class="run" data-run=${run.state} data-exit=${run.status ?? nothing} ?data-exit-warn=${warn}>
+      <div class="line">${live ? html`<swc-progress-circle size="s" indeterminate label="Running" aria-hidden="true"></swc-progress-circle>` : nothing}<span data-run-line><span aria-live="polite" data-run-said>${commandText(said, false)}</span>${ticking ? html`<span aria-hidden="true" data-run-elapsed>${ticking}</span>` : nothing}</span></div>
       <span class="run-by">${runBy(run, this.now)}</span>
       <div class="actions">
         ${run.state === 'running' && port?.stopRun ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="stop-run" ?pending=${stopping} @click=${() => void this.stopRun(id)}>Stop</swc-button>` : nothing}

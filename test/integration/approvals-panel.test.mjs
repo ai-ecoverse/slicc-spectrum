@@ -481,3 +481,100 @@ test('a resize re-arms Allow and Run now, so a click right after it is ignored',
   await page.until(() => window.model.approvals.past.runs.includes('apr-late'));
   assert.deepEqual(page.errors, []);
 });
+
+test('a run that a history listener finishes at once still ends done', async (t) => {
+  const page = await open(chrome, t);
+  await answerDialog(page);
+  await showPanel(page);
+  await filter(page, 'timed-out');
+  await page.evaluate(() => {
+    const past = window.model.approvals.past;
+    past.runTicks = null;
+    window.model.approvals.on('history', (records) => {
+      const run = records.find((record) => record.approval.id === 'apr-late').run;
+      if (run?.state === 'running') past.finish('apr-late');
+    });
+    return true;
+  });
+  await press(page, () => window.inRow('apr-late', '[data-action=run-now]'));
+  await page.until(() => window.part('dialog[data-run-confirm]')?.open);
+  await page.until(() => !window.part('dialog [data-action=run-confirm]').hasAttribute('disabled'));
+  await armed(page, 'dialog [slot=button]');
+  await press(page, () => window.part('dialog [data-action=run-confirm]'));
+  await page.until(() => window.inRow('apr-late', '[data-run=done]'));
+  await page.until(
+    () =>
+      window.model.agent
+        .messages('scoop-otter')
+        .filter((message) => message.channel === 'sudo-run' && message.approval === 'apr-late')
+        .length === 2
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a running run announces its state once, not every tick of its time', async (t) => {
+  const page = await open(chrome, t);
+  await answerDialog(page);
+  await showPanel(page);
+  await filter(page, 'timed-out');
+  await page.until(() => !!window.inRow('apr-running', '[data-run-said]'));
+  const read = () =>
+    page.evaluate(() => {
+      const run = window.inRow('apr-running', '[data-run]');
+      return {
+        live: [...run.querySelectorAll('[aria-live]')].map((node) => node.textContent),
+        hidden: run.querySelector('[data-run-elapsed]').getAttribute('aria-hidden'),
+        line: run.querySelector('[data-run-line]').textContent,
+        outer: run.hasAttribute('aria-live'),
+      };
+    });
+  const first = await read();
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  const second = await read();
+  assert.deepEqual(first.live, ['Running · pid 640']);
+  assert.deepEqual(second.live, ['Running · pid 640']);
+  assert.equal(first.hidden, 'true');
+  assert.equal(first.outer, false);
+  assert.notEqual(first.line, second.line);
+  assert.match(second.line, /^Running · pid 640 · \d+:\d\d$/);
+  assert.deepEqual(page.errors, []);
+});
+
+test('the revealed row loses its mark once the reader clicks or types in the panel', async (t) => {
+  const page = await open(chrome, t);
+  await answerDialog(page);
+  await showPanel(page);
+  await page.evaluate(() => {
+    window.panel().reveal('apr-exit');
+    return true;
+  });
+  await page.until(() => window.row('apr-exit')?.hasAttribute('data-highlight'));
+  await page.until(() => window.panel().shadowRoot.activeElement === window.row('apr-exit'));
+  await page.evaluate(() => {
+    window.inRow('apr-exit', '[data-action=view-output]').focus();
+    return true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(
+    await page.evaluate(() => window.row('apr-exit').hasAttribute('data-highlight')),
+    true
+  );
+  await press(page, () => window.part('[data-filter=timed-out]'));
+  await page.until(() => !window.row('apr-exit')?.hasAttribute('data-highlight'));
+  await page.evaluate(() => {
+    window.panel().reveal('apr-done');
+    return true;
+  });
+  await page.until(() => window.row('apr-done')?.hasAttribute('data-highlight'));
+  await press(page, () => window.inRow('apr-late', '.head'));
+  await page.until(() => !window.row('apr-done').hasAttribute('data-highlight'));
+  await page.evaluate(() => {
+    window.panel().reveal('apr-failed');
+    return true;
+  });
+  await page.until(() => window.row('apr-failed')?.hasAttribute('data-highlight'));
+  await page.until(() => window.panel().shadowRoot.activeElement === window.row('apr-failed'));
+  await page.press('ArrowDown');
+  await page.until(() => !window.row('apr-failed').hasAttribute('data-highlight'));
+  assert.deepEqual(page.errors, []);
+});
