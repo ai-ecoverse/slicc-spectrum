@@ -514,7 +514,6 @@ export class SliccApprovals extends ModelElement {
       }
       .later {
         margin-block-start: var(--swc-spacing-200);
-        font-weight: var(--swc-bold-font-weight);
       }
       .notes {
         display: flex;
@@ -992,7 +991,7 @@ export class SliccApprovals extends ModelElement {
           <h2 id="title" slot="heading">${titles[approval.kind][reason]}</h2>
           ${this.#request(approval)}
           ${reason === 'expired' ? html`<p class="timer" data-timer>${approval.kind === 'click' ? 'Cancelled because nobody clicked in time.' : 'Denied because nobody answered in time.'}</p>` : nothing}
-          ${later ? html`<p class="later" data-run-later>Timed out: Run now in Approvals</p>` : nothing}
+          ${later ? html`<p class="later" data-run-later>You can still run it from Approvals.</p>` : nothing}
           <swc-button slot="button" variant="secondary" fill-style="outline" data-action="close" @click=${() => this.close()}>Close</swc-button>
           ${later ? html`<swc-button slot="button" variant="accent" data-action="open-approvals" @click=${() => this.#later(approval)}>Open Approvals</swc-button>` : nothing}
         </sp-alert-dialog>`

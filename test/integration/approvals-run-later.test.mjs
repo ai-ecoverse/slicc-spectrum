@@ -17,7 +17,7 @@ test('a sudo request that times out offers Run now in Approvals from the dialog'
   await page.until(() => window.dialog()?.dataset.gone === 'expired');
   assert.equal(
     await page.evaluate(() => window.dialog().querySelector('[data-run-later]').textContent),
-    'Timed out: Run now in Approvals'
+    'You can still run it from Approvals.'
   );
   await clickApproval(page, 'open-approvals');
   await page.until(() => window.row('apr-open')?.hasAttribute('data-highlight'));
