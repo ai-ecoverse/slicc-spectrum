@@ -1097,9 +1097,13 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
     this.emit('status', this.#status);
   }
 
-  async cancel(request: string): Promise<RequestState> {
+  async cancel(request: string, only?: PendingRequest): Promise<RequestState> {
     await this.#time.sleep(5);
     this.#failed();
+    if (only !== undefined && this.ask(request) !== only) {
+      this.cancelled.push(request);
+      return 'cancelled';
+    }
     if (!this.#ended(request)) this.#take(request);
     this.cancelled.push(request);
     return 'cancelled';
