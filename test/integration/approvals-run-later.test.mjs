@@ -69,3 +69,41 @@ test('the dialog says nothing about Approvals when the app doesn’t offer the p
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('the dialog promises Run now only while the request’s record is runnable', async (t) => {
+  const page = await open(chrome, t);
+  await page.until(() => window.dialog()?.dataset.approval === 'apr-open');
+  await page.evaluate(() => {
+    const port = window.model.approvals;
+    const history = port.history;
+    window.runnable = { reason: 'Thaw harbor first.' };
+    port.history = () =>
+      history().map((record) =>
+        record.approval.id === 'apr-open' ? { ...record, runnable: window.runnable } : record
+      );
+    port.end('apr-open', 'expired');
+    return true;
+  });
+  await page.until(() => window.dialog()?.dataset.gone === 'expired');
+  const shown = () =>
+    page.evaluate(() => [
+      !!window.dialog().querySelector('[data-run-later]'),
+      !!window.dialog().querySelector('[data-action=open-approvals]'),
+    ]);
+  assert.deepEqual(await shown(), [false, false]);
+  await page.evaluate(() => {
+    window.runnable = undefined;
+    window.model.approvals.emit('history', window.model.approvals.history());
+    return true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(await shown(), [false, false]);
+  await page.evaluate(() => {
+    window.runnable = true;
+    window.model.approvals.emit('history', window.model.approvals.history());
+    return true;
+  });
+  await page.until(() => !!window.dialog().querySelector('[data-run-later]'));
+  assert.deepEqual(await shown(), [true, true]);
+  assert.deepEqual(page.errors, []);
+});

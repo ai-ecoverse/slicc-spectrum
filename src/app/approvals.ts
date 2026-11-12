@@ -387,7 +387,7 @@ export function runsLater(approval: Approval, port: ApprovalsPort | undefined): 
     approval.requester.kind === 'agent' &&
     !!approval.requester.agentId &&
     !!port?.run &&
-    !!port.history
+    port.history?.().find((record) => record.approval.id === approval.id)?.runnable === true
   );
 }
 
@@ -664,6 +664,7 @@ export class SliccApprovals extends ModelElement {
     }
     if (!port) return [];
     return [
+      port.on('history', () => this.requestUpdate()),
       port.on('approvals', () => {
         this.now = Date.now();
         this.requestUpdate();
