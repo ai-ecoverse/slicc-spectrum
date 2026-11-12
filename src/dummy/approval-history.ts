@@ -77,6 +77,10 @@ export function historyFixtures(now = Date.now()): ApprovalRecord[] {
     cwd: '/home/cone',
     verdict: { level: 2, aligned: true, reason: 'It renews the TLS certificates.' },
   });
+  const survivors = sudo('apr-survivors', sliccy, 'setsid sleep 3600 &', ago(70), {
+    cwd: '/home/cone',
+    verdict: { level: 2, aligned: true, reason: 'It starts a background job.' },
+  });
   const exited = sudo('apr-exit', heron, 'make -C /opt/harbor install', ago(300), {
     target: 'www-data',
     verdict: { level: 2, aligned: true, reason: 'It installs the harbor build.' },
@@ -121,6 +125,20 @@ export function historyFixtures(now = Date.now()): ApprovalRecord[] {
         pid: 702,
         status: 0,
         ...runOutput('apr-done'),
+      },
+    },
+    {
+      approval: survivors,
+      ...timedOut(survivors),
+      run: {
+        state: 'done',
+        by: 'you',
+        at: ago(55),
+        endedAt: ago(55) + 12_000,
+        pid: 910,
+        status: 0,
+        survivors: [1234, 5678],
+        ...runOutput('apr-survivors'),
       },
     },
     { approval: moved, ...timedOut(moved), runnable: true },
@@ -177,6 +195,8 @@ export const runFiles: Record<string, string> = {
   [`${runsDir}/apr-done.out`]:
     'Processing /etc/letsencrypt/renewal/harbor.example.conf\nCongratulations, all renewals succeeded.\n',
   [`${runsDir}/apr-done.err`]: '',
+  [`${runsDir}/apr-survivors.out`]: 'setsid sleep 3600 &\n',
+  [`${runsDir}/apr-survivors.err`]: '',
   [`${runsDir}/apr-exit.out`]: 'install -d /opt/harbor/bin\n',
   [`${runsDir}/apr-exit.err`]:
     'install: cannot create directory /opt/harbor/bin: Permission denied\nmake: *** [install] Error 2\n',
@@ -287,9 +307,19 @@ export class DummyHistory {
 
   async stopRun(id: string): Promise<void> {
     await this.#time.sleep(5);
-    if (this.#find(id)?.run?.state !== 'running') throw new Error('This run already ended.');
+    const run = this.#find(id)?.run;
+    if (run?.state === 'running') {
+      this.stops.push(id);
+      this.#end(id, true);
+      return;
+    }
+    if (!(run?.survivors && run.survivors.length > 0)) throw new Error('This run already ended.');
     this.stops.push(id);
-    this.#end(id, true);
+    await this.#time.sleep(30);
+    const current = this.#find(id)?.run;
+    if (!current?.survivors?.length) return;
+    const { survivors: _gone, ...rest } = current;
+    this.#update(id, { run: rest });
   }
 
   finish(id: string): void {

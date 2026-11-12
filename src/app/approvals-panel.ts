@@ -150,6 +150,20 @@ export function runBy(run: ApprovalRun, now = Date.now()): string {
   return `Run now by ${run.by}${run.device ? ` on ${run.device}` : ''}, ${since(run.at, now)}`;
 }
 
+export function hasSurvivors(run: ApprovalRun | undefined): boolean {
+  return (run?.survivors?.length ?? 0) > 0;
+}
+
+export function survivorsLine(run: ApprovalRun): string {
+  const survivors = run.survivors;
+  if (!survivors?.length) return '';
+  return `Still running: pid ${survivors.join(', ')}`;
+}
+
+export function canStopRun(run: ApprovalRun | undefined, port: ApprovalsPort | undefined): boolean {
+  return !!port?.stopRun && (run?.state === 'running' || hasSurvivors(run));
+}
+
 export function runSentence(approval: SudoApproval): string {
   return `Runs as ${approval.target ?? 'root'} now, without a terminal or input. ${approval.requester.name} will be told when it starts and when it ends.`;
 }
@@ -351,6 +365,7 @@ export class SliccApprovalsPanel extends ModelElement {
       .place,
       .decided,
       .run-by,
+      [data-survivors],
       .note {
         color: var(--swc-neutral-subdued-content-color-default);
         overflow-wrap: anywhere;
@@ -601,9 +616,9 @@ export class SliccApprovalsPanel extends ModelElement {
 
   stopRun(id: string): Promise<void> {
     const port = this.model?.approvals;
-    if (!port?.stopRun || this.#record(id)?.run?.state !== 'running') return Promise.resolve();
-    const stop = port.stopRun.bind(port);
-    return this.#act(id, 'stop-run', () => stop(id));
+    const stop = port?.stopRun;
+    if (!stop || !canStopRun(this.#record(id)?.run, port)) return Promise.resolve();
+    return this.#act(id, 'stop-run', () => stop.call(port, id));
   }
 
   #open(path: string): void {
@@ -717,11 +732,13 @@ export class SliccApprovalsPanel extends ModelElement {
     const port = this.model?.approvals;
     const stopping = this.busy.get(id) === 'stop-run';
     const [said, ticking] = runParts(run, this.now);
+    const survivors = survivorsLine(run);
     return html`<div class="run" data-run=${run.state} data-exit=${run.status ?? nothing} ?data-exit-warn=${warn}>
       <div class="line">${live ? html`<swc-progress-circle size="s" indeterminate label="Running" aria-hidden="true"></swc-progress-circle>` : nothing}<span data-run-line><span aria-live="polite" data-run-said>${commandText(said, false)}</span>${ticking ? html`<span aria-hidden="true" data-run-elapsed>${ticking}</span>` : nothing}</span></div>
       <span class="run-by">${runBy(run, this.now)}</span>
+      ${survivors ? html`<span data-survivors>${commandText(survivors, false)}</span>` : nothing}
       <div class="actions">
-        ${run.state === 'running' && port?.stopRun ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="stop-run" ?pending=${stopping} @click=${() => void this.stopRun(id)}>Stop</swc-button>` : nothing}
+        ${canStopRun(run, port) ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="stop-run" ?pending=${stopping} @click=${() => void this.stopRun(id)}>Stop</swc-button>` : nothing}
         ${!live && run.stdout ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="view-output" @click=${() => this.#open(run.stdout as string)}>View output</swc-button>` : nothing}
         ${!live && run.stderr ? html`<swc-button size="s" variant="secondary" fill-style="outline" data-action="view-errors" @click=${() => this.#open(run.stderr as string)}>View errors</swc-button>` : nothing}
       </div>

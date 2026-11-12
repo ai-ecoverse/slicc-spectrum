@@ -1338,6 +1338,7 @@ export interface ApprovalRun {
   error?: string;
   stdout?: string;
   stderr?: string;
+  survivors?: readonly number[];
 }
 
 export interface ApprovalRecord {
