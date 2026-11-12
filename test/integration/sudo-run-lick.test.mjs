@@ -70,3 +70,25 @@ test('a sudo-run lick has no link when the app doesn’t offer the Approvals pan
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('the Show in Approvals link follows the app’s surfaces while the chat shows', async (t) => {
+  const page = await open(chrome, t);
+  await answerDialog(page);
+  await page.evaluate(() => {
+    window.model.agent.select('cone-kitchen');
+    return true;
+  });
+  await page.until(() => !!window.chatPart('[data-action=show-approval]'));
+  const flip = (offered) =>
+    page.evaluate(async (offered) => {
+      const { surfaces } = await import('/dist/slicc-ui.js');
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      window.app.surfaces = offered ? surfaces : surfaces.filter((item) => item.id !== 'approvals');
+      await window.app.updateComplete;
+      await window.chatPart().updateComplete;
+      return !!window.chatPart('[data-action=show-approval]');
+    }, offered);
+  assert.equal(await flip(false), false);
+  assert.equal(await flip(true), true);
+  assert.deepEqual(page.errors, []);
+});

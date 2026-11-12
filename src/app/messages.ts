@@ -1115,7 +1115,7 @@ function reactions(
 function runLink(message: LickMessage, handlers: Handlers): TemplateResult | typeof nothing {
   const id = message.approval;
   if (message.channel !== 'sudo-run' || !id || !handlers.offers?.('approvals')) return nothing;
-  return html`<swc-action-button size="s" quiet class="run-link" data-action="show-approval" data-approval=${id} @click=${() => handlers.show('approvals', id)}>Show in Approvals</swc-action-button>`;
+  return html`<swc-action-button size="s" quiet class="run-link" data-action="show-approval" data-approval=${id} @click=${() => handlers.offers?.('approvals') && handlers.show('approvals', id)}>Show in Approvals</swc-action-button>`;
 }
 
 export function lick(message: LickMessage, handlers: Handlers, stamp = true): TemplateResult {

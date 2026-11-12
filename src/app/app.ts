@@ -1,4 +1,4 @@
-import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
+import { css, html, type LitElement, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { ifDefined } from 'lit/directives/if-defined.js';
 import { keyed } from 'lit/directives/keyed.js';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
@@ -533,6 +533,7 @@ export class SliccApp extends ThemedElement {
     this.#painted = color;
     const model = this.model;
     if (!model) return;
+    if (changed.has('surfaces') && this.#started) this.#resurface();
     this.panels.quietly(() => {
       const layout = this.#started !== this.screen;
       if (layout) this.#start(model);
@@ -540,6 +541,10 @@ export class SliccApp extends ThemedElement {
       this.#updates(layout);
       this.#retitle();
     });
+  }
+
+  #resurface(): void {
+    for (const id of chats(this.dock)) (this.dock.content(id) as LitElement).requestUpdate();
   }
 
   #retitle(): void {
