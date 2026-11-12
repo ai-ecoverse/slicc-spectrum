@@ -535,6 +535,7 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
   #fail: boolean;
   #vault: DummyVault | undefined;
   #quiet = new Set<string>();
+  #generations = new Map<string, number>();
   decisions: Array<[string, ApprovalDecision]> = [];
   decide?: (id: string, decision: ApprovalDecision) => Promise<void>;
   past?: DummyHistory;
@@ -587,10 +588,15 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
   }
 
   raise(approval: Approval): void {
+    this.#generations.set(approval.id, (this.#generations.get(approval.id) ?? 0) + 1);
     this.past?.raise(approval);
     if (approval.kind === 'secret') this.#vault?.hold(pendingAsk(approval));
     this.#approvals = [...this.#approvals.filter(({ id }) => id !== approval.id), approval];
     this.emit('approvals', this.list());
+  }
+
+  #generation(id: string): number {
+    return this.#generations.get(id) ?? 0;
   }
 
   #left(waiting: readonly PendingRequest[]): void {
@@ -620,18 +626,27 @@ export class DummyApprovals extends Emitter<ApprovalsEvents> implements Approval
   }
 
   async #decide(id: string, decision: ApprovalDecision): Promise<void> {
+    const generation = this.#generation(id);
+    const pastGeneration = this.past?.generation(id);
     await this.#time.sleep(10);
     if (this.#fail) throw new Error('The kernel stopped waiting. Run the command again.');
     if (id === 'guest-late') throw new Error('Someone else already answered this.');
+    if (this.#generation(id) !== generation) return;
     const approval = this.#approvals.find((item) => item.id === id);
     if (approval?.kind === 'secret' && decision !== 'deny')
       throw new Error('Save or Allow in the vault’s frame.');
     this.decisions.push([id, decision]);
-    this.past?.decided(id, decision);
-    if (approval?.kind === 'secret' && this.#vault?.ask(id)) {
+    this.past?.decided(id, decision, pastGeneration);
+    const ask = approval?.kind === 'secret' ? this.#vault?.ask(id) : undefined;
+    if (ask && this.#vault) {
       this.#quiet.add(id);
-      await this.#vault.cancel(id);
+      await this.#vault.cancel(id, ask);
+      if (this.#generation(id) !== generation) {
+        this.#quiet.delete(id);
+        return;
+      }
     }
+    if (this.#generation(id) !== generation) return;
     if (decision === 'stop' && approval?.kind === 'sudo' && approval.stoppable)
       this.#stop(approval);
     else this.end(id, 'answered');
