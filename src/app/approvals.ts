@@ -381,6 +381,16 @@ function identity(approval: Approval): string {
   return JSON.stringify([approval.kind, approval.createdAt, approved(approval), ...extra]);
 }
 
+export function runsLater(approval: Approval, port: ApprovalsPort | undefined): boolean {
+  return (
+    approval.kind === 'sudo' &&
+    approval.requester.kind === 'agent' &&
+    !!approval.requester.agentId &&
+    !!port?.run &&
+    !!port.history
+  );
+}
+
 function gone(reason: ApprovalEnd): 'elsewhere' | 'expired' {
   return reason === 'expired' ? 'expired' : 'elsewhere';
 }
@@ -501,6 +511,10 @@ export class SliccApprovals extends ModelElement {
       }
       .more {
         min-block-size: 1lh;
+      }
+      .later {
+        margin-block-start: var(--swc-spacing-200);
+        font-weight: var(--swc-bold-font-weight);
       }
       .notes {
         display: flex;
@@ -825,6 +839,17 @@ export class SliccApprovals extends ModelElement {
     this.#showing = null;
   }
 
+  #later(approval: Approval): void {
+    this.close();
+    this.dispatchEvent(
+      new CustomEvent('show-surface', {
+        detail: { id: 'approvals', section: approval.id },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
   #value(event: CustomEvent<ValueDetail>, approval: SecretApproval): void {
     const detail = event.detail;
     if (detail.event === 'escape') {
@@ -958,20 +983,24 @@ export class SliccApprovals extends ModelElement {
       ${answerable(approval, 'once') ? this.#button(approval, 'once', click ? approval.action : 'Allow once', 'accent') : nothing}`;
   }
 
-  render(): unknown {
-    if (this.gone) {
-      const { approval, reason } = this.gone;
-      return this.#dialog(
-        approval,
-        `gone:${approval.id}`,
-        html`<sp-alert-dialog variant="information" data-approval-kind=${approval.kind}>
+  #goneDialog(approval: Approval, reason: 'elsewhere' | 'expired'): unknown {
+    const later = reason === 'expired' && runsLater(approval, this.model?.approvals);
+    return this.#dialog(
+      approval,
+      `gone:${approval.id}`,
+      html`<sp-alert-dialog variant="information" data-approval-kind=${approval.kind}>
           <h2 id="title" slot="heading">${titles[approval.kind][reason]}</h2>
           ${this.#request(approval)}
           ${reason === 'expired' ? html`<p class="timer" data-timer>${approval.kind === 'click' ? 'Cancelled because nobody clicked in time.' : 'Denied because nobody answered in time.'}</p>` : nothing}
+          ${later ? html`<p class="later" data-run-later>Timed out: Run now in Approvals</p>` : nothing}
           <swc-button slot="button" variant="secondary" fill-style="outline" data-action="close" @click=${() => this.close()}>Close</swc-button>
+          ${later ? html`<swc-button slot="button" variant="accent" data-action="open-approvals" @click=${() => this.#later(approval)}>Open Approvals</swc-button>` : nothing}
         </sp-alert-dialog>`
-      );
-    }
+    );
+  }
+
+  render(): unknown {
+    if (this.gone) return this.#goneDialog(this.gone.approval, this.gone.reason);
     const held = this.#showing && this.#pending.has(this.#showing.id) ? this.#showing : null;
     const list = this.#current();
     const [approval, ...rest] = held ? [held, ...list.filter(({ id }) => id !== held.id)] : list;
