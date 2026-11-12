@@ -69,7 +69,14 @@ function session(now: number): ActionDraft[] {
 export function browserHistory(scenario: BrowserScenario, now = Date.now()): ActionDraft[] {
   if (scenario === 'off') return [];
   const harbor = { tabId: 'tab-preview', agentId: 'cone-harbor' };
-  const otter = { tabId: 'tab-pull', agentId: 'scoop-otter' };
+  const otter = {
+    tabId: 'tab-pull',
+    agentId: 'scoop-otter',
+    intent: 'Reviewing the tide pull request',
+  };
+  const opening = { ...harbor, intent: 'Opening the forecast preview' };
+  const searching = { ...harbor, intent: 'Looking up the Lisbon forecast' };
+  const tomorrow = { ...harbor, intent: 'Opening tomorrow’s forecast' };
   return [
     {
       ...otter,
@@ -81,13 +88,13 @@ export function browserHistory(scenario: BrowserScenario, now = Date.now()): Act
     { ...otter, kind: 'scroll', at: now - 290 * second },
     { ...otter, kind: 'screenshot', at: now - 288 * second },
     ...session(now),
-    { ...harbor, kind: 'open', value: 'http://localhost:8787/', at: now - 120 * second },
-    { ...harbor, kind: 'snapshot', at: now - 116 * second },
-    { ...harbor, kind: 'type', target: 'textbox "City"', length: 6, at: now - 110 * second },
-    { ...harbor, kind: 'click', target: 'button "Show forecast"', at: now - 106 * second },
-    { ...harbor, kind: 'snapshot', at: now - 100 * second },
+    { ...opening, kind: 'open', value: 'http://localhost:8787/', at: now - 120 * second },
+    { ...opening, kind: 'snapshot', at: now - 116 * second },
+    { ...searching, kind: 'type', target: 'textbox "City"', length: 6, at: now - 110 * second },
+    { ...searching, kind: 'click', target: 'button "Show forecast"', at: now - 106 * second },
+    { ...tomorrow, kind: 'snapshot', at: now - 100 * second },
     {
-      ...harbor,
+      ...tomorrow,
       kind: 'click',
       target: 'link "Tomorrow"',
       status: 'failed',
@@ -106,10 +113,16 @@ export function browserHistory(scenario: BrowserScenario, now = Date.now()): Act
   ];
 }
 
+const comparing = {
+  tabId: 'tab-preview',
+  agentId: 'cone-harbor',
+  intent: 'Comparing the port forecasts',
+};
+
 export const drive: readonly ActionDraft[] = [
-  { tabId: 'tab-preview', agentId: 'cone-harbor', kind: 'scroll' },
-  { tabId: 'tab-preview', agentId: 'cone-harbor', kind: 'screenshot' },
-  { tabId: 'tab-preview', agentId: 'cone-harbor', kind: 'click', target: 'button "Compare ports"' },
+  { ...comparing, kind: 'scroll' },
+  { ...comparing, kind: 'screenshot' },
+  { ...comparing, kind: 'click', target: 'button "Compare ports"' },
 ];
 
 export class DummyBrowser extends Emitter<BrowserEvents> implements BrowserPort {

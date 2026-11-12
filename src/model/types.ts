@@ -465,6 +465,7 @@ export interface BrowserAction {
   target?: string;
   value?: string;
   length?: number;
+  intent?: string;
   status: 'running' | 'done' | 'failed';
   error?: string;
   at: number;
