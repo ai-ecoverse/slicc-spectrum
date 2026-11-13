@@ -132,9 +132,10 @@ test('a step label with emoji keeps ⚠️ and a ZWJ sequence, with no chip', as
     return true;
   }, label);
   await page.until(
-    () =>
+    (text) =>
       window.chatPart('swc-conversation-turn[data-id=emoji-run] slicc-status-label')
-        ?.textContent === label
+        ?.textContent === text,
+    label
   );
   await page.evaluate(() =>
     window
@@ -142,7 +143,7 @@ test('a step label with emoji keeps ⚠️ and a ZWJ sequence, with no chip', as
       .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
       .click()
   );
-  await page.until(() => window.chatPart('#label-emoji-1')?.textContent === label);
+  await page.until((text) => window.chatPart('#label-emoji-1')?.textContent === text, label);
   assert.deepEqual(
     await page.evaluate((text) => {
       const header = window.chatPart('swc-conversation-turn[data-id=emoji-run] slicc-status-label');

@@ -20,8 +20,7 @@ export const controlStyles = css`
 export type CommandDisplayOptions = { emoji?: boolean };
 
 const strict = /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029]/u;
-const soft =
-  /(?![\u200D\uFE0E\uFE0F\u{E0020}-\u{E007F}])[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029]/u;
+const soft = /(?![\u200D\uFE0E\uFE0F])[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029]/u;
 const pattern = (options: CommandDisplayOptions = {}) => (options.emoji ? soft : strict);
 const notation = (char: string) =>
   `U+${(char.codePointAt(0) as number).toString(16).toUpperCase().padStart(4, '0')}`;
