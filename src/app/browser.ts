@@ -34,7 +34,7 @@ import type {
   SliccModel,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
-import { commandText, controlStyles, displayCommand } from './command-display.ts';
+import { controlStyles, displayLabel, labelText } from './command-display.ts';
 import { agentName } from './files.ts';
 import { onWatch, watchOnly } from './follow.ts';
 import { IntentHold, intentText } from './intent.ts';
@@ -1120,6 +1120,10 @@ export class SliccBrowser extends ModelElement {
       : 'In use';
   }
 
+  #intent(text: string): TemplateResult {
+    return html`<span class="intent" title=${displayLabel(text)}>${labelText(text)}</span>`;
+  }
+
   #stopButton(tab: BrowserTab, refocus: string): TemplateResult | typeof nothing {
     if (!tab.agentId || watchOnly(this.model)) return nothing;
     const agentId = tab.agentId;
@@ -1132,6 +1136,8 @@ export class SliccBrowser extends ModelElement {
     const current = tab.id === active;
     const loading = tab.status === 'loading';
     const intent = this.#intents.shown(this.#driver(tab));
+    const label = intent ? this.#intent(intent) : nothing;
+    const driving = html`<div class="driving"><swc-status-light size="s" variant="info" title=${this.#who(tab)}><span>${this.#who(tab)}</span></swc-status-light>${this.#stopButton(tab, `li[data-id="${tab.id}"] .window`)}</div>${label}`;
     return html`<li data-id=${tab.id} ?data-controlled=${tab.controlled} ?data-pulse=${this.#pulse.has(tab.id)}>
       <button class="window" aria-current=${current ? 'true' : 'false'} title=${tab.url} @click=${() => this.#show(tab.id)}>
         <span class="thumb">
@@ -1152,7 +1158,7 @@ export class SliccBrowser extends ModelElement {
       </button>
       ${
         tab.controlled
-          ? html`<div class="driving"><swc-status-light size="s" variant="info" title=${this.#who(tab)}><span>${this.#who(tab)}</span></swc-status-light>${this.#stopButton(tab, `li[data-id="${tab.id}"] .window`)}</div>${intent ? html`<span class="intent" title=${displayCommand(intent)}>${commandText(intent, false)}</span>` : nothing}`
+          ? driving
           : tab.agentId
             ? html`<span class="driver">Last used by ${agentName(model, tab.agentId)}</span>`
             : nothing
@@ -1290,7 +1296,7 @@ export class SliccBrowser extends ModelElement {
       }</span>
       ${
         intent
-          ? html`<span class="what"><span class="intent">${commandText(intent, false)}</span><span class="steps">${(steps as FoldedAction[]).map((step) => this.#step(step))}</span></span>`
+          ? html`<span class="what">${this.#intent(intent)}<span class="steps">${(steps as FoldedAction[]).map((step) => this.#step(step))}</span></span>`
           : html`<span class="what">${this.#what(action)}${
               count > 1 ? html`<span class="count">×${count}</span>` : nothing
             }${failed && action.error ? html`<span class="failure">${action.error}</span>` : nothing}</span>`
@@ -1355,12 +1361,12 @@ export class SliccBrowser extends ModelElement {
         <div class="driving" data-driving=${tab.controlled ? (tab.agentId ? 'agent' : 'user') : 'none'}>
           ${
             intent
-              ? html`<swc-status-light size="m" variant="info" title=${`${watching} · ${displayCommand(intent)}`}><span>${watching} <span aria-hidden="true">·</span> <span class="intent">${commandText(intent, false)}</span></span></swc-status-light>`
+              ? html`<swc-status-light size="m" variant="info" title=${`${watching} · ${displayLabel(intent)}`}><span>${watching} <span aria-hidden="true">·</span> ${this.#intent(intent)}</span></swc-status-light>`
               : html`<swc-status-light size="m" variant=${tab.controlled ? 'info' : 'neutral'}>${watching}</swc-status-light>`
           }
           ${tab.controlled ? this.#stopButton(tab, '[data-action="all-tabs"]') : nothing}
         </div>
-        <span class="sr" role="status" aria-live="polite" data-intent-announce>${commandText(this.#said, false)}</span>
+        <span class="sr" role="status" aria-live="polite" data-intent-announce>${labelText(this.#said)}</span>
         ${this.#view(tab)}
         ${this.#actions(tab)}
       </section>

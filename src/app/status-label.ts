@@ -1,7 +1,8 @@
 import { html, LitElement, type TemplateResult } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import type { AgentPort, SliccModel, ToolCall } from '../model/types.ts';
-import { guard } from './guard.ts';
+import { displayLabel } from './command-display.ts';
+import { modelText } from './guard.ts';
 import { askStep, StepWatch, stepLabel } from './step-labels.ts';
 import { rawTitle } from './tool-title.ts';
 
@@ -114,7 +115,7 @@ export class SliccStatusLabel extends LitElement {
       )
       .then(
         (text) => {
-          const label = guard(text?.trim() ?? '');
+          const label = modelText(text?.trim() ?? '');
           if (!label) return;
           store.done.set(key, label);
           store.latest.set(anchor, label);
@@ -166,6 +167,7 @@ export class SliccStatusLabel extends LitElement {
   }
 
   render(): TemplateResult {
-    return html`${keyed(this.#shown, html`<span>${this.#shown}</span>`)}`;
+    const shown = displayLabel(this.#shown);
+    return html`${keyed(this.#shown, html`<span title=${shown}>${shown}</span>`)}`;
   }
 }

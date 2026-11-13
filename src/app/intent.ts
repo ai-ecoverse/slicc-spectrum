@@ -1,18 +1,10 @@
-import { guard } from './guard.ts';
+import { modelText } from './guard.ts';
 
 export const intentLimit = 80;
 export const intentHold = 1000;
 
 export function intentText(value: unknown): string {
-  if (typeof value !== 'string') return '';
-  const raw = value.replace(/[\p{Cc}\s]+/gu, ' ').trim();
-  const plain = raw
-    .replace(/[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu, '')
-    .normalize('NFKC')
-    .replace(/\s+/gu, ' ')
-    .trim();
-  const cut = guard(plain);
-  const text = cut === plain ? raw : cut;
+  const text = modelText(value);
   if (text.length <= intentLimit) return text;
   let kept = '';
   for (const { segment } of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(

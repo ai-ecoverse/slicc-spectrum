@@ -421,6 +421,65 @@ test('bidi and other format controls in an intent show as visible chips, not reo
   assert.deepEqual(page.errors, []);
 });
 
+test('an intent keeps ⚠️ and a ZWJ sequence, and still chips an emoji tag character', async (t) => {
+  const page = await open(t);
+  const intent = '⚠️ Checking \u{1F469}\u200D\u{1F4BB} and \u{E0041}\u{E0042} text';
+  const shown = '⚠️ Checking \u{1F469}\u200D\u{1F4BB} and U+E0041U+E0042 text';
+  await page.evaluate((value) => {
+    window.drive({
+      kind: 'click',
+      target: 'button "Check"',
+      intent: value,
+    });
+    return true;
+  }, intent);
+  await page.until(() => !!window.inBrowser('.driving .intent .control'));
+  const chips = [
+    ['img', 'U+E0041', 'U+E0041'],
+    ['img', 'U+E0042', 'U+E0042'],
+  ];
+  const read = () =>
+    page.evaluate(() => {
+      const list = (node) =>
+        [...node.querySelectorAll('.control')].map((chip) => [
+          chip.getAttribute('role'),
+          chip.getAttribute('aria-label'),
+          chip.textContent,
+        ]);
+      const driving = window.inBrowser('.driving .intent');
+      const row = window.inBrowser('.actions > li .what > .intent');
+      const said = window.inBrowser('[data-intent-announce]');
+      const card = window.inBrowser('li[data-id=tab-preview] .intent');
+      return {
+        text: [driving, row, said, card].filter(Boolean).map((node) => node.textContent),
+        chips: [driving, row, said, card].filter(Boolean).map(list),
+        titles: [window.inBrowser('.driving swc-status-light')?.title, card?.title].filter(Boolean),
+        hasGlue: [driving, row, said, card]
+          .filter(Boolean)
+          .some(
+            (node) =>
+              node.innerHTML.includes('U+FE0F') ||
+              node.innerHTML.includes('U+200D') ||
+              node.textContent.includes('U+FE0F') ||
+              node.textContent.includes('U+200D')
+          ),
+      };
+    });
+  const focused = await read();
+  assert.deepEqual(focused.chips, [chips, chips, chips]);
+  assert.deepEqual(focused.text, [shown, shown, shown]);
+  assert.deepEqual(focused.titles, [`Watching harbor · ${shown}`]);
+  assert.equal(focused.hasGlue, false);
+  await page.evaluate(() => window.inBrowser('[data-action=all-tabs]').click());
+  await page.until(() => !!window.inBrowser('li[data-id=tab-preview] .intent .control'));
+  const cards = await read();
+  assert.deepEqual(cards.chips, [chips]);
+  assert.deepEqual(cards.text, [shown]);
+  assert.deepEqual(cards.titles, ['harbor is using this tab', shown]);
+  assert.equal(cards.hasGlue, false);
+  assert.deepEqual(page.errors, []);
+});
+
 test('a secret-shaped word split by invisible characters is still cut', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {

@@ -1,5 +1,5 @@
 import type { AgentPort } from '../model/types.ts';
-import { guard } from './guard.ts';
+import { modelText } from './guard.ts';
 
 interface Steps {
   labels: Map<string, string>;
@@ -29,7 +29,7 @@ export function askStep(port: AgentPort | undefined, agent: string, id: string):
   steps.asked.add(key);
   port.stepLabel(agent, id).then(
     (text) => {
-      const label = guard(text?.trim() ?? '');
+      const label = modelText(text?.trim() ?? '');
       if (!label) return;
       steps.labels.set(key, label);
       for (const heard of [...(steps.heard.get(key) ?? [])]) heard();
