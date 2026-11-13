@@ -14,7 +14,14 @@ export function intentText(value: unknown): string {
   const cut = guard(plain);
   const text = cut === plain ? raw : cut;
   if (text.length <= intentLimit) return text;
-  return `${text.slice(0, intentLimit - 2).trimEnd()} …`;
+  let kept = '';
+  for (const { segment } of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(
+    text
+  )) {
+    if (kept.length + segment.length > intentLimit - 2) break;
+    kept += segment;
+  }
+  return `${kept.trimEnd()} …`;
 }
 
 interface Held {

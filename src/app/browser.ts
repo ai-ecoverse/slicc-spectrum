@@ -1011,14 +1011,19 @@ export class SliccBrowser extends ModelElement {
   #intend(): void {
     const port = this.model?.browser;
     const tabs = (port?.list() ?? []).filter((tab) => tab.controlled && tab.agentId);
-    this.#intents.keep(new Set(tabs.map((tab) => tab.id)));
+    this.#intents.keep(new Set(tabs.map((tab) => this.#driver(tab))));
     for (const tab of tabs)
       if (
-        this.#intents.set(tab.id, currentIntent(port?.actions?.(tab.id) ?? [])) &&
+        this.#intents.set(this.#driver(tab), currentIntent(port?.actions?.(tab.id) ?? [])) &&
         tab.id === this.#focus
       )
-        this.#said = this.#intents.shown(tab.id);
-    if (!this.#intents.shown(this.#focus ?? '')) this.#said = '';
+        this.#said = this.#intents.shown(this.#driver(tab));
+    const focused = tabs.find((tab) => tab.id === this.#focus);
+    if (!focused || !this.#intents.shown(this.#driver(focused))) this.#said = '';
+  }
+
+  #driver(tab: BrowserTab): string {
+    return `${tab.id} ${tab.agentId}`;
   }
 
   #focused(): BrowserTab | undefined {
@@ -1122,7 +1127,7 @@ export class SliccBrowser extends ModelElement {
     const shot = this.#image(tab.id)?.src;
     const current = tab.id === active;
     const loading = tab.status === 'loading';
-    const intent = this.#intents.shown(tab.id);
+    const intent = this.#intents.shown(this.#driver(tab));
     return html`<li data-id=${tab.id} ?data-controlled=${tab.controlled} ?data-pulse=${this.#pulse.has(tab.id)}>
       <button class="window" aria-current=${current ? 'true' : 'false'} title=${tab.url} @click=${() => this.#show(tab.id)}>
         <span class="thumb">
@@ -1325,7 +1330,7 @@ export class SliccBrowser extends ModelElement {
         ? `Watching ${agentName(this.model as SliccModel, tab.agentId)}`
         : 'In use'
       : 'No agent is using this tab';
-    const intent = this.#intents.shown(tab.id);
+    const intent = this.#intents.shown(this.#driver(tab));
     return html`<div class=${`focused${wide ? ' wide' : ''}${narrow ? ' narrow' : ''}`}>
       ${wide ? this.#list(tabs, tab) : nothing}
       <section class="detail" aria-label=${tab.title}>

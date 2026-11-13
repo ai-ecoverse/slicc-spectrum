@@ -468,3 +468,60 @@ test('a secret-shaped word split by invisible characters is still cut', async (t
   assert.ok(!html.includes('hunter2') && !html.includes('0123456789abcdef'));
   assert.deepEqual(page.errors, []);
 });
+
+test('another agent taking the tab during the hold shows its own intent, not the old one', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    window.drive({ kind: 'snapshot', intent: 'Reading the menu' });
+    return true;
+  });
+  await page.until(() => window.text(window.inBrowser('.driving .intent')) === 'Reading the menu');
+  const shown = await page.evaluate(async () => {
+    const running = window.model.browser
+      .actions('tab-preview')
+      .findLast((a) => a.status === 'running');
+    window.model.browser.finish(running.id);
+    window.model.browser.record({
+      tabId: 'tab-preview',
+      agentId: 'scoop-otter',
+      kind: 'click',
+      target: 'button "Tea"',
+      intent: 'Choosing a drink',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const first = window.text(window.inBrowser('.driving swc-status-light'));
+    const said = window.text(window.inBrowser('[data-intent-announce]'));
+    window.model.browser.record({ tabId: 'tab-preview', agentId: 'cone-harbor', kind: 'scroll' });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    return {
+      first,
+      said,
+      plain: window.text(window.inBrowser('.driving swc-status-light')),
+      none: !window.inBrowser('.driving .intent'),
+    };
+  });
+  assert.deepEqual(shown, {
+    first: 'Watching quiet-otter · Choosing a drink',
+    said: 'Choosing a drink',
+    plain: 'Watching harbor',
+    none: true,
+  });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a long intent is cut between characters, never inside an emoji', async (t) => {
+  const page = await open(t);
+  const intent = `${'a'.repeat(77)}\u{1F600} and more words after it`;
+  await page.evaluate((value) => {
+    window.drive({ kind: 'scroll', intent: value });
+    return true;
+  }, intent);
+  await page.until(() => !!window.inBrowser('.driving .intent'));
+  const shown = await page.evaluate(() => ({
+    driving: window.inBrowser('.driving .intent').textContent,
+    row: window.inBrowser('.actions > li .what > .intent').textContent,
+  }));
+  assert.deepEqual(shown, { driving: `${'a'.repeat(77)} …`, row: `${'a'.repeat(77)} …` });
+  assert.ok(shown.driving.isWellFormed() && shown.row.isWellFormed());
+  assert.deepEqual(page.errors, []);
+});
