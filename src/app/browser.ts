@@ -34,8 +34,10 @@ import type {
   SliccModel,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
+import { commandText, controlStyles, displayCommand } from './command-display.ts';
 import { agentName } from './files.ts';
 import { onWatch, watchOnly } from './follow.ts';
+import { IntentHold, intentText } from './intent.ts';
 import { time } from './messages.ts';
 import { copyText, reach, reachStyles } from './reach.ts';
 import { ViewScroll, ViewSet, ViewState } from './view-state.ts';
@@ -114,7 +116,12 @@ export function recentActions(all: readonly BrowserAction[], shown: number): Bro
   return all.slice(-shown).reverse();
 }
 
-export type FoldedAction = { action: BrowserAction; count: number };
+export type FoldedAction = {
+  action: BrowserAction;
+  count: number;
+  intent?: string;
+  steps?: FoldedAction[];
+};
 
 export function sameAction(a: BrowserAction, b: BrowserAction): boolean {
   return (
@@ -128,17 +135,37 @@ export function sameAction(a: BrowserAction, b: BrowserAction): boolean {
   );
 }
 
+function add(out: FoldedAction[], action: BrowserAction): void {
+  const prev = out.at(-1);
+  if (prev && sameAction(prev.action, action)) prev.count += 1;
+  else out.push({ action, count: 1 });
+}
+
 export function foldActions(actions: readonly BrowserAction[]): FoldedAction[] {
   const out: FoldedAction[] = [];
   for (const action of actions) {
+    const intent = intentText(action.intent);
     const prev = out.at(-1);
-    if (prev && sameAction(prev.action, action)) {
-      prev.count += 1;
+    if (!intent && !prev?.intent) {
+      add(out, action);
       continue;
     }
-    out.push({ action, count: 1 });
+    if (intent && prev?.intent === intent && prev.action.agentId === action.agentId) {
+      prev.count += 1;
+      add(prev.steps as FoldedAction[], action);
+      continue;
+    }
+    out.push(
+      intent ? { action, count: 1, intent, steps: [{ action, count: 1 }] } : { action, count: 1 }
+    );
   }
   return out;
+}
+
+export function currentIntent(actions: readonly BrowserAction[], agentId: string): string {
+  const own = actions.filter((item) => item.agentId === agentId);
+  const action = own.findLast((item) => item.status === 'running') ?? own.at(-1);
+  return intentText(action?.intent);
 }
 
 export function pickImage(
@@ -225,6 +252,8 @@ export class SliccBrowser extends ModelElement {
   #anchor: number | null = null;
   #display = new Map<string, string>();
   #loading = new Map<string, string>();
+  #intents = new IntentHold(() => this.requestUpdate());
+  #said = '';
   #expanded = new ViewSet(this, 'browser');
   #chosen = new ViewState<string | null | undefined>(this, 'browser:tab', () => undefined);
   #scroll = new ViewScroll(this, 'browser:scroll', {
@@ -241,6 +270,7 @@ export class SliccBrowser extends ModelElement {
   static styles = [
     unsafeCSS(link),
     reachStyles,
+    controlStyles,
     css`
       :host {
         display: flex;
@@ -396,7 +426,17 @@ export class SliccBrowser extends ModelElement {
         align-self: center;
         min-width: 0;
       }
-      .cards .driving swc-status-light span {
+      .cards .driving:has(+ .intent) {
+        padding-block-end: var(--swc-spacing-50);
+      }
+      .cards .intent {
+        padding: 0 var(--swc-spacing-200) var(--swc-spacing-200);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .cards .driving swc-status-light > span,
+      .detail .driving swc-status-light > span {
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -472,6 +512,17 @@ export class SliccBrowser extends ModelElement {
       }
       .detail .driving swc-status-light {
         min-width: 0;
+      }
+      .sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+        border: 0;
       }
       .detail .driving swc-button {
         flex: none;
@@ -688,6 +739,31 @@ export class SliccBrowser extends ModelElement {
         min-width: 0;
         overflow-wrap: anywhere;
       }
+      .steps {
+        display: flex;
+        flex-direction: column;
+        gap: var(--swc-spacing-50);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .step {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0 var(--swc-spacing-75);
+        min-width: 0;
+      }
+      .step .full,
+      .step .failure {
+        flex-basis: 100%;
+      }
+      .step .failure {
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-75);
+      }
+      .step .count {
+        margin-inline-start: 0;
+      }
       .count {
         margin-inline-start: var(--swc-spacing-100);
         color: var(--swc-neutral-subdued-content-color-default);
@@ -757,10 +833,13 @@ export class SliccBrowser extends ModelElement {
     this.#display.clear();
     this.#loading.clear();
     this.#pulse.clear();
+    this.#intents.clear();
     this.#shown = actionPage;
     const tabs = model.browser.list();
     this.#driven = new Set(tabs.filter((tab) => tab.controlled).map((tab) => tab.id));
     this.#focus = this.#latest(model, tabs);
+    this.#intend();
+    this.#said = '';
     this.#stale();
     const timer = setInterval(() => this.#tick(), refresh);
     const resize = new ResizeObserver(([entry]) => {
@@ -793,6 +872,7 @@ export class SliccBrowser extends ModelElement {
       () => document.removeEventListener('visibilitychange', visibility),
       () => this.#settle(null),
       () => this.#still(),
+      () => this.#intents.clear(),
     ];
   }
 
@@ -913,15 +993,41 @@ export class SliccBrowser extends ModelElement {
     this.#focus = id;
     this.#copied = null;
     this.#shown = actionPage;
+    this.#said = '';
     if (id) this.#pulse.delete(id);
   }
 
   protected willUpdate(changed: PropertyValues): void {
     super.willUpdate(changed);
     const chosen = this.#chosen.value;
-    if (chosen === undefined || chosen === this.#focus) return;
-    if (chosen === null || this.model?.browser.list().some((tab) => tab.id === chosen))
+    if (
+      chosen !== undefined &&
+      chosen !== this.#focus &&
+      (chosen === null || this.model?.browser.list().some((tab) => tab.id === chosen))
+    )
       this.#visit(chosen);
+    this.#intend();
+  }
+
+  #intend(): void {
+    const port = this.model?.browser;
+    const tabs = (port?.list() ?? []).filter((tab) => tab.controlled && tab.agentId);
+    this.#intents.keep(new Set(tabs.map((tab) => this.#driver(tab))));
+    for (const tab of tabs)
+      if (
+        this.#intents.set(
+          this.#driver(tab),
+          currentIntent(port?.actions?.(tab.id) ?? [], tab.agentId as string)
+        ) &&
+        tab.id === this.#focus
+      )
+        this.#said = this.#intents.shown(this.#driver(tab));
+    const focused = tabs.find((tab) => tab.id === this.#focus);
+    if (!focused || !this.#intents.shown(this.#driver(focused))) this.#said = '';
+  }
+
+  #driver(tab: BrowserTab): string {
+    return `${tab.id} ${tab.agentId}`;
   }
 
   #focused(): BrowserTab | undefined {
@@ -1025,6 +1131,7 @@ export class SliccBrowser extends ModelElement {
     const shot = this.#image(tab.id)?.src;
     const current = tab.id === active;
     const loading = tab.status === 'loading';
+    const intent = this.#intents.shown(this.#driver(tab));
     return html`<li data-id=${tab.id} ?data-controlled=${tab.controlled} ?data-pulse=${this.#pulse.has(tab.id)}>
       <button class="window" aria-current=${current ? 'true' : 'false'} title=${tab.url} @click=${() => this.#show(tab.id)}>
         <span class="thumb">
@@ -1045,7 +1152,7 @@ export class SliccBrowser extends ModelElement {
       </button>
       ${
         tab.controlled
-          ? html`<div class="driving"><swc-status-light size="s" variant="info" title=${this.#who(tab)}><span>${this.#who(tab)}</span></swc-status-light>${this.#stopButton(tab, `li[data-id="${tab.id}"] .window`)}</div>`
+          ? html`<div class="driving"><swc-status-light size="s" variant="info" title=${this.#who(tab)}><span>${this.#who(tab)}</span></swc-status-light>${this.#stopButton(tab, `li[data-id="${tab.id}"] .window`)}</div>${intent ? html`<span class="intent" title=${displayCommand(intent)}>${commandText(intent, false)}</span>` : nothing}`
           : tab.agentId
             ? html`<span class="driver">Last used by ${agentName(model, tab.agentId)}</span>`
             : nothing
@@ -1158,20 +1265,36 @@ export class SliccBrowser extends ModelElement {
     return html`<button class="url-toggle" data-action="action-url" aria-expanded=${open ? 'true' : 'false'} aria-controls=${`url-${action.id}`} @click=${() => this.#toggle(action.id)}><span>${describe(action)}</span><swc-icon-chevron-down class="chevron" size="s" aria-hidden="true"></swc-icon-chevron-down></button>${open ? html`<span class="full" id=${`url-${action.id}`}>${url}</span>` : nothing}`;
   }
 
-  #row(action: BrowserAction, count = 1): TemplateResult {
+  #step({ action, count }: FoldedAction): TemplateResult {
     const failed = action.status === 'failed';
     const url = linked.has(action.kind) ? action.value : undefined;
-    return html`<li data-action-id=${action.id} data-kind=${action.kind} data-status=${action.status} ?data-group=${count > 1} title=${url ?? nothing}>
+    return html`<span class="step" data-step-id=${action.id} data-kind=${action.kind} data-status=${action.status} title=${url ?? nothing}>${this.#what(action)}${
+      count > 1 ? html`<span class="count">×${count}</span>` : nothing
+    }${
+      failed
+        ? html`<span class="failure"><swc-icon-alert-triangle size="s" accessible-label=${action.error ? 'Failed' : nothing}></swc-icon-alert-triangle>${action.error || 'Failed'}</span>`
+        : nothing
+    }</span>`;
+  }
+
+  #row({ action, count, intent, steps }: FoldedAction): TemplateResult {
+    const failed = action.status === 'failed';
+    const url = linked.has(action.kind) && !intent ? action.value : undefined;
+    return html`<li data-action-id=${action.id} data-kind=${action.kind} data-status=${action.status} ?data-group=${count > 1 && !intent} ?data-intent=${!!intent} title=${url ?? nothing}>
       <span>${
         action.status === 'running'
           ? html`<swc-progress-circle size="s" indeterminate label="Running"></swc-progress-circle>`
-          : failed
-            ? html`<swc-icon-alert-triangle size="s" aria-label="Failed"></swc-icon-alert-triangle>`
+          : failed && !intent
+            ? html`<swc-icon-alert-triangle size="s" accessible-label="Failed"></swc-icon-alert-triangle>`
             : icons[action.kind]
       }</span>
-      <span class="what">${this.#what(action)}${
-        count > 1 ? html`<span class="count">×${count}</span>` : nothing
-      }${failed && action.error ? html`<span class="failure">${action.error}</span>` : nothing}</span>
+      ${
+        intent
+          ? html`<span class="what"><span class="intent">${commandText(intent, false)}</span><span class="steps">${(steps as FoldedAction[]).map((step) => this.#step(step))}</span></span>`
+          : html`<span class="what">${this.#what(action)}${
+              count > 1 ? html`<span class="count">×${count}</span>` : nothing
+            }${failed && action.error ? html`<span class="failure">${action.error}</span>` : nothing}</span>`
+      }
       <span class="who">${agentName(this.model as SliccModel, action.agentId)} ${time(action.at)}</span>
     </li>`;
   }
@@ -1197,7 +1320,7 @@ export class SliccBrowser extends ModelElement {
     return html`<div class="feed">
       <h3>Recent actions</h3>
       ${more}
-      <ol class="actions" aria-label="Recent actions" tabindex="0">${folded.map((item) => this.#row(item.action, item.count))}</ol>
+      <ol class="actions" aria-label="Recent actions" tabindex="0">${folded.map((item) => this.#row(item))}</ol>
     </div>`;
   }
 
@@ -1211,6 +1334,7 @@ export class SliccBrowser extends ModelElement {
         ? `Watching ${agentName(this.model as SliccModel, tab.agentId)}`
         : 'In use'
       : 'No agent is using this tab';
+    const intent = this.#intents.shown(this.#driver(tab));
     return html`<div class=${`focused${wide ? ' wide' : ''}${narrow ? ' narrow' : ''}`}>
       ${wide ? this.#list(tabs, tab) : nothing}
       <section class="detail" aria-label=${tab.title}>
@@ -1229,9 +1353,14 @@ export class SliccBrowser extends ModelElement {
           <swc-action-button size="s" quiet data-action="open-tab" accessible-label="Show in the browser" @click=${() => this.model?.browser.activate(tab.id)}><swc-icon-open-in slot="icon"></swc-icon-open-in>${narrow ? nothing : 'Open'}</swc-action-button>
         </div>
         <div class="driving" data-driving=${tab.controlled ? (tab.agentId ? 'agent' : 'user') : 'none'}>
-          <swc-status-light size="m" variant=${tab.controlled ? 'info' : 'neutral'}>${watching}</swc-status-light>
+          ${
+            intent
+              ? html`<swc-status-light size="m" variant="info" title=${`${watching} · ${displayCommand(intent)}`}><span>${watching} <span aria-hidden="true">·</span> <span class="intent">${commandText(intent, false)}</span></span></swc-status-light>`
+              : html`<swc-status-light size="m" variant=${tab.controlled ? 'info' : 'neutral'}>${watching}</swc-status-light>`
+          }
           ${tab.controlled ? this.#stopButton(tab, '[data-action="all-tabs"]') : nothing}
         </div>
+        <span class="sr" role="status" aria-live="polite" data-intent-announce>${commandText(this.#said, false)}</span>
         ${this.#view(tab)}
         ${this.#actions(tab)}
       </section>

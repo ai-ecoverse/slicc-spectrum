@@ -1831,8 +1831,10 @@ test('the browser follows a driven tab live, lists its actions and stops the age
   });
   await page.until(() => window.inBrowser('figure')?.dataset.view === 'live');
   assert.equal(
-    await page.evaluate(() => window.inBrowser('.driving swc-status-light').textContent.trim()),
-    'Watching harbor'
+    await page.evaluate(() =>
+      window.inBrowser('.driving swc-status-light').textContent.replace(/\s+/g, ' ').trim()
+    ),
+    'Watching harbor · Comparing the port forecasts'
   );
   assert.match(
     await page.evaluate(() => window.inBrowser('.address .url').textContent.trim()),
