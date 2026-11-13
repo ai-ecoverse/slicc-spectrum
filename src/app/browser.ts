@@ -34,6 +34,7 @@ import type {
   SliccModel,
 } from '../model/types.ts';
 import { ModelElement } from './base.ts';
+import { commandText, controlStyles, displayCommand } from './command-display.ts';
 import { agentName } from './files.ts';
 import { onWatch, watchOnly } from './follow.ts';
 import { IntentHold, intentText } from './intent.ts';
@@ -268,6 +269,7 @@ export class SliccBrowser extends ModelElement {
   static styles = [
     unsafeCSS(link),
     reachStyles,
+    controlStyles,
     css`
       :host {
         display: flex;
@@ -1141,7 +1143,7 @@ export class SliccBrowser extends ModelElement {
       </button>
       ${
         tab.controlled
-          ? html`<div class="driving"><swc-status-light size="s" variant="info" title=${this.#who(tab)}><span>${this.#who(tab)}</span></swc-status-light>${this.#stopButton(tab, `li[data-id="${tab.id}"] .window`)}</div>${intent ? html`<span class="intent" title=${intent}>${intent}</span>` : nothing}`
+          ? html`<div class="driving"><swc-status-light size="s" variant="info" title=${this.#who(tab)}><span>${this.#who(tab)}</span></swc-status-light>${this.#stopButton(tab, `li[data-id="${tab.id}"] .window`)}</div>${intent ? html`<span class="intent" title=${displayCommand(intent)}>${commandText(intent, false)}</span>` : nothing}`
           : tab.agentId
             ? html`<span class="driver">Last used by ${agentName(model, tab.agentId)}</span>`
             : nothing
@@ -1279,7 +1281,7 @@ export class SliccBrowser extends ModelElement {
       }</span>
       ${
         intent
-          ? html`<span class="what"><span class="intent">${intent}</span><span class="steps">${(steps as FoldedAction[]).map((step) => this.#step(step))}</span></span>`
+          ? html`<span class="what"><span class="intent">${commandText(intent, false)}</span><span class="steps">${(steps as FoldedAction[]).map((step) => this.#step(step))}</span></span>`
           : html`<span class="what">${this.#what(action)}${
               count > 1 ? html`<span class="count">×${count}</span>` : nothing
             }${failed && action.error ? html`<span class="failure">${action.error}</span>` : nothing}</span>`
@@ -1344,12 +1346,12 @@ export class SliccBrowser extends ModelElement {
         <div class="driving" data-driving=${tab.controlled ? (tab.agentId ? 'agent' : 'user') : 'none'}>
           ${
             intent
-              ? html`<swc-status-light size="m" variant="info" title=${`${watching} · ${intent}`}><span>${watching} <span aria-hidden="true">·</span> <span class="intent">${intent}</span></span></swc-status-light>`
+              ? html`<swc-status-light size="m" variant="info" title=${`${watching} · ${displayCommand(intent)}`}><span>${watching} <span aria-hidden="true">·</span> <span class="intent">${commandText(intent, false)}</span></span></swc-status-light>`
               : html`<swc-status-light size="m" variant=${tab.controlled ? 'info' : 'neutral'}>${watching}</swc-status-light>`
           }
           ${tab.controlled ? this.#stopButton(tab, '[data-action="all-tabs"]') : nothing}
         </div>
-        <span class="sr" role="status" aria-live="polite" data-intent-announce>${this.#said}</span>
+        <span class="sr" role="status" aria-live="polite" data-intent-announce>${commandText(this.#said, false)}</span>
         ${this.#view(tab)}
         ${this.#actions(tab)}
       </section>

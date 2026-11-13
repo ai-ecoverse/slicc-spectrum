@@ -368,3 +368,55 @@ test('the dummy browser shows intents while harbor and otter drive', async (t) =
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('bidi and other format controls in an intent show as visible chips, not reordered text', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    window.drive({
+      kind: 'click',
+      target: 'button "Pay"',
+      intent: 'Paying \u202Eredro eht\u202C and \u2066isolated\u2069 text',
+    });
+    return true;
+  });
+  await page.until(() => !!window.inBrowser('.driving .intent .control'));
+  const raw = /[\u202A-\u202E\u2066-\u2069]/;
+  const read = () =>
+    page.evaluate(() => {
+      const chips = (node) =>
+        [...node.querySelectorAll('.control')].map((chip) => [
+          chip.getAttribute('role'),
+          chip.getAttribute('aria-label'),
+          chip.textContent,
+        ]);
+      const driving = window.inBrowser('.driving .intent');
+      const row = window.inBrowser('.actions > li .what > .intent');
+      const said = window.inBrowser('[data-intent-announce]');
+      const card = window.inBrowser('li[data-id=tab-preview] .intent');
+      return {
+        text: [driving, row, said, card].filter(Boolean).map((node) => node.textContent),
+        chips: [driving, row, said, card].filter(Boolean).map(chips),
+        titles: [window.inBrowser('.driving swc-status-light')?.title, card?.title].filter(Boolean),
+      };
+    });
+  const chips = [
+    ['img', 'U+202E', 'U+202E'],
+    ['img', 'U+202C', 'U+202C'],
+    ['img', 'U+2066', 'U+2066'],
+    ['img', 'U+2069', 'U+2069'],
+  ];
+  const shown = 'Paying U+202Eredro ehtU+202C and U+2066isolatedU+2069 text';
+  const focused = await read();
+  assert.deepEqual(focused.chips, [chips, chips, chips]);
+  assert.deepEqual(focused.text, [shown, shown, shown]);
+  assert.deepEqual(focused.titles, [`Watching harbor · ${shown}`]);
+  await page.evaluate(() => window.inBrowser('[data-action=all-tabs]').click());
+  await page.until(() => !!window.inBrowser('li[data-id=tab-preview] .intent .control'));
+  const cards = await read();
+  assert.deepEqual(cards.chips, [chips]);
+  assert.deepEqual(cards.text, [shown]);
+  assert.deepEqual(cards.titles, ['harbor is using this tab', shown]);
+  for (const value of [...focused.text, ...focused.titles, ...cards.text, ...cards.titles])
+    assert.ok(!raw.test(value), JSON.stringify(value));
+  assert.deepEqual(page.errors, []);
+});
