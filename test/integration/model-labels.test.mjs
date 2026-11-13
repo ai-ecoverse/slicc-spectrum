@@ -190,6 +190,134 @@ test('a step label with emoji keeps ⚠️ and a ZWJ sequence, with no chip', as
   assert.deepEqual(page.errors, []);
 });
 
+test('title fallback when stepLabel is null: growing secret prefix and bidi/ZWSP titles', async (t) => {
+  const page = await open(t);
+  const growing = 'Logging …';
+  const bidi = 'Paying U+202Eredro ehtU+202C now';
+  const cut = 'Entering token: …';
+  const raw = /[\u202A-\u202E\u2066-\u2069\u200B]/;
+  const read = () =>
+    page.evaluate(() => {
+      const header = window.chatPart(
+        'swc-conversation-turn[data-id=fallback-run] slicc-status-label'
+      );
+      const row = window.chatPart('#label-fallback-1 slicc-step-label');
+      const status = window.chatPart(
+        'swc-conversation-turn[data-id=fallback-run] swc-response-status'
+      );
+      return {
+        visible: [...(status?.shadowRoot?.querySelectorAll('.swc-ResponseStatus-label') ?? [])].map(
+          (node) => node.textContent
+        ),
+        header: header?.textContent ?? '',
+        row: row?.textContent ?? '',
+        titles: [
+          header?.querySelector('span[title]')?.getAttribute('title') ?? '',
+          row?.querySelector('span[title]')?.getAttribute('title') ?? '',
+        ],
+        rowChips: [...(row?.querySelectorAll('.control') ?? [])].map((chip) =>
+          chip.getAttribute('aria-label')
+        ),
+        leaked: window.chatPart('.log')?.textContent.includes('hunter2') ?? false,
+      };
+    });
+  await page.evaluate(() => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    window.fallbackCall = {
+      id: 'fallback-1',
+      name: 'bash',
+      title: 'Logging sk',
+      input: 'echo sk',
+      output: '',
+      status: 'running',
+      paths: [],
+    };
+    window.fallbackReply = {
+      id: 'fallback-run',
+      role: 'assistant',
+      status: 'streaming',
+      createdAt: now,
+      model: 'claude-opus-5-5',
+      parts: [{ type: 'tool', tool: window.fallbackCall }],
+    };
+    const added = [
+      { id: 'fallback-user', role: 'user', text: 'Log in', createdAt: now },
+      window.fallbackReply,
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    agent.stepLabel = async () => null;
+    agent.select('cone-sliccy');
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  });
+  await page.until((text) => {
+    const header = window.chatPart(
+      'swc-conversation-turn[data-id=fallback-run] slicc-status-label'
+    )?.textContent;
+    const row = window.chatPart('#label-fallback-1')?.textContent;
+    return header === text && row === text;
+  }, growing);
+  const growingRead = await read();
+  assert.ok(growingRead.visible.includes(growing), JSON.stringify(growingRead.visible));
+  assert.equal(growingRead.header, growing);
+  assert.equal(growingRead.row, growing);
+  assert.deepEqual(growingRead.titles, [growing, growing]);
+  assert.deepEqual(growingRead.rowChips, []);
+  assert.equal(growingRead.leaked, false);
+  await page.evaluate(() => {
+    window.fallbackCall.title = 'Paying \u202Eredro eht\u202C now';
+    window.model.agent.emit('message', {
+      agentId: 'cone-sliccy',
+      message: window.fallbackReply,
+    });
+    return true;
+  });
+  await page.until((text) => window.chatPart('#label-fallback-1')?.textContent === text, bidi);
+  await page.until((text) => {
+    const header = window.chatPart(
+      'swc-conversation-turn[data-id=fallback-run] slicc-status-label'
+    )?.textContent;
+    return header === text;
+  }, bidi);
+  const bidiRead = await read();
+  assert.ok(bidiRead.visible.includes(bidi), JSON.stringify(bidiRead.visible));
+  assert.equal(bidiRead.header, bidi);
+  assert.equal(bidiRead.row, bidi);
+  assert.deepEqual(bidiRead.titles, [bidi, bidi]);
+  assert.deepEqual(bidiRead.rowChips, ['U+202E', 'U+202C']);
+  for (const value of [bidiRead.header, bidiRead.row, ...bidiRead.titles, ...bidiRead.visible])
+    assert.ok(!raw.test(value), JSON.stringify(value));
+  await page.evaluate(() => {
+    window.fallbackCall.title = 'Entering tok\u200Ben: hunter2 in the field';
+    window.fallbackCall.status = 'done';
+    window.fallbackReply.status = 'done';
+    window.model.agent.emit('message', {
+      agentId: 'cone-sliccy',
+      message: window.fallbackReply,
+    });
+    return true;
+  });
+  await page.until((text) => {
+    const header = window.chatPart(
+      'swc-conversation-turn[data-id=fallback-run] slicc-status-label'
+    )?.textContent;
+    const row = window.chatPart('#label-fallback-1')?.textContent;
+    return header === text && row === text;
+  }, cut);
+  const done = await read();
+  assert.ok(done.visible.includes(cut), JSON.stringify(done.visible));
+  assert.equal(done.header, cut);
+  assert.equal(done.row, cut);
+  assert.deepEqual(done.titles, [cut, cut]);
+  assert.deepEqual(done.rowChips, []);
+  assert.equal(done.leaked, false);
+  for (const value of [done.header, done.row, ...done.titles, ...done.visible])
+    assert.ok(!raw.test(value), JSON.stringify(value));
+  assert.deepEqual(page.errors, []);
+});
+
 test('a step label with a ZWSP-split token: secret is cut in the header and the row', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {
