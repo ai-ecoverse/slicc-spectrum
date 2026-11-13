@@ -43,3 +43,15 @@ export function guard(text: string, growing = false): string {
   }
   return cut < text.length ? `${text.slice(0, cut).trimEnd()} …` : text;
 }
+
+export function modelText(value: unknown, growing = false): string {
+  if (typeof value !== 'string') return '';
+  const raw = value.replace(/[\p{Cc}\s]+/gu, ' ').trim();
+  const plain = raw
+    .replace(/[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu, '')
+    .normalize('NFKC')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  const cut = guard(plain, growing);
+  return cut === plain ? raw : cut;
+}

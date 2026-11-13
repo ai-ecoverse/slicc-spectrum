@@ -1,5 +1,5 @@
 import type { ToolCall } from '../model/types.ts';
-import { guard } from './guard.ts';
+import { modelText } from './guard.ts';
 
 const shellLead =
   /^(?:(?:git|npm|npx|pnpm|yarn|bun|node|deno|python3?|pip3?|curl|wget|ls|cd|cat|rm|mv|cp|chmod|chown|mkdir|touch|tar|zip|unzip|docker|kubectl|gh|wrangler|lsof|find|grep|rg|sed|awk|ssh|scp|rsync|make|cargo|go|ruby|perl|php|java|javac|swift|xcodebuild|brew|apt|yum|sudo|env|export|echo|printf|true|false|test|bash|sh|zsh|fish|source)(?=\s|$)|(?:\.\/))/;
@@ -19,7 +19,7 @@ export function headline(call: ToolCall): string {
   const title = call.title.trim();
   const name = call.name.trim();
   const growing = call.status === 'running';
-  if (!title) return guard(name, growing);
-  if (rawTitle(title)) return guard(`${name} ${title}`.trim(), growing);
-  return guard(title, growing);
+  if (!title) return modelText(name, growing);
+  if (rawTitle(title)) return modelText(`${name} ${title}`.trim(), growing);
+  return modelText(title, growing);
 }

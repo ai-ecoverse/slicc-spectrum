@@ -25,6 +25,7 @@ import type {
 import { readSurface } from './ansi.ts';
 import { chatModels, meterVariant, shared, statusDot, statusLight, ThemedElement } from './base.ts';
 import { Arming, Ends, endCss, layout, Watched } from './command.ts';
+import { controlStyles } from './command-display.ts';
 import { fade, folders, type SliccComposer, smallest } from './composer.ts';
 import { dipType } from './dips.ts';
 import { following, onWatch, watchOnly } from './follow.ts';
@@ -319,6 +320,7 @@ export class SliccChat extends ThemedElement {
     fade,
     markdownCss,
     messageCss,
+    controlStyles,
     endCss,
     unsafeCSS(link),
     signInCss,
