@@ -99,7 +99,14 @@ test('consecutive actions with one intent group under it, and identical ones fol
   const page = await open(t);
   await page.evaluate(() => {
     const done = (draft) => window.model.browser.finish(window.drive(draft));
+    window.drive({ kind: 'click', target: 'button "Old"', status: 'failed', error: 'Gone' });
     done({ kind: 'goto', value: 'https://shop.example.com/menu', intent: 'Reading the menu' });
+    window.drive({
+      kind: 'click',
+      target: 'button "Menu"',
+      intent: 'Reading the menu',
+      status: 'failed',
+    });
     done({ kind: 'scroll', intent: 'Reading the menu' });
     done({ kind: 'scroll', intent: 'Reading the menu' });
     done({ kind: 'scroll', intent: 'Reading the menu' });
@@ -142,12 +149,35 @@ test('consecutive actions with one intent group under it, and identical ones fol
     },
     {
       intent: 'Reading the menu',
-      steps: ['Scrolled×3', 'Went to shop.example.com/menu'],
+      steps: ['Scrolled×3', 'Clicked button "Menu"Failed', 'Went to shop.example.com/menu'],
       what: null,
       group: false,
       status: 'done',
     },
   ]);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const rows = [...window.inBrowser('.actions').children];
+      const mark = (step) => {
+        const icon = step.querySelector('.failure swc-icon-alert-triangle');
+        return icon ? [icon.getAttribute('aria-label'), icon.getAttribute('aria-hidden')] : null;
+      };
+      return {
+        newest: rows[0].firstElementChild.firstElementChild.localName,
+        older: rows[3].firstElementChild.firstElementChild.localName,
+        marks: [rows[0], rows[3]].flatMap((row) => [...row.querySelectorAll('.step')].map(mark)),
+        plain: ((icon) => [icon.getAttribute('role'), icon.getAttribute('aria-label')])(
+          window.inBrowser('.actions > li:not([data-intent]) swc-icon-alert-triangle')
+        ),
+      };
+    }),
+    {
+      newest: 'swc-icon-cursor-click',
+      older: 'swc-icon-hand',
+      marks: [['Failed', null], null, [null, 'true'], null],
+      plain: ['img', 'Failed'],
+    }
+  );
   assert.equal(
     await page.evaluate(() =>
       window.inBrowser('.actions > li .step[data-kind=goto]').getAttribute('title')

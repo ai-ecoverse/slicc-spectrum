@@ -753,6 +753,11 @@ export class SliccBrowser extends ModelElement {
       .step .failure {
         flex-basis: 100%;
       }
+      .step .failure {
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-75);
+      }
       .step .count {
         margin-inline-start: 0;
       }
@@ -1254,7 +1259,11 @@ export class SliccBrowser extends ModelElement {
     const url = linked.has(action.kind) ? action.value : undefined;
     return html`<span class="step" data-step-id=${action.id} data-kind=${action.kind} data-status=${action.status} title=${url ?? nothing}>${this.#what(action)}${
       count > 1 ? html`<span class="count">×${count}</span>` : nothing
-    }${failed ? html`<span class="failure">${action.error || 'Failed'}</span>` : nothing}</span>`;
+    }${
+      failed
+        ? html`<span class="failure"><swc-icon-alert-triangle size="s" accessible-label=${action.error ? 'Failed' : nothing}></swc-icon-alert-triangle>${action.error || 'Failed'}</span>`
+        : nothing
+    }</span>`;
   }
 
   #row({ action, count, intent, steps }: FoldedAction): TemplateResult {
@@ -1264,8 +1273,8 @@ export class SliccBrowser extends ModelElement {
       <span>${
         action.status === 'running'
           ? html`<swc-progress-circle size="s" indeterminate label="Running"></swc-progress-circle>`
-          : failed
-            ? html`<swc-icon-alert-triangle size="s" aria-label="Failed"></swc-icon-alert-triangle>`
+          : failed && !intent
+            ? html`<swc-icon-alert-triangle size="s" accessible-label="Failed"></swc-icon-alert-triangle>`
             : icons[action.kind]
       }</span>
       ${
