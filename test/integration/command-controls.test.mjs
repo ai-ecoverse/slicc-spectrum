@@ -143,6 +143,43 @@ for (const scenario of ['agent', 'long']) {
   });
 }
 
+test('emoji sequences in a sudo command stay as emoji, with no joiner or VS chips', async (t) => {
+  const page = await open(t, 'agent');
+  const emoji = '⚠️ \u{1F469}\u200D\u{1F4BB}';
+  await page.evaluate((value) => {
+    const port = window.model.approvals;
+    const original = port.list()[0];
+    port.end(original.id, 'withdrawn');
+    window.emojiCommand = `printf '%s' '${value}'`;
+    port.raise({ ...original, id: 'sudo-emoji', command: window.emojiCommand });
+    return true;
+  }, emoji);
+  await page.until(
+    () =>
+      !!window
+        .approvals()
+        .querySelector('[data-approval=sudo-emoji] [data-action=once]:not([disabled])')
+  );
+  assert.deepEqual(
+    await page.evaluate((value) => {
+      const pre = window.approvals().querySelector('pre.command');
+      return {
+        text: pre.textContent,
+        chips: [...pre.querySelectorAll('.control')].map((chip) => chip.getAttribute('aria-label')),
+        hasNotation: pre.textContent.includes('U+') || pre.innerHTML.includes('U+FE0F'),
+        expected: `sudo printf '%s' '${value}'`,
+      };
+    }, emoji),
+    {
+      text: `sudo printf '%s' '${emoji}'`,
+      chips: [],
+      hasNotation: false,
+      expected: `sudo printf '%s' '${emoji}'`,
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 for (const scenario of ['controls-place', 'controls-cwd']) {
   test(`control characters are shown for ${scenario}`, async (t) => {
     const page = await open(t, scenario);

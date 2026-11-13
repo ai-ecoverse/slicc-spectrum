@@ -17,7 +17,8 @@ export const controlStyles = css`
   }
 `;
 
-const controls = /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029]/u;
+const controls =
+  /(?![\u200D\uFE0E\uFE0F\u{E0020}-\u{E007F}])[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029]/u;
 const notation = (char: string) =>
   `U+${(char.codePointAt(0) as number).toString(16).toUpperCase().padStart(4, '0')}`;
 const names: Record<string, [string, string]> = {

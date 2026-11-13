@@ -98,6 +98,84 @@ test('a step label with U+202E shows a chip in the header and the row, not reord
   assert.deepEqual(page.errors, []);
 });
 
+test('a step label with emoji keeps ⚠️ and a ZWJ sequence, with no chip', async (t) => {
+  const page = await open(t);
+  const label = '⚠️ Checking \u{1F469}\u200D\u{1F4BB} setup';
+  await page.evaluate((text) => {
+    const agent = window.model.agent;
+    const now = Date.now();
+    const call = {
+      id: 'emoji-1',
+      name: 'bash',
+      title: 'echo setup',
+      input: 'echo setup',
+      output: '',
+      status: 'done',
+      paths: [],
+    };
+    const added = [
+      { id: 'emoji-user', role: 'user', text: 'Check setup', createdAt: now },
+      {
+        id: 'emoji-run',
+        role: 'assistant',
+        status: 'done',
+        createdAt: now,
+        model: 'claude-opus-5-5',
+        parts: [{ type: 'tool', tool: call }],
+      },
+    ];
+    const messages = agent.messages.bind(agent);
+    agent.messages = (id) => (id === 'cone-sliccy' ? [...messages(id), ...added] : messages(id));
+    agent.stepLabel = async (_agentId, callId) => (callId === 'emoji-1' ? text : null);
+    agent.select('cone-sliccy');
+    agent.emit('messages', 'cone-sliccy');
+    return true;
+  }, label);
+  await page.until(
+    () =>
+      window.chatPart('swc-conversation-turn[data-id=emoji-run] slicc-status-label')
+        ?.textContent === label
+  );
+  await page.evaluate(() =>
+    window
+      .chatPart('swc-conversation-turn[data-id=emoji-run] swc-response-status')
+      .shadowRoot.querySelector('.swc-ResponseStatus-headerTrail--button')
+      .click()
+  );
+  await page.until(() => window.chatPart('#label-emoji-1')?.textContent === label);
+  assert.deepEqual(
+    await page.evaluate((text) => {
+      const header = window.chatPart('swc-conversation-turn[data-id=emoji-run] slicc-status-label');
+      const row = window.chatPart('#label-emoji-1 slicc-step-label');
+      return {
+        text: [header.textContent, row.textContent],
+        titles: [
+          header.querySelector('span[title]')?.getAttribute('title'),
+          row.querySelector('span[title]')?.getAttribute('title'),
+        ],
+        chips: [
+          header.querySelectorAll('.control').length,
+          row.querySelectorAll('.control').length,
+        ],
+        hasNotation:
+          header.textContent.includes('U+') ||
+          row.textContent.includes('U+') ||
+          header.innerHTML.includes('U+FE0F') ||
+          header.innerHTML.includes('U+200D'),
+        expected: text,
+      };
+    }, label),
+    {
+      text: [label, label],
+      titles: [label, label],
+      chips: [0, 0],
+      hasNotation: false,
+      expected: label,
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a step label with a ZWSP-split token: secret is cut in the header and the row', async (t) => {
   const page = await open(t);
   await page.evaluate(() => {
