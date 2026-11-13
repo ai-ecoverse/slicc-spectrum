@@ -5,7 +5,14 @@ export const intentHold = 1000;
 
 export function intentText(value: unknown): string {
   if (typeof value !== 'string') return '';
-  const text = guard(value.replace(/[\p{Cc}\s]+/gu, ' ').trim());
+  const raw = value.replace(/[\p{Cc}\s]+/gu, ' ').trim();
+  const plain = raw
+    .replace(/[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu, '')
+    .normalize('NFKC')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  const cut = guard(plain);
+  const text = cut === plain ? raw : cut;
   if (text.length <= intentLimit) return text;
   return `${text.slice(0, intentLimit - 2).trimEnd()} …`;
 }

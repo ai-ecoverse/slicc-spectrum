@@ -420,3 +420,51 @@ test('bidi and other format controls in an intent show as visible chips, not reo
     assert.ok(!raw.test(value), JSON.stringify(value));
   assert.deepEqual(page.errors, []);
 });
+
+test('a secret-shaped word split by invisible characters is still cut', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    window.model.browser.finish(
+      window.drive({
+        kind: 'fill',
+        target: 'textbox "Key"',
+        intent: 'Pasting the key \uFF53\uFF4B-live0123456789abcdef in',
+      })
+    );
+    window.drive({
+      kind: 'type',
+      target: 'textbox "Token"',
+      intent: 'Entering tok\u200Ben: hunter2 in the field',
+    });
+    return true;
+  });
+  await page.until(() => window.inBrowser('.actions > li')?.dataset.kind === 'type');
+  await page.until(() => window.inBrowser('.driving .intent')?.textContent === 'Entering token: …');
+  const focused = await page.evaluate(() => ({
+    driving: window.inBrowser('.driving .intent').textContent,
+    title: window.inBrowser('.driving swc-status-light').title,
+    said: window.inBrowser('[data-intent-announce]').textContent,
+    rows: [...window.inBrowser('.actions').children]
+      .slice(0, 2)
+      .map((row) => row.querySelector('.what > .intent').textContent),
+    chips: window.inBrowser('.actions').querySelectorAll('.what > .intent .control').length,
+  }));
+  assert.deepEqual(focused, {
+    driving: 'Entering token: …',
+    title: 'Watching harbor · Entering token: …',
+    said: 'Entering token: …',
+    rows: ['Entering token: …', 'Pasting the key …'],
+    chips: 0,
+  });
+  await page.evaluate(() => window.inBrowser('[data-action=all-tabs]').click());
+  await page.until(() => !!window.inBrowser('li[data-id=tab-preview] .intent'));
+  assert.equal(
+    await page.evaluate(() => window.inBrowser('li[data-id=tab-preview] .intent').textContent),
+    'Entering token: …'
+  );
+  const html = await page.evaluate(
+    () => window.$('slicc-app', 'slicc-dock', 'slicc-browser').shadowRoot.innerHTML
+  );
+  assert.ok(!html.includes('hunter2') && !html.includes('0123456789abcdef'));
+  assert.deepEqual(page.errors, []);
+});
