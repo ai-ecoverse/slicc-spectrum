@@ -143,38 +143,42 @@ for (const scenario of ['agent', 'long']) {
   });
 }
 
-test('emoji sequences in a sudo command stay as emoji, with no joiner or VS chips', async (t) => {
+test('a sudo argv with ZWJ and an emoji tag character still shows chips for both', async (t) => {
   const page = await open(t, 'agent');
-  const emoji = '⚠️ \u{1F469}\u200D\u{1F4BB}';
+  const hidden = 'harbor\u200D\u{E0041}schedule';
   await page.evaluate((value) => {
     const port = window.model.approvals;
     const original = port.list()[0];
     port.end(original.id, 'withdrawn');
-    window.emojiCommand = `printf '%s' '${value}'`;
-    port.raise({ ...original, id: 'sudo-emoji', command: window.emojiCommand });
+    window.tagCommand = `printf '%s' '${value}'`;
+    port.raise({ ...original, id: 'sudo-tags', command: window.tagCommand });
     return true;
-  }, emoji);
+  }, hidden);
   await page.until(
     () =>
       !!window
         .approvals()
-        .querySelector('[data-approval=sudo-emoji] [data-action=once]:not([disabled])')
+        .querySelector('[data-approval=sudo-tags] [data-action=once]:not([disabled])')
   );
   assert.deepEqual(
-    await page.evaluate((value) => {
+    await page.evaluate(() => {
       const pre = window.approvals().querySelector('pre.command');
       return {
         text: pre.textContent,
-        chips: [...pre.querySelectorAll('.control')].map((chip) => chip.getAttribute('aria-label')),
-        hasNotation: pre.textContent.includes('U+') || pre.innerHTML.includes('U+FE0F'),
-        expected: `sudo printf '%s' '${value}'`,
+        chips: [...pre.querySelectorAll('.control')].map((chip) => [
+          chip.getAttribute('aria-label'),
+          chip.textContent,
+        ]),
+        command: window.model.approvals.list()[0].command,
       };
-    }, emoji),
+    }),
     {
-      text: `sudo printf '%s' '${emoji}'`,
-      chips: [],
-      hasNotation: false,
-      expected: `sudo printf '%s' '${emoji}'`,
+      text: "sudo printf '%s' 'harborU+200DU+E0041schedule'",
+      chips: [
+        ['U+200D', 'U+200D'],
+        ['U+E0041', 'U+E0041'],
+      ],
+      command: `printf '%s' '${hidden}'`,
     }
   );
   assert.deepEqual(page.errors, []);

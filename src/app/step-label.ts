@@ -1,6 +1,6 @@
 import { html, LitElement, type TemplateResult } from 'lit';
 import type { SliccModel } from '../model/types.ts';
-import { commandText, displayCommand } from './command-display.ts';
+import { displayLabel, labelText } from './command-display.ts';
 import { askStep, StepWatch, stepLabel } from './step-labels.ts';
 
 export class SliccStepLabel extends LitElement {
@@ -53,6 +53,6 @@ export class SliccStepLabel extends LitElement {
 
   render(): TemplateResult {
     const text = this.text;
-    return html`<span title=${displayCommand(text)}>${commandText(text, false)}</span>`;
+    return html`<span title=${displayLabel(text)}>${labelText(text)}</span>`;
   }
 }
