@@ -23,8 +23,9 @@ async function open(t) {
   return page;
 }
 
-test('a step label with U+202E shows a chip in the header and the row, not reordered text', async (t) => {
+test('a step label with U+202E shows notation in the header and a chip in the row, not reordered text', async (t) => {
   const page = await open(t);
+  const shown = 'Paying U+202Eredro ehtU+202C now';
   await page.evaluate(() => {
     const agent = window.model.agent;
     const now = Date.now();
@@ -56,9 +57,12 @@ test('a step label with U+202E shows a chip in the header and the row, not reord
     agent.emit('messages', 'cone-sliccy');
     return true;
   });
-  await page.until(
-    () => !!window.chatPart('swc-conversation-turn[data-id=bidi-run] slicc-status-label .control')
-  );
+  await page.until((text) => {
+    const status = window.chatPart('swc-conversation-turn[data-id=bidi-run] swc-response-status');
+    return [...(status?.shadowRoot?.querySelectorAll('.swc-ResponseStatus-label') ?? [])].some(
+      (node) => node.textContent === text
+    );
+  }, shown);
   await page.evaluate(() =>
     window
       .chatPart('swc-conversation-turn[data-id=bidi-run] swc-response-status')
@@ -74,11 +78,18 @@ test('a step label with U+202E shows a chip in the header and the row, not reord
         chip.getAttribute('aria-label'),
         chip.textContent,
       ]);
+    const status = window.chatPart('swc-conversation-turn[data-id=bidi-run] swc-response-status');
+    const visible = [
+      ...(status.shadowRoot?.querySelectorAll('.swc-ResponseStatus-label') ?? []),
+    ].map((node) => node.textContent);
     const header = window.chatPart('swc-conversation-turn[data-id=bidi-run] slicc-status-label');
     const row = window.chatPart('#label-bidi-1 slicc-step-label');
     return {
-      text: [header.textContent, row.textContent],
-      chips: [chips(header), chips(row)],
+      visible,
+      header: header.textContent,
+      headerChips: header.querySelectorAll('.control').length,
+      row: row.textContent,
+      rowChips: chips(row),
       titles: [
         header.querySelector('span[title]')?.getAttribute('title'),
         row.querySelector('span[title]')?.getAttribute('title'),
@@ -89,11 +100,13 @@ test('a step label with U+202E shows a chip in the header and the row, not reord
     ['img', 'U+202E', 'U+202E'],
     ['img', 'U+202C', 'U+202C'],
   ];
-  const shown = 'Paying U+202Eredro ehtU+202C now';
-  assert.deepEqual(read.chips, [chips, chips]);
-  assert.deepEqual(read.text, [shown, shown]);
+  assert.ok(read.visible.includes(shown), JSON.stringify(read.visible));
+  assert.equal(read.header, shown);
+  assert.equal(read.headerChips, 0);
+  assert.equal(read.row, shown);
+  assert.deepEqual(read.rowChips, chips);
   assert.deepEqual(read.titles, [shown, shown]);
-  for (const value of [...read.text, ...read.titles])
+  for (const value of [shown, ...read.visible, read.header, read.row, ...read.titles])
     assert.ok(!raw.test(value), JSON.stringify(value));
   assert.deepEqual(page.errors, []);
 });
