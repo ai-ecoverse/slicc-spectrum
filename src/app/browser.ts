@@ -162,8 +162,9 @@ export function foldActions(actions: readonly BrowserAction[]): FoldedAction[] {
   return out;
 }
 
-export function currentIntent(actions: readonly BrowserAction[]): string {
-  const action = actions.findLast((item) => item.status === 'running') ?? actions.at(-1);
+export function currentIntent(actions: readonly BrowserAction[], agentId: string): string {
+  const own = actions.filter((item) => item.agentId === agentId);
+  const action = own.findLast((item) => item.status === 'running') ?? own.at(-1);
   return intentText(action?.intent);
 }
 
@@ -1014,7 +1015,10 @@ export class SliccBrowser extends ModelElement {
     this.#intents.keep(new Set(tabs.map((tab) => this.#driver(tab))));
     for (const tab of tabs)
       if (
-        this.#intents.set(this.#driver(tab), currentIntent(port?.actions?.(tab.id) ?? [])) &&
+        this.#intents.set(
+          this.#driver(tab),
+          currentIntent(port?.actions?.(tab.id) ?? [], tab.agentId as string)
+        ) &&
         tab.id === this.#focus
       )
         this.#said = this.#intents.shown(this.#driver(tab));

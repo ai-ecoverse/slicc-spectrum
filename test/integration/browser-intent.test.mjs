@@ -525,3 +525,45 @@ test('a long intent is cut between characters, never inside an emoji', async (t)
   assert.ok(shown.driving.isWellFormed() && shown.row.isWellFormed());
   assert.deepEqual(page.errors, []);
 });
+
+test('a takeover while the old agent’s action still runs shows the new driver’s intent', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    window.drive({ kind: 'snapshot', intent: 'Reading the menu' });
+    return true;
+  });
+  await page.until(() => window.text(window.inBrowser('.driving .intent')) === 'Reading the menu');
+  await page.evaluate(() => {
+    const id = window.model.browser.record({
+      tabId: 'tab-preview',
+      agentId: 'scoop-otter',
+      kind: 'click',
+      target: 'button "Tea"',
+      intent: 'Choosing a drink',
+    });
+    window.model.browser.finish(id);
+    return true;
+  });
+  await page.until(() =>
+    window.text(window.inBrowser('.driving swc-status-light'))?.startsWith('Watching quiet-otter')
+  );
+  const focused = await page.evaluate(() => ({
+    running: window.model.browser
+      .actions('tab-preview')
+      .some((a) => a.agentId === 'cone-harbor' && a.status === 'running'),
+    driving: window.text(window.inBrowser('.driving swc-status-light')),
+    said: window.text(window.inBrowser('[data-intent-announce]')),
+  }));
+  assert.deepEqual(focused, {
+    running: true,
+    driving: 'Watching quiet-otter · Choosing a drink',
+    said: 'Choosing a drink',
+  });
+  await page.evaluate(() => window.inBrowser('[data-action=all-tabs]').click());
+  await page.until(() => !!window.inBrowser('li[data-id=tab-preview] .intent'));
+  assert.equal(
+    await page.evaluate(() => window.text(window.inBrowser('li[data-id=tab-preview] .intent'))),
+    'Choosing a drink'
+  );
+  assert.deepEqual(page.errors, []);
+});
