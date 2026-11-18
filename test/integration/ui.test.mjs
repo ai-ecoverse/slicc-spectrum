@@ -9724,7 +9724,7 @@ test('agent requests, frozen cones and long lick bodies render as their own kind
       turn.dataset.origin,
       turn.querySelector('.who').textContent,
       turn.querySelector('.meta swc-badge')?.textContent.trim(),
-      getComputedStyle(bubble).alignSelf,
+      getComputedStyle(bubble).alignSelf.replace(/^flow-/, 'flex-'),
       [...turn.querySelector('.meta').children].map((child) =>
         child.matches('.who') ? 'name' : child.matches('swc-badge') ? 'badge' : 'time'
       ),
