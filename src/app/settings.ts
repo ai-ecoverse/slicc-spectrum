@@ -947,7 +947,9 @@ export class SliccSettings extends ThemedElement {
     }
     const done = await this.#connectBases(account, undefined, fields, vault, fresh);
     if (!done && settings && !keyed && this.model === model)
-      await vault.settings?.(recordName(account), 'model', before ?? {}).catch(() => {});
+      await vault.settings?.(recordName(account), 'model', before ?? {}).catch((error) => {
+        if (this.failure?.id !== id) this.failure = { id, message: failureText(error) };
+      });
   }
 
   async #endpoint(account: Account, vault: VaultPort, url: string): Promise<void> {
@@ -1107,14 +1109,16 @@ export class SliccSettings extends ThemedElement {
   #keyless(account: Account): boolean {
     if (!account.keyOptional) return false;
     const vault = this.#vault(account);
-    if (!vault) return true;
+    if (!vault) return !this.#record(account);
     return vault.list() ? !this.#record(account) : !this.#added(account.id);
   }
 
   #keyOptional(account: Account): boolean {
-    if (account.keyOptional) return true;
     const vault = this.#vault(account);
     const fields = account.fields ?? [];
+    const settable = fields.some((field) => field.vaultSetting);
+    const stale = !!vault && settable && !vault.settings && !this.#keyless(account);
+    if (account.keyOptional) return !stale;
     if (!vault || !fields.some((field) => field.vaultSetting || field.customBase)) return false;
     if (fields.some((field) => field.vaultSetting) && !vault.settings) return false;
     return !!this.#record(account);
@@ -1650,7 +1654,8 @@ export class SliccSettings extends ThemedElement {
       !fields.length &&
       !this.#mcpUrl(account) &&
       this.#auto !== id &&
-      !busy
+      !busy &&
+      !this.#keyless(account)
     )
       this.#wants = account;
     const required = fields.filter((field) => field.required && !field.options);
