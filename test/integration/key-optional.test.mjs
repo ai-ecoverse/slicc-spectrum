@@ -1057,3 +1057,20 @@ test('on a vault that can’t remove, Remove of a keyOptional account with a kep
   await page.until(() => !window.account('local'));
   assert.deepEqual(page.errors, []);
 });
+
+test('a key the vault lists while the Remove confirm is open is still removed', async (t) => {
+  const page = await open(t);
+  await choose(page);
+  await fill(page, [['input[data-account-field=endpoint]', 'http://localhost:11434']]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  await page.until(() => !window.settingsPart('dialog.picker'));
+  await click(page, '.account[data-id=local] [data-action=remove-account]');
+  await page.until(() => !!window.dialog());
+  assert.equal(await page.evaluate(() => window.dialog().body), 'Models from it stop working.');
+  await kept(page);
+  await page.evaluate(() => window.answer(true));
+  await page.until(() => !window.account('local'));
+  assert.deepEqual(await page.evaluate(() => window.order), [['remove', 'LOCAL_API_KEY']]);
+  assert.deepEqual(page.errors, []);
+});

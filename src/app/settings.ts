@@ -2023,7 +2023,7 @@ export class SliccSettings extends ThemedElement {
     const keyed =
       account.store === 'vault' &&
       (account.auth === 'api-key' || dual(account)) &&
-      held &&
+      this.#keeps(account) &&
       !!vault?.remove;
     if (keyed && !(await this.#forget(account, vault as VaultPort))) return;
     if (this.model !== model) return;
