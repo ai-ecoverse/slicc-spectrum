@@ -2011,7 +2011,8 @@ export class SliccSettings extends ThemedElement {
   async #remove(account: Account): Promise<void> {
     const model = this.model as SliccModel;
     const vaulted =
-      account.keyOptional || (account.store === 'vault' && account.auth === 'api-key');
+      account.keyOptional ||
+      (account.store === 'vault' && (account.auth === 'api-key' || dual(account)));
     const held = this.#keeps(account) && (!vaulted || !!model.vault?.remove);
     const body =
       removeBodies[held ? String(account.auth) : 'local'] ??
