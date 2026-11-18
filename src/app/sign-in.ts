@@ -76,6 +76,7 @@ export const signInHosts: ReadonlyMap<string, readonly string[]> = new Map([
   ['openai-codex', ['auth.openai.com']],
   ['xai', ['accounts.x.ai']],
   ['kimi-coding', ['www.kimi.com']],
+  ['github-copilot', ['github.com']],
 ]);
 
 export function signInPage(id: string, url: string): string | null {
