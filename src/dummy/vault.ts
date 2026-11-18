@@ -15,6 +15,7 @@ import type {
   ImportPick,
   ImportResult,
   PendingRequest,
+  PolicyFileState,
   PolicyNotice,
   PopupIntent,
   PutOptions,
@@ -45,6 +46,7 @@ export type VaultScenario =
   | 'notice'
   | 'locked'
   | 'paused'
+  | 'warnings'
   | 'request'
   | 'backup'
   | 'waiting'
@@ -542,6 +544,26 @@ function waiting(scenario: VaultScenario, now: number): PendingRequest[] {
   return [];
 }
 
+export function vaultWarnings(): PolicyFileState[] {
+  return [
+    {
+      path: '/etc/fnox/config.toml',
+      sha256: 'c4ca4238a0b923820dcc509a6f75849b',
+      accepted: true,
+      warnings: [
+        "LAGOON_API_KEY: its value isn't a vault placeholder",
+        "proxy rule 3: DRIFT_TOKEN isn't a seven secret in [secrets]",
+      ],
+    },
+    {
+      path: '/etc/slicc/secrets-policy.toml',
+      sha256: '4e07408562bedb8b60ce05c1decfe3ad',
+      accepted: true,
+      warnings: [],
+    },
+  ];
+}
+
 export function vaultFixtures(
   scenario: VaultScenario,
   now = Date.now()
@@ -579,6 +601,7 @@ export function vaultFixtures(
           ],
         }
       : {}),
+    ...(scenario === 'warnings' ? { policy: vaultWarnings() } : {}),
   };
   const quay = { domain: 'quay.harbor.example', header: 'Authorization', methods: [], paths: [] };
   const secrets = (empty ? [] : vaultSecrets(now)).map((secret) =>

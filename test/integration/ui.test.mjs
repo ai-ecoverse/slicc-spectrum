@@ -10529,6 +10529,189 @@ test('a removed policy file shows as paused next to Unlocked, and Activity tells
   assert.deepEqual(page.errors, []);
 });
 
+const policyWarnings = () =>
+  [...window.settingsPart('slicc-secrets').shadowRoot.querySelectorAll('[data-policy-file]')].map(
+    (box) => ({
+      file: box.dataset.policyFile,
+      title: box.querySelector('.title').textContent.replace(/\s+/g, ' ').trim(),
+      warnings: [...box.querySelectorAll('[data-policy-warnings] li')].map((li) =>
+        li.textContent.replace(/\s+/g, ' ').trim()
+      ),
+    })
+  );
+
+const setPolicy = (policy) => {
+  const { vault } = window.model;
+  const next = { ...vault.status(), policy };
+  vault.status = () => next;
+  vault.emit('status', next);
+  return true;
+};
+
+test('policy file warnings show under where the rules live, one item each with the file path', async (t) => {
+  const page = await secretsPage(t, { vault: 'warnings' });
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-policy-file]'));
+  assert.deepEqual(await page.evaluate(policyWarnings), [
+    {
+      file: '/etc/fnox/config.toml',
+      title: 'The vault skipped these entries in /etc/fnox/config.toml',
+      warnings: [
+        "LAGOON_API_KEY: its value isn't a vault placeholder",
+        "proxy rule 3: DRIFT_TOKEN isn't a seven secret in [secrets]",
+      ],
+    },
+  ]);
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.settingsPart('slicc-secrets', '[data-policy] + [data-policy-file]')?.dataset
+          .policyFile
+    ),
+    '/etc/fnox/config.toml'
+  );
+  assert.equal(
+    await page.evaluate(() => !!window.settingsPart('slicc-secrets', '[data-paused]')),
+    false
+  );
+  await views(page, 'secrets-policy-warnings', '[data-policy]');
+  await sized(page, 420, 860);
+  await page.evaluate(() => {
+    window.settingsPart('slicc-secrets', '[data-policy-file]').scrollIntoView({ block: 'start' });
+    return true;
+  });
+  await page.until(() => {
+    const box = window.settingsPart('slicc-secrets', '[data-policy-file]').getBoundingClientRect();
+    return box.width > 0 && box.right <= window.innerWidth;
+  });
+  assert.equal(
+    await page.evaluate(() => {
+      const host = window.settingsPart('slicc-secrets');
+      const box = host.shadowRoot.querySelector('[data-policy-file]');
+      return (
+        box.getBoundingClientRect().left >= 0 &&
+        box.scrollWidth <= box.clientWidth &&
+        [...box.querySelectorAll('li')].every(
+          (li) => li.getBoundingClientRect().right <= box.getBoundingClientRect().right
+        )
+      );
+    }),
+    true
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a policy warning shows bidi and control characters as chips, and long lists open on Show more', async (t) => {
+  const page = await secretsPage(t, { vault: 'warnings' });
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-policy-file]'));
+  await page.evaluate(setPolicy, [
+    {
+      path: '/etc/fnox/config.toml',
+      sha256: 'c4ca4238a0b923820dcc509a6f75849b',
+      accepted: true,
+      warnings: [
+        "proxy rule 1: api.\u202Eelpmaxe.reef\x07 isn't an exact host name",
+        '<b data-injected>bold</b>: header must be a header name',
+        ...Array.from(
+          { length: 6 },
+          (_, index) => `proxy rule ${index + 2}: needs secret and domain`
+        ),
+      ],
+    },
+  ]);
+  await page.until(
+    () =>
+      window.settingsPart('slicc-secrets', '[data-policy-warnings]')?.querySelectorAll('li')
+        .length === 5
+  );
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const box = window.settingsPart('slicc-secrets', '[data-policy-file]');
+      const first = box.querySelector('li');
+      return {
+        chips: [...first.querySelectorAll('.control')].map((chip) =>
+          chip.getAttribute('aria-label')
+        ),
+        raw: /[\u202E\x07]/.test(box.textContent),
+        injected: !!box.querySelector('[data-injected]'),
+        second: box.querySelectorAll('li')[1].textContent.trim(),
+        more: box.querySelector('[data-action=more-warnings]')?.textContent.trim(),
+      };
+    }),
+    {
+      chips: ['U+202E', 'U+0007'],
+      raw: false,
+      injected: false,
+      second: '<b data-injected>bold</b>: header must be a header name',
+      more: 'Show 3 more',
+    }
+  );
+  await page.evaluate(() => {
+    window.settingsPart('slicc-secrets', '[data-action=more-warnings]').click();
+    return true;
+  });
+  await page.until(
+    () =>
+      window.settingsPart('slicc-secrets', '[data-policy-warnings]').querySelectorAll('li')
+        .length === 8 && !window.settingsPart('slicc-secrets', '[data-action=more-warnings]')
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('policy files without warnings show no warning box', async (t) => {
+  const page = await secretsPage(t, { vault: 'warnings' });
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-policy-file]'));
+  await page.evaluate(setPolicy, [
+    { path: '/etc/fnox/config.toml', sha256: 'a', accepted: true, warnings: [] },
+    { path: '/etc/slicc/secrets-policy.toml', sha256: 'b', accepted: true, warnings: [] },
+  ]);
+  await page.until(() => !window.settingsPart('slicc-secrets', '[data-policy-file]'));
+  assert.equal(
+    await page.evaluate(() => !!window.settingsPart('slicc-secrets', '[data-policy]')),
+    true
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a paused file still shows its light when the other file has warnings', async (t) => {
+  const page = await secretsPage(t, { vault: 'warnings' });
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-policy-file]'));
+  await page.evaluate(setPolicy, [
+    {
+      path: '/etc/fnox/config.toml',
+      sha256: 'a',
+      accepted: true,
+      warnings: ['proxy rule 2: needs secret and domain'],
+    },
+    {
+      path: '/etc/slicc/secrets-policy.toml',
+      sha256: null,
+      accepted: true,
+      warnings: [],
+      absent: true,
+      paused: true,
+    },
+  ]);
+  await page.until(() => !!window.settingsPart('slicc-secrets', '[data-paused]'));
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      paused: window
+        .settingsPart('slicc-secrets', '[data-paused]')
+        .textContent.replace(/\s+/g, ' ')
+        .trim(),
+      variant: window.settingsPart('slicc-secrets', '[data-paused]').getAttribute('variant'),
+      files: [
+        ...window.settingsPart('slicc-secrets').shadowRoot.querySelectorAll('[data-policy-file]'),
+      ].map((box) => box.dataset.policyFile),
+    })),
+    {
+      paused: 'Paused: /etc/slicc/secrets-policy.toml is missing',
+      variant: 'notice',
+      files: ['/etc/fnox/config.toml'],
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('with both policy files missing the status names the first and how many more', async (t) => {
   const page = await secretsPage(t, { vault: 'paused' });
   await page.evaluate(() => {
