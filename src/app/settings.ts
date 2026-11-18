@@ -71,7 +71,7 @@ interface KeyEntry {
   request: string;
   fields: Record<string, string> | undefined;
   vault: VaultPort;
-  fresh: boolean | null;
+  fresh: boolean;
 }
 
 import { ViewScroll } from './view-state.ts';
@@ -916,13 +916,13 @@ export class SliccSettings extends ThemedElement {
       return;
     }
     const record = this.#record(account);
-    const fresh = vault?.list() ? !record : null;
+    const fresh = this.#listed() && !record;
     if (!keyed && this.#keyless(account)) {
       this.failure = null;
       await this.#connectBases(account, undefined, fields);
       return;
     }
-    if (vault.status()?.locked) return;
+    if (vault.status()?.locked || this.#unlisted(account)) return;
     const settings = this.#settingsOf(account, fields);
     const options =
       account.group === 'mcp'
@@ -981,7 +981,7 @@ export class SliccSettings extends ThemedElement {
       account.group === 'mcp'
         ? { name, kind: 'mcp', server: serverOf(account) }
         : { name, kind: 'model', provider: account.id, ...(settings ? { settings } : {}) };
-    const fresh = vault.list() ? !this.#held(account) : null;
+    const fresh = this.#listed() && !this.#held(account);
     if (this.#held(account)) options.replace = true;
     this.#busy(id, true);
     this.failure = null;
@@ -1097,6 +1097,14 @@ export class SliccSettings extends ThemedElement {
       );
   }
 
+  #listed(): boolean {
+    return !!this.model?.vault?.list();
+  }
+
+  #unlisted(account: Account): boolean {
+    return !!account.keyOptional && !!this.#vault(account) && !this.#listed();
+  }
+
   #keyless(account: Account): boolean {
     if (!account.keyOptional) return false;
     const vault = this.#vault(account);
@@ -1141,15 +1149,15 @@ export class SliccSettings extends ThemedElement {
   #baseChanges(
     account: Account,
     fields: Record<string, string> | undefined,
-    fresh: boolean | null
+    fresh: boolean
   ): BaseChange[] {
     return (account.fields ?? [])
       .filter((field) => field.customBase)
-      .map((field) => {
-        const url = this.#baseOf(fields?.[field.name], true);
-        const old = fresh ? undefined : this.#oldBase(account, field);
-        return { field: field.name, url, old: fresh === null && old === url ? undefined : old };
-      })
+      .map((field) => ({
+        field: field.name,
+        url: this.#baseOf(fields?.[field.name], true),
+        old: fresh ? undefined : this.#oldBase(account, field),
+      }))
       .filter((change) => change.url !== change.old);
   }
 
@@ -1175,7 +1183,7 @@ export class SliccSettings extends ThemedElement {
     secret: string | undefined,
     fields: Record<string, string> | undefined,
     vault: VaultPort | null = null,
-    fresh: boolean | null = false
+    fresh = false
   ): Promise<void> {
     const live = vault?.endpoints ? vault : null;
     const { id } = account;
@@ -1204,7 +1212,7 @@ export class SliccSettings extends ThemedElement {
     account: Account,
     changes: BaseChange[],
     bound: { live: VaultPort; forward: VaultEndpointChange; back: VaultEndpointChange },
-    fresh: boolean | null
+    fresh: boolean
   ): Promise<boolean> {
     const model = this.model;
     const { id } = account;
@@ -1372,7 +1380,7 @@ export class SliccSettings extends ThemedElement {
     const vault = this.#vault(account);
     if (vault) {
       const input = form.querySelector('input[data-field=value]') as HTMLInputElement;
-      if (input.value && vault.status()?.locked) return;
+      if (input.value && (vault.status()?.locked || this.#unlisted(account))) return;
       const value = take(input);
       const fields = this.#fields(form, account);
       if (fields !== null && !this.pending.has(account.id)) void this.keep(account, value, fields);
@@ -1626,7 +1634,7 @@ export class SliccSettings extends ThemedElement {
     const filled =
       !account.blocked &&
       required.every((field) => !this.#offered() || this.filled.has(field.name));
-    const ready = !waiting && filled;
+    const ready = !waiting && filled && !this.#unlisted(account);
     const optional = this.#keyOptional(account);
     const keyless = this.#keyless(account);
     const hint = entry
@@ -1674,7 +1682,8 @@ export class SliccSettings extends ThemedElement {
     if (enters(vault)) return this.#entryKept(account, vault);
     const busy = this.pending.has(account.id);
     const locked = !!vault.status()?.locked;
-    const held = locked && (!this.#keyless(account) || this.filled.has('value'));
+    const waits = this.#unlisted(account);
+    const held = (locked || waits) && (!this.#keyless(account) || this.filled.has('value'));
     const name = secretNames[account.secret ?? 'api-key'];
     return html`<form class="key stacked" data-id=${account.id} data-store="vault" @submit=${(event: Event) => this.#submit(event, account)} @keydown=${(event: KeyboardEvent) => this.#submitOnEnter(event)} @input=${(event: Event) => this.#fill(event)}>
         <label class="field"><span>${this.#secretLabel(account)}</span><input
@@ -1687,7 +1696,7 @@ export class SliccSettings extends ThemedElement {
           aria-describedby=${this.#described(account, 'value')}
         /></label>
         ${this.#problem(account, 'value')}
-        ${locked ? this.#unlock(vault) : html`<p class="hint">Saved in the vault</p>`}
+        ${locked ? this.#unlock(vault) : html`<p class="hint">${waits ? 'Loading the vault…' : 'Saved in the vault'}</p>`}
         ${this.#getKey(account)}
         ${this.#extra(account)}
         <div class="buttons">
@@ -1843,7 +1852,7 @@ export class SliccSettings extends ThemedElement {
         data-action="disconnect"
         accessible-label=${`Disconnect ${account.provider}`}
         ?pending=${this.pending.has(account.id)}
-        ?disabled=${this.removing.has(account.id)}
+        ?disabled=${this.removing.has(account.id) || this.#unlisted(account)}
         @click=${() => this.#disconnect(account)}
       >Disconnect</swc-button>`;
     }
@@ -1948,7 +1957,7 @@ export class SliccSettings extends ThemedElement {
         quiet
         data-action=${server ? 'remove-server' : 'remove-account'}
         accessible-label=${label}
-        ?disabled=${this.pending.has(account.id) || removing}
+        ?disabled=${this.pending.has(account.id) || removing || this.#unlisted(account)}
         @click=${() => (server ? this.#removeServer(account) : this.#remove(account))}
         ><swc-icon-delete slot="icon"></swc-icon-delete></swc-action-button
       >${removing ? nothing : html`<swc-tooltip for=${id} placement="top">${label}</swc-tooltip>`}`;

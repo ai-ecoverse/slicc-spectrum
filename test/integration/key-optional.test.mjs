@@ -491,131 +491,6 @@ const loading = (page) =>
     return true;
   });
 
-test('while the vault list loads, Disconnect of a keyed local account still removes its key', async (t) => {
-  const page = await open(t);
-  await keyedLocal(page);
-  await loading(page);
-  await click(page, '.account[data-id=local] [data-action=disconnect]');
-  await page.until(() => !!window.dialog());
-  assert.equal(
-    await page.evaluate(() => window.dialog().body),
-    'Agents can’t use Local or self-hosted until you connect it again. You can restore its key from Removed in Secrets for 30 days.'
-  );
-  await page.evaluate(() => window.answer(true));
-  await page.until(() => window.account('local')?.status === 'disconnected');
-  assert.deepEqual(await page.evaluate(() => window.order), [['remove', 'LOCAL_API_KEY']]);
-  assert.deepEqual(page.errors, []);
-});
-
-test('while the vault list loads, a known keyed local account needs its key to connect', async (t) => {
-  const page = await open(t);
-  await keyedLocal(page);
-  await page.evaluate(() => {
-    window.model.settings.disconnect('local');
-    return true;
-  });
-  await loading(page);
-  await click(page, '.account[data-id=local] [data-action=connect]');
-  await page.until(() => !!window.settingsPart('form.key[data-id=local] [data-action=save]'));
-  assert.deepEqual(
-    await page.evaluate(() => ({
-      label: window.settingsPart('form.key[data-id=local] label.field span').textContent,
-      disabled: window.settingsPart('form.key[data-id=local] [data-action=save]').disabled,
-    })),
-    { label: 'Local or self-hosted API key (optional)', disabled: true }
-  );
-  await page.evaluate(() => {
-    window.settingsPart('form.key[data-id=local]').requestSubmit();
-    return true;
-  });
-  await page.until(() => !!window.settingsPart('form.key[data-id=local] #key-problem'));
-  assert.deepEqual(await page.evaluate(() => window.order), []);
-  assert.deepEqual(page.errors, []);
-});
-
-test('while the vault list loads, a keyed reconnect with a changed URL binds the new endpoint', async (t) => {
-  const page = await open(t);
-  await keyedLocal(page);
-  await page.evaluate(() => {
-    window.model.settings.disconnect('local');
-    return true;
-  });
-  await loading(page);
-  await click(page, '.account[data-id=local] [data-action=connect]');
-  await page.until(() => !!window.settingsPart('form.key[data-id=local] input[data-field=value]'));
-  for (const [selector, value] of [
-    ['input[data-field=value]', 'local-key-9876543210'],
-    ['input[data-account-field=endpoint]', 'http://localhost:1234'],
-  ]) {
-    await page.evaluate((selector) => {
-      const input = window.settingsPart(`form.key[data-id=local] ${selector}`);
-      input.value = '';
-      input.focus();
-      return true;
-    }, selector);
-    await page.type(value);
-  }
-  await click(page, 'form.key[data-id=local] [data-action=save]');
-  await page.until(() => window.account('local')?.status === 'connected');
-  assert.deepEqual(await page.evaluate(() => window.order), [
-    ['put', 'LOCAL_API_KEY'],
-    [
-      'endpoints',
-      {
-        remove: { model: [{ name: 'LOCAL_API_KEY', url: 'http://localhost:11434' }] },
-        add: { model: [{ name: 'LOCAL_API_KEY', url: 'http://localhost:1234' }] },
-      },
-    ],
-    ['connect', 'local'],
-  ]);
-  assert.deepEqual(page.errors, []);
-});
-
-test('while the vault list loads, Remove of a keyed local account still removes its key', async (t) => {
-  const page = await open(t);
-  await keyedLocal(page);
-  await loading(page);
-  await click(page, '.account[data-id=local] [data-action=remove-account]');
-  await page.until(() => !!window.dialog());
-  assert.equal(
-    await page.evaluate(() => window.dialog().body),
-    'Its key is deleted from the vault. Models from it stop working.'
-  );
-  await page.evaluate(() => window.answer(true));
-  await page.until(() => !window.account('local'));
-  assert.deepEqual(await page.evaluate(() => window.order), [['remove', 'LOCAL_API_KEY']]);
-  assert.deepEqual(page.errors, []);
-});
-
-test('while the vault list loads, a key added to a keyless account binds its unchanged URL', async (t) => {
-  const page = await open(t);
-  await choose(page);
-  await fill(page, [['input[data-account-field=endpoint]', 'http://localhost:11434']]);
-  await click(page, 'dialog.picker [data-action=save]');
-  await page.until(() => window.account('local')?.status === 'connected');
-  await page.until(() => !window.settingsPart('dialog.picker'));
-  await page.evaluate(() => {
-    window.model.settings.disconnect('local');
-    return true;
-  });
-  await loading(page);
-  await click(page, '.account[data-id=local] [data-action=connect]');
-  await page.until(() => !!window.settingsPart('form.key[data-id=local] input[data-field=value]'));
-  await page.evaluate(() => {
-    window.settingsPart('form.key[data-id=local] input[data-field=value]').focus();
-    return true;
-  });
-  await page.type('local-key-0123456789');
-  await click(page, 'form.key[data-id=local] [data-action=save]');
-  await page.until(() => window.account('local')?.status === 'connected');
-  assert.deepEqual(await page.evaluate(() => window.order), [
-    ['put', 'LOCAL_API_KEY'],
-    ['endpoints', { add: { model: [{ name: 'LOCAL_API_KEY', url: 'http://localhost:11434' }] } }],
-    ['connect', 'local'],
-  ]);
-  assert.deepEqual(page.errors, []);
-});
-
 test('with a locked vault, a typed key holds Save back and is never dropped', async (t) => {
   const page = await open(t);
   await page.evaluate(() => window.model.vault.lock().then(() => true));
@@ -669,5 +544,163 @@ test('with two custom bases, the insecure confirm names the plain-network URL', 
   assert.equal(await page.evaluate(() => window.dialog().title), `Connect to ${lan}?`);
   await page.evaluate(() => window.answer(false));
   await page.until(() => !window.settingsPart('dialog.picker [data-action=save]')?.pending);
+  assert.deepEqual(page.errors, []);
+});
+
+const loaded = (page) =>
+  page.evaluate(() => {
+    const { vault } = window.model;
+    delete vault.list;
+    vault.emit('list', vault.list());
+    return true;
+  });
+
+const disabled = (page, selector) =>
+  page.evaluate((selector) => !!window.settingsPart(selector)?.disabled, selector);
+
+async function retype(page, values) {
+  for (const [selector, value] of values) {
+    await page.evaluate((selector) => {
+      const input = window.settingsPart(`form.key[data-id=local] ${selector}`);
+      input.value = '';
+      input.focus();
+      return true;
+    }, selector);
+    await page.type(value);
+  }
+}
+
+test('while the vault list loads, Disconnect waits, then removes the key', async (t) => {
+  const page = await open(t);
+  await keyedLocal(page);
+  await loading(page);
+  await page.until(
+    () => window.settingsPart('.account[data-id=local] [data-action=disconnect]')?.disabled
+  );
+  assert.equal(await disabled(page, '.account[data-id=local] [data-action=remove-account]'), true);
+  await loaded(page);
+  await click(page, '.account[data-id=local] [data-action=disconnect]');
+  await page.until(() => !!window.dialog());
+  assert.equal(
+    await page.evaluate(() => window.dialog().body),
+    'Agents can’t use Local or self-hosted until you connect it again. You can restore its key from Removed in Secrets for 30 days.'
+  );
+  await page.evaluate(() => window.answer(true));
+  await page.until(() => window.account('local')?.status === 'disconnected');
+  assert.deepEqual(await page.evaluate(() => window.order), [['remove', 'LOCAL_API_KEY']]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('while the vault list loads, Remove of a keyed account waits, then removes the key', async (t) => {
+  const page = await open(t);
+  await keyedLocal(page);
+  await loading(page);
+  await page.until(
+    () => window.settingsPart('.account[data-id=local] [data-action=remove-account]')?.disabled
+  );
+  await loaded(page);
+  await click(page, '.account[data-id=local] [data-action=remove-account]');
+  await page.until(() => !!window.dialog());
+  assert.equal(
+    await page.evaluate(() => window.dialog().body),
+    'Its key is deleted from the vault. Models from it stop working.'
+  );
+  await page.evaluate(() => window.answer(true));
+  await page.until(() => !window.account('local'));
+  assert.deepEqual(await page.evaluate(() => window.order), [['remove', 'LOCAL_API_KEY']]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('while the vault list loads, a keyed save waits, then binds a changed URL', async (t) => {
+  const page = await open(t);
+  await keyedLocal(page);
+  await page.evaluate(() => {
+    window.model.settings.disconnect('local');
+    return true;
+  });
+  await loading(page);
+  await click(page, '.account[data-id=local] [data-action=connect]');
+  await page.until(() => !!window.settingsPart('form.key[data-id=local] input[data-field=value]'));
+  await retype(page, [
+    ['input[data-field=value]', 'local-key-9876543210'],
+    ['input[data-account-field=endpoint]', 'http://localhost:1234'],
+  ]);
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      hint: window.settingsPart('form.key[data-id=local] .hint').textContent,
+      disabled: window.settingsPart('form.key[data-id=local] [data-action=save]').disabled,
+    })),
+    { hint: 'Loading the vault…', disabled: true }
+  );
+  await page.press('Enter');
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      value: window.settingsPart('form.key[data-id=local] input[data-field=value]').value,
+      order: window.order,
+    })),
+    { value: 'local-key-9876543210', order: [] }
+  );
+  await loaded(page);
+  await click(page, 'form.key[data-id=local] [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.order), [
+    ['put', 'LOCAL_API_KEY'],
+    [
+      'endpoints',
+      {
+        remove: { model: [{ name: 'LOCAL_API_KEY', url: 'http://localhost:11434' }] },
+        add: { model: [{ name: 'LOCAL_API_KEY', url: 'http://localhost:1234' }] },
+      },
+    ],
+    ['connect', 'local'],
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
+async function keylessThenLoading(page, url) {
+  await choose(page);
+  await fill(page, [['input[data-account-field=endpoint]', url]]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  await page.until(() => !window.settingsPart('dialog.picker'));
+  await page.evaluate(() => {
+    window.model.settings.disconnect('local');
+    return true;
+  });
+  await loading(page);
+  await click(page, '.account[data-id=local] [data-action=connect]');
+  await page.until(() => !!window.settingsPart('form.key[data-id=local] input[data-field=value]'));
+  await retype(page, [['input[data-field=value]', 'local-key-0123456789']]);
+  assert.equal(await disabled(page, 'form.key[data-id=local] [data-action=save]'), true);
+  await loaded(page);
+  await click(page, 'form.key[data-id=local] [data-action=save]');
+}
+
+test('while the vault list loads, a key for a keyless account waits, then binds its URL', async (t) => {
+  const page = await open(t);
+  await keylessThenLoading(page, 'http://localhost:11434');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.order), [
+    ['put', 'LOCAL_API_KEY'],
+    ['endpoints', { add: { model: [{ name: 'LOCAL_API_KEY', url: 'http://localhost:11434' }] } }],
+    ['connect', 'local'],
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('after the vault list loads, Cancel removes the key a keyless account just got', async (t) => {
+  const page = await open(t);
+  await keylessThenLoading(page, lan);
+  await page.until(() => !!window.dialog());
+  await page.evaluate(() => window.answer(false));
+  await page.until(() => window.order.some(([name]) => name === 'remove'));
+  assert.deepEqual(await page.evaluate(() => window.order), [
+    ['put', 'LOCAL_API_KEY'],
+    ['endpoints', { add: { model: [{ name: 'LOCAL_API_KEY', url: lan }] } }],
+    ['endpoints', { remove: { model: [{ name: 'LOCAL_API_KEY', url: lan }] } }],
+    ['remove', 'LOCAL_API_KEY'],
+  ]);
+  assert.equal(await page.evaluate(() => window.account('local').status), 'disconnected');
   assert.deepEqual(page.errors, []);
 });
