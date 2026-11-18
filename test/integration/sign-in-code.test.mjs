@@ -287,6 +287,40 @@ test('a javascript: sign-in page renders no link, only text', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
+test('a GitHub Copilot sign-in links GitHub’s device page', async (t) => {
+  const page = await open(t, { delay: '200' });
+  await page.evaluate(() => {
+    const port = window.model.settings;
+    const accounts = port.accounts.bind(port);
+    port.accounts = () =>
+      accounts().map((account) =>
+        account.status === 'signing-in'
+          ? {
+              ...account,
+              id: 'github-copilot',
+              signIn: { url: 'https://github.com/login/device', code: 'ABCD-EFGH' },
+            }
+          : account
+      );
+    return true;
+  });
+  const copilot = '.accounts .account[data-id=github-copilot] + .notes';
+  await settings(page);
+  await click(page, 'settings', '.account[data-id=ai-adobe] [data-action=connect]');
+  await page.until((row) => window.signIn('settings', row).code === 'ABCD-EFGH', copilot);
+  assert.deepEqual(
+    await page.evaluate((row) => {
+      const parts = window.signIn('settings', row);
+      return [parts.link, parts.unknown];
+    }, copilot),
+    [
+      { href: 'https://github.com/login/device', target: '_blank', rel: 'noopener noreferrer' },
+      null,
+    ]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('without a signIn, a signing-in row shows no code and no link', async (t) => {
   const page = await open(t, { delay: '200' });
   await settings(page);
