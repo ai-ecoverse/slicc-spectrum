@@ -933,7 +933,7 @@ test('a keyOptional provider without fields doesn’t open the vault’s field b
   assert.deepEqual(page.errors, []);
 });
 
-test('on a vault that can only list and remove, a vault setting edit of a kept key needs a key', async (t) => {
+test('on a vault that can only list and remove, a vault setting edit connects without a key', async (t) => {
   const page = await open(t);
   await reshape(page, tenantFields);
   await kept(page, { LOCAL_TENANT: 'harbor' });
@@ -947,9 +947,14 @@ test('on a vault that can only list and remove, a vault setting edit of a kept k
     ['input[data-account-field=endpoint]', 'http://localhost:11434'],
     ['input[data-account-field=tenant]', 'tide'],
   ]);
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  assert.equal(await disabled(page, 'dialog.picker [data-action=save]'), true);
-  assert.deepEqual(await page.evaluate(() => window.order), []);
+  await page.until(() => !window.settingsPart('dialog.picker [data-action=save]').disabled);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.order), [['connect', 'local']]);
+  assert.deepEqual(await page.evaluate(() => window.model.settings.connects.at(-1).fields), {
+    endpoint: 'http://localhost:11434',
+    tenant: 'tide',
+  });
   assert.deepEqual(page.errors, []);
 });
 
@@ -989,5 +994,45 @@ test('a settings restore refused after a model swap shows nothing on the new mod
     await page.evaluate(() => window.$('slicc-app', 'slicc-dock', 'slicc-settings').failure),
     null
   );
+  assert.deepEqual(page.errors, []);
+});
+
+test('on a vault that can’t store keys, a typed key never reaches connect', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    window.model.vault.put = undefined;
+    window.connected = [];
+    const { settings } = window.model;
+    const connect = settings.connect.bind(settings);
+    settings.connect = (...args) => {
+      window.connected.push(args[1] ?? null);
+      return connect(...args);
+    };
+    return true;
+  });
+  await click(page, '[data-action=add-provider]');
+  await page.until(() => window.settingsPart('dialog.picker')?.open);
+  await click(page, '.option[data-provider="groq"]');
+  await page.until(() => !!window.settingsPart('dialog.picker sp-textfield'));
+  await page.evaluate(() => {
+    window.settingsPart('dialog.picker sp-textfield').focus();
+    return true;
+  });
+  await page.type('gsk-0123456789');
+  await page.press('Enter');
+  await page.until(
+    () =>
+      window.settingsPart('dialog.picker .failure[role=alert]')?.textContent.trim() ===
+      'The vault can’t store this key. Update the vault, then try again.'
+  );
+  assert.deepEqual(await page.evaluate(() => window.connected), []);
+  await click(page, 'dialog.picker [data-action=back]');
+  await page.until(() => window.settingsPart('dialog.picker')?.dataset.picker === 'pick');
+  await click(page, '.option[data-provider="local"]');
+  await page.until(() => !!window.settingsPart('dialog.picker form.key'));
+  await fill(page, [['input[data-account-field=endpoint]', 'http://localhost:11434']]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.connected), [null]);
   assert.deepEqual(page.errors, []);
 });
