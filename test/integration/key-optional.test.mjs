@@ -781,3 +781,49 @@ test('cancelling the insecure confirm on a settings-only save puts the old setti
   );
   assert.deepEqual(page.errors, []);
 });
+
+test('when connect is refused and the vault won’t take the endpoint back, the field says so', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const { vault, settings } = window.model;
+    const endpoints = vault.endpoints;
+    vault.endpoints = (change) => {
+      if (!change.remove) return endpoints(change);
+      window.order.push(['endpoints', change]);
+      return Promise.reject(new Error('The vault kept http://localhost:11434. Try again.'));
+    };
+    settings.connect = async (id) => {
+      window.order.push(['connect', id]);
+      throw new Error('The server didn’t answer.');
+    };
+    return true;
+  });
+  await choose(page);
+  await fill(page, [
+    ['input[data-field=value]', 'local-key-0123456789'],
+    ['input[data-account-field=endpoint]', 'http://localhost:11434'],
+  ]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(
+    () =>
+      window.settingsPart('dialog.picker #key-problem')?.textContent.trim() ===
+      'The vault kept http://localhost:11434. Try again.'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      order: window.order.map(([name]) => name),
+      failure: window.settingsPart('dialog.picker .failure[role=alert]')?.textContent.trim(),
+      invalid: window
+        .settingsPart('dialog.picker input[data-account-field=endpoint]')
+        .getAttribute('aria-invalid'),
+      added: !!window.account('local'),
+    })),
+    {
+      order: ['put', 'endpoints', 'connect', 'endpoints'],
+      failure: 'The server didn’t answer.',
+      invalid: 'true',
+      added: false,
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});

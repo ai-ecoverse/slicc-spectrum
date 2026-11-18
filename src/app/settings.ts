@@ -1197,7 +1197,7 @@ export class SliccSettings extends ThemedElement {
     await this.connect(id, secret, fields, dual(account) ? { method: 'key' } : undefined);
     if (this.failure?.id === id) {
       this.#placeFailure(account, fields);
-      if (back) await live?.endpoints?.(back).catch(() => {});
+      if (back) await this.#undo(account, live as VaultPort, back, changes);
       return false;
     }
     for (const change of changes) {
@@ -1237,6 +1237,24 @@ export class SliccSettings extends ThemedElement {
     if (this.model === model) return true;
     this.#busy(id, false);
     return false;
+  }
+
+  async #undo(
+    account: Account,
+    vault: VaultPort,
+    back: VaultEndpointChange,
+    changes: BaseChange[]
+  ): Promise<void> {
+    const model = this.model;
+    const { id } = account;
+    const { field } = changes.find((change) => change.url) ?? changes[0];
+    try {
+      await vault.endpoints?.(back);
+    } catch (error) {
+      if (this.model !== model) return;
+      const shown = this.problem?.id === id && this.problem.field === field;
+      this.#refuse(id, field, `${shown ? `${this.problem?.message} ` : ''}${failureText(error)}`);
+    }
   }
 
   async #withdraw(
