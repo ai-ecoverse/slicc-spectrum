@@ -36,13 +36,29 @@ async function open(t, vault = 'secrets') {
 }
 
 async function click(page, selector) {
-  await page.until((selector) => {
+  await page.until(async (selector) => {
     const target = window.settingsPart(selector);
     if (!target || target.disabled) return false;
-    target.scrollIntoView({ block: 'center' });
-    const box = target.getBoundingClientRect();
-    window.point = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-    return box.width > 0;
+    target.scrollIntoView({ block: 'nearest' });
+    const place = () => {
+      const { left, top, width, height } = target.getBoundingClientRect();
+      return [left, top, width, height];
+    };
+    const before = place();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const [left, top, width, height] = place();
+    if (width === 0 || [left, top, width, height].some((value, index) => value !== before[index]))
+      return false;
+    const x = left + width / 2;
+    const y = top + height / 2;
+    let hit = document.elementFromPoint(x, y);
+    while (hit?.shadowRoot && hit !== target) {
+      const inner = hit.shadowRoot.elementFromPoint(x, y);
+      if (!inner || inner === hit) break;
+      hit = inner;
+    }
+    window.point = { x, y };
+    return !!hit && (hit === target || target.contains(hit));
   }, selector);
   const { x, y } = await page.evaluate(() => window.point);
   for (const type of ['mousePressed', 'mouseReleased'])

@@ -5,7 +5,22 @@ import { launch } from './chrome.mjs';
 const chrome = await launch();
 after(() => chrome.close());
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 300));
+const laidOut = async () => {
+  await window.app.updateComplete;
+  const { dock } = window.app;
+  const box = dock.getBoundingClientRect();
+  return (
+    box.width > 0 &&
+    box.right <= innerWidth &&
+    Math.abs(dock.api.width - box.width) < 1 &&
+    Math.abs(dock.api.height - box.height) < 1
+  );
+};
+
+const saved = (ids) => {
+  const layout = JSON.parse(localStorage.getItem(window.app.storageKey) ?? 'null');
+  return ids.every((id) => id in (layout?.panels ?? {}));
+};
 
 const where = () =>
   window.app.dock.api.panels
@@ -44,11 +59,12 @@ async function arranged(t, agent = 'waiting') {
     return true;
   });
   await page.until(() => window.app.dock.has('chat:cone-harbor') && window.app.dock.has('files'));
-  await settle();
+  await page.until(laidOut);
+  await page.until(saved, ['chat:cone-harbor', 'files']);
   const before = await page.evaluate(where);
   await page.goto(`/ui/?${new URLSearchParams({ delay: '5', color: 'light', agent })}`);
   await page.until(() => window.ready === true && window.app.dock.api.panels.length > 0);
-  await settle();
+  await page.until(laidOut);
   return { page, before };
 }
 
@@ -73,7 +89,7 @@ test('a reload while the agent starts keeps the chat tabs where they were, and t
     return true;
   });
   await page.until(() => window.model.agent.list().length > 0);
-  await settle();
+  await page.until(laidOut);
   assert.deepEqual(await page.evaluate(where), before);
   assert.deepEqual(page.errors, []);
 });
@@ -129,7 +145,7 @@ test('a boot where the agent only starts leaves Install / Update closed and says
     `/ui/?${new URLSearchParams({ delay: '5', color: 'light', updates: 'starting' })}`
   );
   await page.until(() => window.ready === true && window.app.dock.api.panels.length > 0);
-  await settle();
+  await page.until(laidOut);
   assert.deepEqual(
     await page.evaluate(() => [
       window.model.updates.ready(),
@@ -277,13 +293,13 @@ test('a reload that only starts the agent closes the Install / Update panel a bo
   await page.until(
     () => window.ready === true && window.app.dock.api.getPanel('updates')?.params?.boot === true
   );
-  await settle();
+  await page.until(saved, ['updates']);
   await page.goto(
     `/ui/?${new URLSearchParams({ delay: '5', color: 'light', updates: 'starting' })}`
   );
   await page.until(() => window.ready === true && window.app.dock.api.panels.length > 0);
   await page.until(() => !window.app.dock.has('updates'));
-  await settle();
+  await page.until(laidOut);
   assert.equal(await page.evaluate(() => window.app.dock.has('updates')), false);
   assert.deepEqual(page.errors, []);
 });

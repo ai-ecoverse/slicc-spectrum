@@ -308,6 +308,10 @@ test('a kept key can change only its settings, and a vault refusal at enter show
   await typeInFrame(page, 'picker', 'cf-key-0123456789');
   await page.until(() => window.account('cloudflare')?.status === 'connected');
   await page.until(() => !window.settingsPart('dialog.picker')?.open);
+  await page.until(() => {
+    const settings = window.$('slicc-app', 'slicc-dock', 'slicc-settings');
+    return !settings.picking && settings.entering === null && !settings.pending.has('cloudflare');
+  });
   await page.evaluate(() => {
     window.model.settings.disconnect('cloudflare');
     return true;
