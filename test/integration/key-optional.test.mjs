@@ -470,3 +470,65 @@ test('Disconnect and Remove of a keyless account leave the vault alone and promi
   assert.deepEqual(await page.evaluate(() => window.order), []);
   assert.deepEqual(page.errors, []);
 });
+
+async function keyedLocal(page) {
+  await choose(page);
+  await fill(page, [
+    ['input[data-field=value]', 'local-key-0123456789'],
+    ['input[data-account-field=endpoint]', 'http://localhost:11434'],
+  ]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  await page.until(() => !window.settingsPart('dialog.picker'));
+}
+
+const loading = (page) =>
+  page.evaluate(() => {
+    const { vault } = window.model;
+    vault.list = () => null;
+    vault.emit('list', null);
+    window.order = [];
+    return true;
+  });
+
+test('while the vault list loads, Disconnect of a keyed local account still removes its key', async (t) => {
+  const page = await open(t);
+  await keyedLocal(page);
+  await loading(page);
+  await click(page, '.account[data-id=local] [data-action=disconnect]');
+  await page.until(() => !!window.dialog());
+  assert.equal(
+    await page.evaluate(() => window.dialog().body),
+    'Agents can’t use Local or self-hosted until you connect it again. You can restore its key from Removed in Secrets for 30 days.'
+  );
+  await page.evaluate(() => window.answer(true));
+  await page.until(() => window.account('local')?.status === 'disconnected');
+  assert.deepEqual(await page.evaluate(() => window.order), [['remove', 'LOCAL_API_KEY']]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('while the vault list loads, a known keyed local account needs its key to connect', async (t) => {
+  const page = await open(t);
+  await keyedLocal(page);
+  await page.evaluate(() => {
+    window.model.settings.disconnect('local');
+    return true;
+  });
+  await loading(page);
+  await click(page, '.account[data-id=local] [data-action=connect]');
+  await page.until(() => !!window.settingsPart('form.key[data-id=local] [data-action=save]'));
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      label: window.settingsPart('form.key[data-id=local] label.field span').textContent,
+      disabled: window.settingsPart('form.key[data-id=local] [data-action=save]').disabled,
+    })),
+    { label: 'Local or self-hosted API key (optional)', disabled: true }
+  );
+  await page.evaluate(() => {
+    window.settingsPart('form.key[data-id=local]').requestSubmit();
+    return true;
+  });
+  await page.until(() => !!window.settingsPart('form.key[data-id=local] #key-problem'));
+  assert.deepEqual(await page.evaluate(() => window.order), []);
+  assert.deepEqual(page.errors, []);
+});

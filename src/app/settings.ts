@@ -909,7 +909,7 @@ export class SliccSettings extends ThemedElement {
       return;
     }
     const record = this.#record(account);
-    if (!(keyed || record)) {
+    if (!keyed && this.#keyless(account)) {
       this.failure = null;
       await this.#connectBases(account, undefined, fields);
       return;
@@ -937,7 +937,7 @@ export class SliccSettings extends ThemedElement {
       this.#busy(id, false);
       return;
     }
-    await this.#connectBases(account, undefined, fields, vault, !record);
+    await this.#connectBases(account, undefined, fields, vault, !record && !!vault.list());
     const failed = [this.failure, this.problem].some((issue) => issue?.id === id);
     if (failed && settings && !keyed)
       await vault.settings?.(recordName(account), 'model', before ?? {}).catch(() => {});
@@ -1089,8 +1089,15 @@ export class SliccSettings extends ThemedElement {
       );
   }
 
+  #keyless(account: Account): boolean {
+    if (!account.keyOptional) return false;
+    const vault = this.#vault(account);
+    if (!vault) return true;
+    return vault.list() ? !this.#record(account) : !this.#added(account.id);
+  }
+
   #keyOptional(account: Account): boolean {
-    if (account.keyOptional) return true;
+    if (this.#keyless(account)) return true;
     const vault = this.#vault(account);
     const fields = account.fields ?? [];
     if (!vault || !fields.some((field) => field.vaultSetting || field.customBase)) return false;
@@ -1609,7 +1616,7 @@ export class SliccSettings extends ThemedElement {
       required.every((field) => !this.#offered() || this.filled.has(field.name));
     const ready = !waiting && filled;
     const optional = this.#keyOptional(account);
-    const keyless = optional && !this.#record(account);
+    const keyless = this.#keyless(account);
     const hint = entry
       ? 'Type it in the vault’s own field. It never passes through this page.'
       : waiting
@@ -1655,7 +1662,7 @@ export class SliccSettings extends ThemedElement {
     if (enters(vault)) return this.#entryKept(account, vault);
     const busy = this.pending.has(account.id);
     const locked = !!vault.status()?.locked;
-    const held = locked && !(account.keyOptional && !this.#record(account));
+    const held = locked && !this.#keyless(account);
     const name = secretNames[account.secret ?? 'api-key'];
     return html`<form class="key stacked" data-id=${account.id} data-store="vault" @submit=${(event: Event) => this.#submit(event, account)} @keydown=${(event: KeyboardEvent) => this.#submitOnEnter(event)} @input=${(event: Event) => this.#fill(event)}>
         <label class="field"><span>${this.#secretLabel(account)}</span><input
@@ -1715,7 +1722,7 @@ export class SliccSettings extends ThemedElement {
   }
 
   #keeps(account: Account): boolean {
-    return !account.keyOptional || this.#held(account);
+    return !this.#keyless(account);
   }
 
   #inVault(account: Account): boolean {
