@@ -369,6 +369,7 @@ export class SliccSecrets extends ThemedElement {
     candidates: { state: true },
     picked: { state: true },
     again: { state: true },
+    warned: { state: true },
   };
   #removed = new ViewState(this, 'settings:removed', () => false);
   declare older: readonly AuditEntry[];
@@ -391,6 +392,7 @@ export class SliccSecrets extends ThemedElement {
   declare candidates: readonly ImportCandidate[] | null;
   declare picked: ReadonlySet<string>;
   declare again: boolean;
+  declare warned: ReadonlySet<string>;
   #tick: ReturnType<typeof setTimeout> | undefined;
   #offline = false;
 
@@ -416,6 +418,7 @@ export class SliccSecrets extends ThemedElement {
     this.picked = new Set();
     this.again = false;
     this.entry = null;
+    this.warned = new Set();
   }
 
   static styles = [
@@ -480,6 +483,30 @@ export class SliccSecrets extends ThemedElement {
         border-radius: var(--swc-corner-radius-100);
         border: var(--swc-border-width-100) solid var(--swc-gray-200);
         background: var(--swc-background-layer-1-color);
+      }
+      .box.notice {
+        border-color: var(--swc-notice-visual-color);
+        --swc-icon-color: var(--swc-notice-visual-color);
+      }
+      .box.notice swc-icon-alert-triangle {
+        flex: none;
+        margin-block-start: var(--swc-spacing-50);
+      }
+      .box .title code {
+        font-weight: var(--swc-regular-font-weight);
+      }
+      .warnings li {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap: var(--swc-spacing-100);
+        font-size: var(--swc-font-size-75);
+        line-height: var(--swc-line-height-200);
+      }
+      .warnings li::before {
+        content: '•' / '';
+      }
+      .warnings li span {
+        overflow-wrap: anywhere;
       }
       .box.info {
         border-color: var(--swc-informative-visual-color);
@@ -762,6 +789,7 @@ export class SliccSecrets extends ThemedElement {
     this.said = null;
     this.acting = new Set();
     this.candidates = null;
+    this.warned = new Set();
   }
 
   protected updated(): void {
@@ -1600,6 +1628,22 @@ export class SliccSecrets extends ThemedElement {
     </div>`;
   }
 
+  #warnings(status: VaultStatus | null): TemplateResult[] {
+    return (status?.policy ?? [])
+      .filter((file) => file.warnings.length)
+      .map((file, index) => {
+        const open = this.warned.has(file.path);
+        const shownWarnings = open ? file.warnings : file.warnings.slice(0, 5);
+        const hidden = file.warnings.length - shownWarnings.length;
+        const id = `secrets-warnings-${index}`;
+        return html`<div class="box notice" role="region" aria-labelledby=${id} data-policy-file=${file.path}>
+          <span class="title" id=${id}><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>The vault skipped these entries in <code>${shown(file.path)}</code></span></span>
+          <ul class="warnings" data-policy-warnings>${shownWarnings.map((warning) => html`<li><span>${shown(warning)}</span></li>`)}</ul>
+          ${hidden ? html`<div class="actions"><swc-button size="s" variant="secondary" fill-style="outline" data-action="more-warnings" @click=${() => (this.warned = new Set([...this.warned, file.path]))}>Show ${hidden} more</swc-button></div>` : nothing}
+        </div>`;
+      });
+  }
+
   #paused(status: VaultStatus): TemplateResult | typeof nothing {
     const [first, ...rest] = (status.policy ?? []).filter((file) => file.paused);
     if (!first) return nothing;
@@ -1673,6 +1717,7 @@ export class SliccSecrets extends ThemedElement {
       ${this.#backup(vault, status)}
       ${this.#refused(current?.refused ?? [])}
       <p class="muted" data-policy>Rules live in <code>/etc/fnox/config.toml</code> and <code>/etc/slicc/secrets-policy.toml</code>. Change them with sudo; SLICC asks you before every change.</p>
+      ${this.#warnings(status)}
       ${current ? this.#audit(vault, current, entries, devices) : nothing}
     </section>`;
   }
