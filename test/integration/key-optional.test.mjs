@@ -22,6 +22,7 @@ async function open(t, params = {}) {
       [vault, 'settings'],
       [vault, 'endpoints'],
       [vault, 'enter'],
+      [vault, 'remove'],
       [settings, 'connect'],
     ]) {
       if (!port[name]) continue;
@@ -199,14 +200,14 @@ test('cancelling the insecure confirm takes the endpoint back, removes the new k
   assert.deepEqual(
     await page.evaluate(() => ({
       order: window.order.map(([name]) => name),
-      last: window.order.at(-1)[1],
+      last: window.order[2][1],
       connects: window.model.settings.connects.length,
       added: !!window.account('local'),
       open: window.settingsPart('dialog.picker')?.dataset.picker,
       endpoint: window.settingsPart('dialog.picker input[data-account-field=endpoint]').value,
     })),
     {
-      order: ['put', 'endpoints', 'endpoints'],
+      order: ['put', 'endpoints', 'endpoints', 'remove'],
       last: { remove: { model: [{ name: 'LOCAL_API_KEY', url: lan }] } },
       connects: 0,
       added: false,
@@ -399,5 +400,73 @@ test('a new keyless account with a vault setting field sets nothing on a missing
   await click(page, 'dialog.picker [data-action=save]');
   await page.until(() => window.account('local')?.status === 'connected');
   assert.deepEqual(await page.evaluate(() => window.order), [['connect', 'local']]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('when the vault won’t take the endpoint back after Cancel, the field says so and nothing connects', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const { vault } = window.model;
+    const endpoints = vault.endpoints;
+    vault.endpoints = (change) => {
+      if (!change.remove) return endpoints(change);
+      window.order.push(['endpoints', change]);
+      return Promise.reject(new Error('The vault kept http://192.168.1.20:11434. Try again.'));
+    };
+    return true;
+  });
+  await keyedLan(page);
+  await page.evaluate(() => window.answer(false));
+  await page.until(
+    () =>
+      window.settingsPart('dialog.picker #key-problem')?.textContent.trim() ===
+      'The vault kept http://192.168.1.20:11434. Try again.'
+  );
+  await page.until(() => !window.settingsPart('dialog.picker [data-action=save]')?.pending);
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      order: window.order.map(([name]) => name),
+      invalid: window
+        .settingsPart('dialog.picker input[data-account-field=endpoint]')
+        .getAttribute('aria-invalid'),
+      connects: window.model.settings.connects.length,
+      open: window.settingsPart('dialog.picker')?.dataset.picker,
+    })),
+    {
+      order: ['put', 'endpoints', 'endpoints', 'remove'],
+      invalid: 'true',
+      connects: 0,
+      open: 'connect',
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('Disconnect and Remove of a keyless account leave the vault alone and promise no key', async (t) => {
+  const page = await open(t);
+  await choose(page);
+  await fill(page, [['input[data-account-field=endpoint]', 'http://localhost:11434']]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  await page.until(() => !window.settingsPart('dialog.picker'));
+  await page.evaluate(() => {
+    window.order = [];
+    return true;
+  });
+  await click(page, '.account[data-id=local] [data-action=disconnect]');
+  await page.until(() => !!window.dialog());
+  assert.equal(
+    await page.evaluate(() => window.dialog().body),
+    'Agents can’t use Local or self-hosted until you connect it again.'
+  );
+  await page.evaluate(() => window.answer(true));
+  await page.until(() => window.account('local')?.status === 'disconnected');
+  await page.until(() => !window.dialog());
+  await click(page, '.account[data-id=local] [data-action=remove-account]');
+  await page.until(() => !!window.dialog());
+  assert.equal(await page.evaluate(() => window.dialog().body), 'Models from it stop working.');
+  await page.evaluate(() => window.answer(true));
+  await page.until(() => !window.account('local'));
+  assert.deepEqual(await page.evaluate(() => window.order), []);
   assert.deepEqual(page.errors, []);
 });

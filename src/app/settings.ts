@@ -1205,8 +1205,10 @@ export class SliccSettings extends ThemedElement {
     }
     const plain = reply?.insecure && this.model === model;
     if (plain && !(await this.#confirmPlain(changes))) {
-      await this.#withdraw(bound.live, bound.back, fresh ? recordName(account) : null);
+      const left = await this.#withdraw(bound.live, bound.back, fresh ? recordName(account) : null);
       this.#busy(id, false);
+      const field = changes.find((change) => change.url) as BaseChange;
+      if (left && this.model === model) this.#refuse(id, field.field, failureText(left));
       return false;
     }
     if (this.model === model) return true;
@@ -1214,9 +1216,15 @@ export class SliccSettings extends ThemedElement {
     return false;
   }
 
-  async #withdraw(vault: VaultPort, back: VaultEndpointChange, name: string | null): Promise<void> {
-    await vault.endpoints?.(back).catch(() => {});
-    if (name) await gone(vault, name, 'model').catch(() => {});
+  async #withdraw(
+    vault: VaultPort,
+    back: VaultEndpointChange,
+    name: string | null
+  ): Promise<unknown> {
+    const left: unknown[] = [];
+    await vault.endpoints?.(back).catch((error) => left.push(error));
+    if (name) await gone(vault, name, 'model').catch((error) => left.push(error));
+    return left[0];
   }
 
   #confirmPlain(changes: BaseChange[]): Promise<boolean> {
@@ -1706,10 +1714,14 @@ export class SliccSettings extends ThemedElement {
         ${this.#leave(account)}`;
   }
 
+  #keeps(account: Account): boolean {
+    return !account.keyOptional || this.#held(account);
+  }
+
   #inVault(account: Account): boolean {
     const vault = this.model?.vault;
     if (account.store !== 'vault' || account.status !== 'connected' || !vault) return false;
-    if (account.keyOptional && !this.#held(account)) return false;
+    if (!this.#keeps(account)) return false;
     return account.auth !== 'api-key' || !!vault.put;
   }
 
@@ -1730,7 +1742,7 @@ export class SliccSettings extends ThemedElement {
     const model = this.model;
     const vault = model?.vault;
     const vaulted = account.store === 'vault' && !!vault?.remove;
-    const key = vaulted && (account.auth === 'api-key' || dual(account));
+    const key = vaulted && (account.auth === 'api-key' || dual(account)) && this.#keeps(account);
     const signIn = vaulted && account.auth !== 'api-key' && account.group === 'mcp';
     const stored = key || signIn ? vault : undefined;
     const body = `Agents can’t use ${account.provider} until you connect it again.${key ? ' You can restore its key from Removed in Secrets for 30 days.' : ''}`;
@@ -1935,7 +1947,7 @@ export class SliccSettings extends ThemedElement {
   async #remove(account: Account): Promise<void> {
     const model = this.model as SliccModel;
     const body =
-      removeBodies[account.auth ?? ''] ??
+      removeBodies[this.#keeps(account) ? String(account.auth) : 'local'] ??
       'Its key is deleted from the vault. Models from it stop working.';
     const title = `Remove ${account.provider}?`;
     if (!(await confirm({ title, body, action: 'Remove' }))) return;
@@ -1944,7 +1956,10 @@ export class SliccSettings extends ThemedElement {
     if (this.entering === account.id) this.entering = null;
     const vault = model.vault;
     const keyed =
-      account.store === 'vault' && (account.auth === 'api-key' || dual(account)) && !!vault?.remove;
+      account.store === 'vault' &&
+      (account.auth === 'api-key' || dual(account)) &&
+      this.#keeps(account) &&
+      !!vault?.remove;
     if (keyed && !(await this.#forget(account, vault as VaultPort))) return;
     if (this.model !== model) return;
     await this.#closeTip(`remove-${account.id}`);
