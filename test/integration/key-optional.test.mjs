@@ -578,7 +578,15 @@ test('while the vault list loads, Disconnect waits, then removes the key', async
     () => window.settingsPart('.account[data-id=local] [data-action=disconnect]')?.disabled
   );
   assert.equal(await disabled(page, '.account[data-id=local] [data-action=remove-account]'), true);
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.settingsPart('.account[data-id=local] ~ .notes [data-notice=loading]')?.textContent
+    ),
+    'Loading the vault…'
+  );
   await loaded(page);
+  await page.until(() => !window.settingsPart('[data-notice=loading]'));
   await click(page, '.account[data-id=local] [data-action=disconnect]');
   await page.until(() => !!window.dialog());
   assert.equal(

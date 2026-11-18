@@ -1470,6 +1470,11 @@ export class SliccSettings extends ThemedElement {
     return html`<div class="notes"><p class="notice" data-notice="moved"><swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle><span>The server moved to ${url}. Reconnect to send the token there.</span></p></div>`;
   }
 
+  #loadingNote(account: Account): TemplateResult | typeof nothing {
+    if (!this.#unlisted(account) || this.entering === account.id) return nothing;
+    return html`<div class="notes"><p class="hint" data-notice="loading">Loading the vault…</p></div>`;
+  }
+
   #submitOnEnter(event: KeyboardEvent): void {
     const target = event.target as HTMLElement;
     if (event.key !== 'Enter' || target.localName !== 'input') return;
@@ -1906,6 +1911,7 @@ export class SliccSettings extends ThemedElement {
     </div>
     ${this.#rowNotes(account)}
     ${this.#movedNote(account)}
+    ${this.#loadingNote(account)}
     ${this.adding?.id === account.id ? nothing : html`${this.#key(account)}${this.#otherKey(account)}${failure}`}`;
   }
 
