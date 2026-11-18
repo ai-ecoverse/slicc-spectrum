@@ -586,3 +586,88 @@ test('while the vault list loads, Remove of a keyed local account still removes 
   assert.deepEqual(await page.evaluate(() => window.order), [['remove', 'LOCAL_API_KEY']]);
   assert.deepEqual(page.errors, []);
 });
+
+test('while the vault list loads, a key added to a keyless account binds its unchanged URL', async (t) => {
+  const page = await open(t);
+  await choose(page);
+  await fill(page, [['input[data-account-field=endpoint]', 'http://localhost:11434']]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  await page.until(() => !window.settingsPart('dialog.picker'));
+  await page.evaluate(() => {
+    window.model.settings.disconnect('local');
+    return true;
+  });
+  await loading(page);
+  await click(page, '.account[data-id=local] [data-action=connect]');
+  await page.until(() => !!window.settingsPart('form.key[data-id=local] input[data-field=value]'));
+  await page.evaluate(() => {
+    window.settingsPart('form.key[data-id=local] input[data-field=value]').focus();
+    return true;
+  });
+  await page.type('local-key-0123456789');
+  await click(page, 'form.key[data-id=local] [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.order), [
+    ['put', 'LOCAL_API_KEY'],
+    ['endpoints', { add: { model: [{ name: 'LOCAL_API_KEY', url: 'http://localhost:11434' }] } }],
+    ['connect', 'local'],
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('with a locked vault, a typed key holds Save back and is never dropped', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.model.vault.lock().then(() => true));
+  await page.until(() => window.model.vault.status().locked);
+  await choose(page);
+  await fill(page, [
+    ['input[data-account-field=endpoint]', 'http://localhost:11434'],
+    ['input[data-field=value]', 'local-key-0123456789'],
+  ]);
+  assert.equal(
+    await page.evaluate(() => window.settingsPart('dialog.picker [data-action=save]').disabled),
+    true
+  );
+  await page.press('Enter');
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      value: window.settingsPart('dialog.picker input[data-field=value]').value,
+      order: window.order,
+      locked: !!window.settingsPart('dialog.picker [data-locked]'),
+    })),
+    { value: 'local-key-0123456789', order: [], locked: true }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('with two custom bases, the insecure confirm names the plain-network URL', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const { settings } = window.model;
+    const offered = settings.providers();
+    settings.providers = () =>
+      offered.map((option) =>
+        option.id === 'local'
+          ? {
+              ...option,
+              fields: [...option.fields, { name: 'mirror', label: 'Mirror', customBase: true }],
+            }
+          : option
+      );
+    return true;
+  });
+  await choose(page);
+  await fill(page, [
+    ['input[data-field=value]', 'local-key-0123456789'],
+    ['input[data-account-field=endpoint]', 'https://models.harbor.example'],
+    ['input[data-account-field=mirror]', lan],
+  ]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => !!window.dialog());
+  assert.equal(await page.evaluate(() => window.dialog().title), `Connect to ${lan}?`);
+  await page.evaluate(() => window.answer(false));
+  await page.until(() => !window.settingsPart('dialog.picker [data-action=save]')?.pending);
+  assert.deepEqual(page.errors, []);
+});

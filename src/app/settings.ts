@@ -71,7 +71,7 @@ interface KeyEntry {
   request: string;
   fields: Record<string, string> | undefined;
   vault: VaultPort;
-  fresh: boolean;
+  fresh: boolean | null;
 }
 
 import { ViewScroll } from './view-state.ts';
@@ -174,6 +174,13 @@ function serverRefusal(edit: Partial<McpRefusal> & { reason: string }): {
 }
 
 type ServerField = 'name' | 'url' | 'form';
+
+const loopback = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\]|.*\.localhost)$/;
+
+const nearby = (url: string) => {
+  const { protocol, hostname } = new URL(url);
+  return protocol === 'http:' && !loopback.test(hostname);
+};
 
 const serverName = /^[A-Za-z0-9_-]+$/;
 
@@ -909,6 +916,7 @@ export class SliccSettings extends ThemedElement {
       return;
     }
     const record = this.#record(account);
+    const fresh = vault?.list() ? !record : null;
     if (!keyed && this.#keyless(account)) {
       this.failure = null;
       await this.#connectBases(account, undefined, fields);
@@ -937,7 +945,7 @@ export class SliccSettings extends ThemedElement {
       this.#busy(id, false);
       return;
     }
-    await this.#connectBases(account, undefined, fields, vault, !record && !!vault.list());
+    await this.#connectBases(account, undefined, fields, vault, fresh);
     const failed = [this.failure, this.problem].some((issue) => issue?.id === id);
     if (failed && settings && !keyed)
       await vault.settings?.(recordName(account), 'model', before ?? {}).catch(() => {});
@@ -973,8 +981,8 @@ export class SliccSettings extends ThemedElement {
       account.group === 'mcp'
         ? { name, kind: 'mcp', server: serverOf(account) }
         : { name, kind: 'model', provider: account.id, ...(settings ? { settings } : {}) };
-    const fresh = !this.#held(account);
-    if (!fresh) options.replace = true;
+    const fresh = vault.list() ? !this.#held(account) : null;
+    if (this.#held(account)) options.replace = true;
     this.#busy(id, true);
     this.failure = null;
     this.problem = null;
@@ -1133,15 +1141,15 @@ export class SliccSettings extends ThemedElement {
   #baseChanges(
     account: Account,
     fields: Record<string, string> | undefined,
-    fresh: boolean
+    fresh: boolean | null
   ): BaseChange[] {
     return (account.fields ?? [])
       .filter((field) => field.customBase)
-      .map((field) => ({
-        field: field.name,
-        url: this.#baseOf(fields?.[field.name], true),
-        old: fresh ? undefined : this.#oldBase(account, field),
-      }))
+      .map((field) => {
+        const url = this.#baseOf(fields?.[field.name], true);
+        const old = fresh ? undefined : this.#oldBase(account, field);
+        return { field: field.name, url, old: fresh === null && old === url ? undefined : old };
+      })
       .filter((change) => change.url !== change.old);
   }
 
@@ -1167,7 +1175,7 @@ export class SliccSettings extends ThemedElement {
     secret: string | undefined,
     fields: Record<string, string> | undefined,
     vault: VaultPort | null = null,
-    fresh = false
+    fresh: boolean | null = false
   ): Promise<void> {
     const live = vault?.endpoints ? vault : null;
     const { id } = account;
@@ -1196,7 +1204,7 @@ export class SliccSettings extends ThemedElement {
     account: Account,
     changes: BaseChange[],
     bound: { live: VaultPort; forward: VaultEndpointChange; back: VaultEndpointChange },
-    fresh: boolean
+    fresh: boolean | null
   ): Promise<boolean> {
     const model = this.model;
     const { id } = account;
@@ -1235,9 +1243,10 @@ export class SliccSettings extends ThemedElement {
   }
 
   #confirmPlain(changes: BaseChange[]): Promise<boolean> {
-    const url = changes.find((change) => change.url)?.url;
+    const urls = changes.flatMap((change) => (change.url ? [change.url] : []));
+    const plain = urls.filter(nearby);
     return confirm({
-      title: `Connect to ${url}?`,
+      title: `Connect to ${(plain.length ? plain : urls).join(' and ')}?`,
       body: 'This key goes unencrypted over your local network.',
       action: 'Connect',
       variant: 'confirmation',
@@ -1360,8 +1369,11 @@ export class SliccSettings extends ThemedElement {
       void this.#confirmSubmit(form, account, url);
       return;
     }
-    if (this.#vault(account)) {
-      const value = take(form.querySelector('input[data-field=value]') as HTMLInputElement);
+    const vault = this.#vault(account);
+    if (vault) {
+      const input = form.querySelector('input[data-field=value]') as HTMLInputElement;
+      if (input.value && vault.status()?.locked) return;
+      const value = take(input);
       const fields = this.#fields(form, account);
       if (fields !== null && !this.pending.has(account.id)) void this.keep(account, value, fields);
       return;
@@ -1662,7 +1674,7 @@ export class SliccSettings extends ThemedElement {
     if (enters(vault)) return this.#entryKept(account, vault);
     const busy = this.pending.has(account.id);
     const locked = !!vault.status()?.locked;
-    const held = locked && !this.#keyless(account);
+    const held = locked && (!this.#keyless(account) || this.filled.has('value'));
     const name = secretNames[account.secret ?? 'api-key'];
     return html`<form class="key stacked" data-id=${account.id} data-store="vault" @submit=${(event: Event) => this.#submit(event, account)} @keydown=${(event: KeyboardEvent) => this.#submitOnEnter(event)} @input=${(event: Event) => this.#fill(event)}>
         <label class="field"><span>${this.#secretLabel(account)}</span><input
