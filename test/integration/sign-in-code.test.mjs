@@ -627,6 +627,51 @@ test('removing a dual account removes its vault key first', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
+test('on a vault that can’t remove, Remove of a dual account promises no deletion and leaves its key', async (t) => {
+  const page = await dualPage(t, { providers: 'all' });
+  await click(page, 'settings', '.account[data-id=lumen] + .notes [data-action=use-key]');
+  await page.until(
+    () =>
+      window.settingsPart('form.key[data-id=lumen] input[data-field=value]') ===
+      window.inner().activeElement
+  );
+  await page.type('lumen-sample-0042');
+  await page.press('Enter');
+  await page.until(
+    () =>
+      window.settingsPart('.account[data-id=lumen] swc-status-light')?.textContent === 'Connected'
+  );
+  await page.evaluate(() => {
+    window.model.vault.remove = undefined;
+    return true;
+  });
+  await page.until(() => {
+    const remove = window.settingsPart('.account[data-id=lumen] [data-action=remove-account]');
+    if (!remove || remove.disabled) return false;
+    remove.click();
+    return true;
+  });
+  await page.until(() => !!window.deep('slicc-confirm')?.shadowRoot.querySelector('dialog')?.open);
+  assert.equal(
+    await page.evaluate(
+      () => window.deep('slicc-confirm').shadowRoot.querySelector('p').textContent
+    ),
+    'Models from it stop working.'
+  );
+  await page.evaluate(() => {
+    window.deep('slicc-confirm').shadowRoot.querySelector('[data-action]').click();
+    return true;
+  });
+  await page.until(() => !window.settingsPart('.account[data-id=lumen]'));
+  const state = await page.evaluate(
+    () =>
+      window.model.vault.list().secrets.find((secret) => secret.name === 'LUMEN_API_KEY')?.state ??
+      null
+  );
+  assert.ok(state && state !== 'removed', `record state ${state}`);
+  assert.deepEqual(page.errors, []);
+});
+
 test('accounts that are not dual call connect without options', async (t) => {
   const page = await dualPage(t);
   await click(page, 'settings', '.account[data-id=ai-adobe] [data-action=connect]');
