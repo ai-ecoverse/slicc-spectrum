@@ -2010,7 +2010,9 @@ export class SliccSettings extends ThemedElement {
 
   async #remove(account: Account): Promise<void> {
     const model = this.model as SliccModel;
-    const held = this.#keeps(account) && (!account.keyOptional || !!model.vault?.remove);
+    const vaulted =
+      account.keyOptional || (account.store === 'vault' && account.auth === 'api-key');
+    const held = this.#keeps(account) && (!vaulted || !!model.vault?.remove);
     const body =
       removeBodies[held ? String(account.auth) : 'local'] ??
       'Its key is deleted from the vault. Models from it stop working.';

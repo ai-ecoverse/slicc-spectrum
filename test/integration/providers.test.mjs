@@ -359,6 +359,37 @@ test('an https endpoint is bound to the key’s record after put and before conn
   assert.deepEqual(page.errors, []);
 });
 
+test('on a vault that can’t remove, Remove of a plain api-key account promises no deletion and leaves its key', async (t) => {
+  const page = await open(t, { vault: 'secrets' });
+  await azure(page, base);
+  await page.until(() => window.account('azure-openai')?.status === 'connected');
+  await page.until(() => !window.picker()?.open);
+  await page.evaluate(() => {
+    window.model.vault.remove = undefined;
+    return true;
+  });
+  await click(page, '.account[data-id=azure-openai] [data-action=remove-account]');
+  await page.until(() => !!window.deep('slicc-confirm')?.shadowRoot.querySelector('dialog')?.open);
+  assert.equal(
+    await page.evaluate(
+      () => window.deep('slicc-confirm').shadowRoot.querySelector('p').textContent
+    ),
+    'Models from it stop working.'
+  );
+  await page.evaluate(() => {
+    window.deep('slicc-confirm').shadowRoot.querySelector('[data-action]').click();
+    return true;
+  });
+  await page.until(() => !window.account('azure-openai'));
+  const state = await page.evaluate(
+    () =>
+      window.model.vault.list().secrets.find((secret) => secret.name === 'AZURE_OPENAI_API_KEY')
+        ?.state ?? null
+  );
+  assert.ok(state && state !== 'removed', `record state ${state}`);
+  assert.deepEqual(page.errors, []);
+});
+
 test('a provider added again after Remove binds its endpoint again', async (t) => {
   const page = await open(t, { vault: 'secrets' });
   await azure(page, base);
