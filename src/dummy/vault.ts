@@ -29,6 +29,7 @@ import type {
   ValueMessage,
   VaultButton,
   VaultEndpointChange,
+  VaultEndpointReply,
   VaultError,
   VaultEvents,
   VaultList,
@@ -151,6 +152,11 @@ export function vaultSecrets(now = Date.now()): SecretView[] {
       removedAt: now - day,
     },
   ];
+}
+
+function nearby(url: string): boolean {
+  const { protocol, hostname } = new URL(url);
+  return protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(hostname);
 }
 
 function refused(settings: Record<string, string>): void {
@@ -919,7 +925,7 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
     this.#refuses = scenario === 'endpoints-fail';
   }
 
-  async endpoints(change: VaultEndpointChange): Promise<void> {
+  async endpoints(change: VaultEndpointChange): Promise<VaultEndpointReply> {
     await this.#time.sleep(5);
     const server = change.add?.mcp?.[0]?.url;
     if (this.#refuses && server)
@@ -944,6 +950,7 @@ export class DummyVault extends Emitter<VaultEvents> implements VaultPort {
       }),
     };
     this.emit('list', this.#list);
+    return change.add?.model?.some((entry) => nearby(entry.url)) ? { insecure: true } : {};
   }
 
   status(): VaultStatus | null {

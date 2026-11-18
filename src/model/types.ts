@@ -570,6 +570,7 @@ export interface Account {
   keyUrl?: string;
   description?: string;
   vaultName?: string;
+  keyOptional?: true;
   url?: string;
   signIn?: AccountSignIn;
   state?: McpState;
@@ -612,6 +613,10 @@ export interface VaultEndpointChange {
   remove?: EndpointSet;
 }
 
+export interface VaultEndpointReply {
+  insecure?: true;
+}
+
 export type ProviderAuth = 'api-key' | 'oauth' | 'fields' | 'local';
 
 export interface ProviderOption {
@@ -624,6 +629,7 @@ export interface ProviderOption {
   needs?: 'cors-free-transport';
   blocked?: 'cors-free-transport';
   vaultName?: string;
+  keyOptional?: true;
 }
 
 export interface ModelOption {
@@ -1966,7 +1972,7 @@ export interface VaultPort extends Subscribable<VaultEvents> {
   export?(passphrase: string): Promise<Uint8Array>;
   lock?(): Promise<void>;
   dismissBackupReminder?(): Promise<void>;
-  endpoints?(change: VaultEndpointChange): Promise<void>;
+  endpoints?(change: VaultEndpointChange): Promise<VaultEndpointReply | void>;
   settings?(name: string, kind: RecordKind, settings: Record<string, string>): Promise<void>;
   button(): VaultButton;
   valueFrame?(request: string): VaultValueFrame;

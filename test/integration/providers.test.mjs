@@ -105,7 +105,7 @@ test('the picker filters as you type, walks with the arrows and leaves Added unp
   const page = await open(t);
   await picker(page);
   const all = await page.evaluate(() => window.options());
-  assert.equal(all.length, 14);
+  assert.equal(all.length, 15);
   assert.deepEqual(
     await page.evaluate(() =>
       [...window.picker().querySelectorAll('.option[aria-disabled=true]')].map(
