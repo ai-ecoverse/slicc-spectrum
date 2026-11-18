@@ -1117,7 +1117,8 @@ export class SliccSettings extends ThemedElement {
     const vault = this.#vault(account);
     const fields = account.fields ?? [];
     const settable = fields.some((field) => field.vaultSetting);
-    const stale = !!vault && settable && !vault.settings && !this.#keyless(account);
+    const port = this.model?.vault;
+    const stale = settable && !!this.#record(account) && !port?.settings;
     if (account.keyOptional) return !stale;
     if (!vault || !fields.some((field) => field.vaultSetting || field.customBase)) return false;
     if (fields.some((field) => field.vaultSetting) && !vault.settings) return false;

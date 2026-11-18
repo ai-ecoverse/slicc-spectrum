@@ -932,3 +932,23 @@ test('a keyOptional provider without fields doesn’t open the vault’s field b
   assert.deepEqual(await page.evaluate(() => window.order), [['connect', 'local']]);
   assert.deepEqual(page.errors, []);
 });
+
+test('on a vault that can only list and remove, a vault setting edit of a kept key needs a key', async (t) => {
+  const page = await open(t);
+  await reshape(page, tenantFields);
+  await kept(page, { LOCAL_TENANT: 'harbor' });
+  await page.evaluate(() => {
+    window.model.vault.put = undefined;
+    window.model.vault.settings = undefined;
+    return true;
+  });
+  await choose(page);
+  await fill(page, [
+    ['input[data-account-field=endpoint]', 'http://localhost:11434'],
+    ['input[data-account-field=tenant]', 'tide'],
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(await disabled(page, 'dialog.picker [data-action=save]'), true);
+  assert.deepEqual(await page.evaluate(() => window.order), []);
+  assert.deepEqual(page.errors, []);
+});
