@@ -1269,10 +1269,13 @@ Types are in `dist/types/ui.d.ts`, `dist/types/dummy.d.ts` and `dist/types/kerne
 ```sh
 npm install
 npm run lint
+npm run test:file -- test/integration/ui.test.mjs
 npm test
 ```
 
 `npm test` builds `dist/`, installs Chrome for Testing with `slicc-cdp install-browser` and runs the integration tests over raw CDP (headless on a developer machine, with a window on CI), through the [harness from slicc-shared-web](https://github.com/ai-ecoverse/slicc-shared-web#integration-test-harness), against a fake backend (`test/integration/page/fake-backend.js`).
+Each test file gets its own Chrome, so `npm test` runs two files at a time unless `TEST_CONCURRENCY` says otherwise (CI sets 4), under `nice -n 10` so a full run on a developer machine leaves the rest of it responsive.
+`npm run test:file -- <files>` builds `dist/` and runs only the given files, one at a time; that is the local loop, and the full suite is for CI.
 It writes CPU profiles, screenshots and console logs to `artifacts/`, and V8 coverage of `dist/` to `coverage/` only with `SLICC_COVERAGE=1` (CI leaves it off, since nothing reads it; the unit tests' diff coverage is separate).
 The test page is served cross-origin isolated (COOP/COEP), as slicc-kernel requires.
 `test/integration/kernel.test.mjs` runs `bash -i` end to end on `@ai-ecoverse/slicc-kernel` (a pinned dev dependency), with `@ai-ecoverse/wasm-bash` and `@ai-ecoverse/wasm-coreutils` installed into OPFS by the page (`/kernel.html`).
