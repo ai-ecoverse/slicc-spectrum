@@ -122,6 +122,24 @@ const options: ProviderOption[] = [
     auth: 'local',
   },
   {
+    id: 'local',
+    name: 'Local or self-hosted',
+    description: 'Your own model server',
+    auth: 'fields',
+    fields: [
+      {
+        name: 'endpoint',
+        label: 'Endpoint',
+        required: true,
+        customBase: true,
+        placeholder: 'http://localhost:11434',
+        help: 'The server’s address, such as Ollama on port 11434.',
+      },
+    ],
+    vaultName: 'LOCAL_API_KEY',
+    keyOptional: true,
+  },
+  {
     id: 'lm-studio',
     name: 'LM Studio',
     description: 'Models served by LM Studio on this device',
@@ -149,6 +167,7 @@ export function providerAccount(option: ProviderOption): Account {
     ...(option.needs ? { needs: option.needs } : {}),
     ...(option.blocked ? { blocked: option.blocked } : {}),
     ...(option.vaultName ? { vaultName: option.vaultName } : {}),
+    ...(option.keyOptional ? { keyOptional: option.keyOptional } : {}),
   };
 }
 

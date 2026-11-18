@@ -39,6 +39,7 @@ import type {
   SliccModel,
   UpdatesPort,
   VaultEndpointChange,
+  VaultEndpointReply,
   VaultPort,
 } from '../model/types.ts';
 import { isPolicyPaused, isVaultFailure, valueProblem } from '../model/values.ts';
@@ -189,6 +190,7 @@ function draft(option: ProviderOption): Account {
     needs: option.needs,
     blocked: option.blocked,
     vaultName: option.vaultName,
+    keyOptional: option.keyOptional,
   };
 }
 
@@ -914,7 +916,8 @@ export class SliccSettings extends ThemedElement {
     this.#busy(id, true);
     this.failure = null;
     const url = this.#mcpUrl(account);
-    const before = keyed ? undefined : this.#record(account)?.settings;
+    const record = this.#record(account);
+    const before = keyed ? undefined : record?.settings;
     try {
       if (keyed) await vault.put?.(recordName(account), value, undefined, options);
       else if (settings) await vault.settings?.(recordName(account), 'model', settings);
@@ -928,7 +931,7 @@ export class SliccSettings extends ThemedElement {
       this.#busy(id, false);
       return;
     }
-    await this.#connectBases(account, undefined, fields, vault);
+    await this.#connectBases(account, undefined, fields, keyed || record ? vault : null);
     const failed = [this.failure, this.problem].some((issue) => issue?.id === id);
     if (failed && settings && !keyed)
       await vault.settings?.(recordName(account), 'model', before ?? {}).catch(() => {});
@@ -1064,7 +1067,7 @@ export class SliccSettings extends ThemedElement {
     return Object.fromEntries(
       settable.flatMap((field) => {
         const value = fields?.[field.name];
-        if (!value || (field.customBase && this.#baseOf(value))) return [];
+        if (!value || (field.customBase && this.#baseOf(value, true))) return [];
         return [[field.vaultSetting as string, value]];
       })
     );
@@ -1080,6 +1083,7 @@ export class SliccSettings extends ThemedElement {
   }
 
   #keyOptional(account: Account): boolean {
+    if (account.keyOptional) return true;
     const vault = this.#vault(account);
     const fields = account.fields ?? [];
     if (!vault || !fields.some((field) => field.vaultSetting || field.customBase)) return false;
@@ -1098,17 +1102,18 @@ export class SliccSettings extends ThemedElement {
     else this.failure = { id: account.id, message };
   }
 
-  #baseOf(value: string | undefined): string | undefined {
+  #baseOf(value: string | undefined, plain = false): string | undefined {
     const trimmed = value?.trim() ?? '';
     try {
-      return new URL(trimmed).protocol === 'https:' ? trimmed : undefined;
+      const { protocol } = new URL(trimmed);
+      return protocol === 'https:' || (plain && protocol === 'http:') ? trimmed : undefined;
     } catch {
       return undefined;
     }
   }
 
   #oldBase(account: Account, field: AccountField): string | undefined {
-    return this.#baseOf(field.value) ?? this.#bases.get(`${account.id} ${field.name}`);
+    return this.#baseOf(field.value, true) ?? this.#bases.get(`${account.id} ${field.name}`);
   }
 
   #baseChanges(account: Account, fields: Record<string, string> | undefined): BaseChange[] {
@@ -1116,7 +1121,7 @@ export class SliccSettings extends ThemedElement {
       .filter((field) => field.customBase)
       .map((field) => ({
         field: field.name,
-        url: this.#baseOf(fields?.[field.name]),
+        url: this.#baseOf(fields?.[field.name], true),
         old: this.#oldBase(account, field),
       }))
       .filter((change) => change.url !== change.old);
@@ -1151,14 +1156,22 @@ export class SliccSettings extends ThemedElement {
     const name = recordName(account);
     const changes = this.#baseChanges(account, fields);
     const forward = live ? this.#modelChange(name, changes, 'old', 'url') : null;
+    const back = forward ? this.#modelChange(name, changes, 'url', 'old') : null;
     if (forward) {
       this.#busy(id, true);
+      let reply: VaultEndpointReply | void;
       try {
-        await live?.endpoints?.(forward);
+        reply = await live?.endpoints?.(forward);
       } catch (error) {
         this.#busy(id, false);
         const field = changes.find((change) => change.url) ?? changes[0];
         if (this.model === model) this.#refuse(id, field.field, failureText(error));
+        return;
+      }
+      const plain = reply?.insecure && this.model === model;
+      if (plain && !(await this.#confirmPlain(changes))) {
+        await live?.endpoints?.(back as VaultEndpointChange).catch(() => {});
+        this.#busy(id, false);
         return;
       }
       if (this.model !== model) {
@@ -1169,7 +1182,6 @@ export class SliccSettings extends ThemedElement {
     await this.connect(id, secret, fields, dual(account) ? { method: 'key' } : undefined);
     if (this.failure?.id === id) {
       this.#placeFailure(account, fields);
-      const back = forward ? this.#modelChange(name, changes, 'url', 'old') : null;
       if (back) await live?.endpoints?.(back).catch(() => {});
       return;
     }
@@ -1178,6 +1190,16 @@ export class SliccSettings extends ThemedElement {
       if (change.url) this.#bases.set(key, change.url);
       else this.#bases.delete(key);
     }
+  }
+
+  #confirmPlain(changes: BaseChange[]): Promise<boolean> {
+    const url = changes.find((change) => change.url)?.url;
+    return confirm({
+      title: `Connect to ${url}?`,
+      body: 'This key goes unencrypted over your local network.',
+      action: 'Connect',
+      variant: 'confirmation',
+    });
   }
 
   #placeFailure(account: Account, fields: Record<string, string> | undefined): void {
@@ -1308,7 +1330,8 @@ export class SliccSettings extends ThemedElement {
     const secret = field.value.trim();
     field.value = '';
     const fields = this.#fields(form, account);
-    if (secret && fields !== null) void this.#connectBases(account, secret, fields);
+    if ((secret || account.keyOptional) && fields !== null)
+      void this.#connectBases(account, secret || undefined, fields);
   }
 
   async #confirmSubmit(form: HTMLElement, account: Account, url: string): Promise<void> {
@@ -1551,15 +1574,16 @@ export class SliccSettings extends ThemedElement {
       !account.blocked &&
       required.every((field) => !this.#offered() || this.filled.has(field.name));
     const optional = this.#keyOptional(account);
+    const keyless = optional && !this.#record(account);
     const hint = entry
       ? 'Type it in the vault’s own field. It never passes through this page.'
       : waiting
         ? 'Waiting for the vault'
         : busy
           ? 'Opening the vault’s field…'
-          : `You type the ${name} in the vault’s own field next.${optional ? ' Or save these settings and keep the key you have.' : ''}`;
+          : `You type the ${name} in the vault’s own field next.${this.#orKeep(optional, keyless)}`;
     return html`<form class="key stacked" data-id=${id} data-store="vault" data-entry=${entry ? '' : nothing} @submit=${(event: Event) => void this.#nextKey(event, account)} @keydown=${(event: KeyboardEvent) => this.#submitOnEnter(event)} @input=${(event: Event) => this.#fill(event)}>
-        <span class="entry-label">${account.provider} ${name}</span>
+        <span class="entry-label">${this.#secretLabel(account)}</span>
         ${entry ? valueField(vault, entry.request, valueConfig(this.ownerDocument, this.color), (detail, request) => void this.#keyed(account, detail, request)) : nothing}
         ${this.#problem(account, 'value')}
         <p class="hint">${hint}</p>
@@ -1570,11 +1594,16 @@ export class SliccSettings extends ThemedElement {
             entry
               ? html`<swc-button size="m" variant="secondary" data-action="back-key" @click=${() => this.#leaveKey(account)}>Back</swc-button>`
               : html`<swc-button size="m" variant="accent" data-action="enter-key" ?pending=${busy} ?disabled=${!busy && !ready} @click=${(event: Event) => void this.#nextKey(event, account)}>Next</swc-button>
-          ${optional ? html`<swc-button size="m" variant="secondary" data-action="save" ?disabled=${busy || !ready} @click=${(event: Event) => this.#keepSettings(event, account)}>Save settings</swc-button>` : nothing}
+          ${optional ? html`<swc-button size="m" variant="secondary" data-action="save" ?disabled=${busy || !ready} @click=${(event: Event) => this.#keepSettings(event, account)}>${keyless ? 'Connect without a key' : 'Save settings'}</swc-button>` : nothing}
           ${this.#leave(account)}`
           }
         </div>
       </form>`;
+  }
+
+  #orKeep(optional: boolean, keyless: boolean): string {
+    if (keyless) return ' Or connect without one.';
+    return optional ? ' Or save these settings and keep the key you have.' : '';
   }
 
   #keepSettings(event: Event, account: Account): void {
@@ -1589,7 +1618,7 @@ export class SliccSettings extends ThemedElement {
     const locked = !!vault.status()?.locked;
     const name = secretNames[account.secret ?? 'api-key'];
     return html`<form class="key stacked" data-id=${account.id} data-store="vault" @submit=${(event: Event) => this.#submit(event, account)} @keydown=${(event: KeyboardEvent) => this.#submitOnEnter(event)} @input=${(event: Event) => this.#fill(event)}>
-        <label class="field"><span>${account.provider} ${name}</span><input
+        <label class="field"><span>${this.#secretLabel(account)}</span><input
           type="password"
           autocomplete="off"
           spellcheck="false"
@@ -1624,7 +1653,8 @@ export class SliccSettings extends ThemedElement {
   }
 
   #secretLabel(account: Account): string {
-    return `${account.provider} ${secretNames[account.secret ?? 'api-key']}`;
+    const optional = account.keyOptional ? ' (optional)' : '';
+    return `${account.provider} ${secretNames[account.secret ?? 'api-key']}${optional}`;
   }
 
   #secret(account: Account): TemplateResult {
@@ -1647,6 +1677,7 @@ export class SliccSettings extends ThemedElement {
   #inVault(account: Account): boolean {
     const vault = this.model?.vault;
     if (account.store !== 'vault' || account.status !== 'connected' || !vault) return false;
+    if (account.keyOptional && !this.#held(account)) return false;
     return account.auth !== 'api-key' || !!vault.put;
   }
 

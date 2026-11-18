@@ -53,6 +53,25 @@ function serverAccount(name: string, entry: unknown): Account {
     : { ...row, status: 'connected', auth: 'local', state: 'connected' };
 }
 
+function identity(
+  id: string,
+  account: Account | undefined,
+  fields: Record<string, string> | undefined,
+  key: boolean
+): string {
+  if (account?.group === 'mcp') return account.identity;
+  if (account?.auth === 'local') return 'On this device';
+  if (account?.keyOptional) return fields?.endpoint ?? '';
+  if (account?.auth === 'api-key' || key)
+    return ['API key', ...chosen(account?.fields, fields)].join(' · ');
+  return account?.identity || `${id}-user@example.com`;
+}
+
+function https(fields: Record<string, string> | undefined): void {
+  if (fields?.endpoint?.includes('://') && !fields.endpoint.startsWith('https://'))
+    throw new Error('The endpoint must use https://.');
+}
+
 function chosen(
   fields: readonly AccountField[] | undefined,
   values: Record<string, string> | undefined
@@ -280,19 +299,10 @@ export class DummySettings extends Emitter<SettingsEvents> implements SettingsPo
       );
     if ([secret, ...Object.values(fields ?? {})].some((value) => value?.startsWith('bad')))
       throw new Error(`${account?.provider} didn’t accept that key.`);
-    if (fields?.endpoint?.includes('://') && !fields.endpoint.startsWith('https://'))
-      throw new Error('The endpoint must use https://.');
-    const identity =
-      account?.group === 'mcp'
-        ? account.identity
-        : local
-          ? 'On this device'
-          : account?.auth === 'api-key' || key
-            ? ['API key', ...chosen(account?.fields, fields)].join(' · ')
-            : account?.identity || `${id}-user@example.com`;
+    if (!account?.keyOptional) https(fields);
     this.#set(id, {
       status: 'connected',
-      identity,
+      identity: identity(id, account, fields, key),
       ...(account?.state ? { state: 'connected' as const } : {}),
       ...kept(account?.fields, fields),
     });
