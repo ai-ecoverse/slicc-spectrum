@@ -223,3 +223,129 @@ test('with the vault’s own field, Connect without a key connects and enters no
   assert.deepEqual(await page.evaluate(() => window.order), [['connect', 'local']]);
   assert.deepEqual(page.errors, []);
 });
+
+test('when the vault refuses a keyed http endpoint, the field shows its sentence and connect never runs', async (t) => {
+  const page = await open(t, { vault: 'endpoints-fail' });
+  await choose(page);
+  await fill(page, [
+    ['input[data-field=value]', 'local-key-0123456789'],
+    ['input[data-account-field=endpoint]', 'http://203.0.113.7:11434'],
+  ]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(
+    () =>
+      window.settingsPart('dialog.picker #key-problem')?.textContent.trim() ===
+      'The vault refused that endpoint. Check the address and try again.'
+  );
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      order: window.order.map(([name]) => name),
+      url: window.order[1][1],
+      invalid: window
+        .settingsPart('dialog.picker input[data-account-field=endpoint]')
+        .getAttribute('aria-invalid'),
+      dialog: window.dialog(),
+      added: !!window.account('local'),
+    })),
+    {
+      order: ['put', 'endpoints'],
+      url: { add: { model: [{ name: 'LOCAL_API_KEY', url: 'http://203.0.113.7:11434' }] } },
+      invalid: 'true',
+      dialog: null,
+      added: false,
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a keyed reconnect after a keyless connect binds the same endpoint to the new record', async (t) => {
+  const page = await open(t);
+  await choose(page);
+  await fill(page, [['input[data-account-field=endpoint]', 'http://localhost:11434']]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  await page.until(() => !window.settingsPart('dialog.picker'));
+  await page.evaluate(() => {
+    window.model.settings.disconnect('local');
+    window.order = [];
+    return true;
+  });
+  await click(page, '.account[data-id=local] [data-action=connect]');
+  await page.until(() => !!window.settingsPart('form.key[data-id=local] input[data-field=value]'));
+  await page.evaluate(() => {
+    window.settingsPart('form.key[data-id=local] input[data-field=value]').focus();
+    return true;
+  });
+  await page.type('local-key-0123456789');
+  await click(page, 'form.key[data-id=local] [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.order), [
+    ['put', 'LOCAL_API_KEY'],
+    ['endpoints', { add: { model: [{ name: 'LOCAL_API_KEY', url: 'http://localhost:11434' }] } }],
+    ['connect', 'local'],
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a keyless connect needs no unlocked vault', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => window.model.vault.lock().then(() => true));
+  await page.until(() => window.model.vault.status().locked);
+  await choose(page);
+  assert.equal(
+    await page.evaluate(() => !!window.settingsPart('dialog.picker [data-locked]')),
+    true
+  );
+  await fill(page, [['input[data-account-field=endpoint]', 'http://localhost:11434']]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.order), [['connect', 'local']]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a keyless connect doesn’t wait for the vault’s own field', async (t) => {
+  const page = await open(t, { vault: 'waiting', entry: 'frame' });
+  await choose(page);
+  await fill(page, [['input[data-account-field=endpoint]', 'http://localhost:11434']]);
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      next: window.settingsPart('dialog.picker [data-action=enter-key]').disabled,
+      keyless: window.settingsPart('dialog.picker [data-action=save]').disabled,
+    })),
+    { next: true, keyless: false }
+  );
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.order), [['connect', 'local']]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a new keyless account with a vault setting field sets nothing on a missing record', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    const { settings } = window.model;
+    const offered = settings.providers();
+    settings.providers = () =>
+      offered.map((option) =>
+        option.id === 'local'
+          ? {
+              ...option,
+              fields: [
+                ...option.fields,
+                { name: 'tenant', label: 'Tenant', vaultSetting: 'LOCAL_TENANT' },
+              ],
+            }
+          : option
+      );
+    return true;
+  });
+  await choose(page);
+  await fill(page, [
+    ['input[data-account-field=endpoint]', 'http://localhost:11434'],
+    ['input[data-account-field=tenant]', 'harbor'],
+  ]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.order), [['connect', 'local']]);
+  assert.deepEqual(page.errors, []);
+});
