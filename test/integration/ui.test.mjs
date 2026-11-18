@@ -10815,6 +10815,21 @@ test('EIO and oauth refresh refusals show their own words, not a locked vault', 
   assert.deepEqual(page.errors, []);
 });
 
+test('a config-entry refusal names the [secrets] entry, not a locked vault', async (t) => {
+  const page = await secretsPage(t, { vault: 'secrets' });
+  await page.evaluate(() => {
+    window.model.vault.fail('EACCES', 'session refused', 'config-entry');
+    return true;
+  });
+  await save(page, 'tide_token', sample);
+  assert.equal(
+    await page.evaluate(said, '[data-error=form]'),
+    "This secret's [secrets] entry in /etc/fnox/config.toml needs its placeholder as its value"
+  );
+  await clean(page);
+  assert.deepEqual(page.errors, []);
+});
+
 test('the secrets activity log lists uses and reveals, pages back and filters to reveals', async (t) => {
   const page = await secretsPage(t, { vault: 'secrets' });
   const seqs = () =>
