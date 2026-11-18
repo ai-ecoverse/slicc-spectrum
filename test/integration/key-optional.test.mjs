@@ -827,3 +827,212 @@ test('when connect is refused and the vault won’t take the endpoint back, the 
   );
   assert.deepEqual(page.errors, []);
 });
+
+const tenantFields = [
+  { name: 'endpoint', label: 'Endpoint', required: true, customBase: true },
+  { name: 'tenant', label: 'Tenant', vaultSetting: 'LOCAL_TENANT' },
+];
+
+test('with a kept key and a vault without settings, a vault setting edit needs a new key', async (t) => {
+  const page = await open(t);
+  await reshape(page, tenantFields);
+  await kept(page, { LOCAL_TENANT: 'harbor' });
+  await page.evaluate(() => {
+    window.model.vault.settings = undefined;
+    return true;
+  });
+  await choose(page);
+  await fill(page, [
+    ['input[data-account-field=endpoint]', 'http://localhost:11434'],
+    ['input[data-account-field=tenant]', 'tide'],
+  ]);
+  assert.equal(await disabled(page, 'dialog.picker [data-action=save]'), true);
+  await fill(page, [['input[data-field=value]', 'local-key-9876543210']]);
+  await page.until(() => !window.settingsPart('dialog.picker [data-action=save]').disabled);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.model.vault.puts.at(-1).options.settings), {
+    LOCAL_TENANT: 'tide',
+  });
+  assert.deepEqual(page.errors, []);
+});
+
+test('when the vault won’t put the old settings back after Cancel, the form says so', async (t) => {
+  const page = await open(t);
+  await reshape(page, tenantFields);
+  await kept(page, { LOCAL_TENANT: 'harbor' });
+  await page.evaluate(() => {
+    const { vault } = window.model;
+    const settings = vault.settings.bind(vault);
+    let calls = 0;
+    vault.settings = (...args) => {
+      calls += 1;
+      return calls === 1
+        ? settings(...args)
+        : Promise.reject(new Error('The vault kept LOCAL_TENANT as tide. Try again.'));
+    };
+    return true;
+  });
+  await choose(page);
+  await fill(page, [
+    ['input[data-account-field=endpoint]', lan],
+    ['input[data-account-field=tenant]', 'tide'],
+  ]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => !!window.dialog());
+  await page.evaluate(() => window.answer(false));
+  await page.until(
+    () =>
+      window.settingsPart('dialog.picker .failure[role=alert]')?.textContent.trim() ===
+      'The vault kept LOCAL_TENANT as tide. Try again.'
+  );
+  assert.equal(await page.evaluate(() => window.model.settings.connects.length), 0);
+  assert.deepEqual(page.errors, []);
+});
+
+test('on a vault that can’t take a key, Disconnect of a keyOptional account still removes its kept key', async (t) => {
+  const page = await open(t);
+  await kept(page);
+  await page.evaluate(() => {
+    window.model.vault.put = undefined;
+    return true;
+  });
+  await choose(page);
+  await fill(page, [['input[data-account-field=endpoint]', 'http://localhost:11434']]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  await page.until(() => !window.settingsPart('dialog.picker'));
+  await page.evaluate(() => {
+    window.order = [];
+    return true;
+  });
+  await click(page, '.account[data-id=local] [data-action=disconnect]');
+  await page.until(() => !!window.dialog());
+  await page.evaluate(() => window.answer(true));
+  await page.until(() => window.account('local')?.status === 'disconnected');
+  assert.deepEqual(await page.evaluate(() => window.order), [['remove', 'LOCAL_API_KEY']]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a keyOptional provider without fields doesn’t open the vault’s field by itself', async (t) => {
+  const page = await open(t, { entry: 'frame' });
+  await reshape(page, []);
+  await choose(page);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      field: !!window.settingsPart('dialog.picker slicc-vault-value'),
+      button: window.settingsPart('dialog.picker [data-action=save]')?.textContent.trim(),
+      order: window.order,
+    })),
+    { field: false, button: 'Connect without a key', order: [] }
+  );
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.order), [['connect', 'local']]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('on a vault that can only list and remove, a vault setting edit connects without a key', async (t) => {
+  const page = await open(t);
+  await reshape(page, tenantFields);
+  await kept(page, { LOCAL_TENANT: 'harbor' });
+  await page.evaluate(() => {
+    window.model.vault.put = undefined;
+    window.model.vault.settings = undefined;
+    return true;
+  });
+  await choose(page);
+  await fill(page, [
+    ['input[data-account-field=endpoint]', 'http://localhost:11434'],
+    ['input[data-account-field=tenant]', 'tide'],
+  ]);
+  await page.until(() => !window.settingsPart('dialog.picker [data-action=save]').disabled);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.order), [['connect', 'local']]);
+  assert.deepEqual(await page.evaluate(() => window.model.settings.connects.at(-1).fields), {
+    endpoint: 'http://localhost:11434',
+    tenant: 'tide',
+  });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a settings restore refused after a model swap shows nothing on the new model', async (t) => {
+  const page = await open(t);
+  await reshape(page, tenantFields);
+  await kept(page, { LOCAL_TENANT: 'harbor' });
+  await page.evaluate(() => {
+    const { vault } = window.model;
+    const settings = vault.settings.bind(vault);
+    let calls = 0;
+    vault.settings = (...args) => {
+      calls += 1;
+      if (calls === 1) return settings(...args);
+      window.swap();
+      return Promise.reject(new Error('The vault kept LOCAL_TENANT as tide. Try again.'));
+    };
+    window.swap = () => {
+      const element = window.$('slicc-app', 'slicc-dock', 'slicc-settings');
+      window.old = element.model;
+      element.model = { ...element.model, vault: element.model.vault };
+      window.fresh = element.model;
+    };
+    return true;
+  });
+  await choose(page);
+  await fill(page, [
+    ['input[data-account-field=endpoint]', lan],
+    ['input[data-account-field=tenant]', 'tide'],
+  ]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => !!window.dialog());
+  await page.evaluate(() => window.answer(false));
+  await page.until(() => !!window.fresh);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(
+    await page.evaluate(() => window.$('slicc-app', 'slicc-dock', 'slicc-settings').failure),
+    null
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('on a vault that can’t store keys, a typed key never reaches connect', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() => {
+    window.model.vault.put = undefined;
+    window.connected = [];
+    const { settings } = window.model;
+    const connect = settings.connect.bind(settings);
+    settings.connect = (...args) => {
+      window.connected.push(args[1] ?? null);
+      return connect(...args);
+    };
+    return true;
+  });
+  await click(page, '[data-action=add-provider]');
+  await page.until(() => window.settingsPart('dialog.picker')?.open);
+  await click(page, '.option[data-provider="groq"]');
+  await page.until(() => !!window.settingsPart('dialog.picker sp-textfield'));
+  await page.evaluate(() => {
+    window.settingsPart('dialog.picker sp-textfield').focus();
+    return true;
+  });
+  await page.type('gsk-0123456789');
+  await page.press('Enter');
+  await page.until(
+    () =>
+      window.settingsPart('dialog.picker .failure[role=alert]')?.textContent.trim() ===
+      'The vault can’t store this key. Update the vault, then try again.'
+  );
+  assert.deepEqual(await page.evaluate(() => window.connected), []);
+  await click(page, 'dialog.picker [data-action=back]');
+  await page.until(() => window.settingsPart('dialog.picker')?.dataset.picker === 'pick');
+  await click(page, '.option[data-provider="local"]');
+  await page.until(() => !!window.settingsPart('dialog.picker form.key'));
+  await fill(page, [['input[data-account-field=endpoint]', 'http://localhost:11434']]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.connected), [null]);
+  assert.deepEqual(page.errors, []);
+});

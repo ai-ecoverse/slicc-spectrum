@@ -182,6 +182,8 @@ const nearby = (url: string) => {
   return protocol === 'http:' && !loopback.test(hostname);
 };
 
+const noPut = 'The vault can’t store this key. Update the vault, then try again.';
+
 const serverName = /^[A-Za-z0-9_-]+$/;
 
 function draft(option: ProviderOption): Account {
@@ -947,7 +949,10 @@ export class SliccSettings extends ThemedElement {
     }
     const done = await this.#connectBases(account, undefined, fields, vault, fresh);
     if (!done && settings && !keyed && this.model === model)
-      await vault.settings?.(recordName(account), 'model', before ?? {}).catch(() => {});
+      await vault.settings?.(recordName(account), 'model', before ?? {}).catch((error) => {
+        if (this.model === model && this.failure?.id !== id)
+          this.failure = { id, message: failureText(error) };
+      });
   }
 
   async #endpoint(account: Account, vault: VaultPort, url: string): Promise<void> {
@@ -1107,14 +1112,16 @@ export class SliccSettings extends ThemedElement {
   #keyless(account: Account): boolean {
     if (!account.keyOptional) return false;
     const vault = this.#vault(account);
-    if (!vault) return true;
+    if (!vault) return !this.#record(account);
     return vault.list() ? !this.#record(account) : !this.#added(account.id);
   }
 
   #keyOptional(account: Account): boolean {
-    if (account.keyOptional) return true;
     const vault = this.#vault(account);
     const fields = account.fields ?? [];
+    const settable = fields.some((field) => field.vaultSetting);
+    const stale = !!vault && settable && !!this.#record(account) && !vault.settings;
+    if (account.keyOptional) return !stale;
     if (!vault || !fields.some((field) => field.vaultSetting || field.customBase)) return false;
     if (fields.some((field) => field.vaultSetting) && !vault.settings) return false;
     return !!this.#record(account);
@@ -1409,6 +1416,10 @@ export class SliccSettings extends ThemedElement {
     };
     const secret = field.value.trim();
     field.value = '';
+    if (secret && account.store === 'vault' && this.model?.vault) {
+      this.failure = { id: account.id, message: noPut };
+      return;
+    }
     const fields = this.#fields(form, account);
     if ((secret || account.keyOptional) && fields !== null)
       void this.#connectBases(account, secret || undefined, fields);
@@ -1650,7 +1661,8 @@ export class SliccSettings extends ThemedElement {
       !fields.length &&
       !this.#mcpUrl(account) &&
       this.#auto !== id &&
-      !busy
+      !busy &&
+      !this.#keyless(account)
     )
       this.#wants = account;
     const required = fields.filter((field) => field.required && !field.options);
