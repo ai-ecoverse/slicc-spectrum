@@ -945,9 +945,8 @@ export class SliccSettings extends ThemedElement {
       this.#busy(id, false);
       return;
     }
-    await this.#connectBases(account, undefined, fields, vault, fresh);
-    const failed = [this.failure, this.problem].some((issue) => issue?.id === id);
-    if (failed && settings && !keyed)
+    const done = await this.#connectBases(account, undefined, fields, vault, fresh);
+    if (!done && settings && !keyed && this.model === model)
       await vault.settings?.(recordName(account), 'model', before ?? {}).catch(() => {});
   }
 
@@ -1113,7 +1112,7 @@ export class SliccSettings extends ThemedElement {
   }
 
   #keyOptional(account: Account): boolean {
-    if (this.#keyless(account)) return true;
+    if (account.keyOptional) return true;
     const vault = this.#vault(account);
     const fields = account.fields ?? [];
     if (!vault || !fields.some((field) => field.vaultSetting || field.customBase)) return false;
@@ -1184,7 +1183,7 @@ export class SliccSettings extends ThemedElement {
     fields: Record<string, string> | undefined,
     vault: VaultPort | null = null,
     fresh = false
-  ): Promise<void> {
+  ): Promise<boolean> {
     const live = vault?.endpoints ? vault : null;
     const { id } = account;
     const name = recordName(account);
@@ -1193,19 +1192,20 @@ export class SliccSettings extends ThemedElement {
     const back = forward ? this.#modelChange(name, changes, 'url', 'old') : null;
     if (forward) {
       const bound = { live: live as VaultPort, forward, back: back as VaultEndpointChange };
-      if (!(await this.#bind(account, changes, bound, fresh))) return;
+      if (!(await this.#bind(account, changes, bound, fresh))) return false;
     }
     await this.connect(id, secret, fields, dual(account) ? { method: 'key' } : undefined);
     if (this.failure?.id === id) {
       this.#placeFailure(account, fields);
       if (back) await live?.endpoints?.(back).catch(() => {});
-      return;
+      return false;
     }
     for (const change of changes) {
       const key = `${id} ${change.field}`;
       if (change.url) this.#bases.set(key, change.url);
       else this.#bases.delete(key);
     }
+    return true;
   }
 
   async #bind(

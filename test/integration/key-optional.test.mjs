@@ -704,3 +704,72 @@ test('after the vault list loads, Cancel removes the key a keyless account just 
   assert.equal(await page.evaluate(() => window.account('local').status), 'disconnected');
   assert.deepEqual(page.errors, []);
 });
+
+const reshape = (page, fields) =>
+  page.evaluate((fields) => {
+    const { settings } = window.model;
+    const offered = settings.providers();
+    settings.providers = () =>
+      offered.map((option) => (option.id === 'local' ? { ...option, fields } : option));
+    return true;
+  }, fields);
+
+const kept = (page, settings) =>
+  page.evaluate(
+    (settings) =>
+      window.model.vault
+        .put('LOCAL_API_KEY', 'local-key-older-0123', undefined, {
+          kind: 'model',
+          provider: 'local',
+          ...(settings ? { settings } : {}),
+        })
+        .then(() => {
+          window.order = [];
+          return true;
+        }),
+    settings
+  );
+
+test('a keyOptional provider without custom bases keeps its key optional once a key is kept', async (t) => {
+  const page = await open(t);
+  await reshape(page, [{ name: 'model', label: 'Model', required: true }]);
+  await kept(page);
+  await choose(page);
+  await fill(page, [['input[data-account-field=model]', 'harbor-7b']]);
+  await page.until(() => !window.settingsPart('dialog.picker [data-action=save]').disabled);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.order), [['connect', 'local']]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('cancelling the insecure confirm on a settings-only save puts the old settings back', async (t) => {
+  const page = await open(t);
+  await reshape(page, [
+    { name: 'endpoint', label: 'Endpoint', required: true, customBase: true },
+    { name: 'tenant', label: 'Tenant', vaultSetting: 'LOCAL_TENANT' },
+  ]);
+  await kept(page, { LOCAL_TENANT: 'harbor' });
+  await choose(page);
+  await fill(page, [
+    ['input[data-account-field=endpoint]', lan],
+    ['input[data-account-field=tenant]', 'tide'],
+  ]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => !!window.dialog());
+  await page.evaluate(() => window.answer(false));
+  await page.until(() => window.model.vault.settingsCalls.length === 2);
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      order: window.order.map(([name]) => name),
+      settings: window.model.vault.settingsCalls.map((call) => call.settings),
+      connects: window.model.settings.connects.length,
+    })),
+    {
+      order: ['settings', 'endpoints', 'endpoints', 'settings'],
+      settings: [{ LOCAL_TENANT: 'tide' }, { LOCAL_TENANT: 'harbor' }],
+      connects: 0,
+    }
+  );
+  assert.deepEqual(page.errors, []);
+});
