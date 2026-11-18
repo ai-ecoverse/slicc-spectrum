@@ -1162,7 +1162,6 @@ export class SliccSettings extends ThemedElement {
     vault: VaultPort | null = null,
     fresh = false
   ): Promise<void> {
-    const model = this.model as SliccModel;
     const live = vault?.endpoints ? vault : null;
     const { id } = account;
     const name = recordName(account);
@@ -1170,26 +1169,8 @@ export class SliccSettings extends ThemedElement {
     const forward = live ? this.#modelChange(name, changes, 'old', 'url') : null;
     const back = forward ? this.#modelChange(name, changes, 'url', 'old') : null;
     if (forward) {
-      this.#busy(id, true);
-      let reply: VaultEndpointReply | void;
-      try {
-        reply = await live?.endpoints?.(forward);
-      } catch (error) {
-        this.#busy(id, false);
-        const field = changes.find((change) => change.url) ?? changes[0];
-        if (this.model === model) this.#refuse(id, field.field, failureText(error));
-        return;
-      }
-      const plain = reply?.insecure && this.model === model;
-      if (plain && !(await this.#confirmPlain(changes))) {
-        await live?.endpoints?.(back as VaultEndpointChange).catch(() => {});
-        this.#busy(id, false);
-        return;
-      }
-      if (this.model !== model) {
-        this.#busy(id, false);
-        return;
-      }
+      const bound = { live: live as VaultPort, forward, back: back as VaultEndpointChange };
+      if (!(await this.#bind(account, changes, bound, fresh))) return;
     }
     await this.connect(id, secret, fields, dual(account) ? { method: 'key' } : undefined);
     if (this.failure?.id === id) {
@@ -1202,6 +1183,40 @@ export class SliccSettings extends ThemedElement {
       if (change.url) this.#bases.set(key, change.url);
       else this.#bases.delete(key);
     }
+  }
+
+  async #bind(
+    account: Account,
+    changes: BaseChange[],
+    bound: { live: VaultPort; forward: VaultEndpointChange; back: VaultEndpointChange },
+    fresh: boolean
+  ): Promise<boolean> {
+    const model = this.model;
+    const { id } = account;
+    this.#busy(id, true);
+    let reply: VaultEndpointReply | void;
+    try {
+      reply = await bound.live.endpoints?.(bound.forward);
+    } catch (error) {
+      this.#busy(id, false);
+      const field = changes.find((change) => change.url) ?? changes[0];
+      if (this.model === model) this.#refuse(id, field.field, failureText(error));
+      return false;
+    }
+    const plain = reply?.insecure && this.model === model;
+    if (plain && !(await this.#confirmPlain(changes))) {
+      await this.#withdraw(bound.live, bound.back, fresh ? recordName(account) : null);
+      this.#busy(id, false);
+      return false;
+    }
+    if (this.model === model) return true;
+    this.#busy(id, false);
+    return false;
+  }
+
+  async #withdraw(vault: VaultPort, back: VaultEndpointChange, name: string | null): Promise<void> {
+    await vault.endpoints?.(back).catch(() => {});
+    if (name) await gone(vault, name, 'model').catch(() => {});
   }
 
   #confirmPlain(changes: BaseChange[]): Promise<boolean> {

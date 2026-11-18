@@ -179,26 +179,78 @@ test('an insecure endpoint reply asks before connecting, and Connect goes on', a
   assert.deepEqual(page.errors, []);
 });
 
-test('cancelling the insecure confirm takes the endpoint back and never connects', async (t) => {
+const record = () =>
+  window.model.vault
+    .list()
+    .secrets.find((secret) => secret.name === 'LOCAL_API_KEY' && secret.state !== 'removed')
+    ?.kind ?? null;
+
+test('cancelling the insecure confirm takes the endpoint back, removes the new key and leaves the form usable', async (t) => {
   const page = await open(t);
   await keyedLan(page);
   await page.evaluate(() => window.answer(false));
-  await page.until(() => window.order.length === 3);
+  await page.until(() => !window.settingsPart('dialog.picker [data-action=save]')?.pending);
+  await page.until(
+    () =>
+      !window.model.vault
+        .list()
+        .secrets.some((s) => s.name === 'LOCAL_API_KEY' && s.state !== 'removed')
+  );
   assert.deepEqual(
     await page.evaluate(() => ({
       order: window.order.map(([name]) => name),
       last: window.order.at(-1)[1],
+      connects: window.model.settings.connects.length,
       added: !!window.account('local'),
       open: window.settingsPart('dialog.picker')?.dataset.picker,
+      endpoint: window.settingsPart('dialog.picker input[data-account-field=endpoint]').value,
     })),
     {
       order: ['put', 'endpoints', 'endpoints'],
       last: { remove: { model: [{ name: 'LOCAL_API_KEY', url: lan }] } },
+      connects: 0,
       added: false,
       open: 'connect',
+      endpoint: lan,
     }
   );
-  await page.until(() => !window.settingsPart('dialog.picker [data-action=save]').pending);
+  await fill(page, [['input[data-field=value]', 'local-key-0123456789']]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => !!window.dialog());
+  await page.evaluate(() => window.answer(true));
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(page.errors, []);
+});
+
+test('cancelling the insecure confirm keeps a key that was already in the vault', async (t) => {
+  const page = await open(t);
+  await page.evaluate(() =>
+    window.model.vault
+      .put('LOCAL_API_KEY', 'local-key-older-0123', undefined, { kind: 'model', provider: 'local' })
+      .then(() => {
+        window.order = [];
+        return true;
+      })
+  );
+  await keyedLan(page);
+  await page.evaluate(() => window.answer(false));
+  await page.until(() => window.order.length === 3);
+  await page.until(() => !window.settingsPart('dialog.picker [data-action=save]')?.pending);
+  assert.equal(await page.evaluate(record), 'model');
+  assert.equal(await page.evaluate(() => window.model.settings.connects.length), 0);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a keyless connect to a plain-network URL registers nothing and asks nothing', async (t) => {
+  const page = await open(t);
+  await choose(page);
+  await fill(page, [['input[data-account-field=endpoint]', lan]]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => ({ order: window.order, dialog: window.dialog() })), {
+    order: [['connect', 'local']],
+    dialog: null,
+  });
   assert.deepEqual(page.errors, []);
 });
 
