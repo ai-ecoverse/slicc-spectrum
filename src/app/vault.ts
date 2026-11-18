@@ -106,6 +106,8 @@ const causeTexts: Partial<Record<string, string>> = {
   'policy-paused': 'Secrets are paused until the missing policy file is back',
   'oauth-reauth-required': 'Sign in again',
   'oauth-refresh-failed': "Couldn't refresh this sign-in",
+  'config-entry':
+    "This secret's [secrets] entry in /etc/fnox/config.toml needs its placeholder as its value",
 };
 
 export function widening(change: Widening, devices: readonly LinkedDevice[]): string {

@@ -1499,6 +1499,7 @@ export type ErrorCause =
   | 'oauth-reauth-required'
   | 'oauth-refresh-failed'
   | 'no-rule'
+  | 'config-entry'
   | 'rule-domain'
   | 'rule-request'
   | 'rule-exit'
