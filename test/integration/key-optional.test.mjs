@@ -952,3 +952,42 @@ test('on a vault that can only list and remove, a vault setting edit of a kept k
   assert.deepEqual(await page.evaluate(() => window.order), []);
   assert.deepEqual(page.errors, []);
 });
+
+test('a settings restore refused after a model swap shows nothing on the new model', async (t) => {
+  const page = await open(t);
+  await reshape(page, tenantFields);
+  await kept(page, { LOCAL_TENANT: 'harbor' });
+  await page.evaluate(() => {
+    const { vault } = window.model;
+    const settings = vault.settings.bind(vault);
+    let calls = 0;
+    vault.settings = (...args) => {
+      calls += 1;
+      if (calls === 1) return settings(...args);
+      window.swap();
+      return Promise.reject(new Error('The vault kept LOCAL_TENANT as tide. Try again.'));
+    };
+    window.swap = () => {
+      const element = window.$('slicc-app', 'slicc-dock', 'slicc-settings');
+      window.old = element.model;
+      element.model = { ...element.model, vault: element.model.vault };
+      window.fresh = element.model;
+    };
+    return true;
+  });
+  await choose(page);
+  await fill(page, [
+    ['input[data-account-field=endpoint]', lan],
+    ['input[data-account-field=tenant]', 'tide'],
+  ]);
+  await click(page, 'dialog.picker [data-action=save]');
+  await page.until(() => !!window.dialog());
+  await page.evaluate(() => window.answer(false));
+  await page.until(() => !!window.fresh);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(
+    await page.evaluate(() => window.$('slicc-app', 'slicc-dock', 'slicc-settings').failure),
+    null
+  );
+  assert.deepEqual(page.errors, []);
+});

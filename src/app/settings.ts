@@ -948,7 +948,8 @@ export class SliccSettings extends ThemedElement {
     const done = await this.#connectBases(account, undefined, fields, vault, fresh);
     if (!done && settings && !keyed && this.model === model)
       await vault.settings?.(recordName(account), 'model', before ?? {}).catch((error) => {
-        if (this.failure?.id !== id) this.failure = { id, message: failureText(error) };
+        if (this.model === model && this.failure?.id !== id)
+          this.failure = { id, message: failureText(error) };
       });
   }
 
