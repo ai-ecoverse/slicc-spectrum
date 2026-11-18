@@ -532,3 +532,57 @@ test('while the vault list loads, a known keyed local account needs its key to c
   assert.deepEqual(await page.evaluate(() => window.order), []);
   assert.deepEqual(page.errors, []);
 });
+
+test('while the vault list loads, a keyed reconnect with a changed URL binds the new endpoint', async (t) => {
+  const page = await open(t);
+  await keyedLocal(page);
+  await page.evaluate(() => {
+    window.model.settings.disconnect('local');
+    return true;
+  });
+  await loading(page);
+  await click(page, '.account[data-id=local] [data-action=connect]');
+  await page.until(() => !!window.settingsPart('form.key[data-id=local] input[data-field=value]'));
+  for (const [selector, value] of [
+    ['input[data-field=value]', 'local-key-9876543210'],
+    ['input[data-account-field=endpoint]', 'http://localhost:1234'],
+  ]) {
+    await page.evaluate((selector) => {
+      const input = window.settingsPart(`form.key[data-id=local] ${selector}`);
+      input.value = '';
+      input.focus();
+      return true;
+    }, selector);
+    await page.type(value);
+  }
+  await click(page, 'form.key[data-id=local] [data-action=save]');
+  await page.until(() => window.account('local')?.status === 'connected');
+  assert.deepEqual(await page.evaluate(() => window.order), [
+    ['put', 'LOCAL_API_KEY'],
+    [
+      'endpoints',
+      {
+        remove: { model: [{ name: 'LOCAL_API_KEY', url: 'http://localhost:11434' }] },
+        add: { model: [{ name: 'LOCAL_API_KEY', url: 'http://localhost:1234' }] },
+      },
+    ],
+    ['connect', 'local'],
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('while the vault list loads, Remove of a keyed local account still removes its key', async (t) => {
+  const page = await open(t);
+  await keyedLocal(page);
+  await loading(page);
+  await click(page, '.account[data-id=local] [data-action=remove-account]');
+  await page.until(() => !!window.dialog());
+  assert.equal(
+    await page.evaluate(() => window.dialog().body),
+    'Its key is deleted from the vault. Models from it stop working.'
+  );
+  await page.evaluate(() => window.answer(true));
+  await page.until(() => !window.account('local'));
+  assert.deepEqual(await page.evaluate(() => window.order), [['remove', 'LOCAL_API_KEY']]);
+  assert.deepEqual(page.errors, []);
+});
