@@ -390,6 +390,42 @@ test('on a vault that can’t remove, Remove of a plain api-key account promises
   assert.deepEqual(page.errors, []);
 });
 
+test('Remove of an api-key account whose key isn’t in the vault promises no deletion and leaves the vault alone', async (t) => {
+  const page = await open(t, { vault: 'secrets' });
+  await page.evaluate(() => {
+    const { settings, vault } = window.model;
+    const accounts = settings.accounts.bind(settings);
+    settings.accounts = () =>
+      accounts().map((account) =>
+        account.id === 'anthropic' ? { ...account, store: undefined } : account
+      );
+    window.removed = [];
+    const remove = vault.remove.bind(vault);
+    vault.remove = (...args) => {
+      window.removed.push(args[0]);
+      return remove(...args);
+    };
+    settings.emit('accounts', settings.accounts());
+    return true;
+  });
+  await page.until(() => window.account('anthropic')?.store === undefined);
+  await click(page, '.account[data-id=anthropic] [data-action=remove-account]');
+  await page.until(() => !!window.deep('slicc-confirm')?.shadowRoot.querySelector('dialog')?.open);
+  assert.equal(
+    await page.evaluate(
+      () => window.deep('slicc-confirm').shadowRoot.querySelector('p').textContent
+    ),
+    'Models from it stop working.'
+  );
+  await page.evaluate(() => {
+    window.deep('slicc-confirm').shadowRoot.querySelector('[data-action]').click();
+    return true;
+  });
+  await page.until(() => !window.account('anthropic'));
+  assert.deepEqual(await page.evaluate(() => window.removed), []);
+  assert.deepEqual(page.errors, []);
+});
+
 test('a provider added again after Remove binds its endpoint again', async (t) => {
   const page = await open(t, { vault: 'secrets' });
   await azure(page, base);
