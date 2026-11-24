@@ -25,6 +25,15 @@ export interface ToolNote {
   text: string;
 }
 
+export interface ToolExit {
+  code: number;
+  signal?: string;
+}
+
+export interface ToolProgram extends ToolExit {
+  name: string;
+}
+
 export interface ToolCall {
   id: string;
   name: string;
@@ -39,6 +48,8 @@ export interface ToolCall {
   meta?: string;
   diff?: { before: string; after: string };
   notes?: ToolNote[];
+  exit?: ToolExit;
+  programs?: ToolProgram[];
 }
 
 export type AttachmentKind = 'image' | 'text' | 'file' | 'secret';
