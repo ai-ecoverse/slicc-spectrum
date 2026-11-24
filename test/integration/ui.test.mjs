@@ -2728,7 +2728,7 @@ test('tool steps join across messages, keep their states, and open from the keyb
     };
   });
   assert.deepEqual(shape.m3, [
-    ['complete', 17, '2 failed, 1 cancelled · Walk through every kind of tool'],
+    ['complete', 19, '3 failed, 1 cancelled · Walk through every kind of tool'],
   ]);
   assert.deepEqual(shape.m8, [
     ['complete', 9, '1 failed, 1 cancelled · Compare the docs with the live API'],
@@ -2749,7 +2749,7 @@ test('tool steps join across messages, keep their states, and open from the keyb
     ['k-r9', 'running', 'active'],
   ]);
   assert.equal(shape.cards, 0);
-  assert.deepEqual(shape.hooks, [5, 28]);
+  assert.deepEqual(shape.hooks, [5, 30]);
   assert.equal(shape.failed, 'Run the unit tests · Failed');
 
   await page.evaluate(() =>
@@ -3305,7 +3305,7 @@ test('the kitchen sink shows every kind of message, content and lick', async (t)
     assistant: 8,
     tool: 1,
     statuses: 5,
-    steps: 28,
+    steps: 30,
     markers: 3,
     errors: 3,
     notices: 1,

@@ -199,8 +199,9 @@ const toolShapes: ToolCall[] = [
     '\x1b[1mROUTE                                         ZONE              WORKER                  ENV\x1b[0m\nforecast.harbor.example/v2/forecast/*         harbor.example    \x1b[36mharbor-forecast-v2\x1b[0m      \x1b[2mstaging\x1b[0m\n\x1b[33mwarning:\x1b[0m the zone \x1b[1mharbor.example\x1b[0m has \x1b[37m2\x1b[0m routes on an old plan\n\x1b[1;31merror:\x1b[0m the route forecast.harbor.example/v2/units/* belongs to another account; ask its owner to release it first',
     {
       status: 'error',
+      exit: { code: 5 },
+      meta: 'Ran wrangler · 1.8 s · timeout 60s',
       notes: [
-        { severity: 'error', text: 'Exited with code 5' },
         {
           severity: 'warn',
           text: 'Output truncated: 12 lines and 1,840 bytes dropped from the start',
@@ -209,6 +210,25 @@ const toolShapes: ToolCall[] = [
       ],
     }
   ),
+  tool(
+    'k-t17',
+    'bash',
+    'Start the preview and read its log',
+    '(timeout 30 wrangler dev --port 8787 > /tmp/preview.log 2>&1 &); sleep 5; cat /tmp/preview.log',
+    '\x1b[31m✘ [ERROR]\x1b[0m Address already in use (127.0.0.1:8787)',
+    {
+      exit: { code: 0 },
+      programs: [
+        { name: 'wrangler', code: 1 },
+        { name: 'timeout', code: 1 },
+      ],
+      meta: 'Ran timeout, wrangler, sleep and cat · 5.1 s · timeout 30s',
+    }
+  ),
+  tool('k-t18', 'bash', 'Stop the stuck preview', 'wrangler dev --port 8787', 'Terminated', {
+    status: 'error',
+    exit: { code: 143, signal: 'SIGTERM' },
+  }),
 ];
 
 const licks: Array<[LickChannel, string, string, string | undefined, Partial<Message>]> = [
@@ -537,6 +557,7 @@ function runs(): Message[] {
             }
           ),
           tool('k-r6', 'bash', 'Build the site', 'npm run build', 'Built 14 pages in 2.1s', {
+            exit: { code: 0 },
             meta: 'timeout 120s',
           }),
           tool(
@@ -547,7 +568,7 @@ function runs(): Message[] {
             'FAIL src/lib/units.test.ts > rounds half to even\nExpected 22, received 21',
             {
               status: 'error',
-              notes: [{ severity: 'error', text: 'Exited with code 1' }],
+              exit: { code: 1 },
             }
           ),
           tool(

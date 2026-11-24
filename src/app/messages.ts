@@ -48,6 +48,7 @@ import { ansi, type Surface } from './ansi.ts';
 import { end } from './command.ts';
 import { markdown } from './markdown.ts';
 import { type Copied, signInDetails, signInText } from './sign-in.ts';
+import { toolResult, toolResultCss } from './tool-exit.ts';
 import { headline } from './tool-title.ts';
 import type { ViewSet } from './view-state.ts';
 
@@ -367,8 +368,8 @@ function notes(list: readonly ToolNote[]): TemplateResult {
     (note) =>
       html`<li data-note data-severity=${note.severity}>${
         note.severity === 'info'
-          ? html`<swc-icon-info-circle size="s" aria-hidden="true"></swc-icon-info-circle>`
-          : html`<swc-icon-alert-triangle size="s" aria-hidden="true"></swc-icon-alert-triangle>`
+          ? html`<swc-icon-info-circle size="xs" aria-hidden="true"></swc-icon-info-circle>`
+          : html`<swc-icon-alert-triangle size="xs" aria-hidden="true"></swc-icon-alert-triangle>`
       }<span><span class="sr">${severityWords[note.severity]}</span>${note.text}</span></li>`
   )}</ul>`;
 }
@@ -379,6 +380,8 @@ function described(call: ToolCall, owner: Owner | undefined): boolean {
     call.input ||
     call.output ||
     call.notes?.length ||
+    call.exit ||
+    call.programs?.length ||
     call.image ||
     call.meta ||
     owner
@@ -434,7 +437,7 @@ export function step(
       ${call.output ? html`<pre class="output">${ansi(call.output, call.status === 'running', context.surface)}</pre>` : nothing}
       ${call.notes?.length ? notes(call.notes) : nothing}
       ${call.image ? html`<img class="shot" src=${call.image} alt=${call.title} />` : nothing}
-      ${call.meta ? html`<span class="tool-meta">${call.meta}</span>` : nothing}
+      ${toolResult(call)}
       ${owner ? html`<span class=${owner.stamp === false ? 'sr' : 'ran'}>Ran at ${when(owner.at)}</span>` : nothing}
     </div>`,
   ];
@@ -1400,7 +1403,7 @@ export const messageCss = css`
   .call:empty {
     display: none;
   }
-  .call > :is(.ran, .tool-meta) {
+  .call > .ran {
     font-size: var(--swc-font-size-75);
     color: var(--swc-neutral-subdued-content-color-default);
   }
@@ -1418,10 +1421,12 @@ export const messageCss = css`
   .notes {
     display: flex;
     flex-direction: column;
-    gap: var(--swc-spacing-75);
-    margin: var(--swc-spacing-100) 0 0;
+    gap: var(--swc-spacing-50);
+    margin: 0;
     padding: 0;
     list-style: none;
+    font-size: var(--swc-font-size-75);
+    line-height: var(--swc-line-height-100);
     color: var(--swc-neutral-subdued-content-color-default);
   }
   .notes li {
@@ -1433,7 +1438,10 @@ export const messageCss = css`
   .notes swc-icon-alert-triangle,
   .notes swc-icon-info-circle {
     flex: none;
-    margin-block-start: var(--swc-spacing-50);
+    margin-block-start: var(--swc-spacing-25);
+  }
+  .notes [data-severity='warn'] swc-icon-alert-triangle {
+    color: var(--swc-notice-visual-color);
   }
   .notes [data-severity='error'] {
     color: var(--swc-negative-content-color-default);
@@ -1781,6 +1789,7 @@ export const messageCss = css`
   .lick[data-severity='warn'] {
     --severity: var(--swc-notice-visual-color);
   }
+  ${toolResultCss}
   .sr {
     position: absolute;
     inline-size: 1px;
