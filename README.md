@@ -212,7 +212,7 @@ While the agent port's `starting()` returns a line and it lists no threads at al
 `surfaces` on `<slicc-app>` (default: every surface, exported as `surfaces`) is what the app offers: the panels it can open, the View menu, the rails and `Alt+1…9`.
 A saved layout with a panel it doesn't offer is dropped for the default.
 An embedder can pass a subset with its own `open` per screen class.
-The agent picker and the tray show only when `chat` is offered, the update status only with `updates`, the network indicator only with `network` and a `network` port, the settings button only with `settings`, and the Approvals panel (`approvals`, on the right, closed by default) only when the `approvals` port has `history`.
+The agent picker and the tray show only when `chat` is offered, the update status only with `updates`, the network indicator only with `network` and a `network` port, the settings button only with `settings`, the Approvals panel (`approvals`, on the right, closed by default) only when the `approvals` port has `history`, and the Support panel (`support`, on the right, closed by default) only with a `support` port whose status isn't `not-enrolled`; when it turns `not-enrolled` the panel closes and its rail button goes.
 Elements with `slot="status"` show in the header as compact single-line items, before the update status, and are cut with an ellipsis when long; a `hidden` one takes no space.
 There are no strips under the header.
 On a phone the status items are hidden.
@@ -1065,6 +1065,18 @@ Each surface acts on a `vault-value` event only when it comes from the field of 
 The optional `enter(options)` opens a page-started value request (`EnterOptions`: `name`, optional `kind` (`secret`, `model` or `mcp`), `provider`, `server`, `settings` and `replace`) and resolves with `{ request }`; the vault checks the name and binding there, refuses an existing live record without `replace` (`EEXIST`), takes the value only in `valueFrame(request)`, and ends it with `cancel(request)` or after 5 minutes. Spectrum then never holds a value and calls `put` with one only without `enter`.
 The optional `valueFrame(request)` returns a new `VaultValueFrame` for an `ask` or `enter` request, `{ element, post(message), listen(fn) }` like `button()`. bios wraps the vault's `value.html` frame. spectrum sends only `ValueMessage`s (`op: 'value'` with the request and a `ValueConfig`, and `op: 'focus'`) and receives only `ValueEvent`s (`ready`, `size`, `focus`, `done { request, state: 'sealed', name?, placeholder?, record? }` or `done { request, state: 'allowed' }`, `gone { request, state }`, `error { code, message }`, `escape`). The value is typed in that frame, and a reveal is allowed only by a click there, so the page never holds the value or the consent.
 An `ask` request in `status.waiting` also carries `mode`, `reveal` and `requester` (`{ kind, name?, where?, exe, argv, cwd, tty, stdin }`). Settings › Secrets lists it with Cancel request only, and `RequestState` includes `withdrawn`.
+#### `<slicc-support>`
+
+The Support panel (`support`): the customer's support requests from the `support` port, for a host that embeds Adobe Support.
+The list (`.bar[data-surface="support"]` with the channel name, `[data-channel]`, and **New request**, `data-action="new-request"`, while the port is `ready` or `offline`) has a row per request in the port's order (`li.row[data-id]`, `data-unread`, `data-resolved`) with its title, a **Resolved** badge (`[data-badge="resolved"]`), an "{n} unread" badge (`[data-badge="unread"]`) and how long ago it last changed; `loading` shows "Loading requests…", no requests "No requests yet." (`[data-empty]`), and `offline` keeps the list under the port's `detail` (`[data-offline]`).
+Its rail button carries the number of requests with unread messages in an informative badge, and its label adds "{n} unread" (the More menu on a phone too).
+A row opens the conversation (`reveal(id)` too, so `panel open support --section <id>` works): a back button (`data-action="back"`, "All requests"), the title (`[data-title]`), the messages (`article.message[data-id][data-author="customer|support"]`, the name, how long ago, "Edited", and the body as strict markdown, so HTML, images and links other than `https:` don't render; a deleted one reads "This message was deleted."), and a reply field with **Send** (`data-action="send"`, also <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd>).
+Once a conversation with unread messages shows, the panel acknowledges its last message (`read(id, through)`), again after each `thread` event for it.
+**New request** opens a form with a title (one line, up to 120 characters), a topic picker when the port has `topics()`, a description (up to 2,000 characters), **Cancel** (`data-action="cancel"`) and **Send request** (`data-action="send"`, disabled until title and description are valid); after it's sent the new request opens.
+Both forms say who can read it before anything is sent (`[data-audience]`): "{audience, or Your team and Adobe Support} can read this. Only what you write here is sent."
+Each write carries an idempotency key: one per intent, kept while the text stays the same, so **Send** after a failure (its sentence in `[data-error]`, with the draft kept) retries with the same key, and a changed text gets a new one.
+A model or port swap drops drafts, keys and late answers.
+
 `notices`, `acknowledge` and the `notice` event are still typed, and ignored.
 
 #### `guests` (optional)
@@ -1088,6 +1100,15 @@ Later backed by: slicc-agent.
 Only on a guest's page: the `Seat` (`id`, `label`, `agentId`, the shared cone, `expiresAt` or `null`, and `gates`) the guest joined with.
 While it's set, `<slicc-chat>` and `<slicc-composer>` are in guest mode.
 The guest's model lists only the cone, its `messages()` are the cone's transcript, `send(cone, text)` proposes a message, and every other method rejects with `EACCES`; the UI calls none of them.
+
+#### `support` (optional)
+
+Later backed by: the host's backend, in front of the Opspile portal integration API (`/integrations/portal/v1`); the browser never calls Opspile or holds its credentials.
+`status()` is `{ state, channel?, audience?, detail? }`: `state` is `loading`, `ready`, `offline` (the last list stays, `detail` says why) or `not-enrolled` (the Support panel isn't offered); `channel` names the customer's channel and `audience` who can read it.
+`threads()` returns `SupportThread`s (`id`, `title`, `lastActivity` in epoch ms, `resolved`, `unread`) newest first, and `unread()` how many have unread messages; emit `status` and `threads` when they change, and `thread` with an id when that conversation changed, so an open one reloads.
+`thread(id)` resolves with a `SupportConversation` (`id`, `title`, `resolved`, `messages`: `id`, `at`, `author` `customer` or `support`, `name`, `body`, `edited?`, `deleted?`), with no read acknowledgement; `read(id, through)` acknowledges up to that message.
+`create({ key, title, body, topic? })` and `reply({ key, thread, body })` resolve with the new `id`, and reject with an `Error` whose message is a sentence to show; the same `key` and input must return the original id. The optional `topics()` lists `{ id, label }` topics.
+The port polls, keeps cursors and resets for another account or member; none of that reaches the UI.
 
 #### `follow` (optional)
 
@@ -1139,6 +1160,8 @@ Like bios, `actions()` keeps the latest 500 per tab from the last 24 hours, 5,00
 Leave counts in `model.follow.left` (the `/ui/` page then drops `?follow=`), and `model.follow.setScenario()` switches it.
 `followFixtures` and `DummyFollow` are exported from `/dummy`.
 `?links=followers` lists quay-studio (a CLI on this computer, Control always allowed), pier-nuc (a remote CLI, prompting), bay-laptop (a follower with everything allowed, watching, a terminal open), reef-phone (View only, watching) and tide-tablet (asking to follow); every links scenario has a follow link.
+
+`createDummyModel({ support: 'on' | 'empty' | 'loading' | 'offline' | 'not-enrolled' | 'fail' })` (`?support=` on `/ui/`, off by default) adds an invented support channel, Mill support for Paper Mill, signed in as Mara Lind: three requests (`supportFixtures`: `sup-preview` with an unread reply from Adobe Support, `sup-editor` resolved with an edited reply, and `sup-export` with a deleted message), none, a status that stays `loading` until `model.support.arrive()`, the requests with `offline` and its `detail`, `not-enrolled`, or a first write that fails with "Support didn’t get that. Try again."; `topics()` has three topics. Writes keep receipts by key (the same key with other input rejects with "That request key was already used for something else."), and each one gets an answer from Adobe Support after `model.support.answerTicks` ticks (40, `null` for none); `answer(id, body?, resolved?)` adds one, `setStatus(status)` changes the status, and `calls` records `thread`, `create`, `reply` and `read`. `DummySupport` and its fixtures are exported from `/dummy`.
 
 `createGuestModel({ seat: 'review' | 'reject' | 'off' | 'expiring', history: 'on' | 'none' | 'twin' })` (the `/guest/` page, with `?seat=`, `?history=` and `?color=`, shows `<slicc-chat>` alone) is a guest's model on sliccy for Seat 2 (Mara): `review` gates messages through the host, so a sent message waits in `queue()` (id `g1`, `g2`, …) and is then declined, leaving the notice "It was declined." with its text, `reject` gates them through the automatic check, so `send` rejects with "Messages from guests need a review, and this agent can't review them yet.", `off` takes them as follow-ups that sliccy answers, and `expiring` reviews with a link that ends in a few hours.
 Its invented transcript has the host's, Mara's and Seat 3 (Jonas)'s messages, tool runs, an inline sprinkle, an answered and an open question, a pending permission request and an error with Retry; `none` starts empty, and `twin` adds a message from another seat with Mara's label.

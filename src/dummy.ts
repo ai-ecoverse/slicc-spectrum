@@ -80,6 +80,19 @@ export type {
   DummySettings,
   DummyTransport,
 } from './dummy/settings.ts';
+export type { SupportScenario } from './dummy/support.ts';
+export {
+  DummySupport,
+  supportAnswer,
+  supportAudience,
+  supportChannel,
+  supportConflict,
+  supportFixtures,
+  supportMember,
+  supportOffline,
+  supportRefused,
+  supportTopics,
+} from './dummy/support.ts';
 export type { TabsScenario } from './dummy/tabs.ts';
 export { DummyTabs, tabsFixtures } from './dummy/tabs.ts';
 export type {

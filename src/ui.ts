@@ -24,6 +24,7 @@ import { SliccSettings } from './app/settings.ts';
 import { SliccSprinkle } from './app/sprinkle.ts';
 import { SliccStatusLabel } from './app/status-label.ts';
 import { SliccStepLabel } from './app/step-label.ts';
+import { SliccSupport } from './app/support.ts';
 import { SliccTerminalPanel } from './app/terminals.ts';
 import { SliccTray } from './app/tray.ts';
 import { SliccUpdates } from './app/updates.ts';
@@ -87,6 +88,7 @@ export {
   SliccNotices,
   SliccPrompt,
   SliccSecrets,
+  SliccSupport,
   SliccUpdates,
   SliccValueRequest,
   SliccVaultButton,
@@ -120,6 +122,7 @@ const elements: Record<string, CustomElementConstructor> = {
   'slicc-notices': SliccNotices,
   'slicc-approvals': SliccApprovals,
   'slicc-approvals-panel': SliccApprovalsPanel,
+  'slicc-support': SliccSupport,
   'slicc-secrets': SliccSecrets,
   'slicc-vault-button': SliccVaultButton,
   'slicc-vault-value': SliccVaultValue,

@@ -2040,6 +2040,77 @@ export interface GuestPort extends Subscribable<GuestEvents> {
   gates?(): GuestGateChoices;
 }
 
+export type SupportState = 'loading' | 'ready' | 'offline' | 'not-enrolled';
+
+export interface SupportStatus {
+  state: SupportState;
+  channel?: string;
+  audience?: string;
+  detail?: string;
+}
+
+export interface SupportThread {
+  id: string;
+  title: string;
+  lastActivity: number;
+  resolved: boolean;
+  unread: number;
+}
+
+export type SupportAuthor = 'customer' | 'support';
+
+export interface SupportMessage {
+  id: string;
+  at: number;
+  author: SupportAuthor;
+  name: string;
+  body: string;
+  edited?: true;
+  deleted?: true;
+}
+
+export interface SupportConversation {
+  id: string;
+  title: string;
+  resolved: boolean;
+  messages: readonly SupportMessage[];
+}
+
+export interface SupportTopic {
+  id: string;
+  label: string;
+}
+
+export interface SupportDraft {
+  key: string;
+  title: string;
+  body: string;
+  topic?: string;
+}
+
+export interface SupportReply {
+  key: string;
+  thread: string;
+  body: string;
+}
+
+export interface SupportEvents {
+  status: SupportStatus;
+  threads: readonly SupportThread[];
+  thread: string;
+}
+
+export interface SupportPort extends Subscribable<SupportEvents> {
+  status(): SupportStatus;
+  threads(): readonly SupportThread[];
+  unread(): number;
+  thread(id: string): Promise<SupportConversation>;
+  create(draft: SupportDraft): Promise<{ id: string }>;
+  reply(reply: SupportReply): Promise<{ id: string }>;
+  read(id: string, through: string): Promise<void>;
+  topics?(): readonly SupportTopic[];
+}
+
 export interface SliccModel {
   agent: AgentPort;
   files: FilePort;
@@ -2063,4 +2134,5 @@ export interface SliccModel {
   vault?: VaultPort;
   guests?: GuestPort;
   seat?: Seat;
+  support?: SupportPort;
 }

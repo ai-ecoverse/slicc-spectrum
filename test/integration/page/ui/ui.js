@@ -71,6 +71,7 @@ const model = createDummyModel({
   vault: params.get('vault') ?? 'off',
   entry: params.get('entry') ?? 'input',
   guests: params.get('guests') ?? 'off',
+  support: params.get('support') ?? 'off',
   accounts: params.get('accounts') ?? 'settings',
   providers: params.get('providers') ?? 'connected',
   mcp: params.get('mcp') ?? undefined,

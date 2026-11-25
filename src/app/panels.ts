@@ -139,6 +139,15 @@ export const surfaces: Surface[] = [
     open: [],
     width: 360,
   },
+  {
+    id: 'support',
+    title: 'Support',
+    tag: 'slicc-support',
+    icon: 'swc-icon-help-circle',
+    side: 'right',
+    open: [],
+    width: 360,
+  },
 ];
 
 export type DocumentKind = 'file' | 'diff';

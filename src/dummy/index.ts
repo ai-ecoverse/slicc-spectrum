@@ -32,6 +32,7 @@ import {
 } from './settings.ts';
 import { longAsk } from './showcase.ts';
 import { DummySprinkles } from './sprinkles.ts';
+import { DummySupport, type SupportScenario } from './support.ts';
 import { DummyTabs, type TabsScenario } from './tabs.ts';
 import { DummyTerminals } from './terminals.ts';
 import { DummyTray } from './tray.ts';
@@ -68,6 +69,7 @@ export interface DummyOptions {
   follow?: FollowScenario | 'off';
   vault?: VaultScenario | 'off';
   guests?: GuestsScenario | 'off';
+  support?: SupportScenario | 'off';
   accounts?: 'settings' | 'vault' | 'dual';
   providers?: 'connected' | 'none' | 'all';
   mcp?: 'moved' | 'states';
@@ -99,6 +101,7 @@ export interface DummyModel extends SliccModel {
   follow?: DummyFollow;
   vault?: DummyVault;
   guests?: DummyGuests;
+  support?: DummySupport;
 }
 
 export function vaultAccounts(accounts: readonly Account[]): Account[] {
@@ -257,6 +260,7 @@ export function createDummyModel({
   vault = 'off',
   entry = 'input',
   guests = 'off',
+  support = 'off',
   accounts = 'settings',
   providers = 'connected',
   mcp,
@@ -358,6 +362,7 @@ export function createDummyModel({
     ...(follow === 'off' ? {} : { follow: new DummyFollow(follow, time) }),
     ...(vaultPort ? { vault: vaultPort } : {}),
     ...guestsPort(guests, time),
+    ...(support === 'off' ? {} : { support: new DummySupport(support, time) }),
   };
   base.vault?.on('status', (status) => {
     if (!status.locked && agent.hold()?.reason === 'locked') agent.setHold(null);
