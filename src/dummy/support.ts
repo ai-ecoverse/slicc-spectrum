@@ -12,7 +12,15 @@ import type {
 } from '../model/types.ts';
 import type { Clock } from './clock.ts';
 
-export type SupportScenario = 'on' | 'empty' | 'loading' | 'offline' | 'not-enrolled' | 'fail';
+export type SupportScenario =
+  | 'on'
+  | 'signed-out'
+  | 'sign-in-fail'
+  | 'empty'
+  | 'loading'
+  | 'offline'
+  | 'not-enrolled'
+  | 'fail';
 
 const minute = 60_000;
 const hour = 60 * minute;
@@ -21,6 +29,9 @@ const day = 24 * hour;
 export const supportChannel = 'Mill support';
 export const supportAudience = 'Everyone approved at Paper Mill and Adobe Support';
 export const supportMember = 'Mara Lind';
+export const supportOrg = 'Paper Mill';
+export const supportOtherOrg = 'Quay Labs';
+export const supportSignInFailed = 'The sign-in window was closed before it finished.';
 export const supportOffline =
   'Support can’t be reached right now. These are the requests loaded last.';
 export const supportRefused = 'Support didn’t get that. Try again.';
@@ -157,8 +168,15 @@ export class DummySupport extends Emitter<SupportEvents> implements SupportPort 
   }
 
   #initial(scenario: SupportScenario): SupportStatus {
-    if (scenario === 'not-enrolled') return { state: 'not-enrolled' };
-    const known = { channel: supportChannel, audience: supportAudience };
+    if (scenario === 'signed-out' || scenario === 'sign-in-fail') return { state: 'signed-out' };
+    if (scenario === 'not-enrolled')
+      return { state: 'not-enrolled', identity: supportMember, org: supportOtherOrg };
+    const known = {
+      identity: supportMember,
+      org: supportOrg,
+      channel: supportChannel,
+      audience: supportAudience,
+    };
     if (scenario === 'loading') return { state: 'loading', ...known };
     if (scenario === 'offline') return { state: 'offline', ...known, detail: supportOffline };
     return { state: 'ready', ...known };
@@ -171,16 +189,41 @@ export class DummySupport extends Emitter<SupportEvents> implements SupportPort 
   setStatus(status: SupportStatus): void {
     this.#status = status;
     this.emit('status', status);
+    this.emit('threads', this.threads());
   }
 
   arrive(): void {
-    this.setStatus({ state: 'ready', channel: supportChannel, audience: supportAudience });
+    this.setStatus({
+      state: 'ready',
+      identity: supportMember,
+      org: supportOrg,
+      channel: supportChannel,
+      audience: supportAudience,
+    });
   }
 
   threads(): readonly SupportThread[] {
-    return this.#status.state === 'loading' || this.#status.state === 'not-enrolled'
-      ? []
-      : this.#entries.map((entry) => entry.thread);
+    const state = this.#status.state;
+    return state === 'ready' || state === 'offline'
+      ? this.#entries.map((entry) => entry.thread)
+      : [];
+  }
+
+  async signIn(): Promise<void> {
+    this.calls.push(['signIn']);
+    this.setStatus({ state: 'signing-in' });
+    await this.#clock.sleep(10);
+    if (this.scenario === 'sign-in-fail') {
+      this.setStatus({ state: 'signed-out' });
+      throw new Error(supportSignInFailed);
+    }
+    this.arrive();
+  }
+
+  async signOut(): Promise<void> {
+    this.calls.push(['signOut']);
+    await this.#clock.sleep(2);
+    this.setStatus({ state: 'signed-out' });
   }
 
   unread(): number {

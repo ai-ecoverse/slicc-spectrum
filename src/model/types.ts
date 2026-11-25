@@ -2040,10 +2040,18 @@ export interface GuestPort extends Subscribable<GuestEvents> {
   gates?(): GuestGateChoices;
 }
 
-export type SupportState = 'loading' | 'ready' | 'offline' | 'not-enrolled';
+export type SupportState =
+  | 'signed-out'
+  | 'signing-in'
+  | 'loading'
+  | 'ready'
+  | 'offline'
+  | 'not-enrolled';
 
 export interface SupportStatus {
   state: SupportState;
+  identity?: string;
+  org?: string;
   channel?: string;
   audience?: string;
   detail?: string;
@@ -2109,6 +2117,8 @@ export interface SupportPort extends Subscribable<SupportEvents> {
   reply(reply: SupportReply): Promise<{ id: string }>;
   read(id: string, through: string): Promise<void>;
   topics?(): readonly SupportTopic[];
+  signIn?(): Promise<void>;
+  signOut?(): Promise<void>;
 }
 
 export interface SliccModel {

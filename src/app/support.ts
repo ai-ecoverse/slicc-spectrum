@@ -12,6 +12,7 @@ import type {
   SupportConversation,
   SupportMessage,
   SupportPort,
+  SupportStatus,
   SupportThread,
 } from '../model/types.ts';
 import { since } from './approvals-panel.ts';
@@ -24,8 +25,12 @@ export const titleLimit = 120;
 export const bodyLimit = 2000;
 export const newRequest = 'new';
 
-export function supportOffered(model: SliccModel | null | undefined): boolean {
-  return !!model?.support && model.support.status().state !== 'not-enrolled';
+export function signedIn(status: SupportStatus): boolean {
+  return status.state !== 'signed-out' && status.state !== 'signing-in';
+}
+
+export function accountOf(status: SupportStatus): string {
+  return signedIn(status) ? [status.identity, status.org].filter(Boolean).join(', ') : '';
 }
 
 export function unreadLabel(count: number): string {
@@ -76,6 +81,7 @@ export class SliccSupport extends ModelElement {
     conversation: { state: true },
     loading: { state: true },
     sending: { state: true },
+    signing: { state: true },
     error: { state: true },
     subject: { state: true },
     body: { state: true },
@@ -85,6 +91,7 @@ export class SliccSupport extends ModelElement {
   declare conversation: SupportConversation | null;
   declare loading: boolean;
   declare sending: boolean;
+  declare signing: boolean;
   declare error: string | null;
   declare subject: string;
   declare body: string;
@@ -95,12 +102,15 @@ export class SliccSupport extends ModelElement {
   #loads = 0;
   #reading = new Set<string>();
   #port: SupportPort | null = null;
+  #account = '';
+  #epoch = 0;
 
   constructor() {
     super();
     this.conversation = null;
     this.loading = false;
     this.sending = false;
+    this.signing = false;
     this.error = null;
     this.subject = '';
     this.body = '';
@@ -299,6 +309,43 @@ export class SliccSupport extends ModelElement {
         padding: 0;
         background: none;
       }
+      .account {
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-100);
+        flex: none;
+        padding: var(--swc-spacing-50) var(--swc-spacing-100) var(--swc-spacing-50) var(--swc-spacing-200);
+        margin-block-start: auto;
+        border-top: var(--swc-border-width-100) solid var(--swc-gray-200);
+        background: var(--swc-background-layer-1-color);
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .account .who {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .account swc-action-button {
+        flex: none;
+      }
+      .sign-in {
+        display: grid;
+        gap: var(--swc-spacing-200);
+        justify-items: start;
+        padding: var(--swc-spacing-400) var(--swc-spacing-300);
+        line-height: var(--swc-line-height-100);
+      }
+      .sign-in h3 {
+        margin: 0;
+        font-size: var(--swc-font-size-100);
+        font-weight: var(--swc-bold-font-weight);
+      }
+      .sign-in p {
+        margin: 0;
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
       .note {
         display: flex;
         align-items: center;
@@ -312,7 +359,10 @@ export class SliccSupport extends ModelElement {
     if (!port) return [];
     const update = () => this.requestUpdate();
     return [
-      port.on('status', update),
+      port.on('status', (status) => {
+        if (accountOf(status) !== this.#account) this.#reset(status);
+        update();
+      }),
       port.on('threads', update),
       port.on('thread', (id) => {
         if (id === this.open) void this.#load();
@@ -325,18 +375,41 @@ export class SliccSupport extends ModelElement {
     const port = this.model?.support ?? null;
     if (port === this.#port) return;
     this.#port = port;
+    this.#reset(port?.status() ?? null);
+    void this.#load();
+  }
+
+  #reset(status: SupportStatus | null): void {
+    const switched = this.#account !== '';
+    this.#account = status ? accountOf(status) : '';
+    this.#epoch += 1;
     this.#loads += 1;
     this.#keys = new IntentKeys();
     this.#reading.clear();
+    if (switched) this.#open.value = null;
     this.conversation = null;
     this.loading = false;
     this.sending = false;
+    this.signing = false;
     this.error = null;
     this.subject = '';
     this.body = '';
     this.topic = '';
     this.replies = new Map();
-    void this.#load();
+  }
+
+  async #session(port: SupportPort, action: 'signIn' | 'signOut'): Promise<void> {
+    if (this.signing) return;
+    const epoch = this.#epoch;
+    this.signing = true;
+    this.error = null;
+    try {
+      await port[action]?.();
+    } catch (error) {
+      if (epoch === this.#epoch) this.error = (error as Error).message;
+    } finally {
+      if (epoch === this.#epoch) this.signing = false;
+    }
   }
 
   focus(): void {
@@ -398,20 +471,21 @@ export class SliccSupport extends ModelElement {
     if (!port || this.sending || !validTitle(title) || !validBody(body)) return;
     const topic = this.topic || undefined;
     const key = this.#keys.key(newRequest, [title, body, topic]);
+    const epoch = this.#epoch;
     this.sending = true;
     this.error = null;
     try {
       const { id } = await port.create({ key, title, body, ...(topic ? { topic } : {}) });
-      if (port !== this.#port) return;
+      if (epoch !== this.#epoch) return;
       this.#keys.done(newRequest);
       this.subject = '';
       this.body = '';
       this.topic = '';
       this.open = id;
     } catch (error) {
-      if (port === this.#port) this.error = (error as Error).message;
+      if (epoch === this.#epoch) this.error = (error as Error).message;
     } finally {
-      if (port === this.#port) this.sending = false;
+      if (epoch === this.#epoch) this.sending = false;
     }
   }
 
@@ -420,18 +494,19 @@ export class SliccSupport extends ModelElement {
     const body = this.replies.get(thread) ?? '';
     if (!port || this.sending || !validBody(body)) return;
     const key = this.#keys.key(thread, [thread, body]);
+    const epoch = this.#epoch;
     this.sending = true;
     this.error = null;
     try {
       await port.reply({ key, thread, body });
-      if (port !== this.#port) return;
+      if (epoch !== this.#epoch) return;
       this.#keys.done(thread);
       this.#draft(thread, '');
       void this.#load();
     } catch (error) {
-      if (port === this.#port) this.error = (error as Error).message;
+      if (epoch === this.#epoch) this.error = (error as Error).message;
     } finally {
-      if (port === this.#port) this.sending = false;
+      if (epoch === this.#epoch) this.sending = false;
     }
   }
 
@@ -494,7 +569,7 @@ export class SliccSupport extends ModelElement {
       status.state === 'loading'
         ? html`<p class="note" data-empty="loading"><swc-progress-circle size="s" indeterminate label="Loading requests"></swc-progress-circle>Loading requests…</p>`
         : status.state === 'not-enrolled'
-          ? html`<p class="note" data-empty="not-enrolled">Support isn’t set up for this account.</p>`
+          ? html`<p class="note" data-empty="not-enrolled">Support isn’t set up for ${status.org ?? 'this account'} yet. Ask your Adobe contact to add you, or sign in with another account.</p>`
           : threads.length
             ? html`<ul class="list">${threads.map((thread) => this.#row(thread))}</ul>`
             : html`<p class="note" data-empty="none">No requests yet. Ask Adobe Support about anything that gets in your way.</p>`;
@@ -503,7 +578,25 @@ export class SliccSupport extends ModelElement {
         ${ready ? html`<swc-action-button size="s" quiet data-action="new-request" @click=${() => (this.open = newRequest)}><swc-icon-add slot="icon"></swc-icon-add>New request</swc-action-button>` : nothing}
       </div>
       ${this.#offline()}
-      ${body}`;
+      ${body}
+      ${this.#account ? this.#accountBar(port) : nothing}`;
+  }
+
+  #accountBar(port: SupportPort): TemplateResult {
+    return html`<div class="account" data-account><span class="who">Signed in as ${this.#account}</span>
+      ${port.signOut ? html`<swc-action-button size="s" quiet data-action="sign-out" ?disabled=${this.signing} @click=${() => void this.#session(port, 'signOut')}>Sign out</swc-action-button>` : nothing}
+    </div>`;
+  }
+
+  #signIn(port: SupportPort): TemplateResult {
+    const busy = this.signing || port.status().state === 'signing-in';
+    return html`<div class="bar" data-surface="support"><span class="heading">Support</span></div>
+      <div class="sign-in" data-sign-in>
+        <h3>Get help from Adobe Support</h3>
+        <p>Sign in with your Adobe account to see your organization’s requests and ask for help. You choose the organization when you sign in.</p>
+        ${this.#error()}
+        ${port.signIn ? html`<swc-button size="s" variant="accent" data-action="sign-in" ?pending=${busy} @click=${() => void this.#session(port, 'signIn')}>Sign in with Adobe</swc-button>` : nothing}
+      </div>`;
   }
 
   #form(port: SupportPort): TemplateResult {
@@ -586,6 +679,7 @@ export class SliccSupport extends ModelElement {
   render(): TemplateResult {
     const port = this.#port;
     if (!port) return html`<p class="note" data-empty="off">Support isn’t available here.</p>`;
+    if (!signedIn(port.status())) return this.#signIn(port);
     const open = this.open;
     if (open === newRequest) return this.#form(port);
     if (open && port.status().state !== 'loading') return this.#conversation(open);

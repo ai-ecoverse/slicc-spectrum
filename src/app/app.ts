@@ -41,7 +41,7 @@ import {
   terminalPanels,
 } from './panels.ts';
 import { installProperties } from './properties.ts';
-import { supportOffered, unreadLabel } from './support.ts';
+import { unreadLabel } from './support.ts';
 import { alone, tabsLight } from './tabs.ts';
 import { TerminalPanels } from './terminals.ts';
 import { theme } from './theme.ts';
@@ -436,13 +436,7 @@ export class SliccApp extends ThemedElement {
       ...(model.network ? [model.network.on('network', update)] : []),
       ...(model.tabs ? [model.tabs.on('tabs', update)] : []),
       ...(model.support
-        ? [
-            model.support.on('status', () => {
-              this.#supported(model);
-              update();
-            }),
-            model.support.on('threads', update),
-          ]
+        ? [model.support.on('status', update), model.support.on('threads', update)]
         : []),
       ...(model.agent.readOnly
         ? [
@@ -623,17 +617,10 @@ export class SliccApp extends ThemedElement {
     }
     if (!model.network && !model.guests && dock.has('network')) dock.close('network');
     if (!model.approvals?.history && dock.has('approvals')) dock.close('approvals');
-    if (!supportOffered(model) && dock.has('support')) dock.close('support');
+    if (!model.support && dock.has('support')) dock.close('support');
     this.#prune();
     const agent = this.#active();
     if (agent && this.#offers('chat')) openChat(dock, agent, this.screen, false, false);
-  }
-
-  #supported(model: SliccModel): void {
-    if (!this.#started) return;
-    const dock = this.dock;
-    dock.factories = this.#factories(model);
-    if (!supportOffered(model) && dock.has('support')) dock.close('support');
   }
 
   #followed(model: SliccModel): void {
@@ -1080,7 +1067,7 @@ export class SliccApp extends ThemedElement {
       (item) =>
         (item.id !== 'network' || model?.network || model?.guests) &&
         (item.id !== 'approvals' || model?.approvals?.history) &&
-        (item.id !== 'support' || supportOffered(model)) &&
+        (item.id !== 'support' || model?.support) &&
         (item.id !== 'terminal' || terminals)
     );
   }

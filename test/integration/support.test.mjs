@@ -60,29 +60,104 @@ test('the Support panel is offered with a support port, and its rail button coun
   assert.deepEqual(page.errors, []);
 });
 
-test('an account that is not enrolled gets no Support surface, and losing enrollment closes the panel', async (t) => {
-  const page = await open(t, { support: 'not-enrolled' });
+test('Support asks for an explicit Adobe sign-in, shows the account and signs out to the sign-in card', async (t) => {
+  const page = await open(t, { support: 'signed-out' });
+  await page.until(() => !!window.rail());
+  assert.equal(await page.evaluate(() => window.rail().closest('.badged')), null);
+  await show(page);
   assert.deepEqual(
-    await page.evaluate(() => {
-      window.app.show('support');
-      return [!!window.rail(), window.app.dock.has('support')];
-    }),
-    [false, false]
+    await page.evaluate(() => [
+      window.part('[data-sign-in] h3').textContent,
+      !!window.part('[data-action=new-request]'),
+      window.parts('.row').length,
+    ]),
+    ['Get help from Adobe Support', false, 0]
   );
-  const enrolled = await load(page, { support: 'on' });
-  await show(enrolled);
-  await enrolled.evaluate(() => {
-    window.model.support.setStatus({ state: 'not-enrolled' });
+  await page.evaluate(() => {
+    window.part('[data-action=sign-in]').click();
     return true;
   });
-  await enrolled.until(() => !window.app.dock.has('support') && !window.rail());
-  await enrolled.evaluate(() => {
-    window.model.support.arrive();
+  await page.until(() => window.part('[data-action=sign-in]')?.hasAttribute('pending'));
+  await page.until(() => window.parts('.row').length === 3);
+  assert.equal(
+    await page.evaluate(() => window.part('[data-account] .who').textContent),
+    'Signed in as Mara Lind, Paper Mill'
+  );
+  await page.until(() => window.rail().closest('.badged')?.textContent.trim() === '1');
+  await page.evaluate(async () => {
+    window.part('.row[data-id=sup-export] .head').click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await window.typeInto('sp-textfield[name=reply]', 'A draft for Paper Mill');
+    window.part('[data-action=back]').click();
     return true;
   });
-  await enrolled.until(() => !!window.rail());
-  await show(enrolled);
-  assert.deepEqual(enrolled.errors, []);
+  await page.until(() => !!window.part('[data-action=sign-out]'));
+  await page.evaluate(() => {
+    window.part('[data-action=sign-out]').click();
+    return true;
+  });
+  await page.until(() => !!window.part('[data-sign-in]'));
+  assert.equal(await page.evaluate(() => window.rail().closest('.badged')), null);
+  await page.evaluate(() => {
+    window.part('[data-action=sign-in]').click();
+    return true;
+  });
+  await page.until(() => window.parts('.row').length === 3);
+  await page.evaluate(() => {
+    window.part('.row[data-id=sup-export] .head').click();
+    return true;
+  });
+  await page.until(() => !!window.part('sp-textfield[name=reply]'));
+  assert.equal(await page.evaluate(() => window.part('sp-textfield[name=reply]').value), '');
+  assert.deepEqual(
+    await page.evaluate(() =>
+      window.model.support.calls.filter((call) => call[0].startsWith('sign')).map((call) => call[0])
+    ),
+    ['signIn', 'signOut', 'signIn']
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a failed sign-in says why and can be tried again', async (t) => {
+  const page = await open(t, { support: 'sign-in-fail' });
+  await show(page);
+  await page.evaluate(() => {
+    window.part('[data-action=sign-in]').click();
+    return true;
+  });
+  await page.until(() => !!window.part('[data-error]'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.part('[data-error]').textContent.trim(),
+      window.part('[data-action=sign-in]').hasAttribute('pending'),
+    ]),
+    ['The sign-in window was closed before it finished.', false]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('an account that is not enrolled says so for its organization and can switch accounts', async (t) => {
+  const page = await open(t, { support: 'not-enrolled' });
+  await page.until(() => !!window.rail());
+  await show(page);
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.part('[data-empty=not-enrolled]').textContent,
+      window.part('[data-account] .who').textContent,
+      !!window.part('[data-action=new-request]'),
+    ]),
+    [
+      'Support isn’t set up for Quay Labs yet. Ask your Adobe contact to add you, or sign in with another account.',
+      'Signed in as Mara Lind, Quay Labs',
+      false,
+    ]
+  );
+  await page.evaluate(() => {
+    window.part('[data-action=sign-out]').click();
+    return true;
+  });
+  await page.until(() => !!window.part('[data-action=sign-in]'));
+  assert.deepEqual(page.errors, []);
 });
 
 test('requests list newest first with their marks, and opening one reads it and acknowledges the last message', async (t) => {
@@ -323,6 +398,17 @@ test('the Support panel in light and dark', async (t) => {
     await load(page, { support: 'on', color, delay: '0' });
     await show(page);
     await page.screenshot(new URL(`support-list-${color}.png`, page.dir));
+    await page.evaluate(() => {
+      window.model.support.setStatus({ state: 'signed-out' });
+      return true;
+    });
+    await page.until(() => !!window.part('[data-sign-in]'));
+    await page.screenshot(new URL(`support-sign-in-${color}.png`, page.dir));
+    await page.evaluate(() => {
+      window.model.support.arrive();
+      return true;
+    });
+    await page.until(() => window.parts('.row').length === 3);
     await page.evaluate(() => {
       window.part('.row[data-id=sup-preview] .head').click();
       return true;
