@@ -102,6 +102,7 @@ export class SliccSupport extends ModelElement {
   #keys = new IntentKeys();
   #loads = 0;
   #reading = new Set<string>();
+  #unseen: SupportConversation | null = null;
   #port: SupportPort | null = null;
   #epoch = 0;
 
@@ -456,9 +457,8 @@ export class SliccSupport extends ModelElement {
     try {
       const conversation = await port.thread(id);
       if (load !== this.#loads) return;
-      this.conversation = conversation;
+      this.conversation = this.#unseen = conversation;
       this.error = null;
-      void this.#acknowledge(port, conversation);
     } catch (error) {
       if (load !== this.#loads) return;
       this.error = (error as Error).message;
@@ -516,7 +516,7 @@ export class SliccSupport extends ModelElement {
       await port.reply({ key, thread, body });
       if (epoch !== this.#epoch) return;
       this.#keys.done(thread);
-      this.#draft(thread, '');
+      if (this.replies.get(thread) === body) this.#draft(thread, '');
       void this.#load();
     } catch (error) {
       if (epoch === this.#epoch) this.error = (error as Error).message;
@@ -690,6 +690,11 @@ export class SliccSupport extends ModelElement {
       const log = this.renderRoot.querySelector<HTMLElement>('.messages');
       if (log) log.scrollTop = log.scrollHeight;
     }
+    const unseen = this.#unseen;
+    if (!unseen || unseen !== this.conversation || !this.isConnected) return;
+    if (!this.renderRoot.querySelector('.messages[role=log]')) return;
+    this.#unseen = null;
+    void this.#acknowledge(this.#port as SupportPort, unseen);
   }
 
   render(): TemplateResult {
