@@ -76,6 +76,7 @@ Events, all `CustomEvent`s with the payload in `detail`: `ready` `{cols, rows}`,
 
 It answers OSC 10 and OSC 11 color queries (`ESC ] 10 ; ? ST` and `ESC ] 11 ; ? ST`) with the foreground and background it shows at that moment, as `rgb:rrrr/gggg/bbbb`, so command-line tools can tell a light theme from a dark one and follow a theme switch.
 The answer reaches the backend before replies to anything that comes later in the output.
+A `CSI ? 996 n` query gets one reply for the theme it shows, `CSI ? 997 ; 1 n` in dark or `CSI ? 997 ; 2 n` in light, also with mode 2031 on after a theme switch.
 
 Removing the element closes the session and destroys the screen. Adding it again mounts a fresh screen and opens a new session on the same backend.
 
@@ -161,7 +162,7 @@ Things found while building this against wterm 0.5.4, recorded here, not pushed 
   The element runs on `@wterm/ghostty` instead, which reflows on resize, keeps wrap flags in the scrollback and renders 24-bit and 256 colours exactly (xterm's 0/95/135/175/215/255 cube).
 - Ghostty resolves palette colours 0–15 to RGB inside the WASM, so wterm's `--term-color-N` variables (and `--slicc-terminal-color-N`) would stop applying.
   The element gives the core a palette of 16 marker colours (`#51cc00` … `#51cc0f`) and maps cells in those colours back to palette indexes, so the CSS variables theme them and follow a theme switch, in the scrollback too. Text drawn in exactly one of those 24-bit colours shows in the theme's palette colour instead.
-  From `@wterm/dom` 0.5.7, `WTerm` also reads those CSS variables on init (and on OSC 10/11) and calls `setThemeColors` on the core; the element keeps the marker palette on that path so the CSS mapping still works.
+  From `@wterm/dom` 0.5.7, `WTerm` also reads those CSS variables on init (and on OSC 10/11) and calls `setThemeColors` on the core; the element keeps the marker palette on that path so the CSS mapping still works, and passes on its options, so 0.6.0's `quiet` keeps a scheme query from getting a mode 2031 report as well.
   0.5.7 also paints cell backgrounds onto a canvas, which would drop live CSS backgrounds from the spans; the element suspends that canvas so palette and 256-colour backgrounds stay on the spans.
 - Ghostty answers OSC 10 and OSC 11 queries itself, with the colours it was loaded with. The element drops those replies and answers from the theme it shows.
 - Ghostty's `scrollbackLimit` is in bytes and allocated in pages, so the number of lines it keeps depends on the width. Its default of 10,000 bytes keeps about 300 lines at 200 columns; the element asks for 4 MB.
