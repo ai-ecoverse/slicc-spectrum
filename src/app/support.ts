@@ -365,7 +365,7 @@ export class SliccSupport extends ModelElement {
     const port = model.support;
     if (!port) return [];
     const update = () => this.requestUpdate();
-    return [
+    const off = [
       port.on('status', (status) => {
         this.#check(status);
         update();
@@ -378,6 +378,8 @@ export class SliccSupport extends ModelElement {
         if (id === this.open) void this.#load();
       }),
     ];
+    this.#check(port.status());
+    return off;
   }
 
   protected willUpdate(changed: PropertyValues): void {

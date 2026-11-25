@@ -234,6 +234,28 @@ test('a failed sign-out says why in the list', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
+test('a sign-in while the Support tab is hidden behind another tab shows its account when it comes back', async (t) => {
+  const page = await open(t, { support: 'signed-out' });
+  await show(page);
+  await page.until(() => !!window.part('[data-sign-in]'));
+  await page.evaluate(() => {
+    window.app.show('changes');
+    return true;
+  });
+  await page.until(() => !window.panel()?.isConnected);
+  await page.evaluate(() => {
+    window.model.support.arrive();
+    return true;
+  });
+  await show(page);
+  await page.until(() => window.parts('.row').length === 3);
+  assert.equal(
+    await page.evaluate(() => window.part('[data-account] .who')?.textContent ?? null),
+    'Signed in as Mara Lind, Paper Mill'
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a request stays open across closing the panel, unless the account changed meanwhile', async (t) => {
   const page = await open(t, { support: 'on' });
   await show(page);
