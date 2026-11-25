@@ -348,6 +348,53 @@ test('requests list newest first with their marks, and opening one reads it and 
   assert.deepEqual(page.errors, []);
 });
 
+test('a request that loads after the panel closed is not acknowledged until it shows', async (t) => {
+  const page = await open(t, { support: 'on' });
+  await show(page);
+  await page.evaluate(() => {
+    const port = window.model.support;
+    const thread = port.thread.bind(port);
+    port.thread = (id) =>
+      new Promise((resolve) => {
+        window.finish = () => {
+          const done = thread(id);
+          resolve(done);
+          return done;
+        };
+      });
+    window.part('.row[data-id=sup-preview] .head').click();
+    return true;
+  });
+  await page.until(() => typeof window.finish === 'function');
+  await page.evaluate(() => {
+    window.app.dock.close('support');
+    return true;
+  });
+  await page.until(() => !window.app.dock.has('support'));
+  await page.evaluate(async () => {
+    delete window.model.support.thread;
+    await window.finish();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    return true;
+  });
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.model.support.calls.filter((call) => call[0] === 'read'),
+      window.model.support.unread(),
+      window.rail().closest('.badged')?.querySelector('swc-badge')?.textContent.trim(),
+    ]),
+    [[], 1, '1']
+  );
+  await show(page);
+  await page.until(() => window.parts('.message').length === 4);
+  await page.until(() => !window.rail().closest('.badged'));
+  assert.deepEqual(
+    await page.evaluate(() => window.model.support.calls.filter((call) => call[0] === 'read')),
+    [['read', 'sup-preview', 'sup-preview-4']]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('a new request sends title, topic and description once, opens, and shows the reply that comes in', async (t) => {
   const page = await open(t, { support: 'on' });
   await show(page);
@@ -465,6 +512,75 @@ test('a failed reply keeps the draft and its key, and editing the text after it 
     ]),
     [false, '']
   );
+  assert.deepEqual(page.errors, []);
+});
+
+test('text typed while a reply sends stays in the field and goes out with a new key', async (t) => {
+  const page = await open(t, { support: 'on' });
+  await show(page);
+  await page.evaluate(() => {
+    window.model.support.answerTicks = null;
+    window.part('.row[data-id=sup-export] .head').click();
+    return true;
+  });
+  await page.until(() => !!window.part('.composer'));
+  await page.evaluate(async () => {
+    const port = window.model.support;
+    const reply = port.reply.bind(port);
+    port.reply = (draft) =>
+      new Promise((resolve) => {
+        window.finish = () => {
+          const done = reply(draft);
+          resolve(done);
+          return done;
+        };
+      });
+    await window.typeInto('sp-textfield[name=reply]', 'It still times out.');
+    window.part('.composer [data-action=send]').click();
+    return true;
+  });
+  await page.until(
+    () =>
+      typeof window.finish === 'function' &&
+      window.part('.composer [data-action=send]').hasAttribute('pending')
+  );
+  assert.equal(
+    await page.evaluate(() => window.part('sp-textfield[name=reply]').hasAttribute('disabled')),
+    false
+  );
+  await page.evaluate(async () => {
+    await window.typeInto('sp-textfield[name=reply]', 'It still times out, and so does April.');
+    delete window.model.support.reply;
+    await window.finish();
+    return true;
+  });
+  await page.until(() => window.parts('.message').length === 3);
+  await page.until(() => !window.part('.composer [data-action=send]').hasAttribute('pending'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.part('.message:last-child .body').textContent.trim(),
+      window.part('sp-textfield[name=reply]').value,
+      window.part('.composer [data-action=send]').hasAttribute('disabled'),
+    ]),
+    ['It still times out.', 'It still times out, and so does April.', false]
+  );
+  await page.evaluate(() => {
+    window.part('.composer [data-action=send]').click();
+    return true;
+  });
+  await page.until(() => window.parts('.message').length === 4);
+  const replies = await page.evaluate(() =>
+    window.model.support.calls.filter((call) => call[0] === 'reply').map((call) => call.slice(1))
+  );
+  assert.deepEqual(
+    replies.map(([, thread, body]) => [thread, body]),
+    [
+      ['sup-export', 'It still times out.'],
+      ['sup-export', 'It still times out, and so does April.'],
+    ]
+  );
+  assert.notEqual(replies[0][0], replies[1][0]);
+  await page.until(() => window.part('sp-textfield[name=reply]').value === '');
   assert.deepEqual(page.errors, []);
 });
 
