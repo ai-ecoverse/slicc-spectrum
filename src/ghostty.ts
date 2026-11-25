@@ -1,4 +1,4 @@
-import type { CellData, TerminalThemeColors } from '@wterm/core';
+import type { CellData, TerminalThemeColors, ThemeColorsOptions } from '@wterm/core';
 import { GhosttyCore } from '@wterm/ghostty';
 
 const base = 0x51cc00;
@@ -15,16 +15,19 @@ export const markers: TerminalThemeColors = {
 };
 
 export function keepMarkerPalette(
-  apply: (colors: TerminalThemeColors) => void,
+  apply: (colors: TerminalThemeColors, options?: ThemeColorsOptions) => void,
   palette: readonly number[] = markers.palette
-): (colors: TerminalThemeColors) => void {
-  return (colors) => {
-    apply({
-      foreground: colors.foreground,
-      background: colors.background,
-      cursor: colors.cursor,
-      palette,
-    });
+): (colors: TerminalThemeColors, options?: ThemeColorsOptions) => void {
+  return (colors, options) => {
+    apply(
+      {
+        foreground: colors.foreground,
+        background: colors.background,
+        cursor: colors.cursor,
+        palette,
+      },
+      options
+    );
   };
 }
 

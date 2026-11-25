@@ -703,6 +703,40 @@ test('a terminal answers color queries with a single theme throughout a theme sw
   assert.deepEqual(page.errors, []);
 });
 
+test('a scheme query after a theme switch gets one scheme report from a terminal that reports its scheme', async (t) => {
+  const page = await open(t, { color: 'dark' });
+  await page.evaluate(() => window.$('slicc-app', '.rail.right [data-surface=terminal]').click());
+  await page.until(() => window.screen().includes('$'));
+  await page.evaluate(() => {
+    const term = window.terminal().shadowRoot.querySelector('slicc-terminal');
+    window.schemeReplies = [];
+    term.send = (reply) => window.schemeReplies.push(reply);
+    term.write('\x1b[?2031h');
+  });
+  const background = () =>
+    getComputedStyle(window.terminal().shadowRoot.querySelector('slicc-terminal .wterm'))
+      .backgroundColor;
+  const dark = await page.evaluate(background);
+  await page.evaluate(() => window.$('slicc-app', 'header swc-action-button#theme').click());
+  await page.until(() => window.terminal().getAttribute('color') === 'light');
+  await page.until((before) => {
+    const screen = window.terminal().shadowRoot.querySelector('slicc-terminal .wterm');
+    return (
+      getComputedStyle(screen).backgroundColor !== before &&
+      window.terminal().shadowRoot.getAnimations().length === 0
+    );
+  }, dark);
+  const replies = await page.evaluate(async () => {
+    const start = window.schemeReplies.length;
+    window.terminal().shadowRoot.querySelector('slicc-terminal').write('\x1b[?996n');
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
+    return window.schemeReplies.slice(start);
+  });
+  assert.deepEqual(replies, ['\x1b[?997;2n']);
+  assert.deepEqual(page.errors, []);
+});
+
 test('the theme switches between light and dark and survives a reload', async (t) => {
   const page = await open(t);
   const surface = () => [
