@@ -160,6 +160,115 @@ test('an account that is not enrolled says so for its organization and can switc
   assert.deepEqual(page.errors, []);
 });
 
+async function openRequest(page, id, count) {
+  await page.evaluate((id) => {
+    window.part(`.row[data-id=${id}] .head`).click();
+    return true;
+  }, id);
+  await page.until((count) => window.parts('.message').length === count, count);
+}
+
+test('an account switch signalled only through threads leaves the open request for the list', async (t) => {
+  const page = await open(t, { support: 'on' });
+  await show(page);
+  await openRequest(page, 'sup-preview', 4);
+  await page.evaluate(() => {
+    const port = window.model.support;
+    const other = {
+      state: 'ready',
+      identity: 'Ole Brandt',
+      org: 'Quay Labs',
+      channel: 'Quay support',
+    };
+    port.status = () => other;
+    port.threads = () => [];
+    port.emit('threads', []);
+    return true;
+  });
+  await page.until(() => !!window.part('[data-empty=none]'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.parts('.message').length,
+      !!window.part('.composer'),
+      window.part('[data-account] .who').textContent,
+    ]),
+    [0, false, 'Signed in as Ole Brandt, Quay Labs']
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('losing enrollment with a request open shows the not-enrolled note instead', async (t) => {
+  const page = await open(t, { support: 'on' });
+  await show(page);
+  await openRequest(page, 'sup-preview', 4);
+  await page.evaluate(() => {
+    const { identity, org } = window.model.support.status();
+    window.model.support.setStatus({ state: 'not-enrolled', identity, org });
+    return true;
+  });
+  await page.until(() => !!window.part('[data-empty=not-enrolled]'));
+  assert.deepEqual(
+    await page.evaluate(() => [window.parts('.message').length, !!window.part('.composer')]),
+    [0, false]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a failed sign-out says why in the list', async (t) => {
+  const page = await open(t, { support: 'on' });
+  await show(page);
+  await page.evaluate(() => {
+    window.model.support.signOut = () =>
+      Promise.reject(new Error('Adobe didn’t end the session. Try again.'));
+    window.part('[data-action=sign-out]').click();
+    return true;
+  });
+  await page.until(() => !!window.part('.banner [data-error]'));
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.part('.banner [data-error]').textContent.trim(),
+      window.parts('.row').length,
+    ]),
+    ['Adobe didn’t end the session. Try again.', 3]
+  );
+  assert.deepEqual(page.errors, []);
+});
+
+test('a request stays open across closing the panel, unless the account changed meanwhile', async (t) => {
+  const page = await open(t, { support: 'on' });
+  await show(page);
+  await openRequest(page, 'sup-preview', 4);
+  const reopen = async () => {
+    await page.evaluate(() => {
+      window.app.dock.close('support');
+      return true;
+    });
+    await page.until(() => !window.app.dock.has('support'));
+  };
+  await reopen();
+  await show(page);
+  await page.until(() => window.parts('.message').length === 4);
+  await reopen();
+  await page.evaluate(() => {
+    window.model.support.setStatus({
+      ...window.model.support.status(),
+      identity: 'Ole Brandt',
+      org: 'Quay Labs',
+    });
+    return true;
+  });
+  await show(page);
+  await page.until(() => window.parts('.row').length === 3);
+  assert.deepEqual(
+    await page.evaluate(() => [
+      window.parts('.message').length,
+      window.part('[data-account] .who').textContent,
+    ]),
+    [0, 'Signed in as Ole Brandt, Quay Labs']
+  );
+  assert.deepEqual(page.errors, []);
+});
+
 test('requests list newest first with their marks, and opening one reads it and acknowledges the last message', async (t) => {
   const page = await open(t, { support: 'on' });
   await show(page);

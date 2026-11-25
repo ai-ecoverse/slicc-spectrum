@@ -98,11 +98,11 @@ export class SliccSupport extends ModelElement {
   declare topic: string;
   declare replies: ReadonlyMap<string, string>;
   #open = new ViewState<string | null>(this, 'support', () => null);
+  #scope = new ViewState<string>(this, 'support:account', () => '');
   #keys = new IntentKeys();
   #loads = 0;
   #reading = new Set<string>();
   #port: SupportPort | null = null;
-  #account = '';
   #epoch = 0;
 
   constructor() {
@@ -309,6 +309,12 @@ export class SliccSupport extends ModelElement {
         padding: 0;
         background: none;
       }
+      .banner {
+        flex: none;
+        padding: var(--swc-spacing-75) var(--swc-spacing-100) var(--swc-spacing-75) var(--swc-spacing-200);
+        border-bottom: var(--swc-border-width-100) solid var(--swc-gray-200);
+        background: var(--swc-background-layer-1-color);
+      }
       .account {
         display: flex;
         align-items: center;
@@ -360,10 +366,13 @@ export class SliccSupport extends ModelElement {
     const update = () => this.requestUpdate();
     return [
       port.on('status', (status) => {
-        if (accountOf(status) !== this.#account) this.#reset(status);
+        this.#check(status);
         update();
       }),
-      port.on('threads', update),
+      port.on('threads', () => {
+        this.#check(port.status());
+        update();
+      }),
       port.on('thread', (id) => {
         if (id === this.open) void this.#load();
       }),
@@ -375,18 +384,24 @@ export class SliccSupport extends ModelElement {
     const port = this.model?.support ?? null;
     if (port === this.#port) return;
     this.#port = port;
-    this.#reset(port?.status() ?? null);
+    this.#clear();
+    if (port) this.#check(port.status());
     void this.#load();
   }
 
-  #reset(status: SupportStatus | null): void {
-    const switched = this.#account !== '';
-    this.#account = status ? accountOf(status) : '';
+  #check(status: SupportStatus): void {
+    const lost = status.state === 'not-enrolled' && this.open !== null;
+    if (accountOf(status) === this.#scope.value && !lost) return;
+    this.#scope.value = accountOf(status);
+    this.#open.value = null;
+    this.#clear();
+  }
+
+  #clear(): void {
     this.#epoch += 1;
     this.#loads += 1;
     this.#keys = new IntentKeys();
     this.#reading.clear();
-    if (switched) this.#open.value = null;
     this.conversation = null;
     this.loading = false;
     this.sending = false;
@@ -433,7 +448,7 @@ export class SliccSupport extends ModelElement {
     const port = this.#port;
     const id = this.open;
     const load = ++this.#loads;
-    if (!port || !id || id === newRequest) {
+    if (!port || !id || id === newRequest || !signedIn(port.status())) {
       this.loading = false;
       return;
     }
@@ -578,12 +593,13 @@ export class SliccSupport extends ModelElement {
         ${ready ? html`<swc-action-button size="s" quiet data-action="new-request" @click=${() => (this.open = newRequest)}><swc-icon-add slot="icon"></swc-icon-add>New request</swc-action-button>` : nothing}
       </div>
       ${this.#offline()}
+      ${this.error ? html`<div class="banner">${this.#error()}</div>` : nothing}
       ${body}
-      ${this.#account ? this.#accountBar(port) : nothing}`;
+      ${this.#scope.value ? this.#accountBar(port) : nothing}`;
   }
 
   #accountBar(port: SupportPort): TemplateResult {
-    return html`<div class="account" data-account><span class="who">Signed in as ${this.#account}</span>
+    return html`<div class="account" data-account><span class="who">Signed in as ${this.#scope.value}</span>
       ${port.signOut ? html`<swc-action-button size="s" quiet data-action="sign-out" ?disabled=${this.signing} @click=${() => void this.#session(port, 'signOut')}>Sign out</swc-action-button>` : nothing}
     </div>`;
   }
