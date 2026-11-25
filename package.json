@@ -89,7 +89,7 @@
     "@types/mdast": "4.0.4",
     "@types/node": "26.6.6",
     "@wterm/core": "0.6.0",
-    "@wterm/dom": "0.5.10",
+    "@wterm/dom": "0.6.0",
     "@wterm/ghostty": "0.6.0",
     "dockview-core": "8.9.1",
     "esbuild": "0.28.2",
