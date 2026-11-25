@@ -7,6 +7,34 @@ after(() => chrome.close());
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const laidOut = async () => {
+  await window.app.updateComplete;
+  const { dock } = window.app;
+  const box = dock.getBoundingClientRect();
+  return (
+    box.width > 0 &&
+    box.right <= innerWidth &&
+    Math.abs(dock.api.width - box.width) < 1 &&
+    Math.abs(dock.api.height - box.height) < 1
+  );
+};
+
+const steady = async (card) => {
+  const boxes = () =>
+    JSON.stringify(
+      ['.decision', '[data-action=deny]', '[data-action=allow]'].map((selector) => {
+        const box = window.card(card).querySelector(selector).getBoundingClientRect();
+        return [box.left, box.top, box.width, box.height];
+      })
+    );
+  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  const first = boxes();
+  await frame();
+  const second = boxes();
+  await frame();
+  return first === second && second === boxes();
+};
+
 async function open(t, width, height, params = {}) {
   const page = await chrome.page(t);
   await page.goto(`/ui/?${new URLSearchParams({ delay: '0', color: 'light', ...params })}`);
@@ -23,6 +51,7 @@ async function open(t, width, height, params = {}) {
   });
   t.after(() => page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}));
   if (width < 1280) await page.until(() => document.querySelector('slicc-app').screen === 'phone');
+  await page.until(laidOut);
   await page.evaluate(() => {
     window.model.agent.select('cone-kitchen');
     window.ask = (text, body) => {
@@ -98,6 +127,7 @@ for (const [width, height] of [
         }),
       };
     };
+    await page.until(steady, id);
     const before = await page.evaluate(read, id);
     assert.deepEqual(
       [before.allow, before.hint, before.toggle, before.whole, before.scrolls, before.end],
@@ -123,6 +153,7 @@ for (const [width, height] of [
       (card) => !window.card(card).querySelector('[data-action=allow]').hasAttribute('disabled'),
       id
     );
+    await page.until(steady, id);
     const seen = await page.evaluate(read, id);
     assert.deepEqual([seen.allow, seen.hint, seen.end], [false, false, true]);
     assert.deepEqual(seen.buttons, before.buttons);
