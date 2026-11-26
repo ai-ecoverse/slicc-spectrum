@@ -3,7 +3,7 @@ import { ifDefined } from 'lit/directives/if-defined.js';
 import { keyed } from 'lit/directives/keyed.js';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import type { PanelParams, SerializedDockview, SliccDock } from '../components/dock.ts';
-import type { Agent, SliccModel, Sprinkle, UpdatesPort } from '../model/types.ts';
+import type { Agent, AgentPort, SliccModel, Sprinkle, UpdatesPort } from '../model/types.ts';
 import { creatable, createCone } from './agents.ts';
 import { changesOf, type DocumentHold, holdDocument, shared, ThemedElement } from './base.ts';
 import { flushStarting } from './composer.ts';
@@ -154,6 +154,7 @@ export class SliccApp extends ThemedElement {
   #hold!: DocumentHold;
   #updatesVisibility: UpdateVisibility | null = null;
   #quietBoot = false;
+  #seen = new WeakMap<AgentPort, Set<string>>();
 
   constructor() {
     super();
@@ -695,13 +696,17 @@ export class SliccApp extends ThemedElement {
   #prune(): void {
     const dock = this.renderRoot.querySelector('slicc-dock') as SliccDock | null;
     if (!dock || !this.#started) return;
-    const known = new Set(this.model?.agent.list().map((agent) => agent.id));
-    const starting = !known.size && !!this.model?.agent.starting?.();
+    const port = (this.model as SliccModel).agent;
+    const known = new Set(port.list().map((agent) => agent.id));
+    const seen = this.#seen.get(port) ?? new Set<string>();
+    this.#seen.set(port, seen);
+    for (const id of known) seen.add(id);
     const agent = this.#active();
     const held = !!agent && !!dock.content('chat')?.shadowRoot?.activeElement;
     this.panels.quietly(() => {
       for (const id of chats(dock)) {
-        if (!(starting || known.has(chatAgent(id) as string))) dock.close(id);
+        const of = chatAgent(id) as string;
+        if (known.size && seen.has(of) && !known.has(of)) dock.close(id);
       }
       if (agent && dock.has('chat')) {
         if (this.#offers('chat') && !dock.has(chatId(agent.id)))

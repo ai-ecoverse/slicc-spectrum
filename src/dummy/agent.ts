@@ -717,7 +717,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     this.emit('starting', this.#starting);
   }
 
-  withhold(line: string, ticks?: number): void {
+  withhold(line: string | null, ticks?: number): void {
     this.#absent = [...this.#absent, ...this.#agents];
     this.#agents = [];
     this.#active = '';
@@ -730,9 +730,10 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     });
   }
 
-  arrive(): void {
-    this.#agents = [...this.#agents, ...this.#absent];
-    this.#absent = [];
+  arrive(...ids: string[]): void {
+    const coming = this.#absent.filter((agent) => !ids.length || ids.includes(agent.id));
+    this.#agents = [...this.#agents, ...coming];
+    this.#absent = this.#absent.filter((agent) => !coming.includes(agent));
     this.#active = this.#agents[0]?.id ?? '';
     this.#changed();
     this.emit('active', this.#active);

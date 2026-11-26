@@ -129,13 +129,20 @@ test('while the agent starts, a kept chat, Agents and the Freezer say so, and th
   assert.deepEqual(page.errors, []);
 });
 
-test('chat tabs of agents that are gone close once the line clears', async (t) => {
-  const { page } = await arranged(t);
+test('chat tabs stay once the line clears with no agent, and say they’re disconnected', async (t) => {
+  const { page, before } = await arranged(t);
   await page.evaluate(() => {
     window.model.agent.setStarting(null);
     return true;
   });
-  await page.until(() => !window.app.dock.api.panels.some((panel) => panel.id.startsWith('chat:')));
+  await page.until(() => window.app.dock.api.getPanel('chat:cone-harbor').api.isVisible);
+  await page.until(
+    () =>
+      !!window.app.dock
+        .content('chat:cone-harbor')
+        ?.shadowRoot?.querySelector('[data-loading=disconnected]')
+  );
+  assert.deepEqual(await page.evaluate(where), before);
   assert.deepEqual(page.errors, []);
 });
 
@@ -231,7 +238,7 @@ test('a prompt whose chat isn’t there once the agent starts is held with Put b
     window.model.agent.arrive();
     return true;
   });
-  await page.until(() => !window.app.dock.has('chat:cone-gone'));
+  await page.until(() => window.model.agent.list().length > 0);
   await page.until(
     () =>
       !!window
@@ -251,6 +258,7 @@ test('a prompt whose chat isn’t there once the agent starts is held with Put b
     }),
     ['Held: Ask the gone cone', ', Not sent: its conversation isn’t here anymore.', true]
   );
+  assert.equal(await page.evaluate(() => window.app.dock.has('chat:cone-gone')), true);
   assert.equal(
     await page.evaluate(() =>
       window.model.agent
@@ -337,7 +345,7 @@ test('Put back on a prompt held because its chat is gone brings back its text an
     window.model.agent.arrive();
     return true;
   });
-  await page.until(() => !window.app.dock.has('chat:cone-gone'));
+  await page.until(() => window.model.agent.list().length > 0);
   const putBack = async (index) => {
     await page.until(
       (index) =>
@@ -373,5 +381,114 @@ test('Put back on a prompt held because its chat is gone brings back its text an
     ),
     0
   );
+  assert.deepEqual(page.errors, []);
+});
+
+const disconnected = (id) => {
+  const root = window.app.dock.content(id)?.shadowRoot;
+  const field = root
+    ?.querySelector('slicc-composer')
+    ?.shadowRoot?.querySelector('swc-prompt-field');
+  return {
+    light: root?.querySelector('header [data-disconnected]')?.textContent.trim() ?? null,
+    note: root?.querySelector('[data-loading=disconnected]')?.textContent.trim() ?? null,
+    placeholder: field?.getAttribute('placeholder') ?? null,
+    disabled: field?.hasAttribute('disabled') ?? null,
+  };
+};
+
+test('a reload before the agent service lists anything keeps the chat tabs disconnected in place, and they connect where they are', async (t) => {
+  const { page, before } = await arranged(t, 'disconnected');
+  assert.equal(before.length, 2);
+  assert.deepEqual(await page.evaluate(where), before);
+  await page.evaluate(() => {
+    window.app.dock.api.getPanel('chat:cone-harbor').api.setActive();
+    return true;
+  });
+  await page.until(
+    () =>
+      !!window.app.dock
+        .content('chat:cone-harbor')
+        ?.shadowRoot?.querySelector('slicc-composer')
+        ?.shadowRoot?.querySelector('swc-prompt-field')
+  );
+  assert.deepEqual(await page.evaluate(disconnected, 'chat:cone-harbor'), {
+    light: 'Disconnected',
+    note: 'The conversation shows up here once its agent connects.',
+    placeholder: 'Waiting for the agent to connect…',
+    disabled: true,
+  });
+  await page.evaluate(() => {
+    window.model.agent.arrive();
+    return true;
+  });
+  await page.until(() => window.model.agent.list().length > 0);
+  await page.until(laidOut);
+  assert.deepEqual(await page.evaluate(where), before);
+  await page.evaluate(() => {
+    window.app.dock.api.getPanel('chat:cone-harbor').api.setActive();
+    return true;
+  });
+  await page.until(
+    () =>
+      !window.app.dock
+        .content('chat:cone-harbor')
+        ?.shadowRoot?.querySelector('[data-disconnected], [data-loading=disconnected]')
+  );
+  assert.deepEqual(await page.evaluate(disconnected, 'chat:cone-harbor'), {
+    light: null,
+    note: null,
+    placeholder: 'Message harbor',
+    disabled: false,
+  });
+  assert.deepEqual(page.errors, []);
+});
+
+test('a chat tab whose agent comes up after the others stays disconnected until it does', async (t) => {
+  const { page, before } = await arranged(t, 'disconnected');
+  await page.evaluate(() => {
+    window.model.agent.arrive('cone-sliccy');
+    return true;
+  });
+  await page.until(() => window.model.agent.list().length === 1);
+  await page.until(laidOut);
+  assert.deepEqual(await page.evaluate(where), before);
+  await page.evaluate(() => {
+    window.app.dock.api.getPanel('chat:cone-harbor').api.setActive();
+    return true;
+  });
+  await page.until(
+    () =>
+      !!window.app.dock
+        .content('chat:cone-harbor')
+        ?.shadowRoot?.querySelector('[data-loading=disconnected]')
+  );
+  await page.evaluate(() => {
+    window.model.agent.arrive('cone-harbor');
+    return true;
+  });
+  await page.until(
+    () =>
+      !window.app.dock
+        .content('chat:cone-harbor')
+        ?.shadowRoot?.querySelector('[data-loading=disconnected]')
+  );
+  assert.deepEqual(await page.evaluate(where), before);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a chat tab closes when its agent, listed before, goes while others stay', async (t) => {
+  const { page } = await arranged(t, 'disconnected');
+  await page.evaluate(() => {
+    window.model.agent.arrive();
+    return true;
+  });
+  await page.until(() => window.model.agent.list().some((agent) => agent.id === 'cone-harbor'));
+  await page.evaluate(() => {
+    window.model.agent.freeze('cone-harbor');
+    return true;
+  });
+  await page.until(() => !window.app.dock.has('chat:cone-harbor'));
+  assert.equal(await page.evaluate(() => window.app.dock.has('chat:cone-sliccy')), true);
   assert.deepEqual(page.errors, []);
 });
