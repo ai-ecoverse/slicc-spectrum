@@ -31,7 +31,7 @@ const where = () =>
     })
     .sort((a, b) => a[0].localeCompare(b[0]));
 
-async function arranged(t, agent = 'waiting') {
+async function arranged(t, agent = 'waiting', gone = false) {
   const page = await chrome.page(t);
   await page.send('Emulation.setDeviceMetricsOverride', {
     width: 1440,
@@ -61,6 +61,30 @@ async function arranged(t, agent = 'waiting') {
   await page.until(() => window.app.dock.has('chat:cone-harbor') && window.app.dock.has('files'));
   await page.until(laidOut);
   await page.until(saved, ['chat:cone-harbor', 'files']);
+  if (gone) {
+    const layout = await page.evaluate(() => {
+      const key = window.app.storageKey;
+      window.app.storage = null;
+      const layout = JSON.parse(localStorage.getItem(key));
+      const harbor = layout.panels['chat:cone-harbor'];
+      layout.panels['chat:cone-gone'] = {
+        ...harbor,
+        id: 'chat:cone-gone',
+        title: 'gone',
+        params: { agent: 'cone-gone' },
+      };
+      const group = (node) =>
+        node.type === 'leaf'
+          ? node.data.views.includes('chat:cone-harbor')
+            ? node.data
+            : null
+          : node.data.map(group).find(Boolean);
+      group(layout.grid.root).views.push('chat:cone-gone');
+      localStorage.setItem(key, JSON.stringify(layout));
+      return Object.keys(layout.panels);
+    });
+    assert.ok(layout.includes('chat:cone-gone'));
+  }
   const before = await page.evaluate(where);
   await page.goto(`/ui/?${new URLSearchParams({ delay: '5', color: 'light', agent })}`);
   await page.until(() => window.ready === true && window.app.dock.api.panels.length > 0);
@@ -258,7 +282,7 @@ test('a prompt whose chat isn’t there once the agent starts is held with Put b
     }),
     ['Held: Ask the gone cone', ', Not sent: its conversation isn’t here anymore.', true]
   );
-  assert.equal(await page.evaluate(() => window.app.dock.has('chat:cone-gone')), true);
+  await page.until(() => !window.app.dock.has('chat:cone-gone'));
   assert.equal(
     await page.evaluate(() =>
       window.model.agent
@@ -476,6 +500,67 @@ test('a chat tab whose agent comes up after the others stays disconnected until 
   assert.deepEqual(await page.evaluate(where), before);
   assert.deepEqual(page.errors, []);
 });
+
+const others = (list) => list.filter(([id]) => id !== 'chat:cone-gone');
+
+for (const agent of ['waiting', 'disconnected']) {
+  test(`a saved chat tab whose agent never comes closes once the ${agent} port is ready, and the ones that come stay`, async (t) => {
+    const { page, before } = await arranged(t, agent, true);
+    assert.deepEqual(
+      before.map(([id]) => id),
+      ['chat:cone-harbor', 'chat:cone-sliccy']
+    );
+    assert.deepEqual(
+      (await page.evaluate(where)).map(([id]) => id),
+      ['chat:cone-gone', 'chat:cone-harbor', 'chat:cone-sliccy']
+    );
+    await page.evaluate(() => {
+      window.model.agent.arrive('cone-sliccy');
+      return true;
+    });
+    await page.until(() => window.model.agent.list().length === 1);
+    await page.until(laidOut);
+    assert.deepEqual(
+      await page.evaluate(() => [
+        window.app.dock.has('chat:cone-gone'),
+        window.app.dock.has('chat:cone-harbor'),
+      ]),
+      [true, true]
+    );
+    await page.evaluate(() => {
+      window.model.agent.arrive('cone-harbor');
+      return true;
+    });
+    await page.until(() => window.model.agent.list().length === 2);
+    await page.evaluate(() => {
+      window.app.dock.api.getPanel('chat:cone-harbor').api.setActive();
+      return true;
+    });
+    await page.until(
+      () =>
+        !!window.app.dock
+          .content('chat:cone-harbor')
+          ?.shadowRoot?.querySelector('slicc-composer') &&
+        !window.app.dock
+          .content('chat:cone-harbor')
+          .shadowRoot.querySelector('[data-loading=disconnected], [data-loading=starting]')
+    );
+    assert.equal(await page.evaluate(() => window.app.dock.has('chat:cone-gone')), true);
+    await page.evaluate(() => {
+      window.model.agent.arrive();
+      return true;
+    });
+    await page.until(() => !window.app.dock.has('chat:cone-gone'));
+    await page.until(laidOut);
+    assert.deepEqual(others(await page.evaluate(where)), before);
+    await page.until(
+      () =>
+        !('chat:cone-gone' in JSON.parse(localStorage.getItem(window.app.storageKey)).panels) &&
+        'chat:cone-harbor' in JSON.parse(localStorage.getItem(window.app.storageKey)).panels
+    );
+    assert.deepEqual(page.errors, []);
+  });
+}
 
 test('a chat tab closes when its agent, listed before, goes while others stay', async (t) => {
   const { page } = await arranged(t, 'disconnected');
