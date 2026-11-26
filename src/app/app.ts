@@ -155,6 +155,7 @@ export class SliccApp extends ThemedElement {
   #updatesVisibility: UpdateVisibility | null = null;
   #quietBoot = false;
   #seen = new WeakMap<AgentPort, Set<string>>();
+  #settled = new WeakSet<AgentPort>();
 
   constructor() {
     super();
@@ -698,15 +699,15 @@ export class SliccApp extends ThemedElement {
     if (!dock || !this.#started) return;
     const port = (this.model as SliccModel).agent;
     const known = new Set(port.list().map((agent) => agent.id));
-    const seen = this.#seen.get(port) ?? new Set<string>();
-    this.#seen.set(port, seen);
+    const seen = this.#seen.get(port) ?? this.#watch(port);
     for (const id of known) seen.add(id);
+    const settled = this.#settled.has(port) && !port.starting?.();
     const agent = this.#active();
     const held = !!agent && !!dock.content('chat')?.shadowRoot?.activeElement;
     this.panels.quietly(() => {
       for (const id of chats(dock)) {
         const of = chatAgent(id) as string;
-        if (known.size && seen.has(of) && !known.has(of)) dock.close(id);
+        if (known.size && !known.has(of) && (settled || seen.has(of))) dock.close(id);
       }
       if (agent && dock.has('chat')) {
         if (this.#offers('chat') && !dock.has(chatId(agent.id)))
@@ -724,6 +725,19 @@ export class SliccApp extends ThemedElement {
         this.terminalPanels.sync(dock, this.model.terminals, this.screen);
     });
     if (agent && held && this.#offers('chat')) openChat(dock, agent, this.screen, true);
+  }
+
+  #watch(port: AgentPort): Set<string> {
+    const seen = new Set<string>();
+    this.#seen.set(port, seen);
+    port.ready().then(
+      () => {
+        this.#settled.add(port);
+        if (this.model?.agent === port) this.#prune();
+      },
+      () => undefined
+    );
+    return seen;
   }
 
   #activated(event: Event): void {

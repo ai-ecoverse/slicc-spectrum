@@ -64,6 +64,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
   #readOnly: string | null = null;
   #starting: string | null = null;
   #absent: Agent[] = [];
+  #waiting: Array<() => void> = [];
   #arrival = 0;
   #ice = new Map<string, Array<{ agent: Agent; messages: Message[] }>>();
   #suggestions = new Map<string, string>();
@@ -594,7 +595,10 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     ];
   }
 
-  async ready(): Promise<void> {}
+  ready(): Promise<void> {
+    if (!this.#absent.length) return Promise.resolve();
+    return new Promise((resolve) => this.#waiting.push(resolve));
+  }
 
   createScoop(parentId: string, name: string): Agent {
     const parent = this.#agent(parentId);
@@ -734,6 +738,7 @@ export class DummyAgent extends Emitter<AgentEvents> implements AgentPort {
     const coming = this.#absent.filter((agent) => !ids.length || ids.includes(agent.id));
     this.#agents = [...this.#agents, ...coming];
     this.#absent = this.#absent.filter((agent) => !coming.includes(agent));
+    if (!this.#absent.length) for (const resolve of this.#waiting.splice(0)) resolve();
     this.#active = this.#agents[0]?.id ?? '';
     this.#changed();
     this.emit('active', this.#active);
