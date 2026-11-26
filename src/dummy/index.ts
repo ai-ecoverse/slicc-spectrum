@@ -77,7 +77,7 @@ export interface DummyOptions {
   transport?: DummyTransport;
   hold?: AgentHold['reason'] | 'off';
   readonly?: 'version' | 'off';
-  agent?: 'ready' | 'starting' | 'waiting';
+  agent?: 'ready' | 'starting' | 'waiting' | 'disconnected';
   browser?: BrowserScenario;
   sprinkles?: 'builtin' | 'cones';
   monitor?: 'dummy' | 'agent';
@@ -225,14 +225,16 @@ function noticesPort(
   time: Clock,
   notices: NoticeScenario | 'off',
   readonly: 'version' | 'off',
-  arrival: 'ready' | 'starting' | 'waiting'
+  arrival: 'ready' | 'starting' | 'waiting' | 'disconnected'
 ): DummyNotices | null {
   if (readonly !== 'off') agent.setReadOnly(readOnlyText);
-  if (arrival !== 'ready') agent.withhold(startingText, arrival === 'starting' ? 100 : undefined);
-  const notice = readonly !== 'off' ? 'readonly' : arrival !== 'ready' ? 'starting' : notices;
+  const starting = arrival === 'starting' || arrival === 'waiting';
+  if (arrival === 'disconnected') agent.withhold(null);
+  if (starting) agent.withhold(startingText, arrival === 'starting' ? 100 : undefined);
+  const notice = readonly !== 'off' ? 'readonly' : starting ? 'starting' : notices;
   const port = notice === 'off' ? null : new DummyNotices(notice, time);
   if (port && readonly !== 'off') agent.on('readOnly', (text) => port.readOnly(Boolean(text)));
-  if (port && arrival !== 'ready') agent.on('starting', (line) => port.starting(Boolean(line)));
+  if (port && starting) agent.on('starting', (line) => port.starting(Boolean(line)));
   return port;
 }
 

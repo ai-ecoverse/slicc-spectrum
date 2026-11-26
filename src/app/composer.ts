@@ -1082,8 +1082,13 @@ export class SliccComposer extends ThemedElement {
   }
 
   #held(): string | null {
-    const state = this.model?.follow?.state();
-    return state?.link === 'reconnecting' ? state.owner : null;
+    const model = this.model;
+    const state = model?.follow?.state();
+    if (state?.link === 'reconnecting') return `Reconnecting to ${state.owner}…`;
+    if (!(this.#agent && model) || model.agent.starting?.()) return null;
+    return model.agent.list().some((agent) => agent.id === this.#agent)
+      ? null
+      : 'Waiting for the agent to connect…';
   }
 
   #switch(id: string): void {
@@ -2220,7 +2225,7 @@ export class SliccComposer extends ThemedElement {
           max-rows="10"
           ?generating=${busy && !canSend}
           ?disabled=${!!held}
-          placeholder=${held ? `Reconnecting to ${held}…` : starting ? starting : suggestion ? `${suggestion}  (Tab)` : `Message ${agent?.name ?? ''}`}
+          placeholder=${held || starting || (suggestion ? `${suggestion}  (Tab)` : `Message ${agent?.name ?? ''}`)}
           .value=${live(this.value)}
           @keydown=${this.#keys}
           @swc-prompt-field-input=${this.#input}

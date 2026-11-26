@@ -1328,8 +1328,10 @@ export class SliccChat extends ThemedElement {
   }
 
   #agentless(): TemplateResult {
-    return this.model?.agent.starting?.()
-      ? html`<swc-status-light size="s" variant="neutral" data-starting>Starting…</swc-status-light>`
+    if (this.model?.agent.starting?.())
+      return html`<swc-status-light size="s" variant="neutral" data-starting>Starting…</swc-status-light>`;
+    return this.agent
+      ? html`<swc-status-light size="s" variant="neutral" data-disconnected>Disconnected</swc-status-light>`
       : html`<span>No agent</span>`;
   }
 
@@ -1413,6 +1415,8 @@ export class SliccChat extends ThemedElement {
       return agent
         ? nothing
         : html`<div class="empty" data-loading="starting"><swc-progress-circle size="m" indeterminate label="Starting the agent"></swc-progress-circle><span>The conversation shows up here once the agent starts.</span></div>`;
+    if (!agent && this.agent)
+      return html`<div class="empty" data-loading="disconnected"><swc-progress-circle size="m" indeterminate label="Waiting for the agent"></swc-progress-circle><span>The conversation shows up here once its agent connects.</span></div>`;
     if (older) return nothing;
     return html`<div class="empty" data-empty>${blank}</div>`;
   }
