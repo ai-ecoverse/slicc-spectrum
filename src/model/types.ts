@@ -2048,6 +2048,8 @@ export type SupportState =
   | 'offline'
   | 'not-enrolled';
 
+export type SupportRequest = 'pending' | 'declined';
+
 export interface SupportStatus {
   state: SupportState;
   identity?: string;
@@ -2055,6 +2057,8 @@ export interface SupportStatus {
   channel?: string;
   audience?: string;
   detail?: string;
+  request?: SupportRequest;
+  reason?: string;
 }
 
 export interface SupportThread {

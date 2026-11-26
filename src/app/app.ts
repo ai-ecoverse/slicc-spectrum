@@ -881,24 +881,16 @@ export class SliccApp extends ThemedElement {
 
   #railButton(item: Surface, side: string): TemplateResult {
     const changes = item.id === 'changes' ? this.#changes() : 0;
-    const unread = item.id === 'support' ? this.#unread() : 0;
     const driven =
       item.id === 'browser' && !!this.model?.browser.list().some((tab) => tab.controlled);
     const visible = shown(this.dock, item.id);
     const label = `${visible ? `${item.title}, shown` : `Open ${item.title}`}${
-      changes
-        ? `, ${changeCount(changes)}`
-        : unread
-          ? `, ${unreadLabel(unread)}`
-          : driven
-            ? ', a tab is in use'
-            : ''
+      changes ? `, ${changeCount(changes)}` : driven ? ', a tab is in use' : ''
     }`;
     const button = staticHtml`<swc-action-button id=${`rail-${item.id}`} class=${visible ? 'selected' : ''} quiet size="m" accessible-label=${label} data-surface=${item.id} data-cone=${ifDefined(item.cone)} ?data-visible=${visible} @click=${(event: PointerEvent) => this.#railClick(event, item.id)}>${railIcon(item.icon)}</swc-action-button>`;
     const tooltip = html`<swc-tooltip for=${`rail-${item.id}`} placement=${{ left: 'end', right: 'start', bottom: 'top' }[side]}>${item.title}</swc-tooltip>`;
-    const count = changes || unread;
-    return count
-      ? html`<span class="badged">${button}<swc-badge size="s" variant=${unread ? 'informative' : 'neutral'} aria-hidden="true" data-count=${count}>${count}</swc-badge></span>${tooltip}`
+    return changes
+      ? html`<span class="badged">${button}<swc-badge size="s" variant="neutral" aria-hidden="true" data-count=${changes}>${changes}</swc-badge></span>${tooltip}`
       : driven
         ? html`<span class="badged">${button}<span class="dot" data-driven aria-hidden="true"></span></span>${tooltip}`
         : html`${button}${tooltip}`;
@@ -916,17 +908,13 @@ export class SliccApp extends ThemedElement {
   #more(items: readonly Surface[]): TemplateResult | typeof nothing {
     if (!items.length) return nothing;
     const changes = items.some((item) => item.id === 'changes') ? this.#changes() : 0;
-    const unread = items.some((item) => item.id === 'support') ? this.#unread() : 0;
-    const label = ['More panels', changes && changeCount(changes), unread && unreadLabel(unread)]
-      .filter(Boolean)
-      .join(', ');
-    const count = changes + unread;
+    const label = changes ? `More panels, ${changeCount(changes)}` : 'More panels';
     const menu = staticHtml`<sp-action-menu quiet size="m" label=${label} placement="top-end" @change=${(event: Event) => this.show((event.target as HTMLElement & { value: string }).value)}>
       <swc-icon-more slot="icon"></swc-icon-more>
       ${items.map((item) => staticHtml`<sp-menu-item value=${item.id}>${railIcon(item.icon)}${item.title}</sp-menu-item>`)}
     </sp-action-menu>`;
-    return count
-      ? html`<span class="badged">${menu}<swc-badge size="s" variant=${unread ? 'informative' : 'neutral'} aria-hidden="true">${count}</swc-badge></span>`
+    return changes
+      ? html`<span class="badged">${menu}<swc-badge size="s" variant="neutral" aria-hidden="true">${changes}</swc-badge></span>`
       : menu;
   }
 
@@ -953,7 +941,10 @@ export class SliccApp extends ThemedElement {
     const sprinkles = this.#sprinkles()
       .filter((sprinkle) => !sprinkle.inline || this.dips.has(sprinkle.id))
       .map(sprinkleSurface);
-    const all = dock && this.#started ? [...sprinkles, ...this.#available()] : [];
+    const all =
+      dock && this.#started
+        ? [...sprinkles, ...this.#available().filter((item) => item.rail !== false)]
+        : [];
     const phone = this.screen === 'phone';
     return {
       left: this.#rail(phone ? [] : all.filter((item) => item.side !== 'right'), 'left'),
@@ -1134,6 +1125,17 @@ export class SliccApp extends ThemedElement {
       <swc-tooltip for=${id} placement="bottom">${label}</swc-tooltip>`;
   }
 
+  #supportButton(): TemplateResult | typeof nothing {
+    if (!this.#offers('support')) return nothing;
+    const unread = this.#unread();
+    const label = unread ? `Support, ${unreadLabel(unread)}` : 'Support';
+    const button = html`<swc-action-button id="support" size="s" quiet data-surface="support" accessible-label=${label} @click=${() => this.show('support')}><swc-icon-help-circle slot="icon"></swc-icon-help-circle></swc-action-button>`;
+    const tooltip = html`<swc-tooltip for="support" placement="bottom">${label}</swc-tooltip>`;
+    return unread
+      ? html`<span class="badged">${button}<swc-badge size="s" variant="informative" aria-hidden="true" data-count=${unread}>${unread}</swc-badge></span>${tooltip}`
+      : html`${button}${tooltip}`;
+  }
+
   render(): TemplateResult {
     const color = this.color;
     const cones = (this.model?.agent.list() ?? []).filter((agent) => agent.kind === 'cone');
@@ -1191,6 +1193,7 @@ export class SliccApp extends ThemedElement {
               <sp-menu-item value="theme">${color === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}<kbd slot="value">Alt+Shift+T</kbd></sp-menu-item>
             </sp-menu-group>
           </sp-action-menu>
+          ${this.#supportButton()}
           ${
             this.#offers('settings')
               ? this.#headerButton(

@@ -20,6 +20,8 @@ export type SupportScenario =
   | 'loading'
   | 'offline'
   | 'not-enrolled'
+  | 'pending'
+  | 'declined'
   | 'fail';
 
 const minute = 60_000;
@@ -36,6 +38,8 @@ export const supportOffline =
   'Support can’t be reached right now. These are the requests loaded last.';
 export const supportRefused = 'Support didn’t get that. Try again.';
 export const supportConflict = 'That request key was already used for something else.';
+export const supportDeclined =
+  'We only open Support to the people your admin named. Ask Ilse Varga to add you.';
 export const supportAnswer =
   'Thanks, we’re on it. We’ll reply here as soon as we know more, usually within the hour.';
 
@@ -44,6 +48,10 @@ export const supportTopics: readonly SupportTopic[] = [
   { id: 'builds', label: 'Builds and publishing' },
   { id: 'billing', label: 'Plan and billing' },
 ];
+
+export function plainTitle(line: string): string {
+  return line.replace(/^#+\s*/, '').replace(/[*_`~]/g, '');
+}
 
 interface Entry {
   thread: SupportThread;
@@ -74,7 +82,7 @@ export function supportFixtures(now = Date.now()): Entry[] {
           2 * hour,
           'customer',
           'Mara Lind',
-          'Builds and publishing\n\nSince this morning our preview builds stop after the first page. The publish step reports success, but only `/index` updates.'
+          'Preview builds stop after the first page\n\nBuilds and publishing\n\nSince this morning our preview builds stop after the first page. The publish step reports success, but only `/index` updates.'
         ),
         message(
           'sup-preview-2',
@@ -113,7 +121,7 @@ export function supportFixtures(now = Date.now()): Entry[] {
           3 * day,
           'customer',
           'Ole Brandt',
-          'Access and sign-in\n\nJonas joins the docs team next week. Can you give him editor access to the docs site?'
+          'Add a new editor to the docs site\n\nAccess and sign-in\n\nJonas joins the docs team next week. Can you give him editor access to the docs site?'
         ),
         message(
           'sup-editor-2',
@@ -139,7 +147,7 @@ export function supportFixtures(now = Date.now()): Entry[] {
           6 * day + hour,
           'customer',
           'Mara Lind',
-          'The March report export stops after about a minute with “Request timed out”.'
+          'Export of the March report times out\n\nThe March report export stops after about a minute with “Request timed out”.'
         ),
         message('sup-export-2', 6 * day, 'customer', 'Mara Lind', '', { deleted: true }),
       ],
@@ -169,8 +177,15 @@ export class DummySupport extends Emitter<SupportEvents> implements SupportPort 
 
   #initial(scenario: SupportScenario): SupportStatus {
     if (scenario === 'signed-out' || scenario === 'sign-in-fail') return { state: 'signed-out' };
-    if (scenario === 'not-enrolled')
-      return { state: 'not-enrolled', identity: supportMember, org: supportOtherOrg };
+    const outside = {
+      state: 'not-enrolled',
+      identity: supportMember,
+      org: supportOtherOrg,
+    } as const;
+    if (scenario === 'not-enrolled') return outside;
+    if (scenario === 'pending') return { ...outside, request: 'pending' };
+    if (scenario === 'declined')
+      return { ...outside, request: 'declined', reason: supportDeclined };
     const known = {
       identity: supportMember,
       org: supportOrg,
@@ -288,12 +303,19 @@ export class DummySupport extends Emitter<SupportEvents> implements SupportPort 
     this.calls.push(['create', draft.key, draft.title, draft.body, draft.topic]);
     const payload = JSON.stringify([draft.title, draft.body, draft.topic ?? null]);
     return this.#write(draft.key, payload, () => {
-      const topic = supportTopics.find((item) => item.id === draft.topic);
-      const body = topic ? `${topic.label}\n\n${draft.body}` : draft.body;
-      const message = this.#message(body);
+      const title = draft.title.trim();
+      const topic = supportTopics.find((item) => item.id === draft.topic)?.label;
+      const body = draft.body.trim() === title ? '' : draft.body.trim();
+      const message = this.#message([title, topic, body].filter(Boolean).join('\n\n'));
       const id = `sup-new-${this.#count}`;
       this.#entries.unshift({
-        thread: { id, title: draft.title, lastActivity: message.at, resolved: false, unread: 0 },
+        thread: {
+          id,
+          title: plainTitle(title),
+          lastActivity: message.at,
+          resolved: false,
+          unread: 0,
+        },
         messages: [message],
       });
       this.#changed(id);
