@@ -2,11 +2,21 @@ import '@adobe/spectrum-wc/components/action-button/swc-action-button.js';
 import '@adobe/spectrum-wc/components/badge/swc-badge.js';
 import '@adobe/spectrum-wc/components/button/swc-button.js';
 import '@adobe/spectrum-wc/components/progress-circle/swc-progress-circle.js';
+import '@adobe/spectrum-wc/components/tooltip/swc-tooltip.js';
 import '@adobe/spectrum-wc-icons/swc-icon-add.js';
 import '@adobe/spectrum-wc-icons/swc-icon-alert-diamond.js';
 import '@adobe/spectrum-wc-icons/swc-icon-chevron-left.js';
+import '@adobe/spectrum-wc-icons/swc-icon-clock.js';
+import '@adobe/spectrum-wc-icons/swc-icon-code.js';
+import '@adobe/spectrum-wc-icons/swc-icon-link.js';
+import '@adobe/spectrum-wc-icons/swc-icon-list-bulleted.js';
 import '@adobe/spectrum-wc-icons/swc-icon-people-group.js';
+import '@adobe/spectrum-wc-icons/swc-icon-preview.js';
+import '@adobe/spectrum-wc-icons/swc-icon-send.js';
+import '@adobe/spectrum-wc-icons/swc-icon-text-bold.js';
+import '@adobe/spectrum-wc-icons/swc-icon-text-italic.js';
 import { css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
+import { live } from 'lit/directives/live.js';
 import type {
   SliccModel,
   SupportConversation,
@@ -23,6 +33,7 @@ import { ViewState } from './view-state.ts';
 
 export const titleLimit = 120;
 export const bodyLimit = 2000;
+export const countFrom = 1800;
 export const newRequest = 'new';
 
 export function signedIn(status: SupportStatus): boolean {
@@ -41,14 +52,96 @@ export function audienceNote(audience: string | undefined): string {
   return `${audience ?? 'Your team and Adobe Support'} can read this. Only what you write here is sent.`;
 }
 
-export function validTitle(title: string): boolean {
-  const trimmed = title.trim();
-  return !!trimmed && !/[\r\n]/.test(trimmed) && trimmed.length <= titleLimit;
-}
-
 export function validBody(body: string): boolean {
   return !!body.trim() && body.length <= bodyLimit;
 }
+
+export function requestOf(message: string): { title: string; body: string } {
+  const lines = message.split('\n');
+  const at = Math.max(
+    0,
+    lines.findIndex((line) => line.trim())
+  );
+  const line = lines[at].trim();
+  const rest = lines.slice(at + 1).join('\n');
+  if (line.length <= titleLimit) return { title: line, body: rest.trim() || line };
+  const head = line.slice(0, titleLimit);
+  const space = head.search(/\s\S*$/);
+  const cut = space > 0 ? space : titleLimit - 1;
+  return {
+    title: `${line.slice(0, cut).trimEnd()}…`,
+    body: `…${line.slice(cut).trimStart()}\n${rest}`.trimEnd(),
+  };
+}
+
+export function countLabel(length: number): string {
+  return `${length.toLocaleString('en-US')} / ${bodyLimit.toLocaleString('en-US')}`;
+}
+
+export function enrollmentNote(status: SupportStatus): string {
+  const org = status.org ?? 'this account';
+  if (status.request === 'pending')
+    return `Adobe is reviewing your request for ${org}. You can start once it’s approved, or sign in with another account.`;
+  if (status.request === 'declined')
+    return `Adobe declined your request for ${org}. Ask your Adobe contact, or sign in with another account.`;
+  return `Support isn’t set up for ${org} yet. Ask your Adobe contact to add you, or sign in with another account.`;
+}
+
+export type Format = 'bold' | 'italic' | 'code' | 'link' | 'list';
+
+export interface Edit {
+  value: string;
+  start: number;
+  end: number;
+}
+
+const wraps: Record<'bold' | 'italic' | 'code', [string, string]> = {
+  bold: ['**', 'bold text'],
+  italic: ['_', 'italic text'],
+  code: ['`', 'code'],
+};
+
+export function format(value: string, start: number, end: number, kind: Format): Edit {
+  const before = value.slice(0, start);
+  const picked = value.slice(start, end);
+  const after = value.slice(end);
+  if (kind === 'list') {
+    const from = before.lastIndexOf('\n') + 1;
+    const lines = value.slice(from, end).split('\n');
+    const listed = lines.map((line) => (line.startsWith('- ') ? line : `- ${line}`)).join('\n');
+    return {
+      value: value.slice(0, from) + listed + after,
+      start: from,
+      end: from + listed.length,
+    };
+  }
+  if (kind === 'link') {
+    const label = picked || 'link text';
+    const url = start + label.length + 3;
+    return { value: `${before}[${label}](https://)${after}`, start: url, end: url + 8 };
+  }
+  if (kind === 'code' && picked.includes('\n')) {
+    const block = `\`\`\`\n${picked}\n\`\`\``;
+    return { value: before + block + after, start: start + 4, end: start + 4 + picked.length };
+  }
+  const [mark, placeholder] = wraps[kind];
+  const text = picked || placeholder;
+  return {
+    value: before + mark + text + mark + after,
+    start: start + mark.length,
+    end: start + mark.length + text.length,
+  };
+}
+
+const formats: ReadonlyArray<[Format, string, TemplateResult]> = [
+  ['bold', 'Bold', html`<swc-icon-text-bold slot="icon"></swc-icon-text-bold>`],
+  ['italic', 'Italic', html`<swc-icon-text-italic slot="icon"></swc-icon-text-italic>`],
+  ['code', 'Code', html`<swc-icon-code slot="icon"></swc-icon-code>`],
+  ['link', 'Link', html`<swc-icon-link slot="icon"></swc-icon-link>`],
+  ['list', 'Bulleted list', html`<swc-icon-list-bulleted slot="icon"></swc-icon-list-bulleted>`],
+];
+
+const shortcuts: Record<string, Format> = { b: 'bold', i: 'italic' };
 
 export function newKey(): string {
   return crypto.randomUUID();
@@ -71,8 +164,15 @@ export class IntentKeys {
   }
 }
 
-function sendKey(event: KeyboardEvent): boolean {
-  return event.key === 'Enter' && (event.metaKey || event.ctrlKey);
+interface Session {
+  port: SupportPort | null;
+  drafts: ReadonlyMap<string, string>;
+  topic: string;
+  keys: IntentKeys;
+}
+
+function fresh(port: SupportPort | null): Session {
+  return { port, drafts: new Map(), topic: '', keys: new IntentKeys() };
 }
 
 export class SliccSupport extends ModelElement {
@@ -83,28 +183,26 @@ export class SliccSupport extends ModelElement {
     sending: { state: true },
     signing: { state: true },
     error: { state: true },
-    subject: { state: true },
-    body: { state: true },
-    topic: { state: true },
-    replies: { state: true },
+    previews: { state: true },
   };
   declare conversation: SupportConversation | null;
   declare loading: boolean;
   declare sending: boolean;
   declare signing: boolean;
   declare error: string | null;
-  declare subject: string;
-  declare body: string;
-  declare topic: string;
-  declare replies: ReadonlyMap<string, string>;
+  declare previews: ReadonlySet<string>;
   #open = new ViewState<string | null>(this, 'support', () => null);
   #scope = new ViewState<string>(this, 'support:account', () => '');
-  #keys = new IntentKeys();
+  #session = new ViewState<Session>(this, 'support:drafts', (model) =>
+    fresh(model?.support ?? null)
+  );
   #loads = 0;
   #reading = new Set<string>();
   #unseen: SupportConversation | null = null;
   #port: SupportPort | null = null;
+  #shown: string | null | undefined = undefined;
   #epoch = 0;
+  #selection: Edit | null = null;
 
   constructor() {
     super();
@@ -113,10 +211,7 @@ export class SliccSupport extends ModelElement {
     this.sending = false;
     this.signing = false;
     this.error = null;
-    this.subject = '';
-    this.body = '';
-    this.topic = '';
-    this.replies = new Map();
+    this.previews = new Set();
   }
 
   get open(): string | null {
@@ -124,11 +219,7 @@ export class SliccSupport extends ModelElement {
   }
 
   set open(value: string | null) {
-    if (value === this.#open.value) return;
     this.#open.value = value;
-    this.error = null;
-    this.conversation = null;
-    void this.#load();
   }
 
   static styles = [
@@ -267,34 +358,145 @@ export class SliccSupport extends ModelElement {
       }
       .composer,
       .form {
-        display: grid;
+        display: flex;
+        flex-direction: column;
         gap: var(--swc-spacing-100);
-        flex: none;
         padding: var(--swc-spacing-100) var(--swc-spacing-200) var(--swc-spacing-200);
       }
       .composer {
+        flex: none;
         border-top: var(--swc-border-width-100) solid var(--swc-gray-200);
         background: var(--swc-background-layer-1-color);
       }
       .form {
-        overflow-y: auto;
         flex: 1;
         min-height: 0;
-        align-content: start;
+        overflow-y: auto;
         padding-block-start: var(--swc-spacing-200);
       }
-      .form sp-textfield,
-      .form sp-picker,
-      .composer sp-textfield {
+      .form sp-picker {
         width: 100%;
+        flex: none;
       }
+      .editor {
+        display: flex;
+        flex-direction: column;
+        flex: none;
+        border: var(--swc-border-width-200) solid var(--swc-gray-300);
+        border-radius: var(--swc-corner-radius-large-default);
+        background: var(--swc-gray-25);
+        overflow: hidden;
+        cursor: text;
+      }
+      .editor:hover {
+        border-color: var(--swc-gray-400);
+      }
+      .editor:focus-within {
+        border-color: var(--swc-gray-800);
+      }
+      .form .editor {
+        flex: 1 0 auto;
+        min-height: 14lh;
+      }
+      .editor textarea,
+      .editor .preview {
+        box-sizing: border-box;
+        display: block;
+        width: 100%;
+        margin: 0;
+        border: none;
+        outline: none;
+        padding: var(--swc-spacing-200) var(--swc-spacing-200) var(--swc-spacing-75);
+        background: transparent;
+        color: var(--swc-neutral-content-color-default);
+        font: inherit;
+        font-size: var(--swc-font-size-100);
+        line-height: var(--swc-line-height-100);
+        overflow-wrap: anywhere;
+      }
+      .editor textarea {
+        resize: none;
+        field-sizing: content;
+        min-block-size: calc(3lh + var(--swc-spacing-200) + var(--swc-spacing-75));
+        max-block-size: 40vh;
+        overflow-y: auto;
+      }
+      .editor textarea::placeholder {
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .editor .preview {
+        min-block-size: calc(3lh + var(--swc-spacing-200) + var(--swc-spacing-75));
+        max-block-size: 40vh;
+        overflow-y: auto;
+        cursor: default;
+      }
+      .form .editor textarea,
+      .form .editor .preview {
+        flex: 1;
+        max-block-size: none;
+      }
+      .preview .empty {
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .tools {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--swc-spacing-50);
+        padding: var(--swc-spacing-75) var(--swc-spacing-100) var(--swc-spacing-100);
+        cursor: default;
+      }
+      .tools .divider {
+        inline-size: var(--swc-border-width-100);
+        block-size: var(--swc-spacing-300);
+        margin-inline: var(--swc-spacing-50);
+        background: var(--swc-gray-300);
+      }
+      .tools swc-action-button.selected {
+        --swc-action-button-background-color-default: var(--swc-neutral-background-color-selected-default);
+        --swc-action-button-background-color-hover: var(--swc-neutral-background-color-selected-hover);
+        --swc-action-button-background-color-down: var(--swc-neutral-background-color-selected-down);
+        --swc-action-button-background-color-focus: var(--swc-neutral-background-color-selected-key-focus);
+        --swc-action-button-content-color-default: var(--swc-gray-25);
+        --swc-action-button-content-color-hover: var(--swc-gray-25);
+        --swc-action-button-content-color-down: var(--swc-gray-25);
+        --swc-action-button-content-color-focus: var(--swc-gray-25);
+      }
+      .tools .count {
+        margin-inline-start: auto;
+        padding-inline: var(--swc-spacing-75);
+        font-size: var(--swc-font-size-75);
+        font-variant-numeric: tabular-nums;
+        color: var(--swc-neutral-subdued-content-color-default);
+        white-space: nowrap;
+      }
+      .tools .count[data-full] {
+        color: var(--swc-negative-content-color-default);
+      }
+      .tools .send {
+        margin-inline-start: auto;
+      }
+      .tools .count + .send {
+        margin-inline-start: 0;
+      }
+      .hint,
+      .derived,
       .audience {
         display: flex;
         align-items: flex-start;
         gap: var(--swc-spacing-75);
         margin: 0;
         font-size: var(--swc-font-size-75);
+        line-height: var(--swc-line-height-100);
         color: var(--swc-neutral-subdued-content-color-default);
+      }
+      .derived span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--swc-neutral-content-color-default);
+        font-weight: var(--swc-bold-font-weight);
       }
       .audience swc-icon-people-group {
         flex: none;
@@ -358,6 +560,39 @@ export class SliccSupport extends ModelElement {
         align-items: center;
         gap: var(--swc-spacing-100);
       }
+      .enrollment {
+        display: grid;
+        gap: var(--swc-spacing-100);
+        margin: 0;
+        padding: var(--swc-spacing-200);
+        line-height: var(--swc-line-height-100);
+      }
+      .enrollment p {
+        margin: 0;
+      }
+      .enrollment .state {
+        display: flex;
+        align-items: center;
+        gap: var(--swc-spacing-75);
+        font-weight: var(--swc-bold-font-weight);
+      }
+      .enrollment .state swc-icon-clock {
+        color: var(--swc-notice-visual-color);
+      }
+      .enrollment .state swc-icon-alert-diamond {
+        color: var(--swc-negative-visual-color);
+      }
+      .enrollment [data-reason] {
+        padding: var(--swc-spacing-100) var(--swc-spacing-200);
+        border-inline-start: var(--swc-border-width-400) solid var(--swc-gray-300);
+        background: var(--swc-gray-100);
+        border-radius: var(--swc-corner-radius-small-default);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .enrollment .more {
+        color: var(--swc-neutral-subdued-content-color-default);
+      }
     `,
   ];
 
@@ -385,10 +620,17 @@ export class SliccSupport extends ModelElement {
   protected willUpdate(changed: PropertyValues): void {
     super.willUpdate(changed);
     const port = this.model?.support ?? null;
-    if (port === this.#port) return;
-    this.#port = port;
-    this.#clear();
-    if (port) this.#check(port.status());
+    if (port !== this.#port) {
+      this.#port = port;
+      this.#reset();
+      if (this.#session.value.port !== port) this.#session.value = fresh(port);
+      if (port) this.#check(port.status());
+      this.#shown = undefined;
+    }
+    if (this.open === this.#shown) return;
+    this.#shown = this.open;
+    this.error = null;
+    this.conversation = null;
     void this.#load();
   }
 
@@ -397,26 +639,23 @@ export class SliccSupport extends ModelElement {
     if (accountOf(status) === this.#scope.value && !lost) return;
     this.#scope.value = accountOf(status);
     this.#open.value = null;
-    this.#clear();
+    this.#reset();
+    this.#session.value = fresh((this.model as SliccModel).support as SupportPort);
   }
 
-  #clear(): void {
+  #reset(): void {
     this.#epoch += 1;
     this.#loads += 1;
-    this.#keys = new IntentKeys();
     this.#reading.clear();
     this.conversation = null;
     this.loading = false;
     this.sending = false;
     this.signing = false;
     this.error = null;
-    this.subject = '';
-    this.body = '';
-    this.topic = '';
-    this.replies = new Map();
+    this.previews = new Set();
   }
 
-  async #session(port: SupportPort, action: 'signIn' | 'signOut'): Promise<void> {
+  async #signing(port: SupportPort, action: 'signIn' | 'signOut'): Promise<void> {
     if (this.signing) return;
     const epoch = this.#epoch;
     this.signing = true;
@@ -431,12 +670,7 @@ export class SliccSupport extends ModelElement {
   }
 
   focus(): void {
-    this.focusOn(
-      '.row .head',
-      '.form sp-textfield',
-      '.composer sp-textfield',
-      '.bar swc-action-button'
-    );
+    this.focusOn('.row .head', '.editor textarea', '.bar swc-action-button');
   }
 
   reveal(id: string): void {
@@ -481,57 +715,98 @@ export class SliccSupport extends ModelElement {
     }
   }
 
-  async #create(): Promise<void> {
+  #draftOf(id: string): string {
+    return this.#session.value.drafts.get(id) ?? '';
+  }
+
+  #draft(id: string, value: string): void {
+    const session = this.#session.value;
+    const drafts = new Map(session.drafts);
+    if (value) drafts.set(id, value);
+    else drafts.delete(id);
+    this.#session.value = { ...session, drafts };
+  }
+
+  #topic(topic: string): void {
+    this.#session.value = { ...this.#session.value, topic };
+  }
+
+  async #send(id: string): Promise<void> {
     const port = this.#port;
-    const title = this.subject.trim();
-    const body = this.body;
-    if (!port || this.sending || !validTitle(title) || !validBody(body)) return;
-    const topic = this.topic || undefined;
-    const key = this.#keys.key(newRequest, [title, body, topic]);
+    const session = this.#session.value;
+    const text = this.#draftOf(id);
+    if (!port || this.sending || !validBody(text)) return;
+    const creating = id === newRequest;
+    const topic = creating ? session.topic || undefined : undefined;
+    const key = session.keys.key(id, creating ? [text, topic] : [id, text]);
     const epoch = this.#epoch;
+    const current = () => epoch === this.#epoch && session.keys === this.#session.value.keys;
     this.sending = true;
     this.error = null;
     try {
-      const { id } = await port.create({ key, title, body, ...(topic ? { topic } : {}) });
-      if (epoch !== this.#epoch) return;
-      this.#keys.done(newRequest);
-      this.subject = '';
-      this.body = '';
-      this.topic = '';
-      this.open = id;
+      const made = creating
+        ? await port.create({ key, ...requestOf(text), ...(topic ? { topic } : {}) })
+        : await port.reply({ key, thread: id, body: text });
+      if (!current()) return;
+      session.keys.done(id);
+      this.#settle(id, text);
+      if (creating) this.open = made.id;
+      else void this.#load();
     } catch (error) {
-      if (epoch === this.#epoch) this.error = (error as Error).message;
+      if (current()) this.error = (error as Error).message;
     } finally {
-      if (epoch === this.#epoch) this.sending = false;
+      if (current()) this.sending = false;
     }
   }
 
-  async #reply(thread: string): Promise<void> {
-    const port = this.#port;
-    const body = this.replies.get(thread) ?? '';
-    if (!port || this.sending || !validBody(body)) return;
-    const key = this.#keys.key(thread, [thread, body]);
-    const epoch = this.#epoch;
-    this.sending = true;
-    this.error = null;
-    try {
-      await port.reply({ key, thread, body });
-      if (epoch !== this.#epoch) return;
-      this.#keys.done(thread);
-      if (this.replies.get(thread) === body) this.#draft(thread, '');
-      void this.#load();
-    } catch (error) {
-      if (epoch === this.#epoch) this.error = (error as Error).message;
-    } finally {
-      if (epoch === this.#epoch) this.sending = false;
-    }
+  #settle(id: string, text: string): void {
+    this.#preview(id, false);
+    if (this.#draftOf(id) !== text) return;
+    this.#draft(id, '');
+    if (id === newRequest) this.#topic('');
   }
 
-  #draft(thread: string, value: string): void {
-    const replies = new Map(this.replies);
-    if (value) replies.set(thread, value);
-    else replies.delete(thread);
-    this.replies = replies;
+  #preview(id: string, on: boolean): void {
+    const previews = new Set(this.previews);
+    if (on) previews.add(id);
+    else previews.delete(id);
+    this.previews = previews;
+  }
+
+  #format(id: string, kind: Format): void {
+    const area = this.renderRoot.querySelector<HTMLTextAreaElement>('.editor textarea');
+    if (!area) return;
+    const edit = format(area.value, area.selectionStart, area.selectionEnd, kind);
+    this.#selection = edit;
+    this.#draft(id, edit.value);
+  }
+
+  #key(id: string, event: KeyboardEvent): void {
+    if (event.isComposing) return;
+    const mod = event.metaKey || event.ctrlKey;
+    const shortcut = mod && !event.shiftKey && !event.altKey && shortcuts[event.key.toLowerCase()];
+    if (shortcut) {
+      event.preventDefault();
+      this.#format(id, shortcut);
+      return;
+    }
+    if (event.key !== 'Enter') return;
+    const enter = id !== newRequest && this.#enterSends();
+    if (!(mod || (enter && !event.shiftKey))) return;
+    event.preventDefault();
+    void this.#send(id);
+  }
+
+  #hint(id: string): string {
+    if (id === newRequest)
+      return 'The first line is the title. Ctrl+Enter sends, Enter adds a new line. Markdown works.';
+    return this.#enterSends()
+      ? 'Enter sends, Shift+Enter adds a new line. Markdown works.'
+      : 'Ctrl+Enter sends, Enter adds a new line. Markdown works.';
+  }
+
+  #enterSends(): boolean {
+    return (this.model as SliccModel).settings.get().sendOnEnter !== false;
   }
 
   async #back(): Promise<void> {
@@ -566,6 +841,36 @@ export class SliccSupport extends ModelElement {
     return html`<swc-action-button size="s" quiet data-action="back" accessible-label="All requests" @click=${() => this.#back()}><swc-icon-chevron-left slot="icon"></swc-icon-chevron-left></swc-action-button>`;
   }
 
+  #editor(
+    id: string,
+    label: string,
+    placeholder: string,
+    title: TemplateResult | typeof nothing = nothing
+  ): TemplateResult {
+    const text = this.#draftOf(id);
+    const preview = this.previews.has(id);
+    const length = text.length;
+    const name = id === newRequest ? 'message' : 'reply';
+    const body = preview
+      ? html`<div class="preview markdown" data-preview role="region" aria-label=${`${label}, preview`} tabindex="0">${text.trim() ? markdown(text, { strict: true }) : html`<p class="empty">Nothing to preview yet.</p>`}</div>`
+      : html`<textarea name=${name} aria-label=${label} aria-describedby="hint" placeholder=${placeholder} maxlength=${bodyLimit} .value=${live(text)} @input=${(event: Event) => this.#draft(id, (event.target as HTMLTextAreaElement).value)} @keydown=${(event: KeyboardEvent) => this.#key(id, event)}></textarea>`;
+    return html`<div class="editor" data-editor=${id} ?data-previewing=${preview}>
+        ${body}
+        <div class="tools">
+          ${formats.map(
+            ([kind, title, icon]) =>
+              html`<swc-action-button id=${`format-${kind}`} size="s" quiet data-format=${kind} accessible-label=${title} ?disabled=${preview} @click=${() => this.#format(id, kind)}>${icon}</swc-action-button><swc-tooltip for=${`format-${kind}`} placement="top">${title}</swc-tooltip>`
+          )}
+          <span class="divider" aria-hidden="true"></span>
+          <swc-action-button id="preview" size="s" quiet class=${preview ? 'selected' : ''} data-action="preview" accessible-label="Preview" aria-pressed=${preview ? 'true' : 'false'} @click=${() => this.#preview(id, !preview)}><swc-icon-preview slot="icon"></swc-icon-preview></swc-action-button><swc-tooltip for="preview" placement="top">Preview</swc-tooltip>
+          ${length >= countFrom ? html`<span class="count" data-count ?data-full=${length >= bodyLimit} aria-label=${`${countLabel(length)} characters`}>${countLabel(length)}</span>` : nothing}
+          <swc-button class="send" size="s" variant="accent" data-action="send" ?pending=${this.sending} ?disabled=${!validBody(text)} @click=${() => void this.#send(id)}><swc-icon-send slot="icon"></swc-icon-send>Send</swc-button>
+        </div>
+      </div>
+      ${title}
+      <p class="hint" id="hint">${this.#hint(id)}</p>`;
+  }
+
   #row(thread: SupportThread): TemplateResult {
     return html`<li class="row" data-id=${thread.id} ?data-unread=${thread.unread > 0} ?data-resolved=${thread.resolved}>
       <button class="head" @click=${() => (this.open = thread.id)}>
@@ -579,6 +884,19 @@ export class SliccSupport extends ModelElement {
     </li>`;
   }
 
+  #enrollment(status: SupportStatus): TemplateResult {
+    const request = status.request;
+    if (!request)
+      return html`<p class="note" data-empty="not-enrolled">${enrollmentNote(status)}</p>`;
+    const pending = request === 'pending';
+    const reason = !pending && status.reason?.trim();
+    return html`<div class="enrollment" data-empty="not-enrolled" data-request=${request} role="status">
+      <p class="state">${pending ? html`<swc-icon-clock size="s" aria-hidden="true"></swc-icon-clock>Your request is waiting for approval` : html`<swc-icon-alert-diamond size="s" aria-hidden="true"></swc-icon-alert-diamond>Your request was declined`}</p>
+      <p class="more">${enrollmentNote(status)}</p>
+      ${reason ? html`<p data-reason>${reason}</p>` : nothing}
+    </div>`;
+  }
+
   #list(port: SupportPort): TemplateResult {
     const status = port.status();
     const threads = port.threads();
@@ -586,7 +904,7 @@ export class SliccSupport extends ModelElement {
       status.state === 'loading'
         ? html`<p class="note" data-empty="loading"><swc-progress-circle size="s" indeterminate label="Loading requests"></swc-progress-circle>Loading requests…</p>`
         : status.state === 'not-enrolled'
-          ? html`<p class="note" data-empty="not-enrolled">Support isn’t set up for ${status.org ?? 'this account'} yet. Ask your Adobe contact to add you, or sign in with another account.</p>`
+          ? this.#enrollment(status)
           : threads.length
             ? html`<ul class="list">${threads.map((thread) => this.#row(thread))}</ul>`
             : html`<p class="note" data-empty="none">No requests yet. Ask Adobe Support about anything that gets in your way.</p>`;
@@ -602,7 +920,7 @@ export class SliccSupport extends ModelElement {
 
   #accountBar(port: SupportPort): TemplateResult {
     return html`<div class="account" data-account><span class="who">Signed in as ${this.#scope.value}</span>
-      ${port.signOut ? html`<swc-action-button size="s" quiet data-action="sign-out" ?disabled=${this.signing} @click=${() => void this.#session(port, 'signOut')}>Sign out</swc-action-button>` : nothing}
+      ${port.signOut ? html`<swc-action-button size="s" quiet data-action="sign-out" ?disabled=${this.signing} @click=${() => void this.#signing(port, 'signOut')}>Sign out</swc-action-button>` : nothing}
     </div>`;
   }
 
@@ -613,37 +931,35 @@ export class SliccSupport extends ModelElement {
         <h3>Get help from Adobe Support</h3>
         <p>Sign in with your Adobe account to see your organization’s requests and ask for help. You choose the organization when you sign in.</p>
         ${this.#error()}
-        ${port.signIn ? html`<swc-button size="s" variant="accent" data-action="sign-in" ?pending=${busy} @click=${() => void this.#session(port, 'signIn')}>Sign in with Adobe</swc-button>` : nothing}
+        ${port.signIn ? html`<swc-button size="s" variant="accent" data-action="sign-in" ?pending=${busy} @click=${() => void this.#signing(port, 'signIn')}>Sign in with Adobe</swc-button>` : nothing}
       </div>`;
   }
 
   #form(port: SupportPort): TemplateResult {
     const topics = port.topics?.() ?? [];
-    const ready = validTitle(this.subject) && validBody(this.body);
-    return html`<div class="bar" data-surface="support">${this.#backButton()}<span class="heading">New request</span></div>
+    const topic = this.#session.value.topic;
+    const text = this.#draftOf(newRequest);
+    return html`<div class="bar" data-surface="support">${this.#backButton()}<span class="heading">New request</span><span class="spacer"></span>
+        <swc-action-button size="s" quiet data-action="cancel" @click=${() => this.#back()}>Cancel</swc-action-button>
+      </div>
       ${this.#offline()}
       <div class="form">
-        <sp-textfield size="s" name="title" label="Title" placeholder="What do you need help with?" maxlength=${titleLimit} .value=${this.subject} @input=${(event: Event) => (this.subject = (event.target as HTMLInputElement).value)}></sp-textfield>
         ${
           topics.length
-            ? html`<sp-picker size="s" name="topic" label="Topic" value=${this.topic || 'none'} @change=${(
+            ? html`<sp-picker size="s" name="topic" label="Topic" value=${topic || 'none'} @change=${(
                 event: Event
               ) => {
                 const value = (event.target as HTMLInputElement).value;
-                this.topic = value === 'none' ? '' : value;
+                this.#topic(value === 'none' ? '' : value);
               }}>
                 <sp-menu-item value="none">No topic</sp-menu-item>
-                ${topics.map((topic) => html`<sp-menu-item value=${topic.id}>${topic.label}</sp-menu-item>`)}
+                ${topics.map((item) => html`<sp-menu-item value=${item.id}>${item.label}</sp-menu-item>`)}
               </sp-picker>`
             : nothing
         }
-        <sp-textfield size="s" name="body" multiline grows label="Description" placeholder="What happened, and what did you expect?" maxlength=${bodyLimit} .value=${this.body} @input=${(event: Event) => (this.body = (event.target as HTMLInputElement).value)} @keydown=${(event: KeyboardEvent) => sendKey(event) && void this.#create()}></sp-textfield>
+        ${this.#editor(newRequest, 'Message', 'What do you need help with? Start with a short summary on the first line, then the details.', text.trim() ? html`<p class="derived" data-derived-title>Title:<span>${requestOf(text).title}</span></p>` : nothing)}
         ${this.#audience()}
         ${this.#error()}
-        <div class="actions">
-          <swc-button size="s" variant="secondary" fill-style="outline" data-action="cancel" @click=${() => this.#back()}>Cancel</swc-button>
-          <swc-button size="s" variant="accent" data-action="send" ?pending=${this.sending} ?disabled=${!ready} @click=${() => void this.#create()}>Send request</swc-button>
-        </div>
       </div>`;
   }
 
@@ -663,7 +979,6 @@ export class SliccSupport extends ModelElement {
     const conversation = this.conversation?.id === id ? this.conversation : null;
     const title = conversation?.title ?? thread?.title ?? '';
     const resolved = conversation?.resolved ?? thread?.resolved ?? false;
-    const draft = this.replies.get(id) ?? '';
     const content = conversation
       ? html`<div class="messages" role="log" aria-label=${title}>${conversation.messages.map((message) => this.#message(message))}</div>`
       : this.loading
@@ -675,12 +990,9 @@ export class SliccSupport extends ModelElement {
       ${
         conversation
           ? html`<div class="composer">
-          <sp-textfield size="s" name="reply" multiline grows label="Reply" placeholder="Write a reply" maxlength=${bodyLimit} .value=${draft} @input=${(event: Event) => this.#draft(id, (event.target as HTMLInputElement).value)} @keydown=${(event: KeyboardEvent) => sendKey(event) && void this.#reply(id)}></sp-textfield>
+          ${this.#editor(id, 'Reply', 'Write a reply')}
           ${this.#audience()}
           ${this.#error()}
-          <div class="actions">
-            <swc-button size="s" variant="accent" data-action="send" ?pending=${this.sending} ?disabled=${!validBody(draft)} @click=${() => void this.#reply(id)}>Send</swc-button>
-          </div>
         </div>`
           : this.#error()
       }`;
@@ -688,6 +1000,13 @@ export class SliccSupport extends ModelElement {
 
   protected updated(changed: PropertyValues): void {
     super.updated(changed);
+    const edit = this.#selection;
+    const area = this.renderRoot.querySelector<HTMLTextAreaElement>('.editor textarea');
+    if (edit && area) {
+      this.#selection = null;
+      area.focus();
+      area.setSelectionRange(edit.start, edit.end);
+    }
     if (changed.has('conversation') && this.conversation) {
       const log = this.renderRoot.querySelector<HTMLElement>('.messages');
       if (log) log.scrollTop = log.scrollHeight;

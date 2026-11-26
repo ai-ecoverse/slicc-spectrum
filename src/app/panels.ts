@@ -24,6 +24,7 @@ export interface Surface {
   open: readonly ScreenClass[];
   width?: number;
   cone?: string;
+  rail?: false;
 }
 
 export const surfaces: Surface[] = [
@@ -147,6 +148,7 @@ export const surfaces: Surface[] = [
     side: 'right',
     open: [],
     width: 360,
+    rail: false,
   },
 ];
 
