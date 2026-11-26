@@ -715,9 +715,11 @@ test('a reply sends on Enter, Shift+Enter adds a line, and the editor formats, p
   assert.deepEqual(
     await page.evaluate(() => [
       window.part('[data-count]').textContent,
+      window.part('[data-count]').hasAttribute('aria-label'),
+      window.part('[data-count] .sr').getBoundingClientRect().width <= 1,
       window.part('textarea[name=reply]').maxLength,
     ]),
-    ['1,801 / 2,000', 2000]
+    ['1,801 / 2,000 characters', false, true, 2000]
   );
   await page.insert('z'.repeat(300));
   await page.until(() => window.part('[data-count]')?.hasAttribute('data-full'));
@@ -727,7 +729,7 @@ test('a reply sends on Enter, Shift+Enter adds a line, and the editor formats, p
       window.part('[data-count]').textContent,
       window.part('.composer [data-action=send]').hasAttribute('disabled'),
     ]),
-    [2000, '2,000 / 2,000', false]
+    [2000, '2,000 / 2,000 characters', false]
   );
   assert.deepEqual(page.errors, []);
 });

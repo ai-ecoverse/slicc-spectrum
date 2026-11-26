@@ -863,7 +863,7 @@ export class SliccSupport extends ModelElement {
           )}
           <span class="divider" aria-hidden="true"></span>
           <swc-action-button id="preview" size="s" quiet class=${preview ? 'selected' : ''} data-action="preview" accessible-label="Preview" aria-pressed=${preview ? 'true' : 'false'} @click=${() => this.#preview(id, !preview)}><swc-icon-preview slot="icon"></swc-icon-preview></swc-action-button><swc-tooltip for="preview" placement="top">Preview</swc-tooltip>
-          ${length >= countFrom ? html`<span class="count" data-count ?data-full=${length >= bodyLimit} aria-label=${`${countLabel(length)} characters`}>${countLabel(length)}</span>` : nothing}
+          ${length >= countFrom ? html`<span class="count" data-count ?data-full=${length >= bodyLimit}>${countLabel(length)}<span class="sr"> characters</span></span>` : nothing}
           <swc-button class="send" size="s" variant="accent" data-action="send" ?pending=${this.sending} ?disabled=${!validBody(text)} @click=${() => void this.#send(id)}><swc-icon-send slot="icon"></swc-icon-send>Send</swc-button>
         </div>
       </div>
