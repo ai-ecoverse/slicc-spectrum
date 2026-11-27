@@ -32,6 +32,8 @@ async function open(t) {
       window.model.agent
         .messages('cone-sliccy')
         .some((message) => message.role === 'user' && message.text === text);
+    window.keys = 0;
+    addEventListener('keydown', () => window.keys++, true);
     return true;
   });
   return page;
@@ -50,6 +52,24 @@ async function draft(page, text) {
   await page.insert(text);
 }
 
+async function enter(page, disabled) {
+  await focus(page);
+  await page.until(
+    (disabled) =>
+      new Promise((resolve) => {
+        const ready = () =>
+          /slicc-composer > swc-prompt-field > textarea/.test(window.focused()) &&
+          window.sendButton()?.disabled === disabled;
+        if (!ready()) resolve(false);
+        else requestAnimationFrame(() => requestAnimationFrame(() => resolve(ready())));
+      }),
+    disabled
+  );
+  const keys = await page.evaluate(() => window.keys);
+  await page.press('Enter');
+  await page.until((keys) => window.keys > keys, keys);
+}
+
 test('a file over 100 MB keeps the draft and disables Send until it is removed', async (t) => {
   const page = await open(t);
   await page.evaluate((bytes) => window.attach('Kaufvertrag.pdf', bytes), 90 * MiB);
@@ -64,7 +84,7 @@ test('a file over 100 MB keeps the draft and disables Send until it is removed',
     },
   ]);
   await draft(page, 'Opa contract');
-  await page.press('Enter');
+  await enter(page, true);
   await page.evaluate(() => {
     window.sendButton().click();
     window.field().dispatchEvent(new CustomEvent('swc-prompt-field-submit'));
@@ -86,8 +106,7 @@ test('a file over 100 MB keeps the draft and disables Send until it is removed',
     return true;
   });
   await page.until(() => window.sendButton()?.disabled === false);
-  await focus(page);
-  await page.press('Enter');
+  await enter(page, false);
   await page.until(() => window.sent('Opa contract'));
   assert.deepEqual(page.errors, []);
 });
@@ -108,7 +127,7 @@ test('the agent’s own limits mark a file too large and a message too big, and 
     },
   ]);
   await draft(page, 'The contract');
-  await page.press('Enter');
+  await enter(page, true);
   await new Promise((resolve) => setTimeout(resolve, 200));
   assert.deepEqual(
     await page.evaluate(() => ({
@@ -140,7 +159,7 @@ test('the agent’s own limits mark a file too large and a message too big, and 
       alert: 'These attachments add up to more than 10.0 MB; send them in separate messages.',
     }
   );
-  await page.press('Enter');
+  await enter(page, true);
   await new Promise((resolve) => setTimeout(resolve, 200));
   assert.equal(await page.evaluate(() => window.sent('The contract')), false);
   await page.evaluate(() => {
@@ -152,8 +171,7 @@ test('the agent’s own limits mark a file too large and a message too big, and 
       window.sendButton()?.disabled === false &&
       !window.composer().shadowRoot.querySelector('[data-send-error=together]')
   );
-  await focus(page);
-  await page.press('Enter');
+  await enter(page, false);
   await page.until(() => window.sent('The contract'));
   assert.deepEqual(page.errors, []);
 });
